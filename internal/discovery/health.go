@@ -9,10 +9,10 @@ import "math"
 // forge-synced facts, never opinions — users can dispute them by filing a
 // complaint (spec §15).
 type Metrics struct {
-	LastCommitAgeDays  float64 // 0 = committed today; use a large value if never
-	MedianReviewHours  float64 // median time to first review on PRs
-	Contributors       int     // distinct authors in the last year
-	Releases90d        int     // releases/tags in the last 90 days
+	LastCommitAgeDays float64 // 0 = committed today; use a large value if never
+	MedianReviewHours float64 // median time to first review on PRs
+	Contributors      int     // distinct authors in the last year
+	Releases90d       int     // releases/tags in the last 90 days
 }
 
 // Weights are the transparent, exposed components of the health score.
@@ -45,7 +45,7 @@ func responsivenessScore(medianReviewHours float64) float64 {
 		return 0.0
 	}
 	// log-linear from (24h, 1.0) to (336h, 0.0)
-	x := math.Log(medianReviewHours / 24.0) / math.Log(14.0)
+	x := math.Log(medianReviewHours/24.0) / math.Log(14.0)
 	return math.Max(0.0, 1.0-x)
 }
 

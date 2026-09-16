@@ -54,9 +54,9 @@ func main() {
 		log.Fatalf("migrate: %v", err)
 	}
 
-	srv := &httpapi.Server{
-		Store:   &store.DB{DB: sqlDB},
-		Version: version,
+	srv, err := httpapi.NewServer(&store.DB{DB: sqlDB}, version)
+	if err != nil {
+		log.Fatalf("create server: %v", err)
 	}
 
 	httpSrv := &http.Server{

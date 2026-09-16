@@ -4,11 +4,11 @@
 package httpapi
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
+	"html/template"
 	"net/http"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -17,8 +17,44 @@ import (
 )
 
 type Server struct {
-	Store   *store.DB
-	Version string
+	Store     *store.DB
+	Version   string
+	templates *template.Template
+}
+
+func NewServer(store *store.DB, version string) (*Server, error) {
+	s := &Server{Store: store, Version: version}
+	if err := s.loadTemplates(); err != nil {
+		return nil, err
+	}
+	return s, nil
+}
+
+func (s *Server) loadTemplates() error {
+	templates, err := template.ParseGlob("templates/*.html")
+	if err != nil {
+		s.templates = nil
+		return nil
+	}
+	s.templates = templates
+	return nil
+}
+
+func (s *Server) render(w http.ResponseWriter, status int, name string, data any) {
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(status)
+	if s.templates == nil {
+		_, _ = fmt.Fprintf(w, "<html><body><h1>%s</h1></body></html>", name)
+		return
+	}
+	data = struct {
+		any
+		Version string
+	}{
+		any:     data,
+		Version: s.Version,
+	}
+	_ = s.templates.ExecuteTemplate(w, name+".html", data)
 }
 
 func (s *Server) Router() http.Handler {
@@ -26,6 +62,9 @@ func (s *Server) Router() http.Handler {
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+	})
 
 	r.Get("/api/v1/healthz", s.handleHealthz)
 	r.Get("/api/v1/version", func(w http.ResponseWriter, _ *http.Request) {
@@ -45,20 +84,84 @@ func (s *Server) Router() http.Handler {
 
 	r.Get("/api/v1/search", s.handleSearch)
 
-	r.NotFound(func(w http.ResponseWriter, _ *http.Request) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+	// Complaints
+	r.Route("/api/v1/projects/{project_id}/complaints", func(r chi.Router) {
+		r.Get("/", s.handleListComplaints)
+		r.Post("/", s.handleCreateComplaint)
+		r.Route("/{id}", func(r chi.Router) {
+			r.Get("/", s.handleGetComplaint)
+			r.Post("/impact", s.handleAddImpact)
+			r.Post("/validate", s.handleValidateComplaint)
+			r.Post("/merge/{target_id}", s.handleMergeComplaints)
+		})
 	})
-	return r
-}
 
-func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second)
-	defer cancel()
-	if err := s.Store.PingContext(ctx); err != nil {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "db unreachable"})
-		return
-	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+	// Features
+	r.Route("/api/v1/projects/{project_id}/features", func(r chi.Router) {
+		r.Get("/", s.handleListFeatures)
+		r.Post("/", s.handleCreateFeature)
+		r.Route("/{id}", func(r chi.Router) {
+			r.Get("/", s.handleGetFeature)
+			r.Put("/strategic-weight", s.handleSetStrategicWeight)
+		})
+	})
+
+	// Pairwise votes
+	r.Get("/api/v1/projects/{project_id}/votes/next", s.handleGetNextPair)
+	r.Post("/api/v1/projects/{project_id}/features/{feature_id}/vote", s.handleCastVote)
+
+	// Consensus
+	r.Route("/api/v1/projects/{project_id}/consensus", func(r chi.Router) {
+		r.Post("/", s.handleCreateConsensus)
+		r.Route("/{call_id}", func(r chi.Router) {
+			r.Get("/", s.handleGetConsensus)
+			r.Post("/position", s.handleCastConsensusPosition)
+			r.Post("/objection", s.handleCreateObjection)
+			r.Post("/close", s.handleCloseConsensus)
+		})
+	})
+
+	// Board
+	r.Route("/api/v1/projects/{project_id}/board", func(r chi.Router) {
+		r.Get("/", s.handleGetBoard)
+		r.Put("/cards/{card_id}/move", s.handleMoveCard)
+	})
+
+	// Merge
+	r.Route("/api/v1/projects/{project_id}/merge", func(r chi.Router) {
+		r.Post("/", s.handleCreateMergeRequest)
+		r.Put("/{mr_id}/approve", s.handleApproveMerge)
+		r.Put("/{mr_id}/execute", s.handleExecuteMerge)
+		r.Put("/{mr_id}/reject", s.handleRejectMerge)
+	})
+
+	// Lists
+	r.Route("/api/v1/projects/{project_id}/lists", func(r chi.Router) {
+		r.Get("/", s.handleListLists)
+		r.Post("/", s.handleCreateList)
+	})
+
+	// Requests
+	r.Route("/api/v1/projects/{project_id}/requests", func(r chi.Router) {
+		r.Get("/", s.handleListRequests)
+		r.Post("/", s.handleCreateRequest)
+	})
+	r.Route("/api/v1/requests/{request_id}/answers", func(r chi.Router) {
+		r.Post("/", s.handleAnswerRequest)
+	})
+	r.Route("/api/v1/answers/{answer_id}/vote", func(r chi.Router) {
+		r.Post("/", s.handleVoteAnswer)
+	})
+
+	// Web UI
+	r.Get("/", s.handleIndex)
+	r.Get("/search", s.handleSearchPage)
+	r.Get("/projects", s.handleProjectsPage)
+	r.Get("/projects/{slug}", s.handleProjectPage)
+	r.Get("/projects/{slug}/board", s.handleBoardPage)
+	r.Mount("/assets", http.StripPrefix("/assets", http.FileServer(http.Dir("web/assets"))))
+
+	return r
 }
 
 // ---------------------------------------------------------------- helpers
@@ -93,4 +196,14 @@ func mapError(w http.ResponseWriter, err error) {
 	default:
 		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 	}
+}
+
+// pageData wraps template data with common fields.
+type pageData struct {
+	Title   string
+	Version string
+}
+
+func (s *Server) page(title string) pageData {
+	return pageData{Title: title, Version: s.Version}
 }

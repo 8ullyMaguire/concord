@@ -40,7 +40,7 @@ func (o Outcome) ScorePair() (float64, float64) {
 // ApplyPairwiseVote updates both features for one pairwise vote.
 //
 // Concord's voter-weight model (spec §4): the *rating change* is scaled by
-// the voter's weight — r'' = r + w·(r' − r), which is standard Glicko-2 at
+// the voter's weight — r” = r + w·(r' − r), which is standard Glicko-2 at
 // w = 1. The RD/volatility update is always standard. Outcomes that do not
 // apply a rating change ("neither", "skip") leave both features untouched
 // but remain recorded for audit.

@@ -115,8 +115,8 @@ func TestVoteWeight(t *testing.T) {
 		rep, mult, cap, want float64
 	}{
 		{0, 1.0, 3.0, 1.0},
-		{9, 1.25, 3.0, 2.5},  // contributor: (1+log10(10))*1.25
-		{99, 1.0, 3.0, 3.0},  // (1+log10(100)) = 3.0, at the cap
+		{9, 1.25, 3.0, 2.5},   // contributor: (1+log10(10))*1.25
+		{99, 1.0, 3.0, 3.0},   // (1+log10(100)) = 3.0, at the cap
 		{9999, 2.0, 3.0, 3.0}, // capped
 	}
 	for _, c := range cases {

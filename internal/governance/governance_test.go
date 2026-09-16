@@ -29,10 +29,10 @@ func TestQuorumThreshold(t *testing.T) {
 		eligible, want int
 	}{
 		{0, 0},
-		{3, 3},   // tiny project: everyone active
-		{4, 3},   // ceil(0.8)=1 → floor of 3 applies
-		{10, 3},  // ceil(2)=2 → floor of 3 applies
-		{20, 4},  // ceil(4)=4
+		{3, 3},  // tiny project: everyone active
+		{4, 3},  // ceil(0.8)=1 → floor of 3 applies
+		{10, 3}, // ceil(2)=2 → floor of 3 applies
+		{20, 4}, // ceil(4)=4
 		{100, 20},
 	}
 	for _, tc := range cases {

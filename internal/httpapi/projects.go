@@ -115,15 +115,15 @@ func (s *Server) handleProjectLanguages(w http.ResponseWriter, r *http.Request) 
 }
 
 type metricsRequest struct {
-	Stars              int     `json:"stars"`
-	Forks              int     `json:"forks"`
-	OpenIssues         int     `json:"open_issues"`
-	CommitCount        int     `json:"commit_count"`
-	Contributors       int     `json:"contributors"`
-	LastCommitAgeDays  float64 `json:"last_commit_age_days"`
-	MedianReviewHours  float64 `json:"median_review_hours"`
-	Releases90d        int     `json:"releases_90d"`
-	License            string  `json:"license"`
+	Stars             int     `json:"stars"`
+	Forks             int     `json:"forks"`
+	OpenIssues        int     `json:"open_issues"`
+	CommitCount       int     `json:"commit_count"`
+	Contributors      int     `json:"contributors"`
+	LastCommitAgeDays float64 `json:"last_commit_age_days"`
+	MedianReviewHours float64 `json:"median_review_hours"`
+	Releases90d       int     `json:"releases_90d"`
+	License           string  `json:"license"`
 }
 
 func (s *Server) handleProjectMetrics(w http.ResponseWriter, r *http.Request) {

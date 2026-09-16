@@ -23,7 +23,10 @@ func newTestServer(t *testing.T) *httptest.Server {
 	if err := db.Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	srv := &Server{Store: store.New(sqlDB), Version: "test"}
+	srv, err := NewServer(store.New(sqlDB), "test")
+	if err != nil {
+		t.Fatal(err)
+	}
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)
 	return ts

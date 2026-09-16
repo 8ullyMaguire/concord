@@ -44,22 +44,22 @@ func (m GovernanceModel) Valid() bool {
 
 // Charter holds the project's decision thresholds (spec §5.5, §6.3, §8).
 type Charter struct {
-	QuorumRatio              float64 // share of eligible collaborators
-	QuorumMin                int     // ... but never fewer than this many
-	ConsentRatio             float64 // consent / (consent + stand_aside + block)
-	OverrideRatio            float64 // supermajority overriding a block
-	VoteWindowDays           float64
-	MergeRequiresQuorum      bool
-	MergeQuorumMin           int
-	MergeQuorumRatio         float64
-	RequireReviewerApproval  bool
-	WIPInProgress            int
-	WIPReview                int
-	Lam, Mu                  float64 // priority score weights (spec §6.2)
-	PainHalflifeDays         float64
-	RepHalflifeDays          float64
-	GlickoTau                float64
-	VoteWeightCap            float64
+	QuorumRatio             float64 // share of eligible collaborators
+	QuorumMin               int     // ... but never fewer than this many
+	ConsentRatio            float64 // consent / (consent + stand_aside + block)
+	OverrideRatio           float64 // supermajority overriding a block
+	VoteWindowDays          float64
+	MergeRequiresQuorum     bool
+	MergeQuorumMin          int
+	MergeQuorumRatio        float64
+	RequireReviewerApproval bool
+	WIPInProgress           int
+	WIPReview               int
+	Lam, Mu                 float64 // priority score weights (spec §6.2)
+	PainHalflifeDays        float64
+	RepHalflifeDays         float64
+	GlickoTau               float64
+	VoteWeightCap           float64
 }
 
 // DefaultCharter returns the spec defaults, adjusted per governance model:
@@ -68,7 +68,7 @@ func DefaultCharter(m GovernanceModel) Charter {
 	c := Charter{
 		QuorumRatio: 0.2, QuorumMin: 3,
 		ConsentRatio: 0.7, OverrideRatio: 0.8,
-		VoteWindowDays: 7,
+		VoteWindowDays:      7,
 		MergeRequiresQuorum: true, MergeQuorumMin: 2, MergeQuorumRatio: 0.25,
 		RequireReviewerApproval: true,
 		WIPInProgress:           3, WIPReview: 4,
@@ -128,11 +128,11 @@ func (cc ConsensusCounts) NonAbstain() int {
 type Result string
 
 const (
-	ResultAccepted            Result = "accepted"
-	ResultAcceptedOverridden  Result = "accepted_overridden"
-	ResultRejected            Result = "rejected"
-	ResultBlocked             Result = "blocked"
-	ResultInsufficientQuorum  Result = "insufficient_quorum"
+	ResultAccepted           Result = "accepted"
+	ResultAcceptedOverridden Result = "accepted_overridden"
+	ResultRejected           Result = "rejected"
+	ResultBlocked            Result = "blocked"
+	ResultInsufficientQuorum Result = "insufficient_quorum"
 )
 
 // EvaluateConsensus applies the spec's decision rule WITHOUT side effects:
@@ -165,11 +165,11 @@ func EvaluateConsensus(cc ConsensusCounts, c Charter) Result {
 
 // MergeGate is the merge-confirmation verdict (spec §5.7).
 type MergeGate struct {
-	Approvals            int
-	QuorumNeeded         int
-	QuorumOK             bool
-	ReviewerOK           bool
-	MergeRequiresQuorum  bool
+	Approvals           int
+	QuorumNeeded        int
+	QuorumOK            bool
+	ReviewerOK          bool
+	MergeRequiresQuorum bool
 }
 
 // Passed reports whether the merge may proceed.

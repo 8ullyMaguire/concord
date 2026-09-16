@@ -13,8 +13,8 @@ import (
 // is a PLAN.md milestone and will compile down to these filters.
 
 type SearchFilters struct {
-	Tags       []string `json:"tags"`        // all must match (AND)
-	Languages  []string `json:"languages"`   // all must match (AND)
+	Tags       []string `json:"tags"`         // all must match (AND)
+	Languages  []string `json:"languages"`    // all must match (AND)
 	MinLangPct float64  `json:"min_lang_pct"` // applies to each Language filter
 	MinHealth  float64  `json:"min_health"`   // 0 = any
 	Model      string   `json:"model"`        // "" = any (collective | maintainer_led)
@@ -39,12 +39,12 @@ type Facets struct {
 }
 
 type SearchResult struct {
-	Query   string       `json:"query"`
+	Query   string        `json:"query"`
 	Filters SearchFilters `json:"filters"`
-	Total   int          `json:"total"`
-	Sort    string       `json:"sort"`
-	Results []ProjectHit `json:"results"`
-	Facets  Facets       `json:"facets"`
+	Total   int           `json:"total"`
+	Sort    string        `json:"sort"`
+	Results []ProjectHit  `json:"results"`
+	Facets  Facets        `json:"facets"`
 }
 
 // Sort options: ""/"relevance" (FTS rank, or updated when q is empty),
