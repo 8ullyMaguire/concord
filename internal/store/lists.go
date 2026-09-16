@@ -92,3 +92,23 @@ func (d *DB) GetListEntry(ctx context.Context, id int64) (ListEntry, error) {
 	}
 	return le, nil
 }
+
+// GetListEntries returns all entries for a list.
+func (d *DB) GetListEntries(ctx context.Context, listID int64) ([]ListEntry, error) {
+	rows, err := d.QueryContext(ctx, `
+		SELECT id, list_id, url, title, description, category, status, elo_r, elo_rd, elo_vol, proposed_by, created_at, updated_at
+		FROM list_entries WHERE list_id=? AND status != 'removed' ORDER BY elo_r DESC`, listID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var entries []ListEntry
+	for rows.Next() {
+		var le ListEntry
+		if err := rows.Scan(&le.ID, &le.ListID, &le.URL, &le.Title, &le.Description, &le.Category, &le.Status, &le.ER, &le.RD, &le.Vol, &le.ProposedBy, &le.CreatedAt, &le.UpdatedAt); err != nil {
+			return nil, err
+		}
+		entries = append(entries, le)
+	}
+	return entries, rows.Err()
+}

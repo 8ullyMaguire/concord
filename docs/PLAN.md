@@ -207,8 +207,9 @@ SSH git transport, mobile apps. Revisit after M11.
 | M5 board + charter | AC-tested | board CRUD + charter read/write tests |
 | M6 merge + webhooks | AC-tested | MR CRUD + webhook HMAC tests |
 | M7 threads | store-tested | create, get, delete, vote, nested tested |
-| M8 lists | store-tested | CRUD; quorum admission + entry ranking missing |
-| M9 request board | store-tested | CRUD; fit ranking + quorum removal missing |
+| M8 lists | store-tested | CRUD tested; quorum admission + entry ranking pending |
+| M9 request board | store-tested | CRUD tested; fit ranking + quorum removal pending |
+| M11 web UI | AC-tested | embedded assets render + golden-page tests |
 | M10 identity | AC-tested | 401/403 live; role hierarchy matrix; granular role enforcement |
 | M11 web UI | live | embedded assets render; golden-page tests missing |
 | M12 sync + hardening | in progress | deployed 8007; CF re-point pending (owner) |

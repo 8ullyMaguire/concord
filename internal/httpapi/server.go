@@ -163,6 +163,11 @@ func (s *Server) Router() http.Handler {
 	r.Route("/api/v1/projects/{project_id}/lists", func(r chi.Router) {
 		r.Get("/", s.handleListLists)
 		r.Post("/", s.handleCreateList)
+		r.Route("/{id}", func(r chi.Router) {
+			r.Get("/", s.handleGetList)
+			r.Get("/entries", s.handleGetListEntries)
+			r.Post("/entries", s.handleCreateListEntry)
+		})
 	})
 
 	// Requests
@@ -170,7 +175,11 @@ func (s *Server) Router() http.Handler {
 		r.Get("/", s.handleListRequests)
 		r.Post("/", s.handleCreateRequest)
 	})
+	r.Route("/api/v1/requests/{request_id}", func(r chi.Router) {
+		r.Get("/", s.handleGetRequest)
+	})
 	r.Route("/api/v1/requests/{request_id}/answers", func(r chi.Router) {
+		r.Get("/", s.handleGetRequestAnswers)
 		r.Post("/", s.handleAnswerRequest)
 	})
 	r.Route("/api/v1/answers/{answer_id}/vote", func(r chi.Router) {

@@ -488,44 +488,7 @@ func (s *Server) handleRejectMerge(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "rejected"})
 }
 
-func (s *Server) handleCreateList(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Name string `json:"name"`
-	}
-	if !readJSON(w, r, &req) {
-		return
-	}
-	writeJSON(w, http.StatusCreated, map[string]string{"status": "list created"})
-}
-
-func (s *Server) handleListLists(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, []map[string]string{})
-}
-
-func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Title string `json:"title"`
-		Body  string `json:"body"`
-	}
-	if !readJSON(w, r, &req) {
-		return
-	}
-	writeJSON(w, http.StatusCreated, map[string]string{"status": "request created"})
-}
-
-func (s *Server) handleAnswerRequest(w http.ResponseWriter, r *http.Request) {
-	var req struct {
-		Body string `json:"body"`
-	}
-	if !readJSON(w, r, &req) {
-		return
-	}
-	writeJSON(w, http.StatusCreated, map[string]string{"status": "answer created"})
-}
-
-func (s *Server) handleVoteAnswer(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]string{"status": "voted"})
-}
+// List and request handlers are in lists.go
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, "index", s.page("Home"))
@@ -610,6 +573,4 @@ func (s *Server) handleProjectsPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, "projects", s.page("Projects"))
 }
 
-func (s *Server) handleListRequests(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, []map[string]string{})
-}
+// handleListRequests is in lists.go

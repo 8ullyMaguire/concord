@@ -47,6 +47,26 @@ func (d *DB) CreateRequest(ctx context.Context, projectID int64, authorID int64,
 	return d.GetRequest(ctx, id)
 }
 
+// GetRequestsByProject returns all requests for a project.
+func (d *DB) GetRequestsByProject(ctx context.Context, projectID int64) ([]Request, error) {
+	rows, err := d.QueryContext(ctx, `
+		SELECT id, project_id, title, body, status, created_at
+		FROM requests WHERE project_id=? ORDER BY created_at DESC`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var requests []Request
+	for rows.Next() {
+		var r Request
+		if err := rows.Scan(&r.ID, &r.ProjectID, &r.Title, &r.Body, &r.Status, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		requests = append(requests, r)
+	}
+	return requests, rows.Err()
+}
+
 func (d *DB) GetRequest(ctx context.Context, id int64) (Request, error) {
 	var r Request
 	err := d.QueryRowContext(ctx, `SELECT id, project_id, title, body, status, created_at
@@ -82,12 +102,25 @@ func (d *DB) GetRequestAnswer(ctx context.Context, id int64) (RequestAnswer, err
 }
 
 func (d *DB) VoteAnswer(ctx context.Context, answerID, userID int64, direction int) error {
+	if direction != 1 && direction != -1 {
+		return fmt.Errorf("%w: direction must be 1 or -1", ErrInvalid)
+	}
 	now := float64(time.Now().Unix())
-	_, err := d.ExecContext(ctx, `INSERT OR IGNORE INTO request_answer_votes (answer_id, user_id, direction, created_at) VALUES (?, ?, ?, ?)`, answerID, userID, direction, now)
+	_, err := d.ExecContext(ctx, `
+		INSERT INTO request_answer_votes (answer_id, user_id, direction, created_at) VALUES (?, ?, ?, ?)
+		ON CONFLICT(answer_id, user_id) DO UPDATE SET direction=excluded.direction, created_at=excluded.created_at`,
+		answerID, userID, direction, now)
 	if err != nil {
 		return err
 	}
-	_, err = d.ExecContext(ctx, `UPDATE request_answers SET score = score + ? WHERE id = ?`, direction, answerID)
+	return d.UpdateAnswerScore(ctx, answerID)
+}
+
+// UpdateAnswerScore recalculates and updates an answer's score.
+func (d *DB) UpdateAnswerScore(ctx context.Context, answerID int64) error {
+	_, err := d.ExecContext(ctx, `
+		UPDATE request_answers SET score = (SELECT COALESCE(SUM(direction), 0) FROM request_answer_votes WHERE answer_id=?)
+		WHERE id=?`, answerID, answerID)
 	return err
 }
 
