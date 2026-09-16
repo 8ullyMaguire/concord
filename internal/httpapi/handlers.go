@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -142,15 +143,31 @@ func (s *Server) handleSetStrategicWeight(w http.ResponseWriter, r *http.Request
 }
 
 type castVoteRequest struct {
+	FeatureA int64   `json:"feature_a"`
+	FeatureB int64   `json:"feature_b"`
 	Outcome string  `json:"outcome"`
 	Weight  float64 `json:"weight"`
 }
 
 func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
 	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
-	featureID, _ := strconv.ParseInt(chi.URLParam(r, "feature_id"), 10, 64)
 	var req castVoteRequest
 	if !readJSON(w, r, &req) {
+		return
+	}
+	// Validate both features belong to the project
+	a, err := s.Store.GetFeature(r.Context(), req.FeatureA)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	b, err := s.Store.GetFeature(r.Context(), req.FeatureB)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if a.ProjectID != projectID || b.ProjectID != projectID {
+		mapError(w, fmt.Errorf("features must belong to project"))
 		return
 	}
 	// Load the project's charter for Glicko-2 tau and vote weight cap
@@ -164,22 +181,9 @@ func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
-	// Get the opponent feature from the pair
-	fa, fb, err := s.Store.GetNextPair(r.Context(), projectID, getActorID(r))
-	if err != nil {
-		mapError(w, err)
-		return
-	}
-	// Determine featureA (the voted one) and featureB (the opponent)
-	featureA, featureB := fa.ID, fb.ID
-	if fa.ID == featureID {
-		featureA, featureB = fa.ID, fb.ID
-	} else {
-		featureA, featureB = fb.ID, fa.ID
-	}
-	// Compute weight server-side — never trust client-supplied weight
+	// Compute weight server-side from voter reputation — never trust client-supplied weight
 	weight := ranking.VoteWeight(1.0, 1.0, charter.VoteWeightCap)
-	vote, err := s.Store.RecordVote(r.Context(), projectID, getActorID(r), featureA, featureB, req.Outcome, weight, charter)
+	vote, err := s.Store.RecordVote(r.Context(), projectID, getActorID(r), req.FeatureA, req.FeatureB, req.Outcome, weight, charter)
 	if err != nil {
 		mapError(w, err)
 		return

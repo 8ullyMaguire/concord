@@ -151,7 +151,7 @@ func (d *DB) RecordVote(ctx context.Context, projectID, voterID, featureA, featu
 
 	// Apply the vote to Glicko-2 ratings
 	out := ranking.Outcome(outcome)
-	a2, b2 := ranking.ApplyPairwiseVote(fa, fb, out, ranking.VoteWeight(fa.StrategicWeight, 1.0, charter.VoteWeightCap), charter.GlickoTau)
+	a2, b2 := ranking.ApplyPairwiseVote(fa, fb, out, weight, charter.GlickoTau)
 
 	// Persist updated ratings
 	_, err = d.ExecContext(ctx,
