@@ -45,30 +45,70 @@ type visitorRate struct {
 
 var limiter = &rateLimiter{visitors: make(map[string]*visitorRate)}
 
-// rateLimit middleware limits requests per IP.
+// lastPrune tracks the last idle-bucket sweep so the visitors map cannot
+// grow without bound on a long-running server.
+var lastPrune time.Time
+
+// clientKey identifies the visitor for rate limiting. Concord binds to
+// loopback and is exposed via a local reverse proxy / cloudflared tunnel,
+// so RemoteAddr is the proxy, not the visitor — keying on it would put
+// every visitor in one shared bucket. Only loopback clients can reach the
+// listener, which makes the forwarded-IP headers trustworthy here.
+func clientKey(r *http.Request) string {
+	ip := r.RemoteAddr
+	if idx := strings.LastIndex(ip, ":"); idx != -1 {
+		ip = ip[:idx]
+	}
+	if ip == "127.0.0.1" || ip == "::1" {
+		if cf := r.Header.Get("CF-Connecting-IP"); cf != "" {
+			return "cf:" + cf
+		}
+		if xff := r.Header.Get("X-Forwarded-For"); xff != "" {
+			return "xff:" + strings.TrimSpace(strings.Split(xff, ",")[0])
+		}
+	}
+	return ip
+}
+
+// pruneIdle drops visitor buckets idle longer than idleFor.
+func (l *rateLimiter) pruneIdle(now time.Time, idleFor time.Duration) {
+	for k, v := range l.visitors {
+		if now.Sub(v.lastSeen) > idleFor {
+			delete(l.visitors, k)
+		}
+	}
+}
+
+// rateLimit middleware limits requests per visitor (100/min).
 func rateLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		ip := r.RemoteAddr
-		if idx := strings.LastIndex(ip, ":"); idx != -1 {
-			ip = ip[:idx]
-		}
+		key := clientKey(r)
+		now := time.Now()
+
 		limiter.mu.Lock()
-		defer limiter.mu.Unlock()
-		v, exists := limiter.visitors[ip]
-		if !exists {
-			limiter.visitors[ip] = &visitorRate{count: 1, lastSeen: time.Now()}
-		} else {
-			if time.Since(v.lastSeen) > time.Minute {
-				v.count = 1
-				v.lastSeen = time.Now()
-			} else {
-				v.count++
-				if v.count > 100 {
-					http.Error(w, `{"error":"rate limit exceeded"}`, http.StatusTooManyRequests)
-					return
-				}
+		if now.Sub(lastPrune) > time.Minute {
+			limiter.pruneIdle(now, 5*time.Minute)
+			lastPrune = now
+		}
+		v, exists := limiter.visitors[key]
+		switch {
+		case !exists:
+			limiter.visitors[key] = &visitorRate{count: 1, lastSeen: now}
+		case now.Sub(v.lastSeen) > time.Minute:
+			v.count = 1
+			v.lastSeen = now
+		default:
+			v.count++
+			if v.count > 100 {
+				limiter.mu.Unlock()
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusTooManyRequests)
+				_, _ = w.Write([]byte(`{"error":"rate limit exceeded"}` + "\n"))
+				return
 			}
 		}
+		limiter.mu.Unlock()
+
 		next.ServeHTTP(w, r)
 	})
 }
