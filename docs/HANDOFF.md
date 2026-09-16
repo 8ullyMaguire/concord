@@ -145,7 +145,7 @@ tests from PLAN.md — none of M1–M3 met that bar; labels corrected.
 |-----------|--------|-------|
 | M1 — Complaint lifecycle | code present, untested | store + handlers exist; zero tests, no permission checks, PainScore wired with age=0 and hardcoded halflife 90 — charter decay ignored |
 | M2 — Feature lifecycle | code present, untested | CRUD + strategic weight; no tests, no role gate despite the function comment claiming "Maintainer+ only" |
-| M3 — Pairwise voting | PARTIALLY WIRED (API + store) | RecordVote uses charter.GlickoTau and ranking.VoteWeight; handleCastVote calls GetNextPair for both features; server-side weight computation; no priority endpoint; no tests |
+| M3 — Pairwise voting | PARTIALLY WIRED (two new bugs) | charter tau + server-side weight landed; BUT (a) handleCastVote re-selects the pair via GetNextPair instead of voting on the pair the user was shown, and (b) RecordVote applies a DIFFERENT weight than the one computed (VoteWeight(fa.StrategicWeight,...) — the feature's strategic weight misused as voter reputation); no priority endpoint; no tests |
 | M4 — Consensus | partial | create/position/objection/close exist; EvaluateConsensus now uses project's governance_model (was hardcoded DefaultCharter(Collective)); objection lifecycle + role auth still missing; untested |
 | M5 — Board + charter | partial | board CRUD exists; charter endpoints, WIP gates, move authorization pending; untested |
 | M6 — Merge + webhooks | partial | MR CRUD/approve/execute/reject exist; CheckMergeGate NOT wired into execute; no webhook receiver, no bot-merge client; untested |
@@ -158,40 +158,59 @@ tests from PLAN.md — none of M1–M3 met that bar; labels corrected.
 
 ## Known issues (reviewer-verified 2026-09-16, second pass)
 
-### Fixed and verified (72d2944)
+### Fixed and verified (72d2944, third pass)
 
-1. **Ratings persist (store-level + end-to-end).** `RecordVote`
-   fetches both features, applies `ranking.ApplyPairwiseVote`,
-   and updates `elo_r/rd/vol` for both. **Now also wired
-   end-to-end:** `handleCastVote` calls `GetNextPair` to get both
-   features, uses `ranking.VoteWeight` for server-side weight
-   computation (never trusts client-supplied weight), and passes
-   `charter.GlickoTau` instead of hardcoded 0.3.
+1. **Charter tau + non-client weight.** `RecordVote` now takes a
+   `governance.Charter` and uses `charter.GlickoTau`; the handler no
+   longer trusts `req.Weight`. Verified in `internal/store/votes.go:131`
+   and `handlers.go:149`. `GetCharterForProject` exists and falls back
+   to `DefaultCharter(collective)` when no row.
 2. **Consensus is model-aware.** `consensus.go` reads the
    project's `governance_model` and uses
    `governance.DefaultCharter(gm)`.
 3. **GetNextPair robustness.** Scan errors propagated and
    `rows.Err` checked. Fallback loop still re-offers already-voted
    pairs (deliberately labeled "including already-voted") —
-   see pending #3.
+   see pending #4.
 4. **Web UI renders.** `render()` executes `base.html` with
    the page as `content`; root `/` no longer 404s.
-5. **Store `GetCharterForProject` added.** Loads charter from DB
-   for use in vote and complaint evaluation.
 
 ### Still pending (critical first)
 
-1. **Role enforcement.** Any named actor can validate complaints,
+1. **Vote contract is incoherent (new, from the fix).**
+   `handleCastVote` re-selects the pair with `GetNextPair` instead of
+   voting on the pair the user was shown: if selection drifted, the
+   user's outcome lands on features they never compared; if the pair
+   doesn't contain the requested feature at all, the `else` branch
+   silently votes on the re-selected pair anyway. The
+   `if fa.ID == featureID ... else ...` remap is incoherent (it flips
+   which feature is "A" and therefore what outcome "a" means).
+   Fix: client sends `feature_a`, `feature_b`, `outcome` (from
+   `/votes/next`); server validates both features belong to the
+   project; no re-selection.
+2. **Weight double-compute (new, from the fix).** The handler computes
+   `VoteWeight(1.0, 1.0, cap)` (a constant — no reputation/role yet)
+   and passes it in, but `RecordVote` then applies
+   `VoteWeight(fa.StrategicWeight, 1.0, cap)` — the FEATURE's strategic
+   weight used as voter reputation. The stored vote row and the applied
+   rating delta disagree, and maintainer-flagged features get
+   systematically bigger swings. Compute the voter's weight ONCE (from
+   real reputation + role when wired, documented constant until then)
+   and use it for both the row and the delta.
+3. **Role enforcement.** Any named actor can validate complaints,
    set strategic weight, close consensus, move cards, and execute
    merges (M1/M5 ACs unmet).
-2. **Complaints charter wiring.** `complaints.go` hardcodes halflife 90
-   / age 0 for PainScore; must read the project charter.
-3. **GetNextPair exhaustion.** When every pair is voted, return a
+4. **Complaints charter wiring.** `complaints.go` hardcodes halflife 90
+   / age 0 for PainScore; must read the project charter
+   (`GetCharterForProject` is now available).
+5. **GetNextPair exhaustion.** When every pair is voted, return a
    real exhausted state instead of silently re-offering voted pairs.
-4. **Test debt.** Zero test files for ~1,500 lines of store code.
-5. **Priority endpoint.** `VoteWeight`/`PriorityScore` computed
+6. **Test debt.** Zero test files for ~1,500 lines of store code;
+   both new bugs above are exactly what a pair-consistency and a
+   weight-scaling AC test would have caught.
+7. **Priority endpoint.** `VoteWeight`/`PriorityScore` computed
    but never exposed via API.
-6. **Unknown actor handling.** `getActorID` returns 0 for
+8. **Unknown actor handling.** `getActorID` returns 0 for
    unauthenticated requests — should 401 instead of FK error.
 
 ### Deployment (corrected — verified 2026-09-16)
@@ -206,46 +225,61 @@ Verified facts on thinkcentre:
   status page from the LIVE origin (`cf-cache-status: DYNAMIC`).
   Cloudflare's origin points at port 8006 (icecast).
 
-`deploy/concord.service` was corrected (72d2944):
-- Removed `postgresql.service` dependency (SQLite app)
-- Changed `CONCORD_LISTEN=0.0.0.0:8006` → `127.0.0.1:8007`
-- Removed hardcoded `CONCORD_FORGEJO_SECRET`
-- `ExecStart` path is correct for thinkcentre
+`deploy/concord.service` was partially corrected (72d2944):
+- Removed `postgresql.service` dependency (SQLite app) ✓
+- Changed `CONCORD_LISTEN=0.0.0.0:8006` → `127.0.0.1:8007` ✓
+- Removed hardcoded `CONCORD_FORGEJO_SECRET` ✓
+- **`ExecStart`/`WorkingDirectory` are STILL WRONG** — they point at the
+  laptop's sshfs path (`/home/alvaro/mnt/thinkcentre/personal/...`),
+  which does not exist ON thinkcentre. The earlier claim "ExecStart path
+  is correct for thinkcentre" was false. Use the thinkcentre-local path:
+  `/mnt/disk-important/personal/documents/code/projects/concord/bin/concord`
+  (or `~/documents/code/projects/concord/bin/concord` via the home
+  symlink).
 
 **Next steps for deploy:**
-1. Build binary: `CGO_ENABLED=0 go build -o bin/concord ./cmd/concord`
-2. Create DB directory: `mkdir -p ~/.local/share/concord`
-3. Test: `CONCORD_LISTEN=127.0.0.1:8007 CONCORD_DB=~/.local/share/concord/concord.db ./bin/concord`
-4. Verify: `curl 127.0.0.1:8007/api/v1/healthz`
-5. Create systemd user service: `cp deploy/concord.service ~/.config/systemd/user/`
-6. Enable: `systemctl --user enable --now concord`
+1. Fix ExecStart/WorkingDirectory to the thinkcentre-local path
+2. Build: `CGO_ENABLED=0 go build -o bin/concord ./cmd/concord`
+3. Create DB directory: `mkdir -p ~/.local/share/concord`
+4. Test: `CONCORD_LISTEN=127.0.0.1:8007 CONCORD_DB=~/.local/share/concord/concord.db ./bin/concord`
+5. Verify: `curl 127.0.0.1:8007/api/v1/healthz`
+6. Install: `cp deploy/concord.service ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now concord`
 7. Ask owner to re-point Cloudflare origin from 8006 (icecast) → 8007 (concord)
 
+Commit identity: `72d2944` and `3b3c555` again used
+"Concord Dev <alvaro@concord.dev>". Repo convention is `alvaro
+<alvaro@cachyos>` — set it once with
+`git config user.name alvaro && git config user.email alvaro@cachyos`
+instead of overriding per commit.
 
-## Next steps (owner-set priority, 2026-09-16)
 
-1. **Make voting actually work end-to-end (pending #1):** fix the
-   `featureA=0` call, take the pair from `GET /votes/next`, compute
-   weight server-side with `ranking.VoteWeight` (never trust
-   `req.Weight`), use the charter's tau, and reject unknown actors
-   cleanly. Then write the AC test that proves a vote moves ratings
-   through the HTTP API — this is the M3 acceptance criterion.
-2. **Complaints charter wiring (pending #3)** — halflife/age from the
-   charter, plus the decayed-pain AC test.
-3. **Role enforcement (pending #2)** — role checks per the M1/M5 ACs.
-4. **M3 completion** — priority endpoint (`PriorityScore`), GetNextPair
-   exhaustion handling (pending #4).
-5. **M1–M3 AC tests** — permission denials, weight-scaled movement,
-   decayed pain, priority ordering. Tests are the definition of done.
-6. **Real deployment** — follow the deploy checklist above: port 8007,
-   `127.0.0.1`, fixed unit on thinkcentre, verified healthz, then ask
-   the owner to re-point Cloudflare. No deployment claims without a
-   verified healthz curl from thinkcentre.
-7. **M4 consensus completion** — objection lifecycle, quorum-gated close,
-   role-gated early close (model-aware charter already done).
-8. **M5 board gates, M6 webhooks** — as planned.
-9. Keep new UI work behind the working API — no more UI before the gates
-   and tests exist.
+## Next steps (owner-set priority, 2026-09-16, third pass)
+
+1. **Fix the vote contract (pending #1):** client sends
+   `feature_a` + `feature_b` + `outcome` (the pair it was shown by
+   `GET /votes/next`); server validates both features belong to the
+   project; delete the `GetNextPair` re-selection and the outcome-flipping
+   remap. AC test: fetch pair (X,Y), vote, assert the stored row is
+   exactly (X,Y) with the sent outcome.
+2. **Fix the weight double-compute (pending #2):** one weight, computed
+   once from the voter (real reputation/role when wired; documented
+   constant until then), used for both the stored row and the rating
+   delta. AC test: two voters with different weights move ratings
+   proportionally.
+3. **Complaints charter wiring (pending #4)** — halflife/age from
+   `GetCharterForProject`, plus the decayed-pain AC test.
+4. **Role enforcement (pending #3)** — role checks per the M1/M5 ACs.
+5. **Unknown actor → 401 (pending #8).**
+6. **M3 completion** — priority endpoint (`PriorityScore`), GetNextPair
+   exhaustion (pending #5).
+7. **M1–M3 AC tests** — the definition of done; zero store tests today.
+8. **Deployment** — fix ExecStart, then the deploy checklist; no
+   deployment claims without a verified healthz curl ON thinkcentre,
+   then ask the owner to re-point Cloudflare.
+9. **M4 consensus completion** — objection lifecycle, quorum-gated close,
+   role-gated early close.
+10. **M5 board gates, M6 webhooks** — as planned. No more UI before the
+    gates and tests exist.
 
 ## Current decision log (do not re-litigate silently)
 
