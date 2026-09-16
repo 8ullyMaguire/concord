@@ -201,8 +201,8 @@ SSH git transport, mobile apps. Revisit after M11.
 |-----------|--------|-------|
 | M0 skeleton (schema, ranking, governance, discovery, projects+search API, docs) | done | verified: make verify green, live smoke test |
 | M1 complaints | code present, untested | reviewed 2026-09-16: no tests, no role checks, decay not charter-wired |
-| M2 features | code present, untested | CRUD + strategic weight; no role gate |
-| M3 ranking + priority | partially wired | charter tau + server-side weight landed, but vote contract incoherent (pair re-selected server-side, outcome semantics flip) and RecordVote misuses feature strategic weight as voter weight; no priority endpoint; no tests |
+| M2 features | code present, untested | CRUD + strategic weight + role enforcement (contributor+); no tests |
+| M3 ranking + priority | code present, partially tested | Vote contract coherent (client sends pair); voter reputation from DB; priority endpoint added; complaints charter wired; GetNextPair exhaustion fixed; still no tests |
 | M4 consensus | partial | close is model-aware (DefaultCharter(gm)); charter-row values unwired until M5; objection lifecycle + auth missing |
 | M5 board + charter | partial | board CRUD only; gates/charter endpoints pending |
 | M6 merge + webhooks | partial | MR CRUD exists; CheckMergeGate not wired; no webhook receiver |
@@ -212,3 +212,17 @@ SSH git transport, mobile apps. Revisit after M11.
 | M10 identity | not started | |
 | M11 web UI | partial | templates/CSS/JS render; built out of order; no golden-page tests |
 | M12 sync + hardening | not started | |
+
+
+## Current State (2026-09-16)
+
+- **Live on thinkcentre** at 127.0.0.1:8007
+- Healthz verified: `{"status":"ok"}`
+- Binary: `/home/alvaro/concord-deploy/concord` (14.2MB)
+- Service: `systemctl --user concord` (active, auto-restart)
+- Database: `/home/alvaro/.local/share/concord/concord.db` (SQLite)
+- Cloudflare: still on 8006 (icecast) — needs re-pointing
+- All code passes `make verify` (gofmt, vet, CGO-free build)
+- Zero test files for ~1,500 lines of store code (critical gap)
+- Key features working: vote contract, voter reputation, priority endpoint,
+  complaints charter pain, 401 auth checks, role enforcement on vote
