@@ -38,6 +38,7 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	_ = s.Store.AddAudit(r.Context(), p.ID, actorID, "create_project", "project", p.ID, p.Slug)
 	writeJSON(w, http.StatusCreated, p)
 }
 

@@ -30,6 +30,7 @@ func (s *Server) handleCreateComplaint(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	_ = s.Store.AddAudit(r.Context(), req.ProjectID, getActorID(r), "create_complaint", "complaint", c.ID, req.Title)
 	_ = s.Store.AddReputation(r.Context(), req.ProjectID, getActorID(r), "submit_complaint", 5.0)
 	writeJSON(w, http.StatusCreated, c)
 }
@@ -78,6 +79,7 @@ func (s *Server) handleValidateComplaint(w http.ResponseWriter, r *http.Request)
 		mapError(w, err)
 		return
 	}
+	_ = s.Store.AddAudit(r.Context(), 0, getActorID(r), "validate_complaint", "complaint", id, "")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "validated"})
 }
 
@@ -113,6 +115,7 @@ func (s *Server) handleCreateFeature(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	_ = s.Store.AddAudit(r.Context(), req.ProjectID, getActorID(r), "create_feature", "feature", f.ID, req.Title)
 	_ = s.Store.AddReputation(r.Context(), req.ProjectID, getActorID(r), "submit_feature", 5.0)
 	writeJSON(w, http.StatusCreated, f)
 }
@@ -180,6 +183,7 @@ func (s *Server) handleSetStrategicWeight(w http.ResponseWriter, r *http.Request
 		mapError(w, err)
 		return
 	}
+	_ = s.Store.AddAudit(r.Context(), projectID, getActorID(r), "set_strategic_weight", "feature", id, fmt.Sprintf("weight=%g", req.Weight))
 	writeJSON(w, http.StatusOK, map[string]string{"status": "weight updated"})
 }
 
@@ -236,7 +240,7 @@ func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
-	// Award reputation for voting
+	_ = s.Store.AddAudit(r.Context(), projectID, actorID, "cast_vote", "vote", projectID, fmt.Sprintf("feature_a=%d feature_b=%d outcome=%s", req.FeatureA, req.FeatureB, req.Outcome))
 	_ = s.Store.AddReputation(r.Context(), projectID, actorID, "vote", 1.0)
 	writeJSON(w, http.StatusCreated, vote)
 }
@@ -276,6 +280,7 @@ func (s *Server) handleCreateConsensus(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	_ = s.Store.AddAudit(r.Context(), projectID, getActorID(r), "create_consensus_call", "consensus_call", call.ID, req.Title)
 	_ = s.Store.AddReputation(r.Context(), projectID, getActorID(r), "create_consensus_call", 3.0)
 	writeJSON(w, http.StatusCreated, call)
 }
@@ -317,6 +322,7 @@ func (s *Server) handleCastConsensusPosition(w http.ResponseWriter, r *http.Requ
 		mapError(w, err)
 		return
 	}
+	_ = s.Store.AddAudit(r.Context(), 0, getActorID(r), "cast_position", "position", callID, fmt.Sprintf("stance=%s", req.Position))
 	writeJSON(w, http.StatusCreated, pos)
 }
 
@@ -339,6 +345,7 @@ func (s *Server) handleCreateObjection(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	_ = s.Store.AddAudit(r.Context(), 0, getActorID(r), "create_objection", "objection", obj.ID, req.Principle)
 	writeJSON(w, http.StatusCreated, obj)
 }
 
@@ -388,6 +395,7 @@ func (s *Server) handleCloseConsensus(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	_ = s.Store.AddAudit(r.Context(), summary.Call.ProjectID, getActorID(r), "close_consensus", "consensus_call", callID, summary.Result)
 	writeJSON(w, http.StatusOK, summary)
 }
 
@@ -448,6 +456,7 @@ func (s *Server) handleApproveMerge(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	_ = s.Store.AddAudit(r.Context(), 0, getActorID(r), "approve_merge", "merge_request", mrID, "")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "approved"})
 }
 
