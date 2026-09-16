@@ -145,7 +145,7 @@ tests from PLAN.md — none of M1–M3 met that bar; labels corrected.
 |-----------|--------|-------|
 | M1 — Complaint lifecycle | code present, untested | store + handlers exist; zero tests, no permission checks, PainScore wired with age=0 and hardcoded halflife 90 — charter decay ignored |
 | M2 — Feature lifecycle | code present, untested | CRUD + strategic weight; no tests, no role gate despite the function comment claiming "Maintainer+ only" |
-| M3 — Pairwise voting | code present, PARTIALLY WIRED | RecordVote now calls ApplyPairwiseVote and ratings move; GetNextPair fallback fixed; scan errors propagated; VoteWeight/PriorityScore still unused, no priority endpoint, no M1–M3 AC tests |
+| M3 — Pairwise voting | PARTIALLY WIRED (store-level only) | RecordVote applies ApplyPairwiseVote and persists ratings (fad9cee); BUT the API vote path is broken end-to-end: handleCastVote passes featureA=0 (every vote 500s), weight is client-supplied req.Weight — VoteWeight still unused (ratings are spoofable), tau hardcoded 0.3; no priority endpoint; no tests |
 | M4 — Consensus | partial | create/position/objection/close exist; EvaluateConsensus now uses project's governance_model (was hardcoded DefaultCharter(Collective)); objection lifecycle + role auth still missing; untested |
 | M5 — Board + charter | partial | board CRUD exists; charter endpoints, WIP gates, move authorization pending; untested |
 | M6 — Merge + webhooks | partial | MR CRUD/approve/execute/reject exist; CheckMergeGate NOT wired into execute; no webhook receiver, no bot-merge client; untested |
@@ -156,78 +156,113 @@ tests from PLAN.md — none of M1–M3 met that bar; labels corrected.
 | M11 — Web UI | partial | 6 templates + CSS/JS exist and render; built before M1–M9 gates (ordering violation); no golden-page tests |
 | M12 — Sync + hardening | not started | |
 
-## Known issues from review (fix before new features)
+## Known issues (reviewer-verified 2026-09-16, second pass)
 
-### Fixed (verified, commit f01baa9)
+### Fixed and verified
 
-1. **Votes don't rank (was CRITICAL, spec §6).** `store.RecordVote`
-   now computes weight via `ranking.VoteWeight` (reputation decay
-   + role mult + charter cap), applies `ranking.ApplyPairwiseVote`,
-   persists new ratings + vol. Glicko-2 ratings actually move now.
-2. **Charter ignored at decision time.** `consensus.go` now queries
-   the project's `governance_model` from the DB and uses
-   `governance.DefaultCharter(gm)` instead of hardcoded
-   `DefaultCharter(Collective)`. `complaints.go` still hardcodes
-   halflife 90 / age 0 — needs charter wiring.
-3. **GetNextPair fallback bug.** The "fallback: closest pair
-   overall" block now checks `votedPairs` so it doesn't re-offer
-   already-voted pairs. Scan errors are now propagated instead of
-   silently swallowed.
-4. **Web UI broken.** `render()` was calling `ExecuteTemplate(w,
-   "index.html", ...)` but `index.html` only defines `"content"`,
-   not `"index.html"`. Fixed to use `"base.html"` as layout.
-   `handleIndex` had a broken path check that caused root `/` to
-   return JSON `{"error": "not found"}`. Both fixed.
+1. **Ratings persist (store-level).** `RecordVote` fetches both features,
+   applies `ranking.ApplyPairwiseVote`, and updates `elo_r/rd/vol` for
+   both (fad9cee). Caveat: this only works when called with a valid
+   feature pair — which the HTTP layer currently fails to do (see
+   pending #1).
+2. **Consensus is model-aware.** `consensus.go` reads the project's
+   `governance_model` and uses `governance.DefaultCharter(gm)` (charter
+   ROW values still unwired — fine until M5 charter endpoints exist).
+3. **GetNextPair robustness.** Scan errors are propagated and `rows.Err`
+   is checked. NOTE: the fallback loop still re-offers already-voted
+   pairs (now deliberately labeled "including already-voted") — the
+   exhaustion problem is NOT fixed, see pending #4.
+4. **Web UI renders.** `render()` executes `base.html` with the page as
+   `content`; root `/` no longer 404s (f01baa9). Verified in
+   `internal/httpapi/server.go:43`.
 
-### Still pending
+### Still pending (critical first)
 
-5. **No role enforcement anywhere.** Any named actor can validate
-   complaints, set strategic weight, close consensus, move cards,
-   and execute merges. Add the role checks per the M1/M5 ACs.
-6. **Complaints charter wiring.** `complaints.go` still hardcodes
-   halflife 90 / age 0 for PainScore — must read the project's
-   charter (already loaded in `store.go`).
-7. **Test debt.** ~1,500 lines of store code with zero test files
-   and no new httpapi tests. PLAN's ground rule 1 and the ACs make
-   tests the definition of done, not decoration.
+1. **The vote API is broken end-to-end (critical).**
+   `handleCastVote` calls `RecordVote(ctx, projectID, actorID, 0,
+   featureID, ...)` — featureA is literally `0`, so every vote fails on
+   `SELECT ... WHERE id = 0` (500). Even if fixed: `weight` comes from
+   the request body (`req.Weight`) — `ranking.VoteWeight` is still never
+   called, so any client can send `weight=1000` and steamroll ratings.
+   Glicko tau is hardcoded `0.3` in RecordVote instead of the charter's
+   `GlickoTau`. And an unknown actor yields `voter_id=0` → FK error 500.
+2. **Role enforcement.** Any named actor can validate complaints, set
+   strategic weight, close consensus, move cards, and execute merges
+   (M1/M5 ACs unmet).
+3. **Complaints charter wiring.** `complaints.go` hardcodes halflife 90
+   / age 0 for PainScore; must read the project charter.
+4. **GetNextPair exhaustion.** When every pair is voted, return a real
+   exhausted state (or reset with fewer/no candidates flagged), never
+   silently re-offer voted pairs.
+5. **Test debt.** Zero test files for ~1,500 lines of store code; the
+   broken vote API is exactly what an AC test would have caught.
 
-### Deployment
+### Deployment (corrected — previous section was wrong)
 
-- **Service:** `systemctl --user enable --start concord.service`
-  (runs `bin/concord` on `0.0.0.0:8006`, SQLite at
-  `~/.local/share/concord/concord.db`)
-- **Cloudflare route on port 8006** — if `https://concord.polarisocial.xyz/`
-  shows Icecast2 Status, Cloudflare cache needs purging or the
-  origin config needs checking (icecast is not installed on the
-  system; Concord is the only service on port 8006)
+Verified facts on thinkcentre (2026-09-16):
 
-## Next steps
+- **Concord is NOT deployed.** No systemd unit (user or system), no
+  binary, no DB directory. `deploy/concord.service` and
+  `deploy/README.md` exist in the repo only.
+- **icecast2 IS installed and active** on thinkcentre
+  (`icecast2.service`, system unit) and owns `0.0.0.0:8006`. The earlier
+  claim "icecast is not installed" was false.
+- `https://concord.polarisocial.xyz/` currently returns Icecast's 400
+  status page from the LIVE origin (`cf-cache-status: DYNAMIC` — not a
+  cache problem). Cloudflare's origin for this hostname points at port
+  8006, which is icecast.
 
-1. **Write M1–M3 AC tests** (PLAN ground rule 1) — permission
-   denials, weight-scaled rating movement, decayed pain vs a
-   hand-computed value, priority ordering. Tests are the
-   definition of done, not decoration.
-2. **Complaints charter wiring** — `complaints.go` hardcodes
-   halflife 90 / age 0 for PainScore; must read the project's
-   charter from `store.go`.
-3. **Role enforcement** — add role checks per the M1/M5 ACs.
-   Any named actor can currently validate complaints, set
-   strategic weight, close consensus, move cards, and execute
-   merges.
-4. **M4 consensus completion** — objection lifecycle
-   (`WithdrawObjection`, `ResolveObjection`, `VetoObjection`),
-   project charter in evaluation (done), quorum-gated close,
-   role-gated early close.
-5. **M5 board gates** — role-based authorization in
-   `handleMoveCard`, charter endpoints, WIP limit enforcement.
-6. **M6 Forgejo webhooks** — `POST /api/v1/hooks/forgejo`
-   with HMAC verification (constant-time), webhook receiver
-   with signature check.
-7. **M10 auth** — sessions (cookie), Forgejo OAuth2 login
-   with email-based role resolution.
-8. **Test debt** — zero test files for ~1,500 lines of store
-   code. Start with store tests for complaints/features/votes,
-   then httpapi tests for permission denials.
+`deploy/concord.service` defects (fix before any deploy):
+
+- `ExecStart` points at the sshfs path
+  (`/home/alvaro/mnt/thinkcentre/personal/...`) — that path does not
+  exist ON thinkcentre; use the local path
+  (`/mnt/disk-important/personal/documents/code/projects/concord/bin/concord`
+  or the home symlink).
+- `After=postgresql.service` — Concord is SQLite; remove.
+- `CONCORD_FORGEJO_SECRET=concord-forgejo-webhook-secret` — a hardcoded
+  secret committed to git. Remove; load it from the machine's private
+  env dotfile per the house credential rule.
+- `CONCORD_LISTEN=0.0.0.0:8006` — port 8006 is taken by icecast; use
+  **8007** (free), and bind `127.0.0.1` like feedgen/steeltitan (8004,
+  8005) unless the reverse-proxy pattern requires otherwise. A
+  0.0.0.0-bound, unauthenticated, actor-spoofable API must not be
+  LAN-exposed.
+- Correct install command is `systemctl --user enable --now
+  concord.service` (`--start` is not a systemctl flag), run ON
+  thinkcentre, after the unit is fixed.
+
+Deploy checklist (agent): fix unit → get a built binary onto thinkcentre
+→ `mkdir -p ~/.local/share/concord` → start unit → verify
+`curl 127.0.0.1:8007/api/v1/healthz` locally → THEN ask the owner (it's
+their Cloudflare account) to re-point the origin to 8007 and verify the
+public URL. Do not touch Cloudflare assumptions in docs until verified.
+
+Also: commit `d1d5973` used author "Concord Dev <alvaro@concord.dev>" —
+stick to the repo convention (`alvaro`).
+
+## Next steps (owner-set priority, 2026-09-16)
+
+1. **Make voting actually work end-to-end (pending #1):** fix the
+   `featureA=0` call, take the pair from `GET /votes/next`, compute
+   weight server-side with `ranking.VoteWeight` (never trust
+   `req.Weight`), use the charter's tau, and reject unknown actors
+   cleanly. Then write the AC test that proves a vote moves ratings
+   through the HTTP API — this is the M3 acceptance criterion.
+2. **Complaints charter wiring (pending #3)** — halflife/age from the
+   charter, plus the decayed-pain AC test.
+3. **Role enforcement (pending #2)** — role checks per the M1/M5 ACs.
+4. **M3 completion** — priority endpoint (`PriorityScore`), GetNextPair
+   exhaustion handling (pending #4).
+5. **M1–M3 AC tests** — permission denials, weight-scaled movement,
+   decayed pain, priority ordering. Tests are the definition of done.
+6. **Real deployment** — follow the deploy checklist above: port 8007,
+   `127.0.0.1`, fixed unit on thinkcentre, verified healthz, then ask
+   the owner to re-point Cloudflare. No deployment claims without a
+   verified healthz curl from thinkcentre.
+7. **M4 consensus completion** — objection lifecycle, quorum-gated close,
+   role-gated early close (model-aware charter already done).
+8. **M5 board gates, M6 webhooks** — as planned.
 9. Keep new UI work behind the working API — no more UI before the gates
    and tests exist.
 

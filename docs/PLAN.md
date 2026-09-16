@@ -202,8 +202,8 @@ SSH git transport, mobile apps. Revisit after M11.
 | M0 skeleton (schema, ranking, governance, discovery, projects+search API, docs) | done | verified: make verify green, live smoke test |
 | M1 complaints | code present, untested | reviewed 2026-09-16: no tests, no role checks, decay not charter-wired |
 | M2 features | code present, untested | CRUD + strategic weight; no role gate |
-| M3 ranking + priority | code present, NOT WIRED | votes stored but Elo never applied; no priority endpoint; pair-selection fallback bug |
-| M4 consensus | partial | close uses hardcoded DefaultCharter; objection lifecycle + auth missing |
+| M3 ranking + priority | partially wired (store-level) | Elo applied in RecordVote but API vote path broken (featureA=0, client-supplied weight); no priority endpoint; no tests |
+| M4 consensus | partial | close is model-aware (DefaultCharter(gm)); charter-row values unwired until M5; objection lifecycle + auth missing |
 | M5 board + charter | partial | board CRUD only; gates/charter endpoints pending |
 | M6 merge + webhooks | partial | MR CRUD exists; CheckMergeGate not wired; no webhook receiver |
 | M7 threads | not started | comments tables exist in 0001; labels missing |
