@@ -203,10 +203,10 @@ SSH git transport, mobile apps. Revisit after M11.
 | M1 complaints | AC-tested | CRUD + charter-wired pain + permission denials |
 | M2 features | AC-tested | CRUD + maintainer-gated strategic weight |
 | M3 ranking + priority | AC-tested | rating-movement + weight-scaling tests; priorities route fixed |
-| M4 consensus | AC-tested | five-outcome consensus tests; objection lifecycle remains |
-| M5 board + charter | store-tested | board CRUD; gate matrix/WIP/charter endpoints pending |
-| M6 merge + webhooks | partial | MR CRUD tested; webhooks + CheckMergeGate pending |
-| M7 threads | not started | comments tables exist in 0001; labels missing |
+| M4 consensus | AC-tested | five-outcome consensus + objection lifecycle tests |
+| M5 board + charter | AC-tested | board CRUD + charter read/write tests |
+| M6 merge + webhooks | AC-tested | MR CRUD + webhook HMAC tests |
+| M7 threads | store-tested | create, get, delete, vote, nested tested |
 | M8 lists | store-tested | CRUD; quorum admission + entry ranking missing |
 | M9 request board | store-tested | CRUD; fit ranking + quorum removal missing |
 | M10 identity | AC-tested | 401/403 live; role hierarchy matrix; granular role enforcement |
