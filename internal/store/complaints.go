@@ -205,7 +205,19 @@ func (d *DB) GetComplaintPain(ctx context.Context, complaintID int64) (float64, 
 		}
 	}
 	_ = rows.Err()
-	return ranking.PainScore(c.Severity, c.Frequency, c.StrategicMultiplier, affected, 0, 90), nil
+	// Load the project's charter for pain halflife
+	proj, err := d.GetProjectByID(ctx, c.ProjectID)
+	if err != nil {
+		return 0, fmt.Errorf("load project: %w", err)
+	}
+	charter, err := d.GetCharterForProject(ctx, proj.ID)
+	if err != nil {
+		return 0, fmt.Errorf("load charter: %w", err)
+	}
+	// Compute age in days from complaint creation time
+	now := float64(time.Now().Unix())
+	ageDays := (now - c.CreatedAt) / 86400.0
+	return ranking.PainScore(c.Severity, c.Frequency, c.StrategicMultiplier, affected, ageDays, charter.PainHalflifeDays), nil
 }
 
 // AuditLogEntry represents an entry in the audit log.

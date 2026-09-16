@@ -33,10 +33,19 @@ func New(d *sql.DB) *DB { return &DB{DB: d} }
 
 // ---------------------------------------------------------------- users
 
+type Member struct {
+	ProjectID    int64   `json:"project_id"`
+	UserID       int64   `json:"user_id"`
+	Role         string  `json:"role"`
+	IsModerator  int     `json:"is_moderator"`
+	JoinedAt     float64 `json:"joined_at"`
+}
+
 type User struct {
 	ID          int64   `json:"id"`
 	Username    string  `json:"username"`
 	DisplayName string  `json:"display_name"`
+	Role        string  `json:"role"`
 	CreatedAt   float64 `json:"created_at"`
 }
 
@@ -61,8 +70,8 @@ func (d *DB) CreateUser(ctx context.Context, username, displayName string) (User
 func (d *DB) GetUser(ctx context.Context, username string) (User, error) {
 	var u User
 	err := d.QueryRowContext(ctx,
-		`SELECT id, username, COALESCE(display_name,''), created_at FROM users WHERE username=?`,
-		username).Scan(&u.ID, &u.Username, &u.DisplayName, &u.CreatedAt)
+		`SELECT id, username, COALESCE(display_name,''), role, created_at FROM users WHERE username=?`,
+		username).Scan(&u.ID, &u.Username, &u.DisplayName, &u.Role, &u.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, fmt.Errorf("%w: user %q", ErrNotFound, username)
 	}
@@ -106,6 +115,39 @@ func (d *DB) GetReputation(ctx context.Context, projectID, userID int64) (float6
 	}
 	return rep, nil
 }
+
+// GetRoleForProject returns the role of a user in a project.
+func (d *DB) GetRoleForProject(ctx context.Context, projectID, userID int64) (string, error) {
+	var role string
+	err := d.QueryRowContext(ctx, `
+		SELECT role FROM members WHERE project_id = ? AND user_id = ?`,
+		projectID, userID).Scan(&role)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "guest", nil
+	}
+	if err != nil {
+		return "", fmt.Errorf("load member role: %w", err)
+	}
+	return role, nil
+}
+
+// GetMember returns the full membership record for a user in a project.
+func (d *DB) GetMember(ctx context.Context, projectID, userID int64) (Member, error) {
+	var m Member
+	err := d.QueryRowContext(ctx, `
+		SELECT project_id, user_id, role, is_moderator, joined_at
+		FROM members WHERE project_id = ? AND user_id = ?`,
+		projectID, userID).Scan(&m.ProjectID, &m.UserID, &m.Role, &m.IsModerator, &m.JoinedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Member{}, fmt.Errorf("%w: not a member of project", ErrNotFound)
+	}
+	if err != nil {
+		return Member{}, fmt.Errorf("load member: %w", err)
+	}
+	return m, nil
+}
+
+// ---------------------------------------------------------------- projects
 
 // ---------------------------------------------------------------- projects
 
@@ -234,6 +276,25 @@ func (d *DB) GetProject(ctx context.Context, slug string) (Project, error) {
 	}
 	return p, err
 }
+
+
+
+// GetProjectByID loads a project by its numeric ID.
+func (d *DB) GetProjectByID(ctx context.Context, projectID int64) (Project, error) {
+	var p Project
+	err := d.QueryRowContext(ctx, `
+		SELECT ` + projectColumns + ` FROM projects p
+		LEFT JOIN project_metrics m ON m.project_id = p.id
+		WHERE p.id = ?`, projectID).Scan(
+		&p.ID, &p.Slug, &p.Name, &p.Description,
+		&p.GovernanceModel, &p.License, &p.CreatedAt, &p.UpdatedAt, &p.HealthScore)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Project{}, fmt.Errorf("%w: project %d", ErrNotFound, projectID)
+	}
+	return p, err
+}
+
+// ---------------------------------------------------------------- projects
 
 func (d *DB) ListProjects(ctx context.Context) ([]Project, error) {
 	rows, err := d.QueryContext(ctx, `

@@ -151,6 +151,17 @@ type castVoteRequest struct {
 
 func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
 	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	actorID := getActorID(r)
+	if actorID == 0 {
+		mapError(w, fmt.Errorf("authentication required"))
+		return
+	}
+	// Check actor is at least a contributor in this project
+	role, _ := s.Store.GetRoleForProject(r.Context(), projectID, actorID)
+	if role == "guest" {
+		mapError(w, fmt.Errorf("contributor role or higher required"))
+		return
+	}
 	var req castVoteRequest
 	if !readJSON(w, r, &req) {
 		return
@@ -182,9 +193,9 @@ func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Compute weight server-side from voter reputation — never trust client-supplied weight
-	voterReputation, _ := s.Store.GetReputation(r.Context(), projectID, getActorID(r))
+	voterReputation, _ := s.Store.GetReputation(r.Context(), projectID, actorID)
 	weight := ranking.VoteWeight(voterReputation, 1.0, charter.VoteWeightCap)
-	vote, err := s.Store.RecordVote(r.Context(), projectID, getActorID(r), req.FeatureA, req.FeatureB, req.Outcome, weight, charter)
+	vote, err := s.Store.RecordVote(r.Context(), projectID, actorID, req.FeatureA, req.FeatureB, req.Outcome, weight, charter)
 	if err != nil {
 		mapError(w, err)
 		return

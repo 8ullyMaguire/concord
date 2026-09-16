@@ -98,21 +98,7 @@ func (d *DB) GetNextPair(ctx context.Context, projectID, voterID int64) (Feature
 	}
 
 	if bestA == 0 || bestB == 0 {
-		// Fallback: closest pair overall (including already-voted)
-		bestDiff = -1.0
-		for i := 0; i < len(features); i++ {
-			for j := i + 1; j < len(features); j++ {
-				diff := features[i].ER - features[j].ER
-				if diff < 0 {
-					diff = -diff
-				}
-				if bestDiff < 0 || diff < bestDiff {
-					bestDiff = diff
-					bestA = features[i].ID
-					bestB = features[j].ID
-				}
-			}
-		}
+		return Feature{}, Feature{}, fmt.Errorf("no unvoted pairs remain; all feature pairs have been compared")
 	}
 
 	a, err := d.GetFeature(ctx, bestA)
