@@ -198,6 +198,17 @@ func (d *DB) CloseConsensusCall(ctx context.Context, callID int64) (ConsensusSum
 		}
 	}
 	counts.OpenObjections = openObj
-	result := governance.EvaluateConsensus(counts, governance.DefaultCharter(governance.Collective))
+	// Get project's governance model to use the correct charter
+	var modelStr string
+	err = d.QueryRowContext(ctx,
+		`SELECT governance_model FROM projects WHERE id = ?`, c.ProjectID).Scan(&modelStr)
+	if err != nil {
+		return ConsensusSummary{}, fmt.Errorf("get project governance model: %w", err)
+	}
+	gm := governance.GovernanceModel(modelStr)
+	if !gm.Valid() {
+		gm = governance.Collective
+	}
+	result := governance.EvaluateConsensus(counts, governance.DefaultCharter(gm))
 	return ConsensusSummary{Call: c, Counts: counts, Result: string(result)}, nil
 }

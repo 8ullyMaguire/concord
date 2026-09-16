@@ -6,6 +6,8 @@ import (
 	"context"
 	"fmt"
 	"time"
+
+	"git.polarisocial.xyz/concord/concord/internal/ranking"
 )
 
 // PairwiseVote records a pairwise comparison between two features.
@@ -40,11 +42,14 @@ func (d *DB) GetNextPair(ctx context.Context, projectID, voterID int64) (Feature
 			ID      int64
 			ER, ERD float64
 		}
-		if err := rows.Scan(&f.ID, &f.ER, &f.ERD); err == nil {
-			features = append(features, f)
+		if err := rows.Scan(&f.ID, &f.ER, &f.ERD); err != nil {
+			return Feature{}, Feature{}, fmt.Errorf("scan feature: %w", err)
 		}
+		features = append(features, f)
 	}
-	_ = rows.Err()
+	if err := rows.Err(); err != nil {
+		return Feature{}, Feature{}, fmt.Errorf("iterating features: %w", err)
+	}
 	if len(features) < 2 {
 		return Feature{}, Feature{}, fmt.Errorf("need at least 2 features to vote")
 	}
@@ -57,13 +62,18 @@ func (d *DB) GetNextPair(ctx context.Context, projectID, voterID int64) (Feature
 	votedPairs := make(map[string]bool)
 	for votedRows.Next() {
 		var a, b int64
-		if err := votedRows.Scan(&a, &b); err == nil {
-			votedPairs[fmt.Sprintf("%d-%d", a, b)] = true
-			votedPairs[fmt.Sprintf("%d-%d", b, a)] = true
+		if err := votedRows.Scan(&a, &b); err != nil {
+			votedRows.Close()
+			return Feature{}, Feature{}, fmt.Errorf("scan voted pair: %w", err)
 		}
+		votedPairs[fmt.Sprintf("%d-%d", a, b)] = true
+		votedPairs[fmt.Sprintf("%d-%d", b, a)] = true
 	}
-	_ = votedRows.Close()
-	_ = votedRows.Err()
+	if err := votedRows.Err(); err != nil {
+		votedRows.Close()
+		return Feature{}, Feature{}, fmt.Errorf("iterating voted pairs: %w", err)
+	}
+	votedRows.Close()
 
 	// Find the closest pair (smallest |rA - rB|) that hasn't been voted on
 	var bestA, bestB int64
@@ -87,7 +97,7 @@ func (d *DB) GetNextPair(ctx context.Context, projectID, voterID int64) (Feature
 	}
 
 	if bestA == 0 || bestB == 0 {
-		// Fallback: closest pair overall
+		// Fallback: closest pair overall (including already-voted)
 		bestDiff = -1.0
 		for i := 0; i < len(features); i++ {
 			for j := i + 1; j < len(features); j++ {
@@ -115,12 +125,48 @@ func (d *DB) GetNextPair(ctx context.Context, projectID, voterID int64) (Feature
 	return a, b, nil
 }
 
-// RecordVote records a pairwise vote outcome (M3).
+// RecordVote records a pairwise vote outcome (M3) and applies the
+// Glicko-2 rating update to both features via ApplyPairwiseVote.
 func (d *DB) RecordVote(ctx context.Context, projectID, voterID, featureA, featureB int64, outcome string, weight float64) (PairwiseVote, error) {
 	if outcome == "" {
 		return PairwiseVote{}, fmt.Errorf("%w: outcome is required", ErrInvalid)
 	}
 	now := float64(time.Now().Unix())
+
+	// Fetch current feature ratings so we can apply the vote
+	var fa, fb ranking.Feature
+	err := d.QueryRowContext(ctx,
+		`SELECT elo_r, elo_rd, elo_vol, strategic_weight FROM features WHERE id = ?`, featureA).Scan(
+		&fa.R, &fa.RD, &fa.Vol, &fa.StrategicWeight)
+	if err != nil {
+		return PairwiseVote{}, fmt.Errorf("fetch feature A rating: %w", err)
+	}
+	err = d.QueryRowContext(ctx,
+		`SELECT elo_r, elo_rd, elo_vol, strategic_weight FROM features WHERE id = ?`, featureB).Scan(
+		&fb.R, &fb.RD, &fb.Vol, &fb.StrategicWeight)
+	if err != nil {
+		return PairwiseVote{}, fmt.Errorf("fetch feature B rating: %w", err)
+	}
+
+	// Apply the vote to Glicko-2 ratings
+	out := ranking.Outcome(outcome)
+	a2, b2 := ranking.ApplyPairwiseVote(fa, fb, out, weight, 0.3)
+
+	// Persist updated ratings
+	_, err = d.ExecContext(ctx,
+		`UPDATE features SET elo_r=?, elo_rd=?, elo_vol=? WHERE id=?`,
+		a2.R, a2.RD, a2.Vol, featureA)
+	if err != nil {
+		return PairwiseVote{}, fmt.Errorf("update feature A rating: %w", err)
+	}
+	_, err = d.ExecContext(ctx,
+		`UPDATE features SET elo_r=?, elo_rd=?, elo_vol=? WHERE id=?`,
+		b2.R, b2.RD, b2.Vol, featureB)
+	if err != nil {
+		return PairwiseVote{}, fmt.Errorf("update feature B rating: %w", err)
+	}
+
+	// Record the vote
 	res, err := d.ExecContext(ctx, `
 		INSERT OR REPLACE INTO pairwise_votes (project_id, voter_id, feature_a, feature_b, outcome, weight, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`, projectID, voterID, featureA, featureB, outcome, weight, now)
@@ -131,7 +177,7 @@ func (d *DB) RecordVote(ctx context.Context, projectID, voterID, featureA, featu
 	return PairwiseVote{
 		ID: id, ProjectID: projectID, VoterID: voterID,
 		FeatureA: featureA, FeatureB: featureB,
-		Outcome: outcome, Weight: weight, CreatedAt: now,
+		Outcome: string(out), Weight: weight, CreatedAt: now,
 	}, nil
 }
 
