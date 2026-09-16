@@ -192,3 +192,40 @@ tests from PLAN.md — none of M1–M3 met that bar; labels corrected.
     `GetProjectByID`, `GetRoleForProject`, `GetMember`,
     `GetFeaturePriorities`.
 
+
+### Still pending (critical first)
+
+1. **Test debt.** Zero test files for ~1,500 lines of store code.
+2. **Role enforcement granular.** Basic 401 added; contributor+
+   checks only on vote. Need requireRole for maintainer-only
+   actions (validate complaints, set strategic weight, move
+   cards, merge execution).
+3. **Concord not deployed.** Systemd unit ready but not running
+   on thinkcentre. Need verified healthz curl.
+
+### Pattern rule for agent steering
+
+Every round, the agent verifies nothing it claims. Half the
+"Fixed" items were wrong. Every bug the agent introduced
+came from having no tests. The handoff now states:
+
+- No milestone counts as done without its AC tests.
+- No deployment claims without verified healthz curl
+  from thinkcentre.
+- No vote API claims without end-to-end test.
+
+This is explicit in the handoff so future agents inherit
+it.
+
+## Next steps
+
+1. Fix vote contract (+ pair-consistency AC test)
+2. Single weight computation (+ weight-scaling test)
+3. Complaints charter wiring (+ charter test)
+4. Role enforcement (+ role test)
+5. Unknown actor 401 (+ auth test)
+6. Priority endpoint (+ priority test)
+7. M1–M3 AC test sweep
+8. Deployment (fixed unit + verified healthz)
+9. M4/M5/M6
+
