@@ -121,6 +121,31 @@ func (s *Server) handleListFeatures(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, features)
 }
 
+
+func (s *Server) handleFeaturePriorities(w http.ResponseWriter, r *http.Request) {
+	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	if getActorID(r) == 0 {
+		mapError(w, fmt.Errorf("authentication required"))
+		return
+	}
+	proj, err := s.Store.GetProject(r.Context(), chi.URLParam(r, "project_id"))
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	charter, err := s.Store.GetCharterForProject(r.Context(), proj.ID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	priorities, err := s.Store.GetFeaturePriorities(r.Context(), projectID, charter)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, priorities)
+}
+
 func (s *Server) handleGetFeature(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	f, err := s.Store.GetFeature(r.Context(), id)
@@ -232,6 +257,10 @@ type createConsensusRequest struct {
 }
 
 func (s *Server) handleCreateConsensus(w http.ResponseWriter, r *http.Request) {
+	if getActorID(r) == 0 {
+		mapError(w, fmt.Errorf("authentication required"))
+		return
+	}
 	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
 	var req createConsensusRequest
 	if !readJSON(w, r, &req) {
@@ -309,6 +338,10 @@ func (s *Server) handleCreateObjection(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCloseConsensus(w http.ResponseWriter, r *http.Request) {
+	if getActorID(r) == 0 {
+		mapError(w, fmt.Errorf("authentication required"))
+		return
+	}
 	callID, _ := strconv.ParseInt(chi.URLParam(r, "call_id"), 10, 64)
 	summary, err := s.Store.CloseConsensusCall(r.Context(), callID)
 	if err != nil {

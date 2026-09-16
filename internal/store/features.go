@@ -7,7 +7,11 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"sort"
 	"time"
+
+	"git.polarisocial.xyz/concord/concord/internal/governance"
+	"git.polarisocial.xyz/concord/concord/internal/ranking"
 )
 
 // Feature represents a proposed solution linked to complaints.
@@ -26,6 +30,17 @@ type Feature struct {
 	CreatedAt       float64 `json:"created_at"`
 	UpdatedAt       float64 `json:"updated_at"`
 }
+// FeaturePriority carries a feature's priority score for the leaderboard.
+type FeaturePriority struct {
+	ID             int64   `json:"id"`
+	Title          string  `json:"title"`
+	EloR           float64 `json:"elo_r"`
+	EloRD          float64 `json:"elo_rd"`
+	PainScore      float64 `json:"pain_score"`
+	StrategicWeight float64 `json:"strategic_weight"`
+	PriorityScore  float64 `json:"priority_score"`
+}
+
 
 // FeatureComplaintLink links a feature to a complaint.
 type FeatureComplaintLink struct {
@@ -118,6 +133,37 @@ func (d *DB) ListFeatures(ctx context.Context, projectID int64, status string) (
 }
 
 // LinkComplaint links a validated complaint to a feature (M2).
+
+// GetFeaturePriorities returns priority scores for all features
+// in a project, sorted by priority descending.
+func (d *DB) GetFeaturePriorities(ctx context.Context, projectID int64, charter governance.Charter) ([]FeaturePriority, error) {
+	features, err := d.ListFeatures(ctx, projectID, "")
+	if err != nil {
+		return nil, err
+	}
+	var result []FeaturePriority
+	for _, f := range features {
+		pain, err := d.GetComplaintPain(ctx, f.ID)
+		if err != nil {
+			return nil, err
+		}
+		prio := ranking.PriorityScore(f.EloR, f.EloRD, pain, f.StrategicWeight, charter.Lam, charter.Mu)
+		result = append(result, FeaturePriority{
+			ID:             f.ID,
+			Title:          f.Title,
+			EloR:           f.EloR,
+			EloRD:          f.EloRD,
+			PainScore:      pain,
+			StrategicWeight: f.StrategicWeight,
+			PriorityScore:  prio,
+		})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].PriorityScore > result[j].PriorityScore
+	})
+	return result, nil
+}
+
 func (d *DB) LinkComplaint(ctx context.Context, featureID, complaintID int64) error {
 	_, err := d.GetFeature(ctx, featureID)
 	if err != nil {
