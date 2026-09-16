@@ -284,6 +284,10 @@ func (s *Server) handleCastConsensusPosition(w http.ResponseWriter, r *http.Requ
 
 func (s *Server) handleCreateObjection(w http.ResponseWriter, r *http.Request) {
 	callID, _ := strconv.ParseInt(chi.URLParam(r, "call_id"), 10, 64)
+	if getActorID(r) == 0 {
+		mapError(w, fmt.Errorf("authentication required"))
+		return
+	}
 	var req struct {
 		Principle string `json:"principle"`
 		Violation string `json:"violation"`
@@ -324,6 +328,10 @@ func (s *Server) handleMoveCard(w http.ResponseWriter, r *http.Request) {
 	cardID, _ := strconv.ParseInt(chi.URLParam(r, "card_id"), 10, 64)
 	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
 	newColumn := r.URL.Query().Get("to")
+	if getActorID(r) == 0 {
+		mapError(w, fmt.Errorf("authentication required"))
+		return
+	}
 	if err := s.Store.MoveCard(r.Context(), cardID, newColumn, projectID); err != nil {
 		mapError(w, err)
 		return
@@ -354,6 +362,10 @@ func (s *Server) handleCreateMergeRequest(w http.ResponseWriter, r *http.Request
 
 func (s *Server) handleApproveMerge(w http.ResponseWriter, r *http.Request) {
 	mrID, _ := strconv.ParseInt(chi.URLParam(r, "mr_id"), 10, 64)
+	if getActorID(r) == 0 {
+		mapError(w, fmt.Errorf("authentication required"))
+		return
+	}
 	if err := s.Store.ApproveMerge(r.Context(), mrID, getActorID(r)); err != nil {
 		mapError(w, err)
 		return
@@ -364,6 +376,10 @@ func (s *Server) handleApproveMerge(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleExecuteMerge(w http.ResponseWriter, r *http.Request) {
 	mrID, _ := strconv.ParseInt(chi.URLParam(r, "mr_id"), 10, 64)
 	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	if getActorID(r) == 0 {
+		mapError(w, fmt.Errorf("authentication required"))
+		return
+	}
 	if err := s.Store.ExecuteMerge(r.Context(), mrID, projectID); err != nil {
 		mapError(w, err)
 		return
