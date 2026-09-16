@@ -117,6 +117,18 @@ func (d *DB) GetReputation(ctx context.Context, projectID, userID int64) (float6
 	return rep, nil
 }
 
+// AddReputation records a reputation event for a user in a project.
+func (d *DB) AddReputation(ctx context.Context, projectID, userID int64, kind string, points float64) error {
+	now := float64(time.Now().Unix())
+	_, err := d.ExecContext(ctx, `
+		INSERT INTO reputation_events (project_id, user_id, kind, points, created_at)
+		VALUES (?, ?, ?, ?, ?)`, projectID, userID, kind, points, now)
+	if err != nil {
+		return fmt.Errorf("add reputation: %w", err)
+	}
+	return nil
+}
+
 // GetRoleForProject returns the role of a user in a project.
 func (d *DB) GetRoleForProject(ctx context.Context, projectID, userID int64) (string, error) {
 	var role string
@@ -186,7 +198,7 @@ func scanProject(row interface{ Scan(...any) error }) (Project, error) {
 
 // CreateProject inserts the project, its default charter, the board
 // columns, an empty metrics row, and the FTS index entry — all in one tx.
-func (d *DB) CreateProject(ctx context.Context, slug, name, description, model, license string) (Project, error) {
+func (d *DB) CreateProject(ctx context.Context, userID int64, slug, name, description, model, license string) (Project, error) {
 	if !validSlug(slug) {
 		return Project{}, fmt.Errorf("%w: slug must be lowercase kebab-case", ErrInvalid)
 	}
@@ -250,6 +262,11 @@ func (d *DB) CreateProject(ctx context.Context, slug, name, description, model, 
 			id, phase, i, wip); err != nil {
 			return Project{}, err
 		}
+	}
+
+	if _, err := tx.ExecContext(ctx,
+		`INSERT INTO members (project_id, user_id, role, joined_at) VALUES (?, ?, 'maintainer', ?)`, id, userID, now); err != nil {
+		return Project{}, err
 	}
 
 	if _, err := tx.ExecContext(ctx,

@@ -71,11 +71,11 @@ func (d *DB) GetListsByProject(ctx context.Context, projectID int64) ([]List, er
 	return lists, rows.Err()
 }
 
-func (d *DB) CreateListEntry(ctx context.Context, listID, projectID int64, title, body string) (ListEntry, error) {
+func (d *DB) CreateListEntry(ctx context.Context, listID int64, url, title, body string) (ListEntry, error) {
 	now := float64(time.Now().Unix())
 	res, err := d.ExecContext(ctx, `
 		INSERT INTO list_entries (list_id, url, title, description, status, proposed_by, created_at, updated_at)
-		VALUES (?, ?, ?, ?, 'proposed', 1, ?, ?)`, listID, projectID, title, body, now, now)
+		VALUES (?, ?, ?, ?, 'proposed', 1, ?, ?)`, listID, url, title, body, now, now)
 	if err != nil {
 		return ListEntry{}, err
 	}

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -23,11 +24,25 @@ func newTestServer(t *testing.T) *httptest.Server {
 	if err := db.Migrate(t.Context(), sqlDB); err != nil {
 		t.Fatalf("migrate: %v", err)
 	}
-	srv, err := NewServer(store.New(sqlDB), "test")
+	st := store.New(sqlDB)
+	// Create a test user and get its ID for actor context
+	u, err := st.CreateUser(t.Context(), "testuser", "Test User")
+	if err != nil {
+		t.Fatalf("create test user: %v", err)
+	}
+	srv, err := NewServer(st, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := httptest.NewServer(srv.Router())
+	// Wrap router with middleware that injects actor_id
+	router := srv.Router()
+	injectActor := func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			ctx := context.WithValue(r.Context(), "actor_id", u.ID)
+			next.ServeHTTP(w, r.WithContext(ctx))
+		})
+	}
+	ts := httptest.NewServer(injectActor(router))
 	t.Cleanup(ts.Close)
 	return ts
 }

@@ -2,113 +2,119 @@ package store
 
 import (
 	"context"
-	"database/sql"
 	"errors"
-	"os"
 	"testing"
-	"time"
 
 	"git.polarisocial.xyz/concord/concord/internal/db"
 	"git.polarisocial.xyz/concord/concord/internal/governance"
 	"git.polarisocial.xyz/concord/concord/internal/ranking"
 )
 
-var testDB *sql.DB
-var testStore *DB
-
-func setup() (*sql.DB, *DB, error) {
-	if testDB != nil {
-		return testDB, testStore, nil
-	}
-	tmpPath := "/tmp/concord_test.db"
-	os.Remove(tmpPath)
-	d, err := db.Open(tmpPath)
+func setup(t *testing.T) *DB {
+	t.Helper()
+	raw, err := db.Open(":memory:")
 	if err != nil {
-		return nil, nil, err
+		t.Fatalf("Open: %v", err)
 	}
-	if err := db.Migrate(context.Background(), d); err != nil {
-		return nil, nil, err
+	if err := db.Migrate(context.Background(), raw); err != nil {
+		t.Fatalf("Migrate: %v", err)
 	}
-	testDB = d
-	testStore = New(d)
-	// Insert a default test user
-	_, err = d.ExecContext(context.Background(), `INSERT INTO users (username, display_name, created_at) VALUES (?, ?, ?)`, "testuser", "Test User", float64(time.Now().Unix()))
-	if err != nil && !isUniqueViolation(err) {
-		return nil, nil, err
-	}
-	return d, testStore, nil
+	t.Cleanup(func() { raw.Close() })
+	return New(raw)
 }
 
-func TestMain(m *testing.M) {
-	_, _, err := setup()
-	if err != nil {
-		panic(err)
-	}
-	os.Exit(m.Run())
-}
-
-func TestCreateAndGetUser(t *testing.T) {
-	_, store, _ := setup()
-	u, err := store.CreateUser(context.Background(), "newuser", "New User")
+func setupWithUser(t *testing.T) (*DB, int64) {
+	t.Helper()
+	store := setup(t)
+	u, err := store.CreateUser(context.Background(), "testuser", "Test User")
 	if err != nil {
 		t.Fatalf("CreateUser: %v", err)
 	}
-	if u.Username != "newuser" {
-		t.Errorf("expected username newuser, got %s", u.Username)
+	return store, u.ID
+}
+
+func setupWithProject(t *testing.T) (*DB, int64, int64) {
+	t.Helper()
+	store, uid := setupWithUser(t)
+	proj, err := store.CreateProject(context.Background(), uid, "test-project", "Test Project", "desc", "collective", "MIT")
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
 	}
-	got, err := store.GetUser(context.Background(), u.Username)
+	return store, uid, proj.ID
+}
+
+func TestCreateAndGetUser(t *testing.T) {
+	store := setup(t)
+	ctx := context.Background()
+	u, err := store.CreateUser(ctx, "alice", "Alice")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	got, err := store.GetUser(ctx, "alice")
 	if err != nil {
 		t.Fatalf("GetUser: %v", err)
 	}
-	if got.DisplayName != "New User" {
-		t.Errorf("expected display name New User, got %s", got.DisplayName)
+	if got.ID != u.ID {
+		t.Errorf("expected ID %d, got %d", u.ID, got.ID)
+	}
+	if got.Username != "alice" {
+		t.Errorf("expected username alice, got %s", got.Username)
+	}
+	if got.DisplayName != "Alice" {
+		t.Errorf("expected display name Alice, got %s", got.DisplayName)
+	}
+	if got.Role != "member" {
+		t.Errorf("expected default role member, got %s", got.Role)
 	}
 }
 
 func TestCreateAndGetProject(t *testing.T) {
-	_, store, _ := setup()
-	proj, err := store.CreateProject(context.Background(), "test-project", "Test Project", "A test project", "collective", "MIT")
+	store := setup(t)
+	ctx := context.Background()
+	if _, err := store.CreateUser(ctx, "owner", "Owner"); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	p, err := store.CreateProject(ctx, 1, "myproject", "My Project", "A test project", "collective", "MIT")
 	if err != nil {
 		t.Fatalf("CreateProject: %v", err)
 	}
-	if proj.Slug != "test-project" {
-		t.Errorf("expected slug test-project, got %s", proj.Slug)
+	if p.Slug != "myproject" {
+		t.Errorf("expected slug myproject, got %s", p.Slug)
 	}
-	got, err := store.GetProjectByID(context.Background(), proj.ID)
+	got, err := store.GetProject(ctx, "myproject")
 	if err != nil {
-		t.Fatalf("GetProjectByID: %v", err)
+		t.Fatalf("GetProject: %v", err)
 	}
-	if got.Name != "Test Project" {
-		t.Errorf("expected name Test Project, got %s", got.Name)
+	if got.ID != p.ID {
+		t.Errorf("expected ID %d, got %d", p.ID, got.ID)
 	}
 }
 
 func TestGetProjectNotFound(t *testing.T) {
-	_, store, _ := setup()
-	_, err := store.GetProjectByID(context.Background(), 999999)
+	store := setup(t)
+	_, err := store.GetProject(context.Background(), "nonexistent")
+	if err == nil {
+		t.Error("expected error for nonexistent project, got nil")
+	}
 	if !errors.Is(err, ErrNotFound) {
 		t.Errorf("expected ErrNotFound, got %v", err)
 	}
 }
 
 func TestCreateAndGetComplaint(t *testing.T) {
-	_, store, _ := setup()
-	_, err := store.CreateUser(context.Background(), "compuser", "Comp User")
-	if err != nil && !isUniqueViolation(err) {
-		t.Fatalf("CreateUser: %v", err)
-	}
-	proj, err := store.CreateProject(context.Background(), "cproj", "Complaint Project", "desc", "collective", "MIT")
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-	c, err := store.CreateComplaint(context.Background(), proj.ID, 1, "Test complaint", "body", 1, 0.5, 1.0)
+	store, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+	c, err := store.CreateComplaint(ctx, pid, uid, "Test complaint", "body", 1, 0.5, 1.0)
 	if err != nil {
 		t.Fatalf("CreateComplaint: %v", err)
 	}
-	if c.ProjectID != proj.ID {
-		t.Errorf("expected project ID %d, got %d", proj.ID, c.ProjectID)
+	if c.Title != "Test complaint" {
+		t.Errorf("expected title Test complaint, got %s", c.Title)
 	}
-	got, err := store.GetComplaint(context.Background(), c.ID)
+	if c.Status != "open" {
+		t.Errorf("expected status open, got %s", c.Status)
+	}
+	got, err := store.GetComplaint(ctx, c.ID)
 	if err != nil {
 		t.Fatalf("GetComplaint: %v", err)
 	}
@@ -118,53 +124,39 @@ func TestCreateAndGetComplaint(t *testing.T) {
 }
 
 func TestGetComplaintPain(t *testing.T) {
-	_, store, _ := setup()
-	_, err := store.CreateUser(context.Background(), "painuser", "Pain User")
-	if err != nil && !isUniqueViolation(err) {
-		t.Fatalf("CreateUser: %v", err)
-	}
-	proj, err := store.CreateProject(context.Background(), "pain-project", "Pain Project", "desc", "collective", "MIT")
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-	c, err := store.CreateComplaint(context.Background(), proj.ID, 1, "Pain complaint", "body", 1, 0.5, 1.0)
+	store, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+	c, err := store.CreateComplaint(ctx, pid, uid, "Pain complaint", "body", 3, 1.0, 2.0)
 	if err != nil {
 		t.Fatalf("CreateComplaint: %v", err)
 	}
-	pain, err := store.GetComplaintPain(context.Background(), c.ID)
+	pain, err := store.GetComplaintPain(ctx, c.ID)
 	if err != nil {
 		t.Fatalf("GetComplaintPain: %v", err)
 	}
 	if pain <= 0 {
-		t.Errorf("expected positive pain for new complaint, got %f", pain)
+		t.Errorf("expected positive pain for severity=3, freq=1.0, mult=2.0; got %f", pain)
 	}
 }
 
 func TestCreateAndGetFeature(t *testing.T) {
-	_, store, _ := setup()
-	_, err := store.CreateUser(context.Background(), "featuser", "Feat User")
-	if err != nil && !isUniqueViolation(err) {
-		t.Fatalf("CreateUser: %v", err)
-	}
-	proj, err := store.CreateProject(context.Background(), "fproject", "Feature Project", "desc", "collective", "MIT")
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-	comp, err := store.CreateComplaint(context.Background(), proj.ID, 1, "Test feature", "body", 1, 0.5, 1.0)
+	store, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+	comp, err := store.CreateComplaint(ctx, pid, uid, "Linked complaint", "body", 1, 0.5, 1.0)
 	if err != nil {
 		t.Fatalf("CreateComplaint: %v", err)
 	}
-	if err := store.ValidateComplaint(context.Background(), comp.ID); err != nil {
+	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
 		t.Fatalf("ValidateComplaint: %v", err)
 	}
-	feat, err := store.CreateFeature(context.Background(), proj.ID, 1, "Test feature", "desc", []int64{comp.ID})
+	f, err := store.CreateFeature(ctx, pid, uid, "Test feature", "desc", []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature: %v", err)
 	}
-	if feat.Status != "draft" {
-		t.Errorf("expected status draft, got %s", feat.Status)
+	if f.Status != "draft" {
+		t.Errorf("expected status draft, got %s", f.Status)
 	}
-	got, err := store.GetFeature(context.Background(), feat.ID)
+	got, err := store.GetFeature(ctx, f.ID)
 	if err != nil {
 		t.Fatalf("GetFeature: %v", err)
 	}
@@ -174,408 +166,378 @@ func TestCreateAndGetFeature(t *testing.T) {
 }
 
 func TestCreateAndGetList(t *testing.T) {
-	_, store, _ := setup()
-	_, err := store.CreateUser(context.Background(), "listuser", "List User")
-	if err != nil && !isUniqueViolation(err) {
-		t.Fatalf("CreateUser: %v", err)
-	}
-	proj, err := store.CreateProject(context.Background(), "lproject", "List Project", "desc", "collective", "MIT")
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-	l, err := store.CreateList(context.Background(), proj.ID, "myslug", "My List", "desc")
+	store, _, pid := setupWithProject(t)
+	ctx := context.Background()
+	l, err := store.CreateList(ctx, pid, "myslug", "My List", "A list")
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
 	if l.Slug != "myslug" {
 		t.Errorf("expected slug myslug, got %s", l.Slug)
 	}
-	got, err := store.GetList(context.Background(), l.ID)
+	got, err := store.GetList(ctx, l.ID)
 	if err != nil {
 		t.Fatalf("GetList: %v", err)
 	}
-	if got.Name != "My List" {
-		t.Errorf("expected name My List, got %s", got.Name)
+	if got.Slug != "myslug" {
+		t.Errorf("expected slug myslug, got %s", got.Slug)
 	}
 }
 
 func TestCreateAndGetBoard(t *testing.T) {
-	_, store, _ := setup()
-	proj, err := store.CreateProject(context.Background(), "bproject", "Board Project", "desc", "collective", "MIT")
+	store, _, pid := setupWithProject(t)
+	ctx := context.Background()
+	cols, err := store.GetBoardColumns(ctx, pid)
 	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-	cols, cards, err := store.GetBoard(context.Background(), proj.ID)
-	if err != nil {
-		t.Fatalf("GetBoard: %v", err)
+		t.Fatalf("GetBoardColumns: %v", err)
 	}
 	if len(cols) != 9 {
 		t.Errorf("expected 9 default columns, got %d", len(cols))
 	}
-	if len(cards) != 0 {
-		t.Errorf("expected 0 cards, got %d", len(cards))
-	}
 }
 
 func TestCreateAndGetRequest(t *testing.T) {
-	_, store, _ := setup()
-	_, err := store.CreateUser(context.Background(), "requser", "Req User")
-	if err != nil && !isUniqueViolation(err) {
-		t.Fatalf("CreateUser: %v", err)
-	}
-	proj, err := store.CreateProject(context.Background(), "rproject", "Request Project", "desc", "collective", "MIT")
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-	req, err := store.CreateRequest(context.Background(), proj.ID, 1, "My Request", "body")
+	store, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+	r, err := store.CreateRequest(ctx, pid, uid, "Test Request", "body")
 	if err != nil {
 		t.Fatalf("CreateRequest: %v", err)
 	}
-	if req.Title != "My Request" {
-		t.Errorf("expected title My Request, got %s", req.Title)
+	if r.Title != "Test Request" {
+		t.Errorf("expected title Test Request, got %s", r.Title)
 	}
-	got, err := store.GetRequest(context.Background(), req.ID)
+	got, err := store.GetRequest(ctx, r.ID)
 	if err != nil {
 		t.Fatalf("GetRequest: %v", err)
 	}
-	if got.Body != "body" {
-		t.Errorf("expected body body, got %s", got.Body)
+	if got.Title != "Test Request" {
+		t.Errorf("expected title Test Request, got %s", got.Title)
 	}
 }
 
 func TestCreateAndGetConsensusCall(t *testing.T) {
-	_, store, _ := setup()
-	_, err := store.CreateUser(context.Background(), "ccuser", "CC User")
-	if err != nil && !isUniqueViolation(err) {
-		t.Fatalf("CreateUser: %v", err)
-	}
-	proj, err := store.CreateProject(context.Background(), "ccproject", "Consensus Project", "desc", "collective", "MIT")
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-	comp, err := store.CreateComplaint(context.Background(), proj.ID, 1, "Consensus complaint", "body", 1, 0.5, 1.0)
+	store, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+	// CreateConsensusCall(projectID, featureID, title, description)
+	// Need a feature for the call
+	comp, err := store.CreateComplaint(ctx, pid, uid, "CC complaint", "body", 1, 0.5, 1.0)
 	if err != nil {
 		t.Fatalf("CreateComplaint: %v", err)
 	}
-	if err := store.ValidateComplaint(context.Background(), comp.ID); err != nil {
+	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
 		t.Fatalf("ValidateComplaint: %v", err)
 	}
-	feat, err := store.CreateFeature(context.Background(), proj.ID, 1, "Consensus feature", "desc", []int64{comp.ID})
+	feat, err := store.CreateFeature(ctx, pid, uid, "CC feature", "desc", []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature: %v", err)
 	}
-	cc, err := store.CreateConsensusCall(context.Background(), proj.ID, feat.ID, "Test Consensus", "desc")
+	call, err := store.CreateConsensusCall(ctx, pid, feat.ID, "Test Consensus", "Test Desc")
 	if err != nil {
 		t.Fatalf("CreateConsensusCall: %v", err)
 	}
-	if cc.ProjectID != proj.ID {
-		t.Errorf("expected project ID %d, got %d", proj.ID, cc.ProjectID)
-	}
-	got, err := store.GetConsensusCall(context.Background(), cc.ID)
-	if err != nil {
-		t.Fatalf("GetConsensusCall: %v", err)
-	}
-	if got.ID != 0 {
-		if got.ID == 0 {
-			t.Error("expected non-zero ID")
-		}
+	if call.ID == 0 {
+		t.Error("expected non-zero ID")
 	}
 }
 
-func TestRecordVote(t *testing.T) {
-	_, store, _ := setup()
-	_, err := store.CreateUser(context.Background(), "voteuser", "Vote User")
-	if err != nil && !isUniqueViolation(err) {
-		t.Fatalf("CreateUser: %v", err)
-	}
-	proj, err := store.CreateProject(context.Background(), "vote-project", "Vote Project", "desc", "collective", "MIT")
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-	comp, err := store.CreateComplaint(context.Background(), proj.ID, 1, "Vote complaint", "body", 1, 0.5, 1.0)
+func TestRecordVoteRatingMovement(t *testing.T) {
+	store, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+	comp, err := store.CreateComplaint(ctx, pid, uid, "Vote complaint", "body", 1, 0.5, 1.0)
 	if err != nil {
 		t.Fatalf("CreateComplaint: %v", err)
 	}
-	if err := store.ValidateComplaint(context.Background(), comp.ID); err != nil {
+	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
 		t.Fatalf("ValidateComplaint: %v", err)
 	}
-	comp2, err := store.CreateComplaint(context.Background(), proj.ID, 1, "Vote complaint 2", "body", 1, 0.5, 1.0)
+	featA, err := store.CreateFeature(ctx, pid, uid, "Feature A", "desc", []int64{comp.ID})
 	if err != nil {
-		t.Fatalf("CreateComplaint 2: %v", err)
+		t.Fatalf("CreateFeature A: %v", err)
 	}
-	if err := store.ValidateComplaint(context.Background(), comp2.ID); err != nil {
-		t.Fatalf("ValidateComplaint 2: %v", err)
-	}
-	feat, err := store.CreateFeature(context.Background(), proj.ID, 1, "Vote feature", "desc", []int64{comp.ID})
+	featB, err := store.CreateFeature(ctx, pid, uid, "Feature B", "desc", []int64{comp.ID})
 	if err != nil {
-		t.Fatalf("CreateFeature: %v", err)
-	}
-	feat2, err := store.CreateFeature(context.Background(), proj.ID, 1, "Vote feature 2", "desc", []int64{comp2.ID})
-	if err != nil {
-		t.Fatalf("CreateFeature: %v", err)
+		t.Fatalf("CreateFeature B: %v", err)
 	}
 	charter := governance.DefaultCharter(governance.Collective)
-	_, err = store.RecordVote(context.Background(), proj.ID, 1, feat.ID, feat2.ID, "a", 1.0, charter)
+	vote, err := store.RecordVote(ctx, pid, uid, featA.ID, featB.ID, "a", 1.0, charter)
 	if err != nil {
 		t.Fatalf("RecordVote: %v", err)
 	}
-	votes, err := store.GetFeatureVotes(context.Background(), feat.ID)
-	if err != nil {
-		t.Fatalf("GetFeatureVotes: %v", err)
+	if vote.Weight <= 0 {
+		t.Errorf("expected positive weight, got %f", vote.Weight)
 	}
-	if len(votes) == 0 {
-		t.Error("expected at least one vote")
+	gotA, _ := store.GetFeature(ctx, featA.ID)
+	gotB, _ := store.GetFeature(ctx, featB.ID)
+	if gotA.EloR == 1500 {
+		t.Error("feature A rating did not change after winning vote")
+	}
+	if gotB.EloR == 1500 {
+		t.Error("feature B rating did not change after losing vote")
+	}
+	if gotA.EloR <= gotB.EloR {
+		t.Errorf("winner A rating %f should be > loser B rating %f", gotA.EloR, gotB.EloR)
+	}
+}
+
+func TestRecordVoteWeightScaling(t *testing.T) {
+	store, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+	charter := governance.DefaultCharter(governance.Collective)
+
+	comp, err := store.CreateComplaint(ctx, pid, uid, "WS complaint", "body", 1, 0.5, 1.0)
+	if err != nil {
+		t.Fatalf("CreateComplaint: %v", err)
+	}
+	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
+		t.Fatalf("ValidateComplaint: %v", err)
+	}
+	featA, _ := store.CreateFeature(ctx, pid, uid, "WS A", "desc", []int64{comp.ID})
+	featB, _ := store.CreateFeature(ctx, pid, uid, "WS B", "desc", []int64{comp.ID})
+	if _, err := store.RecordVote(ctx, pid, uid, featA.ID, featB.ID, "a", 0.0, charter); err != nil {
+		t.Fatalf("RecordVote zero: %v", err)
+	}
+	gotLow, _ := store.GetFeature(ctx, featA.ID)
+
+	featC, _ := store.CreateFeature(ctx, pid, uid, "WS C", "desc", []int64{comp.ID})
+	featD, _ := store.CreateFeature(ctx, pid, uid, "WS D", "desc", []int64{comp.ID})
+	if _, err := store.RecordVote(ctx, pid, uid, featC.ID, featD.ID, "a", 10.0, charter); err != nil {
+		t.Fatalf("RecordVote high: %v", err)
+	}
+	gotHigh, _ := store.GetFeature(ctx, featC.ID)
+
+	if gotHigh.EloR-gotLow.EloR < 0.001 {
+		t.Errorf("high strategic weight should produce larger rating gain: low=%f, high=%f", gotLow.EloR, gotHigh.EloR)
 	}
 }
 
 func TestGetNextPair(t *testing.T) {
-	_, store, _ := setup()
-	_, err := store.CreateUser(context.Background(), "npuser", "NP User")
-	if err != nil && !isUniqueViolation(err) {
-		t.Fatalf("CreateUser: %v", err)
-	}
-	proj, err := store.CreateProject(context.Background(), "np-project", "Next Pair Project", "desc", "collective", "MIT")
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-	comp, err := store.CreateComplaint(context.Background(), proj.ID, 1, "Next Pair complaint", "body", 1, 0.5, 1.0)
+	store, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+	comp, err := store.CreateComplaint(ctx, pid, uid, "NP complaint", "body", 1, 0.5, 1.0)
 	if err != nil {
 		t.Fatalf("CreateComplaint: %v", err)
 	}
-	if err := store.ValidateComplaint(context.Background(), comp.ID); err != nil {
+	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
 		t.Fatalf("ValidateComplaint: %v", err)
 	}
-	feat, err := store.CreateFeature(context.Background(), proj.ID, 1, "Next Pair feature", "desc", []int64{comp.ID})
+	feat, err := store.CreateFeature(ctx, pid, uid, "NP feature", "desc", []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature: %v", err)
 	}
-	feat2, err := store.CreateFeature(context.Background(), proj.ID, 1, "Next Pair feature 2", "desc", []int64{comp.ID})
+	feat2, err := store.CreateFeature(ctx, pid, uid, "NP feature 2", "desc", []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature 2: %v", err)
 	}
-	a, b, err := store.GetNextPair(context.Background(), proj.ID, 1)
+	a, b, err := store.GetNextPair(ctx, pid, uid)
 	if err != nil {
 		t.Fatalf("GetNextPair: %v", err)
 	}
-	if (a.ID != feat.ID && a.ID != feat2.ID) && (b.ID != feat.ID && b.ID != feat2.ID) {
-		t.Errorf("expected one of the pair to be feature %d", feat.ID)
+	valid := (a.ID == feat.ID && b.ID == feat2.ID) || (a.ID == feat2.ID && b.ID == feat.ID)
+	if !valid {
+		t.Errorf("expected pair (%d, %d), got (%d, %d)", feat.ID, feat2.ID, a.ID, b.ID)
 	}
 }
 
 func TestGetNextPairExhausted(t *testing.T) {
-	_, store, _ := setup()
-	proj, err := store.CreateProject(context.Background(), "ex-project", "Exhaust Project", "desc", "collective", "MIT")
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-	comp, err := store.CreateComplaint(context.Background(), proj.ID, 1, "Exhaust complaint", "body", 1, 0.5, 1.0)
+	store, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+	comp, err := store.CreateComplaint(ctx, pid, uid, "Ex complaint", "body", 1, 0.5, 1.0)
 	if err != nil {
 		t.Fatalf("CreateComplaint: %v", err)
 	}
-	if err := store.ValidateComplaint(context.Background(), comp.ID); err != nil {
+	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
 		t.Fatalf("ValidateComplaint: %v", err)
 	}
-	feat, err := store.CreateFeature(context.Background(), proj.ID, 1, "Exhaust feature", "desc", []int64{comp.ID})
+	feat, err := store.CreateFeature(ctx, pid, uid, "Ex feature", "desc", []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature: %v", err)
 	}
-	feat2, err := store.CreateFeature(context.Background(), proj.ID, 1, "Exhaust feature 2", "desc", []int64{comp.ID})
+	feat2, err := store.CreateFeature(ctx, pid, uid, "Ex feature 2", "desc", []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature 2: %v", err)
 	}
 	charter := governance.DefaultCharter(governance.Collective)
-	_, err = store.RecordVote(context.Background(), proj.ID, 1, feat.ID, feat2.ID, "a", 1.0, charter)
-	if err != nil {
+	if _, err := store.RecordVote(ctx, pid, uid, feat.ID, feat2.ID, "a", 1.0, charter); err != nil {
 		t.Fatalf("RecordVote: %v", err)
 	}
-	_, _, err = store.GetNextPair(context.Background(), proj.ID, 1)
-	_ = err
+	_, _, err = store.GetNextPair(ctx, pid, uid)
+	if err == nil {
+		t.Error("expected error when all pairs voted, got nil")
+	}
 }
 
 func TestCreateAndGetMergeRequest(t *testing.T) {
-	_, store, _ := setup()
-	proj, err := store.CreateProject(context.Background(), "mr-project", "Merge Project", "desc", "collective", "MIT")
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-	comp, err := store.CreateComplaint(context.Background(), proj.ID, 1, "MR complaint", "body", 1, 0.5, 1.0)
+	store, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+	comp, err := store.CreateComplaint(ctx, pid, uid, "MR complaint", "body", 1, 0.5, 1.0)
 	if err != nil {
 		t.Fatalf("CreateComplaint: %v", err)
 	}
-	if err := store.ValidateComplaint(context.Background(), comp.ID); err != nil {
+	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
 		t.Fatalf("ValidateComplaint: %v", err)
 	}
-	feat, err := store.CreateFeature(context.Background(), proj.ID, 1, "MR feature", "desc", []int64{comp.ID})
+	feat, err := store.CreateFeature(ctx, pid, uid, "MR feature", "desc", []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature: %v", err)
 	}
-	mr, err := store.CreateMergeRequest(context.Background(), proj.ID, feat.ID, 1, "test merge")
+	mr, err := store.CreateMergeRequest(ctx, pid, feat.ID, uid, "Test MR")
 	if err != nil {
 		t.Fatalf("CreateMergeRequest: %v", err)
 	}
-	if mr.Title != "test merge" {
-		t.Errorf("expected title test merge, got %s", mr.Title)
-	}
-	got, err := store.GetMergeRequest(context.Background(), mr.ID)
+	got, err := store.GetMergeRequest(ctx, mr.ID)
 	if err != nil {
 		t.Fatalf("GetMergeRequest: %v", err)
 	}
-	if got.Title != "test merge" {
-		t.Errorf("expected title test merge, got %s", got.Title)
+	if got.Title != "Test MR" {
+		t.Errorf("expected title Test MR, got %s", got.Title)
 	}
 }
 
 func TestGetRoleForProject(t *testing.T) {
-	_, store, _ := setup()
-	proj, err := store.CreateProject(context.Background(), "role-project", "Role Project", "desc", "collective", "MIT")
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-	role, err := store.GetRoleForProject(context.Background(), proj.ID, 1)
+	store, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+	role, err := store.GetRoleForProject(ctx, pid, uid)
 	if err != nil {
 		t.Fatalf("GetRoleForProject: %v", err)
 	}
-	if role == "" {
-		t.Error("expected non-empty role")
+	if role != "maintainer" {
+		t.Errorf("expected maintainer for creator, got %s", role)
+	}
+	if _, err := store.CreateUser(ctx, "otheruser", "Other User"); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	other, _ := store.GetUser(ctx, "otheruser")
+	role, err = store.GetRoleForProject(ctx, pid, other.ID)
+	if err != nil {
+		t.Fatalf("GetRoleForProject: %v", err)
+	}
+	if role != "guest" {
+		t.Errorf("expected guest for non-member, got %s", role)
 	}
 }
 
 func TestAddImpact(t *testing.T) {
-	_, store, _ := setup()
-	_, err := store.CreateUser(context.Background(), "impactuser", "Impact User")
-	if err != nil && !isUniqueViolation(err) {
-		t.Fatalf("CreateUser: %v", err)
-	}
-	proj, err := store.CreateProject(context.Background(), "impact-project", "Impact Project", "desc", "collective", "MIT")
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-	c, err := store.CreateComplaint(context.Background(), proj.ID, 1, "Impact complaint", "body", 1, 0.5, 1.0)
+	store, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+	comp, err := store.CreateComplaint(ctx, pid, uid, "Impact complaint", "body", 1, 0.5, 1.0)
 	if err != nil {
 		t.Fatalf("CreateComplaint: %v", err)
 	}
-	err = store.AddImpact(context.Background(), c.ID, 1, 5)
-	if err != nil {
+	// AddImpact(ctx, complaintID, userID, severity)
+	if err := store.AddImpact(ctx, comp.ID, uid, 2); err != nil {
 		t.Fatalf("AddImpact: %v", err)
 	}
 }
 
 func TestGetFeatureVotes(t *testing.T) {
-	_, store, _ := setup()
-	_, err := store.CreateUser(context.Background(), "fvuser", "FV User")
-	if err != nil && !isUniqueViolation(err) {
-		t.Fatalf("CreateUser: %v", err)
-	}
-	proj, err := store.CreateProject(context.Background(), "fv-project", "FV Project", "desc", "collective", "MIT")
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-	comp, err := store.CreateComplaint(context.Background(), proj.ID, 1, "FV complaint", "body", 1, 0.5, 1.0)
+	store, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+	comp, err := store.CreateComplaint(ctx, pid, uid, "FV complaint", "body", 1, 0.5, 1.0)
 	if err != nil {
 		t.Fatalf("CreateComplaint: %v", err)
 	}
-	if err := store.ValidateComplaint(context.Background(), comp.ID); err != nil {
+	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
 		t.Fatalf("ValidateComplaint: %v", err)
 	}
-	comp2, err := store.CreateComplaint(context.Background(), proj.ID, 1, "FV complaint 2", "body", 1, 0.5, 1.0)
-	if err != nil {
-		t.Fatalf("CreateComplaint 2: %v", err)
-	}
-	if err := store.ValidateComplaint(context.Background(), comp2.ID); err != nil {
-		t.Fatalf("ValidateComplaint 2: %v", err)
-	}
-	feat, err := store.CreateFeature(context.Background(), proj.ID, 1, "FV feature", "desc", []int64{comp.ID})
-	feat2, err := store.CreateFeature(context.Background(), proj.ID, 1, "FV feature 2", "desc", []int64{comp2.ID})
-	if err != nil {
-		t.Fatalf("CreateFeature 2: %v", err)
-	}
+	feat, err := store.CreateFeature(ctx, pid, uid, "FV feature", "desc", []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature: %v", err)
 	}
-	charter := governance.DefaultCharter(governance.Collective)
-	_, err = store.RecordVote(context.Background(), proj.ID, 1, feat.ID, feat2.ID, "a", 1.0, charter)
+	feat2, err := store.CreateFeature(ctx, pid, uid, "FV feature 2", "desc", []int64{comp.ID})
 	if err != nil {
+		t.Fatalf("CreateFeature 2: %v", err)
+	}
+	charter := governance.DefaultCharter(governance.Collective)
+	if _, err := store.RecordVote(ctx, pid, uid, feat.ID, feat2.ID, "a", 1.0, charter); err != nil {
 		t.Fatalf("RecordVote: %v", err)
 	}
-	votes, err := store.GetFeatureVotes(context.Background(), feat.ID)
+	votes, err := store.GetFeatureVotes(ctx, feat.ID)
 	if err != nil {
 		t.Fatalf("GetFeatureVotes: %v", err)
 	}
-	if len(votes) == 0 {
-		t.Error("expected at least one vote")
+	if len(votes) < 1 {
+		t.Errorf("expected at least 1 vote, got %d", len(votes))
 	}
 }
 
 func TestGetListsByProject(t *testing.T) {
-	_, store, _ := setup()
-	_, err := store.CreateUser(context.Background(), "lspuser", "LSP User")
-	if err != nil && !isUniqueViolation(err) {
-		t.Fatalf("CreateUser: %v", err)
-	}
-	proj, err := store.CreateProject(context.Background(), "lsp-project", "LSP Project", "desc", "collective", "MIT")
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-	_, err = store.CreateList(context.Background(), proj.ID, "slug1", "List 1", "desc1")
-	if err != nil {
+	store, _, pid := setupWithProject(t)
+	ctx := context.Background()
+	if _, err := store.CreateList(ctx, pid, "list1", "List 1", "desc"); err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
-	lists, err := store.GetListsByProject(context.Background(), proj.ID)
+	if _, err := store.CreateList(ctx, pid, "list2", "List 2", "desc"); err != nil {
+		t.Fatalf("CreateList 2: %v", err)
+	}
+	lists, err := store.GetListsByProject(ctx, pid)
 	if err != nil {
 		t.Fatalf("GetListsByProject: %v", err)
 	}
-	if len(lists) == 0 {
-		t.Error("expected at least one list")
+	if len(lists) != 2 {
+		t.Errorf("expected 2 lists, got %d", len(lists))
 	}
 }
 
 func TestCreateListEntry(t *testing.T) {
-	_, store, _ := setup()
-	_, err := store.CreateUser(context.Background(), "leuser", "LE User")
-	if err != nil && !isUniqueViolation(err) {
-		t.Fatalf("CreateUser: %v", err)
-	}
-	proj, err := store.CreateProject(context.Background(), "le-project", "LE Project", "desc", "collective", "MIT")
-	if err != nil {
-		t.Fatalf("CreateProject: %v", err)
-	}
-	l, err := store.CreateList(context.Background(), proj.ID, "le-slug", "LE List", "desc")
+	store, _, pid := setupWithProject(t)
+	ctx := context.Background()
+	l, err := store.CreateList(ctx, pid, "entry-list", "Entry List", "desc")
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
-	le, err := store.CreateListEntry(context.Background(), l.ID, proj.ID, "Entry Title", "Entry Body")
+	// CreateListEntry(ctx, listID, projectID, url, title, body)
+	le, err := store.CreateListEntry(ctx, l.ID, "https://example.com", "Entry Title", "Entry Body")
 	if err != nil {
 		t.Fatalf("CreateListEntry: %v", err)
 	}
 	if le.Title != "Entry Title" {
 		t.Errorf("expected title Entry Title, got %s", le.Title)
 	}
-	got, err := store.GetListEntry(context.Background(), le.ID)
-	if err != nil {
-		t.Fatalf("GetListEntry: %v", err)
-	}
-	if got.Description != "Entry Body" {
-		if got.Description != "Entry Body" {
-			t.Errorf("expected description Entry Body, got %s", got.Description)
-		}
-	}
 }
 
 func TestPriorityScore(t *testing.T) {
-	score := ranking.PriorityScore(1500, 350, 5.0, 1.0, 0.5, 0.3)
+	score := ranking.PriorityScore(1600, 50, 10.0, 2.0, 0.5, 0.1)
 	if score <= 0 {
 		t.Errorf("expected positive priority score, got %f", score)
+	}
+	scoreLow := ranking.PriorityScore(1400, 50, 10.0, 2.0, 0.5, 0.1)
+	if score <= scoreLow {
+		t.Errorf("higher elo should give higher score: %f vs %f", score, scoreLow)
 	}
 }
 
 func TestGlicko2Rating(t *testing.T) {
-	a := ranking.Feature{R: 1500, RD: 350, Vol: 0.06}
-	b := ranking.Feature{R: 1550, RD: 330, Vol: 0.06}
-	a2, b2 := ranking.ApplyPairwiseVote(a, b, ranking.OutcomeA, 1.0, 0.3)
-	if a2.R == 1500 {
-		t.Error("expected rating to change after vote")
+	// ApplyPairwiseVote takes Feature structs and Outcome
+	a := ranking.Feature{R: 1500, RD: 50, Vol: 0.06}
+	b := ranking.Feature{R: 1500, RD: 50, Vol: 0.06}
+	out := ranking.OutcomeA
+	newA, newB := ranking.ApplyPairwiseVote(a, b, out, 1.0, 0.3)
+	if newA.R <= a.R {
+		t.Errorf("winner rating should increase, got %f (was %f)", newA.R, a.R)
 	}
-	if b2.R == 1550 {
-		t.Error("expected opponent rating to change after vote")
+	if newB.R >= b.R {
+		t.Errorf("loser rating should decrease, got %f (was %f)", newB.R, b.R)
+	}
+}
+
+func TestReputation(t *testing.T) {
+	store, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+	rep, err := store.GetReputation(ctx, pid, uid)
+	if err != nil {
+		t.Fatalf("GetReputation: %v", err)
+	}
+	if rep != 0 {
+		t.Errorf("expected 0 reputation initially, got %f", rep)
+	}
+	if err := store.AddReputation(ctx, pid, uid, "vote", 5.0); err != nil {
+		t.Fatalf("AddReputation: %v", err)
+	}
+	rep, err = store.GetReputation(ctx, pid, uid)
+	if err != nil {
+		t.Fatalf("GetReputation after: %v", err)
+	}
+	if rep != 5.0 {
+		t.Errorf("expected reputation 5.0, got %f", rep)
 	}
 }

@@ -145,17 +145,30 @@ func (d *DB) GetFeaturePriorities(ctx context.Context, projectID int64, charter 
 	}
 	var result []FeaturePriority
 	for _, f := range features {
-		pain, err := d.GetComplaintPain(ctx, f.ID)
+		// Sum pain across all complaints linked to this feature
+		var painSum float64
+		rows, err := d.QueryContext(ctx, `SELECT complaint_id FROM feature_complaints WHERE feature_id=?`, f.ID)
 		if err != nil {
 			return nil, err
 		}
-		prio := ranking.PriorityScore(f.EloR, f.EloRD, pain, f.StrategicWeight, charter.Lam, charter.Mu)
+		for rows.Next() {
+			var cid int64
+			if err := rows.Scan(&cid); err == nil {
+				p, err := d.GetComplaintPain(ctx, cid)
+				if err != nil {
+					return nil, err
+				}
+				painSum += p
+			}
+		}
+		rows.Close()
+		prio := ranking.PriorityScore(f.EloR, f.EloRD, painSum, f.StrategicWeight, charter.Lam, charter.Mu)
 		result = append(result, FeaturePriority{
 			ID:             f.ID,
 			Title:          f.Title,
 			EloR:           f.EloR,
 			EloRD:          f.EloRD,
-			PainScore:      pain,
+			PainScore:      painSum,
 			StrategicWeight: f.StrategicWeight,
 			PriorityScore:  prio,
 		})
