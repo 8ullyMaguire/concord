@@ -218,11 +218,14 @@ SSH git transport, mobile apps. Revisit after M11.
 
 - **Live on thinkcentre** at 127.0.0.1:8007
 - Healthz verified: `{"status":"ok"}`
-- Binary: `/home/alvaro/concord-deploy/concord` (14.2MB)
+- Binary: `/home/alvaro/concord-deploy/concord` (~21MB embedded templates)
 - Service: `systemctl --user concord` (active, auto-restart)
 - Database: `/home/alvaro/.local/share/concord/concord.db` (SQLite)
+- Templates/assets embedded via `//go:embed` — site renders correctly
+- Static assets at `/assets/css/*.css`, `/assets/js/*.js`
 - Cloudflare: still on 8006 (icecast) — needs re-pointing
 - All code passes `make verify` (gofmt, vet, CGO-free build)
 - Zero test files for ~1,500 lines of store code (critical gap)
 - Key features working: vote contract, voter reputation, priority endpoint,
-  complaints charter pain, 401 auth checks, role enforcement on vote
+  complaints charter pain, 401 auth checks, role enforcement on vote,
+  embedded templates, static assets
