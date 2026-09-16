@@ -135,6 +135,16 @@ func (s *Server) Router() http.Handler {
 	r.Get("/api/v1/projects/{project_id}/charter", s.handleGetCharter)
 	r.Put("/api/v1/projects/{project_id}/charter", s.handleUpdateCharter)
 
+	// Comments/threads
+	r.Route("/api/v1/projects/{project_id}/threads/{thread_kind}/{thread_id}", func(r chi.Router) {
+		r.Get("/", s.handleGetThreadComments)
+		r.Post("/", s.handleCreateComment)
+		r.Route("/{id}", func(r chi.Router) {
+			r.Delete("/", s.handleDeleteComment)
+			r.Post("/vote", s.handleVoteComment)
+		})
+	})
+
 	// Board
 	r.Route("/api/v1/projects/{project_id}/board", func(r chi.Router) {
 		r.Get("/", s.handleGetBoard)
