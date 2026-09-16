@@ -1,13 +1,24 @@
 {{define "content"}}
-<h1>Search</h1>
-<form method="GET" class="search-form">
-  <input type="text" name="q" value="{{.Query}}" placeholder="Search projects, features, complaints...">
-  <button type="submit" class="btn btn-primary">Search</button>
+<div class="page-header">
+  <h1 class="page-title">Search</h1>
+  <p class="page-subtitle">Query across projects by name, description, tags, and languages.</p>
+</div>
+
+<form method="GET" action="/search" class="search-box">
+  <span class="search-box-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></span>
+  <input type="text" name="q" class="search-box-input" value="{{.Query}}" placeholder="Search projects, e.g. &ldquo;cli&rdquo;, &ldquo;rust backup tool&rdquo;&hellip;" aria-label="Search projects">
 </form>
-{{if .Query}}
-<section>
-  <h2>Results for "{{.Query}}"</h2>
-  <p>Search results appear here. Use the API or refine your query.</p>
-</section>
-{{end}}
+
+<div class="search-filters" id="tag-chips"></div>
+
+<div id="search-results">
+  {{if not .Query}}
+  <div class="empty-state">
+    <div class="empty-state-icon">&#128269;</div>
+    <p class="empty-state-title">Type a query to start</p>
+    <p class="empty-state-description">Try a project name, a tag, or words from the description.</p>
+  </div>
+  {{end}}
+</div>
+<script src="/assets/js/search.js"></script>
 {{end}}

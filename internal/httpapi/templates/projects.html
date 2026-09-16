@@ -1,7 +1,8 @@
 {{define "content"}}
-<h1>Projects</h1>
-<p>Browse all projects and their governance status.</p>
-<section>
-  <p>Project listings appear here.</p>
-</section>
+<div class="page-header">
+  <h1 class="page-title">Projects</h1>
+  <p class="page-subtitle">Every project on the forge, with maintenance-health scores.</p>
+</div>
+<div id="projects-grid"><div class="loading-spinner" role="status" aria-label="Loading projects"></div></div>
+<script src="/assets/js/projects.js"></script>
 {{end}}

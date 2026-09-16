@@ -1,5 +1,8 @@
 {{define "content"}}
-<h1>Board: {{.Slug}}</h1>
-<div id="kanban-board"></div>
+<div class="page-header">
+  <h1 class="page-title">Board <span class="muted" style="color:var(--slate-500);font-weight:400;">&middot; {{.Slug}}</span></h1>
+  <p class="page-subtitle">Phase-gated kanban — each advance is consented.</p>
+</div>
+<div id="kanban-board"><div class="loading-spinner" role="status" aria-label="Loading board"></div></div>
 <script src="/assets/js/board.js"></script>
 {{end}}

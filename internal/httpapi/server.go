@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -123,7 +124,7 @@ type Server struct {
 	Store         *store.DB
 	Version       string
 	WebhookSecret string
-	templates     *template.Template
+	pages         map[string]*template.Template
 }
 
 func NewServer(store *store.DB, version string, webhookSecret ...string) (*Server, error) {
@@ -138,22 +139,32 @@ func NewServer(store *store.DB, version string, webhookSecret ...string) (*Serve
 }
 
 func (s *Server) loadTemplates() error {
-	templates, err := template.ParseFS(templateFS, "templates/*.html")
-	if err != nil {
-		return err
+	// Each page is parsed TOGETHER with base.html so its "content" define
+	// cannot collide with another page's (a shared namespace would make the
+	// last-parsed page's body win on every route).
+	pages := []string{"index", "search", "projects", "project", "board"}
+	s.pages = make(map[string]*template.Template, len(pages))
+	for _, name := range pages {
+		tmpl, err := template.ParseFS(templateFS, "templates/base.html", "templates/"+name+".html")
+		if err != nil {
+			return err
+		}
+		s.pages[name] = tmpl
 	}
-	s.templates = templates
 	return nil
 }
 
 func (s *Server) render(w http.ResponseWriter, status int, name string, data any) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.WriteHeader(status)
-	if s.templates == nil {
+	tmpl, ok := s.pages[name]
+	if !ok {
 		_, _ = fmt.Fprintf(w, "<html><body><h1>%s</h1></body></html>", name)
 		return
 	}
-	_ = s.templates.ExecuteTemplate(w, "base.html", data)
+	if err := tmpl.ExecuteTemplate(w, "base.html", data); err != nil {
+		log.Printf("render %s: %v", name, err)
+	}
 }
 
 func (s *Server) Router() http.Handler {
@@ -337,8 +348,14 @@ func mapError(w http.ResponseWriter, err error) {
 type pageData struct {
 	Title   string
 	Version string
+	Flash   string
+	Scripts string
 }
 
 func (s *Server) page(title string) pageData {
 	return pageData{Title: title, Version: s.Version}
+}
+
+func (s *Server) pageWithScript(title, script string) pageData {
+	return pageData{Title: title, Version: s.Version, Scripts: script}
 }

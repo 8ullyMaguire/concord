@@ -1,94 +1,116 @@
 package httpapi
 
 import (
+	"io"
 	"net/http"
 	"strings"
 	"testing"
 )
 
-// TestIndexPage verifies the homepage renders with embedded templates.
+func getBody(t *testing.T, url string) (int, string) {
+	t.Helper()
+	resp, err := http.Get(url)
+	if err != nil {
+		t.Fatalf("GET %s: %v", url, err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	return resp.StatusCode, string(body)
+}
+
+// TestIndexPage verifies the homepage renders the premise-2 theme.
 func TestIndexPage(t *testing.T) {
+	ts := newTestServer(t)
+	code, body := getBody(t, ts.URL+"/")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	for _, want := range []string{
+		"<!DOCTYPE html>",
+		"The forge for",
+		"decisions",
+		"hero-title",
+		"What Concord does",
+		"stats-strip",
+		"The flip",
+		"site-header",
+		"/assets/css/style.css",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("homepage missing %q", want)
+		}
+	}
+}
+
+// TestProjectsPage verifies the projects listing page renders the theme.
+func TestProjectsPage(t *testing.T) {
+	ts := newTestServer(t)
+	code, body := getBody(t, ts.URL+"/projects")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	for _, want := range []string{"<!DOCTYPE html>", "page-title", "projects-grid", "site-header"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("projects page missing %q", want)
+		}
+	}
+}
+
+// TestSearchPage verifies the search page renders the theme + search box.
+func TestSearchPage(t *testing.T) {
+	ts := newTestServer(t)
+	code, body := getBody(t, ts.URL+"/search")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", code)
+	}
+	for _, want := range []string{"<!DOCTYPE html>", "search-box-input", "search-results", "Type a query"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("search page missing %q", want)
+		}
+	}
+}
+
+// TestProjectPage renders the detail shell for any slug (data hydrates client-side).
+func TestProjectPage(t *testing.T) {
+	ts := newTestServer(t)
+	code, body := getBody(t, ts.URL+"/projects/nonexistent")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200 (shell renders client-side), got %d", code)
+	}
+	for _, want := range []string{"<!DOCTYPE html>", "project-detail", "/assets/js/project.js"} {
+		if !strings.Contains(body, want) {
+			t.Errorf("project page missing %q", want)
+		}
+	}
+}
+
+// TestBoardPage renders the board shell for any slug.
+func TestBoardPage(t *testing.T) {
+	ts := newTestServer(t)
+	code, body := getBody(t, ts.URL+"/projects/nonexistent/board")
+	if code != http.StatusOK {
+		t.Fatalf("expected 200 (shell renders client-side), got %d", code)
+	}
+	if !strings.Contains(body, "kanban-board") {
+		t.Error("board page missing kanban-board container")
+	}
+}
+
+// TestSecurityHeadersOnPages verifies the hardening middleware covers web pages.
+func TestSecurityHeadersOnPages(t *testing.T) {
 	ts := newTestServer(t)
 	resp, err := http.Get(ts.URL + "/")
 	if err != nil {
 		t.Fatalf("GET /: %v", err)
 	}
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	defer resp.Body.Close()
+	if resp.Header.Get("Content-Security-Policy") == "" {
+		t.Error("missing Content-Security-Policy on web page")
 	}
-	body := make([]byte, 10000)
-	n, _ := resp.Body.Read(body)
-	content := string(body[:n])
-	if !strings.Contains(content, "<!DOCTYPE html>") {
-		t.Error("homepage should contain DOCTYPE declaration")
-	}
-	if !strings.Contains(content, "<html") {
-		t.Error("homepage should contain html tag")
-	}
-}
-
-// TestProjectsPage verifies the projects listing page renders.
-func TestProjectsPage(t *testing.T) {
-	ts := newTestServer(t)
-	resp, err := http.Get(ts.URL + "/projects")
-	if err != nil {
-		t.Fatalf("GET /projects: %v", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
-	}
-	body := make([]byte, 10000)
-	n, _ := resp.Body.Read(body)
-	content := string(body[:n])
-	if !strings.Contains(content, "<!DOCTYPE html>") {
-		t.Error("projects page should contain DOCTYPE")
-	}
-}
-
-// TestSearchPage verifies the search page renders.
-func TestSearchPage(t *testing.T) {
-	ts := newTestServer(t)
-	resp, err := http.Get(ts.URL + "/search")
-	if err != nil {
-		t.Fatalf("GET /search: %v", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200, got %d", resp.StatusCode)
-	}
-	body := make([]byte, 10000)
-	n, _ := resp.Body.Read(body)
-	content := string(body[:n])
-	if !strings.Contains(content, "<!DOCTYPE html>") {
-		t.Error("search page should contain DOCTYPE")
-	}
-}
-
-// TestProjectPage renders for any slug (SPA-style, data loaded client-side).
-func TestProjectPage(t *testing.T) {
-	ts := newTestServer(t)
-	resp, err := http.Get(ts.URL + "/projects/nonexistent")
-	if err != nil {
-		t.Fatalf("GET /projects/nonexistent: %v", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200 (SPA renders client-side), got %d", resp.StatusCode)
-	}
-	body := make([]byte, 10000)
-	n, _ := resp.Body.Read(body)
-	content := string(body[:n])
-	if !strings.Contains(content, "<!DOCTYPE html>") {
-		t.Error("project page should contain DOCTYPE")
-	}
-}
-
-// TestBoardPage renders for any slug.
-func TestBoardPage(t *testing.T) {
-	ts := newTestServer(t)
-	resp, err := http.Get(ts.URL + "/projects/nonexistent/board")
-	if err != nil {
-		t.Fatalf("GET /projects/nonexistent/board: %v", err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("expected 200 (SPA renders client-side), got %d", resp.StatusCode)
+	if resp.Header.Get("X-Frame-Options") != "DENY" {
+		t.Error("expected X-Frame-Options DENY on web page")
 	}
 }

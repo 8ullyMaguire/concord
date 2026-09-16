@@ -1,16 +1,128 @@
 {{define "content"}}
-<h1>Concord</h1>
-<p>A complaint-driven, consensus-based forge for building things together.</p>
-<section class="cta">
-  <a href="/search" class="btn btn-primary">Search Projects</a>
-  <a href="/projects" class="btn btn-secondary">Browse All Projects</a>
+
+<section class="hero">
+  <div class="hero-inner">
+    <div class="hero-brand">
+      <span class="brand-tile">C</span>
+      <span class="name">Concord</span>
+    </div>
+    <h1 class="hero-title">The forge for <span class="gradient">decisions</span>, not just code.</h1>
+    <p class="hero-sub">Every software project answers the same questions — what hurts, what to build, what to merge. Concord turns the messy, political, exhausting job of deciding into something structured, transparent, and shared.</p>
+    <div class="hero-actions">
+      <a href="/search" class="btn btn-primary btn-hero">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        Start searching
+      </a>
+      <a href="/projects" class="btn btn-outline">
+        Explore projects
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </a>
+    </div>
+  </div>
 </section>
-<section class="features">
-  <h2>How it works</h2>
-  <ol>
-    <li><strong>Complain</strong> — File a complaint about a problem, idea, or concern.</li>
-    <li><strong>Build consensus</strong> — Discuss, object, and reach consensus through structured deliberation.</li>
-    <li><strong>Ship it</strong> — Merge via proposals and approvals with full governance.</li>
-  </ol>
+
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title">What Concord does</h2>
+    <p class="section-sub">Code hosting is the substrate. Decisions are the product.</p>
+  </div>
+  <div class="grid-responsive-3 grid-2">
+    <div class="card fade-in">
+      <div class="icon-tile icon-indigo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg></div>
+      <h3 class="card-title">Complaints, not feature requests</h3>
+      <p class="card-text">Work starts as a structured problem report: who is hurt, how often, what the workaround costs. A feature must trace back to validated complaints.</p>
+    </div>
+    <div class="card fade-in stagger-1">
+      <div class="icon-tile icon-amber"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/></svg></div>
+      <h3 class="card-title">Solutions compete</h3>
+      <p class="card-text">Proposed features are ranked by pairwise comparison (Glicko-2): &ldquo;which should we build first, A or B?&rdquo; Priority is computed, never hand-assigned.</p>
+    </div>
+    <div class="card fade-in stagger-2">
+      <div class="icon-tile icon-green"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg></div>
+      <h3 class="card-title">Consensus, not command</h3>
+      <p class="card-text">Features pass a formal consent round — consent, stand aside, abstain, or block with a stated principle and remedy — with quorum. Nobody steers alone.</p>
+    </div>
+    <div class="card fade-in stagger-3">
+      <div class="icon-tile icon-purple"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+      <h3 class="card-title">Kanban with teeth</h3>
+      <p class="card-text">Work moves through phases, and each advance is gated: nothing reaches Ready without consensus; nothing lands without a reviewer&rsquo;s technical approval and quorum.</p>
+    </div>
+    <div class="card fade-in stagger-4">
+      <div class="icon-tile icon-sky"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg></div>
+      <h3 class="card-title">Discovery is the point</h3>
+      <p class="card-text">Search is a query language, not a box. Filter by tag, language, license, governance, and a transparent maintenance-health score. API-first, facets on every result.</p>
+    </div>
+    <div class="card fade-in stagger-5">
+      <div class="icon-tile icon-rose"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg></div>
+      <h3 class="card-title">Lists are objects, not files</h3>
+      <p class="card-text">Awesome lists become collaborative databases: anyone proposes entries, quorum admits them, pairwise ranking orders them, search finds entries across every list.</p>
+    </div>
+  </div>
 </section>
+
+<section class="section">
+  <div class="stats-strip">
+    <div class="stats-grid" id="stats-grid">
+      <div><p class="stat-value" id="stat-projects">–</p><p class="stat-label">Projects</p></div>
+      <div><p class="stat-value" id="stat-tags">–</p><p class="stat-label">Tags in use</p></div>
+      <div><p class="stat-value" id="stat-languages">–</p><p class="stat-label">Languages in use</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="section-head">
+    <h2 class="section-title" style="font-size:1.25rem;">Explore</h2>
+  </div>
+  <div class="grid-4">
+    <a href="/search" class="card fade-in">
+      <div class="explore-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        Search
+      </div>
+      <p class="card-text">Query across projects, features, complaints, and awesome lists.</p>
+      <div class="card-link-hint">Go to search
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="height:0.875rem;width:0.875rem;"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </div>
+    </a>
+    <a href="/projects" class="card fade-in stagger-1">
+      <div class="explore-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+        Projects
+      </div>
+      <p class="card-text">Browse every project on the forge with health scores and tags.</p>
+      <div class="card-link-hint">Browse projects
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="height:0.875rem;width:0.875rem;"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </div>
+    </a>
+    <a href="/projects" class="card fade-in stagger-2">
+      <div class="explore-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.586 2.586A2 2 0 0 0 11.172 2H4a2 2 0 0 0-2 2v7.172a2 2 0 0 0 .586 1.414l8.704 8.704a2.426 2.426 0 0 0 3.42 0l6.58-6.58a2.426 2.426 0 0 0 0-3.42z"/><circle cx="7.5" cy="7.5" r=".5" fill="currentColor"/></svg>
+        Awesome Lists
+      </div>
+      <p class="card-text">Collaborative databases of tools, libraries, and resources — inside each project.</p>
+      <div class="card-link-hint">Browse projects
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="height:0.875rem;width:0.875rem;"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </div>
+    </a>
+    <a href="/projects" class="card fade-in stagger-3">
+      <div class="explore-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="18" r="3"/><circle cx="6" cy="6" r="3"/><path d="M13 6h3a2 2 0 0 1 2 2v7"/><line x1="6" x2="6" y1="9" y2="21"/></svg>
+        Features
+      </div>
+      <p class="card-text">Proposed features ranked by the community, consented forward.</p>
+      <div class="card-link-hint">Browse projects
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="height:0.875rem;width:0.875rem;"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+      </div>
+    </a>
+  </div>
+</section>
+
+<section class="flip-section">
+  <h2>The flip</h2>
+  <p>It is not a GitHub clone with extra buttons, and it does not replace git. It starts as <em>a decision layer</em> over an existing Forgejo or Gitea instance — OAuth login, webhooks, bot-mediated merges — and grows into a full forge from there.</p>
+  <p class="small">It is not raw vote-based democracy either: it is consent-based, blocks require remedies, and silence never decides anything.</p>
+</section>
+
+<script src="/assets/js/index.js"></script>
 {{end}}
