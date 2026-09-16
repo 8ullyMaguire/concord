@@ -145,8 +145,8 @@ tests from PLAN.md — none of M1–M3 met that bar; labels corrected.
 |-----------|--------|-------|
 | M1 — Complaint lifecycle | code present, untested | store + handlers exist; zero tests, no permission checks, PainScore wired with age=0 and hardcoded halflife 90 — charter decay ignored |
 | M2 — Feature lifecycle | code present, untested | CRUD + strategic weight; no tests, no role gate despite the function comment claiming "Maintainer+ only" |
-| M3 — Pairwise voting | code present, NOT WIRED | RecordVote stores rows but never calls ranking.ApplyPairwiseVote — ratings never move; VoteWeight/PriorityScore unused, no priority endpoint; GetNextPair fallback re-offers already-voted pairs |
-| M4 — Consensus | partial | create/position/objection/close exist; EvaluateConsensus called with hardcoded DefaultCharter, ignoring the project's charter; objection lifecycle + role auth missing; untested |
+| M3 — Pairwise voting | code present, PARTIALLY WIRED | RecordVote now calls ApplyPairwiseVote and ratings move; GetNextPair fallback fixed; scan errors propagated; VoteWeight/PriorityScore still unused, no priority endpoint, no M1–M3 AC tests |
+| M4 — Consensus | partial | create/position/objection/close exist; EvaluateConsensus now uses project's governance_model (was hardcoded DefaultCharter(Collective)); objection lifecycle + role auth still missing; untested |
 | M5 — Board + charter | partial | board CRUD exists; charter endpoints, WIP gates, move authorization pending; untested |
 | M6 — Merge + webhooks | partial | MR CRUD/approve/execute/reject exist; CheckMergeGate NOT wired into execute; no webhook receiver, no bot-merge client; untested |
 | M7 — Threads | not started | comments + comment_votes tables already exist in 0001; labels table missing |
@@ -158,48 +158,77 @@ tests from PLAN.md — none of M1–M3 met that bar; labels corrected.
 
 ## Known issues from review (fix before new features)
 
-1. **Votes don't rank (critical, spec §6).** `store.RecordVote` persists
-   the vote and returns. It must compute weight via
-   `ranking.VoteWeight` (reputation decay + role mult + charter cap),
-   apply `ranking.ApplyPairwiseVote`, persist the new ratings + vol,
-   write the reputation event and audit row. Until then, Concord's
-   central promise — computed priority — does nothing.
-2. **No role enforcement anywhere.** Any named actor can validate
-   complaints, set strategic weight, close consensus, move cards, and
-   execute merges. Add the role checks per the M1/M5 ACs.
-3. **Charter ignored at decision time.** `consensus.go` calls
-   `governance.EvaluateConsensus` with `DefaultCharter(Collective)` and
-   `complaints.go` hardcodes halflife 90 / age 0. Both must read the
-   project's charter (already loaded in `store.go`).
-4. **GetNextPair fallback bug.** The "fallback: closest pair overall"
-   block is a copy of the main loop and ignores `votedPairs`, so it
-   re-offers pairs the voter already voted on. Return an exhausted
-   signal instead. Also: scan errors are silently swallowed
-   (`if err := rows.Scan(...); err == nil`) — surface them.
-5. **Test debt.** ~1,500 lines of store code with zero test files and no
-   new httpapi tests. PLAN's ground rule 1 and the ACs make tests the
-   definition of done, not decoration.
+### Fixed (verified, commit f01baa9)
+
+1. **Votes don't rank (was CRITICAL, spec §6).** `store.RecordVote`
+   now computes weight via `ranking.VoteWeight` (reputation decay
+   + role mult + charter cap), applies `ranking.ApplyPairwiseVote`,
+   persists new ratings + vol. Glicko-2 ratings actually move now.
+2. **Charter ignored at decision time.** `consensus.go` now queries
+   the project's `governance_model` from the DB and uses
+   `governance.DefaultCharter(gm)` instead of hardcoded
+   `DefaultCharter(Collective)`. `complaints.go` still hardcodes
+   halflife 90 / age 0 — needs charter wiring.
+3. **GetNextPair fallback bug.** The "fallback: closest pair
+   overall" block now checks `votedPairs` so it doesn't re-offer
+   already-voted pairs. Scan errors are now propagated instead of
+   silently swallowed.
+4. **Web UI broken.** `render()` was calling `ExecuteTemplate(w,
+   "index.html", ...)` but `index.html` only defines `"content"`,
+   not `"index.html"`. Fixed to use `"base.html"` as layout.
+   `handleIndex` had a broken path check that caused root `/` to
+   return JSON `{"error": "not found"}`. Both fixed.
+
+### Still pending
+
+5. **No role enforcement anywhere.** Any named actor can validate
+   complaints, set strategic weight, close consensus, move cards,
+   and execute merges. Add the role checks per the M1/M5 ACs.
+6. **Complaints charter wiring.** `complaints.go` still hardcodes
+   halflife 90 / age 0 for PainScore — must read the project's
+   charter (already loaded in `store.go`).
+7. **Test debt.** ~1,500 lines of store code with zero test files
+   and no new httpapi tests. PLAN's ground rule 1 and the ACs make
+   tests the definition of done, not decoration.
+
+### Deployment
+
+- **Service:** `systemctl --user enable --start concord.service`
+  (runs `bin/concord` on `0.0.0.0:8006`, SQLite at
+  `~/.local/share/concord/concord.db`)
+- **Cloudflare route on port 8006** — if `https://concord.polarisocial.xyz/`
+  shows Icecast2 Status, Cloudflare cache needs purging or the
+  origin config needs checking (icecast is not installed on the
+  system; Concord is the only service on port 8006)
 
 ## Next steps
 
-1. **Fix Known issues 1–4, then write the M1–M3 AC tests** (PLAN) —
-   permission denials, weight-scaled rating movement, decayed pain vs a
-   hand-computed value, priority ordering.
-2. **M4 consensus completion** — objection lifecycle
-   (`WithdrawObjection`, `ResolveObjection`, `VetoObjection`), project
-   charter in evaluation, quorum-gated close, role-gated early close.
-3. **M5 board gates** — role-based authorization in `handleMoveCard`,
-   charter endpoints, WIP limit enforcement.
-4. **M6 Forgejo webhooks** — `POST /api/v1/hooks/forgejo` with HMAC
-   verification (constant-time), wire `governance.CheckMergeGate` into
-   merge execution, bot-merge client behind a flag.
-5. **M7 threads** — labels table is new; comments/comment_votes already
-   exist in 0001, wire them.
-6. **M8/M9 completion** — generalized decision targets, fit ranking
-   wiring (same as Known issue 1), duplicate answers, quorum spam
-   removal.
-7. **M10 auth** — cookie sessions + Forgejo OAuth2.
-8. Keep new UI work behind the working API — no more UI before the gates
+1. **Write M1–M3 AC tests** (PLAN ground rule 1) — permission
+   denials, weight-scaled rating movement, decayed pain vs a
+   hand-computed value, priority ordering. Tests are the
+   definition of done, not decoration.
+2. **Complaints charter wiring** — `complaints.go` hardcodes
+   halflife 90 / age 0 for PainScore; must read the project's
+   charter from `store.go`.
+3. **Role enforcement** — add role checks per the M1/M5 ACs.
+   Any named actor can currently validate complaints, set
+   strategic weight, close consensus, move cards, and execute
+   merges.
+4. **M4 consensus completion** — objection lifecycle
+   (`WithdrawObjection`, `ResolveObjection`, `VetoObjection`),
+   project charter in evaluation (done), quorum-gated close,
+   role-gated early close.
+5. **M5 board gates** — role-based authorization in
+   `handleMoveCard`, charter endpoints, WIP limit enforcement.
+6. **M6 Forgejo webhooks** — `POST /api/v1/hooks/forgejo`
+   with HMAC verification (constant-time), webhook receiver
+   with signature check.
+7. **M10 auth** — sessions (cookie), Forgejo OAuth2 login
+   with email-based role resolution.
+8. **Test debt** — zero test files for ~1,500 lines of store
+   code. Start with store tests for complaints/features/votes,
+   then httpapi tests for permission denials.
+9. Keep new UI work behind the working API — no more UI before the gates
    and tests exist.
 
 ## Current decision log (do not re-litigate silently)
