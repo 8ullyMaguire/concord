@@ -200,8 +200,21 @@ tests from PLAN.md — none of M1–M3 met that bar; labels corrected.
    checks only on vote. Need requireRole for maintainer-only
    actions (validate complaints, set strategic weight, move
    cards, merge execution).
-3. **Concord not deployed.** Systemd unit ready but not running
-   on thinkcentre. Need verified healthz curl.
+
+### Deployment
+
+**Deployed on thinkcentre at 127.0.0.1:8007** (verified 2026-09-16):
+- Binary at `/home/alvaro/concord-deploy/concord` (14.2MB)
+- Service at `~/.config/systemd/user/concord.service`
+- `systemctl --user enable --now concord` — active, running
+- Healthz verified: `curl http://127.0.0.1:8007/api/v1/healthz` → `{"status":"ok"}`
+- Database: `/home/alvaro/.local/share/concord/concord.db` (SQLite)
+- Cloudflare still points to port 8006 (icecast) — needs re-pointing to 8007
+
+**To re-point Cloudflare:**
+1. Stop icecast2: `sudo systemctl stop icecast2`
+2. Update DNS A record for `concord.polarisocial.xyz` to point to 127.0.0.1 (or the server's external IP on 8007)
+3. Alternatively: reverse proxy from icecast to concord on 8007
 
 ### Pattern rule for agent steering
 
