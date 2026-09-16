@@ -119,6 +119,9 @@ func (s *Server) Router() http.Handler {
 			r.Post("/objection", s.handleCreateObjection)
 			r.Post("/close", s.handleCloseConsensus)
 		})
+		r.Route("/objections/{id}", func(r chi.Router) {
+			r.Put("/resolve", s.handleResolveObjection)
+		})
 	})
 
 	// Board

@@ -136,6 +136,17 @@ func (d *DB) CreateObjection(ctx context.Context, callID, userID int64, principl
 	return Objection{ID: id, CallID: callID, UserID: userID, Principle: principle, Violation: violation, Remedy: remedy, Status: "open", CreatedAt: now}, nil
 }
 
+func (d *DB) GetObjection(ctx context.Context, id int64) (Objection, error) {
+	var o Objection
+	err := d.QueryRowContext(ctx, `SELECT id, call_id, user_id, principle, violation, remedy, status, created_at
+		FROM objections WHERE id=?`, id).Scan(
+		&o.ID, &o.CallID, &o.UserID, &o.Principle, &o.Violation, &o.Remedy, &o.Status, &o.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Objection{}, fmt.Errorf("%w: objection %d", ErrNotFound, id)
+	}
+	return o, err
+}
+
 func (d *DB) GetObjections(ctx context.Context, callID int64) ([]Objection, error) {
 	rows, err := d.QueryContext(ctx, `SELECT id, call_id, user_id, principle, violation, remedy, status, created_at
 		FROM objections WHERE call_id=? ORDER BY created_at`, callID)
@@ -153,6 +164,14 @@ func (d *DB) GetObjections(ctx context.Context, callID int64) ([]Objection, erro
 	}
 	return objections, rows.Err()
 }
+
+func (d *DB) ResolveObjection(ctx context.Context, id int64, status, resolution string) error {
+	_, err := d.ExecContext(ctx, `
+		UPDATE objections SET status=?, resolution=? WHERE id=?`, status, resolution, id)
+	return err
+}
+
+
 
 func (d *DB) CloseConsensusCall(ctx context.Context, callID int64) (ConsensusSummary, error) {
 	c, err := d.GetConsensusCall(ctx, callID)

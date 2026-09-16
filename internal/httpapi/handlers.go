@@ -323,7 +323,7 @@ func (s *Server) handleCastConsensusPosition(w http.ResponseWriter, r *http.Requ
 func (s *Server) handleCreateObjection(w http.ResponseWriter, r *http.Request) {
 	callID, _ := strconv.ParseInt(chi.URLParam(r, "call_id"), 10, 64)
 	if getActorID(r) == 0 {
-		mapError(w, fmt.Errorf("authentication required"))
+		mapError(w, store.ErrAuth)
 		return
 	}
 	var req struct {
@@ -340,6 +340,41 @@ func (s *Server) handleCreateObjection(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, obj)
+}
+
+func (s *Server) handleResolveObjection(w http.ResponseWriter, r *http.Request) {
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if getActorID(r) == 0 {
+		mapError(w, store.ErrAuth)
+		return
+	}
+	// Load objection to get project via call
+	obj, err := s.Store.GetObjection(r.Context(), id)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	call, err := s.Store.GetConsensusCall(r.Context(), obj.CallID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if err := s.requireRole(call.ProjectID, "maintainer", r); err != nil {
+		mapError(w, err)
+		return
+	}
+	var req struct {
+		Status     string `json:"status"`
+		Resolution string `json:"resolution"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if err := s.Store.ResolveObjection(r.Context(), id, req.Status, req.Resolution); err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "resolved"})
 }
 
 func (s *Server) handleCloseConsensus(w http.ResponseWriter, r *http.Request) {
