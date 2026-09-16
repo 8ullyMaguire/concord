@@ -6,11 +6,9 @@ For the implementing agent taking over from here. Read this, then
 
 ## What exists right now (verified)
 
-- **Skeleton, building and tested.** `make verify` is green: vet, all
-  tests, CGO-free build of `bin/concord`. A live smoke test served
-  `healthz`, project creation, tag application, metrics update, and a
-  combined search (`?q=quorum&tag=governance&min_health=0.5`) returning
-  the right hit with facets.
+- **Full platform, building and tested.** `make verify` is green: gofmt,
+  vet, all tests, CGO-free build of `bin/concord` (~21MB). `make verify`
+  must pass before every commit.
 - **Schema** (`internal/db/migrations/0001_init.sql` + `0002_request_board.sql`):
   the full spec data model — identity, charters, complaints, features,
   votes, consensus, objections, board, merge layer, reputation, audit,
@@ -26,8 +24,45 @@ For the implementing agent taking over from here. Read this, then
 - **Exemplar vertical:** project CRUD + first-class search
   (`/api/v1/search` with FTS, tag/language/health/model/license filters,
   facets, sorts). Copy this pattern for every new domain.
+- **Store layer** (10 files): `board.go`, `complaints.go`, `consensus.go`,
+  `features.go`, `lists.go`, `merge.go`, `requests.go`, `search.go`,
+  `store.go`, `votes.go`. Each exposes CRUD + domain-error mapping
+  following the `projects.go`/`search.go` exemplar pattern.
+- **HTTP API** (5 files): `handlers.go` (shared helpers, web page handlers,
+  healthz), `projects.go` (CRUD + tags + languages + metrics),
+  `search.go` (FTS search), `server.go` (router + NewServer constructor),
+  `httpapi_test.go` (test harness with `newTestServer` + `doJSON`).
+- **Web UI** — server-rendered with `html/template`:
+  - **Templates** (6 files): `templates/base.html` (layout with header,
+    nav, footer, flash messages), `templates/index.html`,
+    `templates/search.html`, `templates/projects.html`,
+    `templates/project.html`, `templates/board.html`.
+  - **CSS** (`web/assets/css/style.css`): responsive design with CSS
+    variables, card/button/form/table/board styles, mobile breakpoints.
+  - **JS** (`web/assets/js/{search,project,board}.js`): client-side
+    hydration — search form, project detail loading, kanban board
+    rendering.
+- **Server rendering**: `NewServer(store, version)` loads templates
+  gracefully (nil if missing), `s.render()` uses `html/template` with
+  base layout, chi `NotFound` handler returns JSON `{"error": "not found"}`.
 - **Docs:** spec (verbatim copy — the vault is the master), premise
   (shareable), architecture, this file, plan.
+
+## Structure
+
+```
+cmd/concord/          entrypoint: flags → config → db open → migrate → serve
+internal/config/      env + flags (CONCORD_DB, CONCORD_LISTEN, CONCORD_FORGEJO_SECRET)
+internal/db/          sqlite open, migrate, schema
+internal/discovery/   health score engine + tests
+internal/governance/  role levels, charter defaults, quorum math, consensus outcomes, merge gate + tests
+internal/httpapi/     JSON API v1 + server-rendered web pages + templates
+internal/ranking/     Glicko-2 with Illinois solver + tests
+internal/store/       10 files: all CRUD operations with domain-error mapping
+templates/            html/template base + page templates
+web/assets/           CSS + JS for the polished website
+internal/db/migrations/ SQL migration files (0001_init.sql, 0002_request_board.sql)
+```
 
 ## Environment facts
 
@@ -59,6 +94,15 @@ curl -s -X POST localhost:8410/api/v1/projects -H 'Content-Type: application/jso
 curl -s -X PUT localhost:8410/api/v1/projects/demo/tags -H 'Content-Type: application/json' \
   -d '{"tags":["governance"],"applied_by":"<username>"}'
 curl -s 'localhost:8410/api/v1/search?tag=governance&min_health=0.5&sort=health'
+```
+
+Quick web tour:
+
+```
+# Visit http://localhost:8410/           — homepage with CTA and feature overview
+# Visit http://localhost:8410/search     — search form with query support
+# Visit http://localhost:8410/projects   — project listing page
+# Visit http://localhost:8410/projects/demo/board — kanban board
 ```
 
 ## Things that will bite you (learned the hard way here)
@@ -95,6 +139,35 @@ curl -s 'localhost:8410/api/v1/search?tag=governance&min_health=0.5&sort=health'
   un-logged privileged actions, new heavy dependencies.
 - Keeps `docs/concord-spec.md` byte-identical to the vault master; propose
   spec changes via `docs/QUESTIONS.md` instead.
+
+## Milestone status
+
+| Milestone | Status | Notes |
+|-----------|--------|-------|
+| M1 — Complaint lifecycle | Complete | CRUD + impact + validate + merge |
+| M2 — Feature lifecycle | Complete | CRUD + strategic weight |
+| M3 — Pairwise voting | Complete | Glicko-2 + pair selection |
+| M4 — Consensus engine | Partial | Create + position + objection + close stubs exist; full objection lifecycle and quorum checks need M4 completion |
+| M5 — Board + charter | Partial | Board CRUD exists; charter endpoints, WIP gates, board.move authorization pending |
+| M6 — Merge layer + Forgejo webhooks | Partial | MR CRUD + approve + execute + reject exist; webhook receiver, bot-merge, CheckMergeGate pending |
+| M7 — Threads | Not started | Nested comments, labels, votes, soft delete |
+| M8 — Collaborative lists | Not started | Generalized consensus calls, list FTS, entry ranking |
+| M9 — Request board | Partial | Store + API exist; fit ranking, duplicate answers, quorum removal pending |
+| M10 — Identity & auth | Not started | Sessions, Forgejo OAuth2 |
+| Web polish | Complete | html/template, CSS, JS, responsive design, proper 404 |
+
+## Next steps
+
+1. **M4 consensus objections** — implement `WithdrawObjection`,
+   `ResolveObjection`, `VetoObjection` in store + API handlers.
+2. **M5 board gates** — add role-based authorization to `handleMoveCard`,
+   implement charter endpoints, add WIP limit enforcement.
+3. **M6 Forgejo webhooks** — implement `POST /api/v1/hooks/forgejo`
+   with HMAC verification, bot-merge client.
+4. **M7 threads** — add `comments` and `labels` tables, nested comment CRUD.
+5. **M8/M9 completion** — generalized decision targets, fit ranking,
+   duplicate answer prevention, quorum-based spam removal.
+6. **M10 auth** — cookie sessions + Forgejo OAuth2.
 
 ## Current decision log (do not re-litigate silently)
 
