@@ -38,7 +38,7 @@ deploy: build
 	@echo "Verifying healthz on 127.0.0.1:$(DEPLOY_PORT)..."
 	@sleep 5
 	@for i in 1 2 3; do \
-		if curl -sf http://127.0.0.1:$(DEPLOY_PORT)/api/v1/healthz 2>/dev/null | grep -q '"status":"ok"'; then \
+		if curl -sf http://127.0.0.1:$(DEPLOY_PORT)/api/v1/healthz 2>/dev/null | grep -q '"status": *"ok"'; then \
 			echo "✓ healthz OK"; \
 			echo "Deployed successfully."; \
 			exit 0; \
