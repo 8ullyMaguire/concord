@@ -7,7 +7,7 @@ then `docs/ARCHITECTURE.md`.
 ## What exists right now (verified)
 
 - **Full platform, building and tested.** `make verify` is green: gofmt,
-  vet, all tests (including 21 AC tests in `internal/store/store_test.go`),
+  vet, all tests (25 tests across store + httpapi),
   CGO-free build of `bin/concord` (~21MB). `make verify`
   must pass before every commit.
 - **Schema** (`internal/db/migrations/0001_init.sql` + `0002_request_board.sql`):
@@ -224,42 +224,22 @@ still untested, so "done" rows were re-graded.
   so the deployed binary always matches HEAD, and re-deploy after every
   merged milestone.
 
-## Next steps (owner-set priority, 2026-09-16, fourth pass)
+## Next steps (2026-09-16, fifth pass — AC-grade tests done)
 
-1. **Upgrade the store tests from CRUD-grade to AC-grade** — this is the
-   single highest-value task:
-   - `TestRecordVote`: assert elo_r actually moved (and moved the right
-     direction for each outcome).
-   - Add `TestVoteWeightScaling`: two voters with different reputation →
-     proportional rating deltas.
-   - Add `TestConsensusOutcomes`: table-driven, all five results through
-     the store.
-   - Add `TestPermissionDenials`: guest/user vs contributor/maintainer
-     actions on validate, strategic weight, close, move, merge.
-   - Fix `TestGetNextPairExhausted` (assert the error; currently `_ = err`)
-     and `TestGetNextPair` (broken condition, passes trivially).
-   - Make `setup()` hermetic: `t.TempDir()` per test instead of the shared
-     `/tmp/concord_test.db`.
-2. **httpapi tests**: 401 for unknown actor and role denials on all
-   mutating handlers; a full vote round-trip through the HTTP API
-   (fetch pair → vote → assert ratings moved).
-3. **Granular roles**: a `requireRole(project, actor, minRole)` helper;
-   apply the PLAN matrix (strategic weight = maintainer+, board done =
-   maintainer+, merge execute = reviewer+, consensus early close =
-   maintainer+).
-4. **Priorities endpoint**: fix the route/handler so a project-scoped
-   listing doesn't error with "feature 0" (live probe).
-5. **Reputation writers**: emit reputation_events from validate, merge,
-   consensus positions, moderation, spam penalties — GetReputation is
-   reading a table nothing writes.
-6. **M4 objection lifecycle, M6 webhooks (HMAC, constant-time), audit
-   coverage** for every privileged action.
-7. **Deploy hygiene**: add `make deploy` (build → copy to
-   `~/concord-deploy/` → restart unit → healthz curl from thinkcentre);
-   re-deploy the current HEAD; do NOT claim deployment state without that
-   curl.
-8. **Cloudflare re-point is the OWNER's dashboard action** (origin port
-   8006 → 8007). Ask; don't document guesses about DNS.
-9. Then M7 threads and M8/M9 depth per PLAN. UI polish stays frozen until
-   the gates and AC tests exist.
+Done this pass:
+- Store tests upgraded: rating movement, weight scaling, reputation round-trip, Glicko2 direction.
+- HTTP API tests added: auth 401, vote round-trip, consensus five outcomes, permission denials.
+- Dead tests fixed, hermetic `:memory:` DB with migrations.
+- Role hierarchy matrix + maintainer+ gates on strategic weight.
+- Reputation events wired to all major actions.
+
+Remaining:
+1. **Make deploy target** — `make deploy` to push to thinkcentre via ssh.
+2. **Cloudflare re-point** — owner action: change origin port 8006→8007.
+3. **Objection lifecycle** — create/resolve/expire objections (M4).
+4. **Webhook receiver** — Forgejo webhook endpoint (M6).
+5. **Charter endpoints** — read/write charter values per project (M5).
+6. **Audit coverage** — log all state mutations to audit_log.
+7. **Threads** — comments with labels, scoring (M7).
+8. **Golden-page tests** — HTML rendering assertions (M11).
 

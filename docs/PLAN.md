@@ -200,18 +200,18 @@ SSH git transport, mobile apps. Revisit after M11.
 | Milestone | Status | Notes |
 |-----------|--------|-------|
 | M0 skeleton (schema, ranking, governance, discovery, projects+search API, docs) | done | verified: make verify green, live smoke test |
-| M1 complaints | store-tested | CRUD + charter-wired pain; AC permission-denial tests missing |
-| M2 features | store-tested | CRUD; no maintainer threshold on strategic weight |
-| M3 ranking + priority | wired, live | coherent contract + reputation weight + exhaustion; AC rating-movement/weight-scaling tests missing; priorities route probe errors |
-| M4 consensus | partial | model-aware close; five-outcome test + objection lifecycle missing |
-| M5 board + charter | partial | board CRUD tested; gate matrix/WIP/charter endpoints missing |
-| M6 merge + webhooks | partial | MR CRUD tested; webhooks + CheckMergeGate wiring pending |
+| M1 complaints | AC-tested | CRUD + charter-wired pain + permission denials |
+| M2 features | AC-tested | CRUD + maintainer-gated strategic weight |
+| M3 ranking + priority | AC-tested | rating-movement + weight-scaling tests; priorities route fixed |
+| M4 consensus | AC-tested | five-outcome consensus tests; objection lifecycle remains |
+| M5 board + charter | store-tested | board CRUD; gate matrix/WIP/charter endpoints pending |
+| M6 merge + webhooks | partial | MR CRUD tested; webhooks + CheckMergeGate pending |
 | M7 threads | not started | comments tables exist in 0001; labels missing |
-| M8 lists | store-tested | CRUD tested; quorum admission + entry ranking missing |
-| M9 request board | store-tested | CRUD tested; fit ranking + quorum removal missing |
-| M10 identity | partial | 401s live; granular roles + sessions/OAuth missing |
-| M11 web UI | live | embedded assets render on 8007; golden-page tests missing |
-| M12 sync + hardening | in progress | deployed 8007 (127.0.0.1, active); CF origin re-point pending (owner) |
+| M8 lists | store-tested | CRUD; quorum admission + entry ranking missing |
+| M9 request board | store-tested | CRUD; fit ranking + quorum removal missing |
+| M10 identity | AC-tested | 401/403 live; role hierarchy matrix; granular role enforcement |
+| M11 web UI | live | embedded assets render; golden-page tests missing |
+| M12 sync + hardening | in progress | deployed 8007; CF re-point pending (owner) |
 
 
 ## Current State (2026-09-16)
