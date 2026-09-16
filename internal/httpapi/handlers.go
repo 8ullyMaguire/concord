@@ -361,10 +361,6 @@ func (s *Server) handleVoteAnswer(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	if r.URL.Path != "/" {
-		http.NotFound(w, r)
-		return
-	}
 	s.render(w, http.StatusOK, "index", s.page("Home"))
 }
 

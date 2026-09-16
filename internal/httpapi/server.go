@@ -54,7 +54,7 @@ func (s *Server) render(w http.ResponseWriter, status int, name string, data any
 		any:     data,
 		Version: s.Version,
 	}
-	_ = s.templates.ExecuteTemplate(w, name+".html", data)
+	_ = s.templates.ExecuteTemplate(w, "base.html", data)
 }
 
 func (s *Server) Router() http.Handler {
