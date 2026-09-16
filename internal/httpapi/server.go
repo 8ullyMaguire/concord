@@ -10,12 +10,68 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"strings"
+	"sync"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 
 	"git.polarisocial.xyz/concord/concord/internal/store"
 )
+
+// securityHeaders adds security headers to all responses.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("X-XSS-Protection", "1; mode=block")
+		w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+		w.Header().Set("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'")
+		next.ServeHTTP(w, r)
+	})
+}
+
+// rateLimiter is a simple in-memory rate limiter.
+type rateLimiter struct {
+	mu       sync.Mutex
+	visitors map[string]*visitorRate
+}
+
+type visitorRate struct {
+	count    int
+	lastSeen time.Time
+}
+
+var limiter = &rateLimiter{visitors: make(map[string]*visitorRate)}
+
+// rateLimit middleware limits requests per IP.
+func rateLimit(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := r.RemoteAddr
+		if idx := strings.LastIndex(ip, ":"); idx != -1 {
+			ip = ip[:idx]
+		}
+		limiter.mu.Lock()
+		defer limiter.mu.Unlock()
+		v, exists := limiter.visitors[ip]
+		if !exists {
+			limiter.visitors[ip] = &visitorRate{count: 1, lastSeen: time.Now()}
+		} else {
+			if time.Since(v.lastSeen) > time.Minute {
+				v.count = 1
+				v.lastSeen = time.Now()
+			} else {
+				v.count++
+				if v.count > 100 {
+					http.Error(w, `{"error":"rate limit exceeded"}`, http.StatusTooManyRequests)
+					return
+				}
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
+}
 
 //go:embed templates/*.html
 var templateFS embed.FS
@@ -62,6 +118,8 @@ func (s *Server) render(w http.ResponseWriter, status int, name string, data any
 
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
+	r.Use(securityHeaders)
+	r.Use(rateLimit)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
