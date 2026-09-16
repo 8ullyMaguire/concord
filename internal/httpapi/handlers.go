@@ -8,6 +8,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"git.polarisocial.xyz/concord/concord/internal/ranking"
+	"git.polarisocial.xyz/concord/concord/internal/store"
 )
 
 type createComplaintRequest struct {
@@ -125,7 +126,7 @@ func (s *Server) handleListFeatures(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleFeaturePriorities(w http.ResponseWriter, r *http.Request) {
 	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
 	if getActorID(r) == 0 {
-		mapError(w, fmt.Errorf("authentication required"))
+		mapError(w, store.ErrAuth)
 		return
 	}
 	proj, err := s.Store.GetProject(r.Context(), chi.URLParam(r, "project_id"))

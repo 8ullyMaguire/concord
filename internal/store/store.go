@@ -22,6 +22,7 @@ var (
 	ErrNotFound  = errors.New("not found")
 	ErrDuplicate = errors.New("duplicate")
 	ErrInvalid   = errors.New("invalid")
+	ErrAuth      = errors.New("authentication required")
 )
 
 // DB wraps the pool. All queries take ctx for cancellation.
