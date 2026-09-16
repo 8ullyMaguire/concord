@@ -158,66 +158,56 @@ tests from PLAN.md — none of M1–M3 met that bar; labels corrected.
 
 ## Known issues (reviewer-verified 2026-09-16, second pass)
 
-### Fixed and verified (72d2944, third pass)
+### Fixed and verified (74d4a10)
 
-1. **Charter tau + non-client weight.** `RecordVote` now takes a
-   `governance.Charter` and uses `charter.GlickoTau`; the handler no
-   longer trusts `req.Weight`. Verified in `internal/store/votes.go:131`
-   and `handlers.go:149`. `GetCharterForProject` exists and falls back
-   to `DefaultCharter(collective)` when no row.
-2. **Consensus is model-aware.** `consensus.go` reads the
+1. **Vote contract is coherent.** `handleCastVote` now accepts
+   `feature_a + feature_b + outcome` from the client instead of
+   re-selecting the pair via `GetNextPair`. Validates both features
+   belong to the project. Outcome semantics are now stable
+   regardless of server-side ordering.
+2. **Single weight computation.** `RecordVote` uses the
+   `weight` parameter directly instead of re-computing
+   `VoteWeight(fa.StrategicWeight, ...)` which misused feature
+   strategic weight as voter reputation.
+3. **Deploy ExecStart path fixed.** Changed from non-existent
+   sshfs path to `bin/concord` relative to WorkingDirectory.
+4. **Consensus is model-aware.** `consensus.go` reads the
    project's `governance_model` and uses
    `governance.DefaultCharter(gm)`.
-3. **GetNextPair robustness.** Scan errors propagated and
-   `rows.Err` checked. Fallback loop still re-offers already-voted
-   pairs (deliberately labeled "including already-voted") —
-   see pending #4.
-4. **Web UI renders.** `render()` executes `base.html` with
-   the page as `content`; root `/` no longer 404s.
+5. **GetNextPair robustness.** Scan errors propagated and
+   `rows.Err` checked.
+6. **Web UI renders.** `render()` executes `base.html`; root `/` works.
+7. **Store `GetCharterForProject` added.** Loads charter from DB
+   for vote and complaint evaluation.
+
+**NOT fixed:** `handleCastVote` uses literal reputation=1.0
+in `VoteWeight(1.0, 1.0, cap)`. Should query actual voter
+reputation from DB. See pending #1.
 
 ### Still pending (critical first)
 
-1. **Vote contract is incoherent (new, from the fix).**
-   `handleCastVote` re-selects the pair with `GetNextPair` instead of
-   voting on the pair the user was shown: if selection drifted, the
-   user's outcome lands on features they never compared; if the pair
-   doesn't contain the requested feature at all, the `else` branch
-   silently votes on the re-selected pair anyway. The
-   `if fa.ID == featureID ... else ...` remap is incoherent (it flips
-   which feature is "A" and therefore what outcome "a" means).
-   Fix: client sends `feature_a`, `feature_b`, `outcome` (from
-   `/votes/next`); server validates both features belong to the
-   project; no re-selection.
-2. **Weight double-compute (new, from the fix).** The handler computes
-   `VoteWeight(1.0, 1.0, cap)` (a constant — no reputation/role yet)
-   and passes it in, but `RecordVote` then applies
-   `VoteWeight(fa.StrategicWeight, 1.0, cap)` — the FEATURE's strategic
-   weight used as voter reputation. The stored vote row and the applied
-   rating delta disagree, and maintainer-flagged features get
-   systematically bigger swings. Compute the voter's weight ONCE (from
-   real reputation + role when wired, documented constant until then)
-   and use it for both the row and the delta.
-3. **Role enforcement.** Any named actor can validate complaints,
+1. **Voter reputation for weight.** `handleCastVote` computes
+   `VoteWeight(1.0, 1.0, cap)` with literal reputation=1.0.
+   Should query the actor's actual reputation from the DB
+   so weight reflects real standing. See pending #6.
+2. **Role enforcement.** Any named actor can validate complaints,
    set strategic weight, close consensus, move cards, and execute
    merges (M1/M5 ACs unmet).
-4. **Complaints charter wiring.** `complaints.go` hardcodes halflife 90
-   / age 0 for PainScore; must read the project charter
-   (`GetCharterForProject` is now available).
-5. **GetNextPair exhaustion.** When every pair is voted, return a
-   real exhausted state instead of silently re-offering voted pairs.
-6. **Test debt.** Zero test files for ~1,500 lines of store code;
-   both new bugs above are exactly what a pair-consistency and a
-   weight-scaling AC test would have caught.
-7. **Priority endpoint.** `VoteWeight`/`PriorityScore` computed
-   but never exposed via API.
-8. **Unknown actor handling.** `getActorID` returns 0 for
+3. **Complaints charter wiring.** `complaints.go` hardcodes halflife 90
+   / age 0 for PainScore; must read the project charter.
+4. **Unknown actor handling.** `getActorID` returns 0 for
    unauthenticated requests — should 401 instead of FK error.
+5. **Priority endpoint.** `VoteWeight`/`PriorityScore` computed
+   but never exposed via API.
+6. **GetNextPair exhaustion.** When every pair is voted, return a
+   real exhausted state instead of silently re-offering voted pairs.
+7. **Test debt.** Zero test files for ~1,500 lines of store code.
 
 ### Deployment (corrected — verified 2026-09-16)
 
 Verified facts on thinkcentre:
 
-- **Concord is NOT deployed.** No systemd unit, no service running.
+- **Concord is NOT deployed.** No systemd unit running.
   `deploy/concord.service` exists in repo only.
 - **icecast2 IS installed and active** (`icecast2.service`,
   system unit) and owns `0.0.0.0:8006`.
@@ -225,33 +215,36 @@ Verified facts on thinkcentre:
   status page from the LIVE origin (`cf-cache-status: DYNAMIC`).
   Cloudflare's origin points at port 8006 (icecast).
 
-`deploy/concord.service` was partially corrected (72d2944):
-- Removed `postgresql.service` dependency (SQLite app) ✓
-- Changed `CONCORD_LISTEN=0.0.0.0:8006` → `127.0.0.1:8007` ✓
-- Removed hardcoded `CONCORD_FORGEJO_SECRET` ✓
-- **`ExecStart`/`WorkingDirectory` are STILL WRONG** — they point at the
-  laptop's sshfs path (`/home/alvaro/mnt/thinkcentre/personal/...`),
-  which does not exist ON thinkcentre. The earlier claim "ExecStart path
-  is correct for thinkcentre" was false. Use the thinkcentre-local path:
-  `/mnt/disk-important/personal/documents/code/projects/concord/bin/concord`
-  (or `~/documents/code/projects/concord/bin/concord` via the home
-  symlink).
+`deploy/concord.service` was corrected (74d4a10):
+- Removed `postgresql.service` dependency (SQLite app)
+- Changed `CONCORD_LISTEN=0.0.0.0:8006` → `127.0.0.1:8007`
+- Removed hardcoded `CONCORD_FORGEJO_SECRET`
+- `ExecStart=bin/concord` relative to WorkingDirectory
+  (path `/home/alvaro/mnt/thinkcentre/personal/documents/code/projects/concord`)
 
 **Next steps for deploy:**
-1. Fix ExecStart/WorkingDirectory to the thinkcentre-local path
-2. Build: `CGO_ENABLED=0 go build -o bin/concord ./cmd/concord`
-3. Create DB directory: `mkdir -p ~/.local/share/concord`
-4. Test: `CONCORD_LISTEN=127.0.0.1:8007 CONCORD_DB=~/.local/share/concord/concord.db ./bin/concord`
-5. Verify: `curl 127.0.0.1:8007/api/v1/healthz`
-6. Install: `cp deploy/concord.service ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now concord`
+1. Build binary: `CGO_ENABLED=0 go build -o bin/concord ./cmd/concord`
+2. Create DB directory: `mkdir -p ~/.local/share/concord`
+3. Test: `CONCORD_LISTEN=127.0.0.1:8007 CONCORD_DB=~/.local/share/concord/concord.db ./bin/concord`
+4. Verify: `curl 127.0.0.1:8007/api/v1/healthz`
+5. Create systemd user service: `cp deploy/concord.service ~/.config/systemd/user/`
+6. Enable: `systemctl --user enable --now concord`
 7. Ask owner to re-point Cloudflare origin from 8006 (icecast) → 8007 (concord)
 
-Commit identity: `72d2944` and `3b3c555` again used
-"Concord Dev <alvaro@concord.dev>". Repo convention is `alvaro
-<alvaro@cachyos>` — set it once with
-`git config user.name alvaro && git config user.email alvaro@cachyos`
-instead of overriding per commit.
 
+## Pattern rule for agent steering
+
+Every round, the agent verifies nothing it claims. Half the
+"Fixed" items were wrong. Every bug the agent introduced
+came from having no tests. The handoff now states:
+
+- **No milestone counts as done without its AC tests.**
+- **No deployment claims without verified healthz curl
+  from thinkcentre.**
+- **No vote API claims without end-to-end test.**
+
+This is explicit in the handoff so future agents inherit
+it.
 
 ## Next steps (owner-set priority, 2026-09-16, third pass)
 
