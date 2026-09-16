@@ -211,7 +211,7 @@ SSH git transport, mobile apps. Revisit after M11.
 | M9 request board | AC-tested | CRUD + answer + vote tests |
 | M10 identity | AC-tested | 401/403 live; role hierarchy matrix; granular role enforcement |
 | M11 web UI | AC-tested | embedded assets render + golden-page tests |
-| M12 sync + hardening | AC-tested | deployed 8007 + security middleware + rate limiting |
+| M12 sync + hardening | done | security headers, per-visitor rate limiting, audit wiring, make deploy healthz-verified on thinkcentre (4cc6aa3); CF ingress re-point pending owner |
 
 
 ## Current State (2026-09-16)

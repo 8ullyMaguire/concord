@@ -166,18 +166,42 @@ against the tree AND the live service). All milestones now AC-tested.
 
 ### Remaining (non-blocking)
 
-1. **Cloudflare re-point** — owner action: change origin port
-   8006→8007 in the Cloudflare dashboard (cannot be automated).
-2. **M7 AC-grade tests** — currently store-tested; full HTTP API
-   round-trip tests for threads could be added if desired.
+1. **Cloudflare ingress re-point — OWNER action.** The thinkcentre tunnel
+   is a remotely-managed cloudflared token tunnel (`/etc/cloudflared/token`,
+   no local config), so ingress lives in the Cloudflare dashboard:
+   Zero Trust → Networks → Tunnels → <tunnel> → Public Hostname
+   `concord.polarisocial.xyz` → change service `http://localhost:8006` →
+   `http://localhost:8007`. Then verify
+   `curl https://concord.polarisocial.xyz/api/v1/healthz`. No CF API token
+   exists on either machine, so this cannot be automated.
+2. **M7 httpapi round-trip tests** — optional; store-tested today.
 
-### Deployment (live, verified)
+### Finished by the reviewer (finisher pass, 2026-09-16)
 
-- thinkcentre: systemd **user** unit `concord.service` ACTIVE,
-  `127.0.0.1:8007` listening, binary at `/home/alvaro/concord-deploy/concord`,
-  DB at `~/.local/share/concord/concord.db`.
-- `make deploy` target handles build → copy → restart → healthz verify.
-- Cloudflare still serves Icecast's 400 page from port 8006. **This is
-  the owner's dashboard action**: change the origin/ingress port for
-  `concord.polarisocial.xyz` from 8006 to 8007 in the Cloudflare
-  dashboard (or tunnel config).
+1. **Rate limiter was a global bucket behind the tunnel.** Keyed on
+   RemoteAddr, so every visitor arrived as 127.0.0.1 and shared ONE
+   100 req/min allowance — whole-site 429s once public. Now keyed per
+   visitor via `CF-Connecting-IP` (XFF fallback; safe because the
+   listener only accepts loopback from cloudflared), idle buckets are
+   pruned, and 429s are JSON. Live-tested on thinkcentre: visitor A 429s
+   after 100 requests, visitor B unaffected, proxy key separate. (4717679)
+2. **`make deploy` never worked.** Its healthz grep expected compact JSON
+   while the handler returns pretty-printed JSON — every check failed even
+   against a healthy service. Pattern fixed; target now passes end-to-end
+   on thinkcentre. (4cc6aa3)
+3. **Deployed current HEAD via `make deploy`** — version stamp 4cc6aa3 in
+   the journal; thinkcentre Go builds via GOTOOLCHAIN auto-fetch.
+4. **Live verification by reviewer:** healthz ok, homepage 200 with CSP +
+   X-Frame-Options + nosniff, priorities endpoint auth-gated (the old
+   "feature 0" error is gone), webhook receiver fails closed without a
+   secret, per-visitor rate limiting proven live.
+
+### Deployment (current)
+
+- Binary is built ON thinkcentre by `make deploy`, copied to
+  `~/concord-deploy/`, user unit restarted, healthz-verified by the
+  target itself (sleep-retry loop, ~14s window).
+- Deploy command: `ssh thinkcentre 'cd
+  /mnt/disk-important/personal/documents/code/projects/concord && make
+  deploy'` — run it after every merged milestone.
+- DB: `~/.local/share/concord/concord.db` (local disk, policy OK).
