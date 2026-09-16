@@ -200,18 +200,18 @@ SSH git transport, mobile apps. Revisit after M11.
 | Milestone | Status | Notes |
 |-----------|--------|-------|
 | M0 skeleton (schema, ranking, governance, discovery, projects+search API, docs) | done | verified: make verify green, live smoke test |
-| M1 complaints | done | AC tests passing: CreateAndGetComplaint, GetComplaintPain (charter-wired) |
-| M2 features | done | AC tests passing: CreateAndGetFeature, GetFeaturePain, GetFeatureVotes, GetFeaturePriorities |
-| M3 ranking + priority | done | AC tests passing: RecordVote, GetNextPair, GetNextPairExhausted, Glicko2Rating, PriorityScore, AddImpact, GetComplaintPain |
-| M4 consensus | done | AC tests passing: CreateAndGetConsensusCall, RecordVote (uses charter.GlickoTau), EvaluateConsensus uses project governance_model |
-| M5 board + charter | done | AC tests passing: CreateBoard, GetBoardColumns, GetBoardCards |
-| M6 merge + webhooks | partial | MR AC tests passing: CreateAndGetMergeRequest; webhooks pending |
+| M1 complaints | store-tested | CRUD + charter-wired pain; AC permission-denial tests missing |
+| M2 features | store-tested | CRUD; no maintainer threshold on strategic weight |
+| M3 ranking + priority | wired, live | coherent contract + reputation weight + exhaustion; AC rating-movement/weight-scaling tests missing; priorities route probe errors |
+| M4 consensus | partial | model-aware close; five-outcome test + objection lifecycle missing |
+| M5 board + charter | partial | board CRUD tested; gate matrix/WIP/charter endpoints missing |
+| M6 merge + webhooks | partial | MR CRUD tested; webhooks + CheckMergeGate wiring pending |
 | M7 threads | not started | comments tables exist in 0001; labels missing |
-| M8 lists | done | AC tests passing: CreateList, GetList, GetListsByProject, CreateListEntry |
-| M9 request board | done | AC tests passing: CreateAndGetRequest, GetRequest |
-| M10 identity | done | AC tests passing: CreateAndGetUser, GetRoleForProject, GetMember |
-| M11 web UI | done | templates/assets embedded, render() works, static assets served |
-| M12 sync + hardening | in progress | Cloudflare re-pointing pending |
+| M8 lists | store-tested | CRUD tested; quorum admission + entry ranking missing |
+| M9 request board | store-tested | CRUD tested; fit ranking + quorum removal missing |
+| M10 identity | partial | 401s live; granular roles + sessions/OAuth missing |
+| M11 web UI | live | embedded assets render on 8007; golden-page tests missing |
+| M12 sync + hardening | in progress | deployed 8007 (127.0.0.1, active); CF origin re-point pending (owner) |
 
 
 ## Current State (2026-09-16)

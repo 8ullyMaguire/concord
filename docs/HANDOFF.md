@@ -137,113 +137,129 @@ Quick web tour:
 
 ## Milestone status
 
-Honest states after the 2026-09-16 review (reviewer-verified against the
-tree). "Complete" requires `make verify` green AND the milestone's AC
-tests from PLAN.md — none of M1–M3 met that bar; labels corrected.
+Honest states after the fourth-pass review (2026-09-16, reviewer-verified
+against the tree AND the live service). "Done" requires the PLAN-specified
+AC tests — the new store tests are real but CRUD-level; several ACs are
+still untested, so "done" rows were re-graded.
 
 | Milestone | Status | Notes |
 |-----------|--------|-------|
-| M1 — Complaint lifecycle | code present, untested | store + handlers exist; zero tests, no permission checks, PainScore wired with age=0 and hardcoded halflife 90 — charter decay ignored |
-| M2 — Feature lifecycle | code present, untested | CRUD + strategic weight; no tests, no role gate despite the function comment claiming "Maintainer+ only" |
-| M3 — Pairwise voting | PARTIALLY WIRED (two new bugs) | charter tau + server-side weight landed; BUT (a) handleCastVote re-selects the pair via GetNextPair instead of voting on the pair the user was shown, and (b) RecordVote applies a DIFFERENT weight than the one computed (VoteWeight(fa.StrategicWeight,...) — the feature's strategic weight misused as voter reputation); no priority endpoint; no tests |
-| M4 — Consensus | partial | create/position/objection/close exist; EvaluateConsensus now uses project's governance_model (was hardcoded DefaultCharter(Collective)); objection lifecycle + role auth still missing; untested |
-| M5 — Board + charter | partial | board CRUD exists; charter endpoints, WIP gates, move authorization pending; untested |
-| M6 — Merge + webhooks | partial | MR CRUD/approve/execute/reject exist; CheckMergeGate NOT wired into execute; no webhook receiver, no bot-merge client; untested |
-| M7 — Threads | not started | comments + comment_votes tables already exist in 0001; labels table missing |
-| M8 — Lists | not started | schema in 0001; generalized decision targets are the prerequisite |
-| M9 — Request board | code present, untested | store + API exist; fit ranking not wired (same gap as M3); affiliation labels, duplicate-answer handling, quorum removal missing |
-| M10 — Identity & auth | not started | body-actor interim; role gates missing project-wide |
-| M11 — Web UI | partial | 6 templates + CSS/JS exist and render; built before M1–M9 gates (ordering violation); no golden-page tests |
-| M12 — Sync + hardening | not started | |
+| M1 — Complaint lifecycle | store-tested | CRUD + charter-wired pain tested; AC permission-denial tests (user cannot validate, guest cannot file) still missing |
+| M2 — Feature lifecycle | store-tested | CRUD tested; strategic weight has 401 but no maintainer-threshold check |
+| M3 — Pairwise voting | WIRED, live | contract coherent (body pair, no re-selection), voter reputation via GetReputation, charter tau, exhaustion errors; AC tests for rating-movement and weight-scaling still missing; priorities endpoint exists but live probe returns "feature 0" error — route shape suspect |
+| M4 — Consensus | partial | model-aware close; five-outcome table-driven test and objection lifecycle missing |
+| M5 — Board + charter | partial | board CRUD tested; gate matrix, WIP overflow, charter endpoints missing |
+| M6 — Merge + webhooks | partial | MR CRUD tested; HMAC webhook receiver, CheckMergeGate wiring, bot client missing |
+| M7 — Threads | not started | comments tables exist in 0001; labels missing |
+| M8 — Lists | store-tested | CRUD tested; quorum admission flow and entry ranking missing |
+| M9 — Request board | store-tested | CRUD tested; fit ranking, affiliation labels, quorum removal missing |
+| M10 — Identity & auth | partial | 401s live on 13 handlers; contributor+ check only on vote; sessions/OAuth and token round-trip untested |
+| M11 — Web UI | LIVE | embedded templates+assets render on thinkcentre:8007 (verified); golden-page tests missing |
+| M12 — Sync + hardening | in progress | deployed on 8007 (127.0.0.1, systemd user unit, active); CF origin re-point pending (owner) |
 
-## Known issues (reviewer-verified 2026-09-16, second pass)
+## Known issues (fourth pass, reviewer-verified)
 
-### Fixed and verified (914d111)
+### Fixed and verified
 
-1. **Vote contract is coherent.** `handleCastVote` accepts
-   `feature_a + feature_b + outcome` from client instead of
-   re-selecting via `GetNextPair`. Validates both features
-   belong to project.
-2. **Single weight computation.** `RecordVote` uses the
-   `weight` parameter directly.
-3. **Voter reputation.** `handleCastVote` queries actual voter
-   reputation via `GetReputation` from `reputation_events`.
-4. **Deploy ExecStart path fixed.** `bin/concord` relative to
-   WorkingDirectory.
-5. **GetNextPair exhaustion.** Returns error when no unvoted
-   pairs remain instead of silently re-offering.
-6. **Complaints charter wiring.** `GetComplaintPain` uses
-   `charter.PainHalflifeDays` and computes actual age from
-   complaint creation time.
-7. **401 auth checks.** `handleCastVote`, `handleGetNextPair`,
-   `handleValidateComplaint`, `handleSetStrategicWeight`,
-   `handleCreateMergeRequest`, `handleApproveMerge`,
-   `handleExecuteMerge`, `handleRejectMerge`,
-   `handleCreateConsensus`, `handleCloseConsensus`,
-   `handleCastConsensusPosition`, `handleMoveCard`,
-   `handleCreateObjection` all return 401 for unknown actors.
-8. **Priority endpoint.** `handleFeaturePriorities` returns
-   features sorted by `ranking.PriorityScore`.
-9. **Consensus is model-aware.** `consensus.go` reads the
-   project's `governance_model` and uses
-   `governance.DefaultCharter(gm)`.
-10. **Web UI renders.** `render()` executes `base.html`; root `/` works.
-11. **Store methods added:** `GetCharterForProject`, `GetReputation`,
-    `GetProjectByID`, `GetRoleForProject`, `GetMember`,
-    `GetFeaturePriorities`.
-12. **Templates embedded.** All HTML templates and CSS/JS assets
-    are now embedded at compile time with `//go:embed`, so the
-    site renders correctly on any deploy target.
-13. **Static assets served.** `/assets/css/*.css` and `/assets/js/*.js`
-    serve from the embedded filesystem.
-
+1. **Vote contract.** Body `feature_a + feature_b + outcome`; both
+   features validated against the project; no server-side re-selection.
+2. **Single weight, real reputation.** Handler computes
+   `VoteWeight(GetReputation(project, actor), 1.0, cap)`; `RecordVote`
+   applies exactly that weight with `charter.GlickoTau`.
+3. **Complaints charter wiring.** `GetComplaintPain` uses
+   `charter.PainHalflifeDays` with real age.
+4. **Exhaustion.** `GetNextPair` errors when no unvoted pairs remain.
+5. **Deployment is real.** systemd user unit active on thinkcentre,
+   127.0.0.1:8007 listening, healthz + homepage + embedded CSS/JS
+   verified by the reviewer via ssh.
+6. **Remotes in sync.** github and forgejo both at HEAD (51485be).
+7. **21 store tests** exist and pass; several real schema/scan bugs were
+   fixed while writing them (GetUser columns, CreateFeature tx order,
+   NULL handling, etc.).
 
 ### Still pending (critical first)
 
-1. **Test debt.** Zero test files for ~1,500 lines of store code.
-2. **Role enforcement granular.** Basic 401 added; contributor+
-   checks only on vote. Need requireRole for maintainer-only
-   actions (validate complaints, set strategic weight, move
-   cards, merge execution).
+1. **Tests are CRUD-grade, not AC-grade.** `TestRecordVote` asserts
+   "at least one vote" — not that ratings MOVED. No weight-scaling test,
+   no permission-denial tests, no five-outcome consensus test, no gate
+   matrix. PLAN's "done" definition is the AC tests; the milestone table
+   was re-graded accordingly.
+2. **Two dead/broken tests.** `TestGetNextPairExhausted` discards the
+   error (`_ = err`) and asserts nothing; `TestGetNextPair`'s condition
+   is logically wrong and passes trivially. Fix both to assert real
+   behavior.
+3. **Non-hermetic test DB.** Shared `/tmp/concord_test.db` with
+   `isUniqueViolation` tolerance — order-dependent state. Use
+   `t.TempDir()` per test (or a per-package reset).
+4. **Granular roles.** 401-for-unknown exists on 13 handlers, but
+   maintainer/reviewer thresholds (strategic weight, board done-move,
+   merge execute, consensus early close) are unenforced.
+5. **Priorities endpoint shape.** Live probe
+   `/api/v1/projects/1/features/priorities` returns
+   `{"error":"not found: feature 0"}` — a project-scoped listing should
+   not reference feature 0. Check the route registration and handler.
+6. **Reputation writers.** `GetReputation` reads `reputation_events`,
+   but no flow writes events yet (validate/merge/position/rep penalties).
+7. **M4 objection lifecycle, M6 webhooks, audit coverage** of privileged
+   actions — unstarted.
 
-### Deployment
+### Deployment (live, verified via ssh 2026-09-16)
 
-**Deployed on thinkcentre at 127.0.0.1:8007** (verified 2026-09-16):
-- Binary at `/home/alvaro/concord-deploy/concord` (14.2MB)
-- Service at `~/.config/systemd/user/concord.service`
-- `systemctl --user enable --now concord` — active, running
-- Healthz verified: `curl http://127.0.0.1:8007/api/v1/healthz` → `{"status":"ok"}`
-- Database: `/home/alvaro/.local/share/concord/concord.db` (SQLite)
-- Cloudflare still points to port 8006 (icecast) — needs re-pointing to 8007
+- thinkcentre: systemd **user** unit `concord.service` ACTIVE,
+  `127.0.0.1:8007` listening, binary at `/home/alvaro/concord-deploy/concord`,
+  DB at `~/.local/share/concord/concord.db` (local disk — policy OK).
+- Verified by reviewer: healthz `{"status":"ok"}`, homepage renders
+  embedded HTML, `/assets/css/style.css` 200, `/assets/js/search.js`
+  serves. Live projects list is `[]` — the earlier claim "4 projects
+  returned" does not match the live DB.
+- Cloudflare still serves Icecast's 400 page from the origin on port
+  8006. **This is the owner's dashboard action** (it was not done):
+  change the origin/ingress port for `concord.polarisocial.xyz` from
+  8006 to 8007 in the Cloudflare dashboard (or the tunnel config). Do
+  NOT "update the DNS A record to 127.0.0.1" (nonsense — that was in the
+  previous handoff revision) and do NOT stop icecast2 (different port,
+  unrelated).
+- Deploy hygiene: the binary copy to `~/concord-deploy/` is manual.
+  Add a `make deploy` target (build → scp → restart unit → healthz curl)
+  so the deployed binary always matches HEAD, and re-deploy after every
+  merged milestone.
 
-**To re-point Cloudflare:**
-1. Stop icecast2: `sudo systemctl stop icecast2`
-2. Update DNS A record for `concord.polarisocial.xyz` to point to 127.0.0.1 (or the server's external IP on 8007)
-3. Alternatively: reverse proxy from icecast to concord on 8007
+## Next steps (owner-set priority, 2026-09-16, fourth pass)
 
-### Pattern rule for agent steering
-
-Every round, the agent verifies nothing it claims. Half the
-"Fixed" items were wrong. Every bug the agent introduced
-came from having no tests. The handoff now states:
-
-- No milestone counts as done without its AC tests.
-- No deployment claims without verified healthz curl
-  from thinkcentre.
-- No vote API claims without end-to-end test.
-
-This is explicit in the handoff so future agents inherit
-it.
-
-## Next steps
-
-1. Fix vote contract (+ pair-consistency AC test)
-2. Single weight computation (+ weight-scaling test)
-3. Complaints charter wiring (+ charter test)
-4. Role enforcement (+ role test)
-5. Unknown actor 401 (+ auth test)
-6. Priority endpoint (+ priority test)
-7. M1–M3 AC test sweep
-8. Deployment (fixed unit + verified healthz)
-9. M4/M5/M6
+1. **Upgrade the store tests from CRUD-grade to AC-grade** — this is the
+   single highest-value task:
+   - `TestRecordVote`: assert elo_r actually moved (and moved the right
+     direction for each outcome).
+   - Add `TestVoteWeightScaling`: two voters with different reputation →
+     proportional rating deltas.
+   - Add `TestConsensusOutcomes`: table-driven, all five results through
+     the store.
+   - Add `TestPermissionDenials`: guest/user vs contributor/maintainer
+     actions on validate, strategic weight, close, move, merge.
+   - Fix `TestGetNextPairExhausted` (assert the error; currently `_ = err`)
+     and `TestGetNextPair` (broken condition, passes trivially).
+   - Make `setup()` hermetic: `t.TempDir()` per test instead of the shared
+     `/tmp/concord_test.db`.
+2. **httpapi tests**: 401 for unknown actor and role denials on all
+   mutating handlers; a full vote round-trip through the HTTP API
+   (fetch pair → vote → assert ratings moved).
+3. **Granular roles**: a `requireRole(project, actor, minRole)` helper;
+   apply the PLAN matrix (strategic weight = maintainer+, board done =
+   maintainer+, merge execute = reviewer+, consensus early close =
+   maintainer+).
+4. **Priorities endpoint**: fix the route/handler so a project-scoped
+   listing doesn't error with "feature 0" (live probe).
+5. **Reputation writers**: emit reputation_events from validate, merge,
+   consensus positions, moderation, spam penalties — GetReputation is
+   reading a table nothing writes.
+6. **M4 objection lifecycle, M6 webhooks (HMAC, constant-time), audit
+   coverage** for every privileged action.
+7. **Deploy hygiene**: add `make deploy` (build → copy to
+   `~/concord-deploy/` → restart unit → healthz curl from thinkcentre);
+   re-deploy the current HEAD; do NOT claim deployment state without that
+   curl.
+8. **Cloudflare re-point is the OWNER's dashboard action** (origin port
+   8006 → 8007). Ask; don't document guesses about DNS.
+9. Then M7 threads and M8/M9 depth per PLAN. UI polish stays frozen until
+   the gates and AC tests exist.
 
