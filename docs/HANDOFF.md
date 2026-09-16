@@ -166,11 +166,49 @@ against the tree AND the live service). All milestones now AC-tested.
 
 ### Remaining (non-blocking)
 
-1. **M7 httpapi round-trip tests** — optional; store-tested today.
+1. **Interim actor auth for HTTP writes** — feature/consensus writes are
+   actor-gated and getActorID only reads context values nothing sets over
+   HTTP yet; real auth arrives with Forgejo OAuth.
+2. **Browser forms** for creating projects/complaints (APIs exist; UI
+   forms are the next frontend layer).
 
-Nothing else is blocking: the site is public at
-https://concord.polarisocial.xyz (healthz, homepage, and API verified by
-the reviewer through the existing Cloudflare tunnel).
+### Frontend (premise-2 theme, commit 1e6d48b)
+
+The web UI is themed after `concord-software-forge-premise-2.zip` (the
+Next.js mockup): indigo/slate design system, hero homepage with the six
+premise pillars and live stats, card grids, health bars, kanban board.
+Ported as templates + CSS + hydration JS — **no API endpoints changed**.
+
+- **Source of truth:** `internal/httpapi/templates/` +
+  `internal/httpapi/assets/{css,js}/` (go:embed). The old root-level
+  `templates/` and `web/` duplicates were removed — they caused drift.
+- **Board page fix:** the board API is keyed by numeric project id, so the
+  JS resolves slug → project → id first (the old board page could never
+  load data for slug URLs).
+- **Render bugs fixed along the way:** all pages shared one
+  `{{define "content"}}` namespace (last parse won — every route rendered
+  the same page body), `pageData` lacked `Flash`/`Scripts` (template
+  execution aborted mid-body), and render errors were swallowed. Pages now
+  parse per-page together with base.html, and render failures are logged.
+
+### End-to-end tests (35, Playwright)
+
+`tests/e2e/e2e_test.py` drives headless Chromium against a real server on a
+throwaway SQLite DB: hero/stats, nav + CTA flows, search results + facet
+chips + empty states, projects grid with health bars and badges, project
+detail with features, kanban with WIP badges, mobile overflow, CSP headers,
+theme application, and API integration shapes. Each browser context uses a
+distinct `X-Forwarded-For`, which also exercises the per-visitor rate
+limiter's proxy path under real load.
+
+    make build
+    pip install --user --break-system-packages pytest playwright  # once
+    python3 -m playwright install chromium                        # once
+    python3 -m pytest tests/e2e/e2e_test.py -v
+
+Seed data is written directly to the throwaway DB (writes are actor-gated
+pending interim auth) and mirrors `projects_fts`, which the app populates
+only on API writes.
 
 ### Finished by the reviewer (finisher pass, 2026-09-16)
 
