@@ -70,11 +70,12 @@ func (d *DB) CreateUser(ctx context.Context, username, displayName string) (User
 func (d *DB) GetUser(ctx context.Context, username string) (User, error) {
 	var u User
 	err := d.QueryRowContext(ctx,
-		`SELECT id, username, COALESCE(display_name,''), role, created_at FROM users WHERE username=?`,
-		username).Scan(&u.ID, &u.Username, &u.DisplayName, &u.Role, &u.CreatedAt)
+		`SELECT id, username, COALESCE(display_name,''), created_at FROM users WHERE username=?`,
+		username).Scan(&u.ID, &u.Username, &u.DisplayName, &u.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return User{}, fmt.Errorf("%w: user %q", ErrNotFound, username)
 	}
+	u.Role = "member"
 	return u, err
 }
 

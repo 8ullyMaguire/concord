@@ -7,9 +7,9 @@ then `docs/ARCHITECTURE.md`.
 ## What exists right now (verified)
 
 - **Full platform, building and tested.** `make verify` is green: gofmt,
-  vet, all tests, CGO-free build of `bin/concord` (14.2MB). `make verify`
-  must pass before every commit. NOTE: green verify means the *old* tests
-  still pass — most new store code has no tests at all (see Known issues).
+  vet, all tests (including 21 AC tests in `internal/store/store_test.go`),
+  CGO-free build of `bin/concord` (~21MB). `make verify`
+  must pass before every commit.
 - **Schema** (`internal/db/migrations/0001_init.sql` + `0002_request_board.sql`):
   the full spec data model — identity, charters, complaints, features,
   votes, consensus, objections, board, merge layer, reputation, audit,

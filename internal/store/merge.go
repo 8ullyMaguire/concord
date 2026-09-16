@@ -14,7 +14,7 @@ type MergeRequest struct {
 	FeatureID   int64    `json:"feature_id"`
 	AuthorID    int64    `json:"author_id"`
 	Title       string   `json:"title"`
-	ExternalRef string   `json:"external_ref,omitempty"`
+	ExternalRef *string   `json:"external_ref,omitempty"`
 	Status      string   `json:"status"`
 	OpenedAt    float64  `json:"opened_at"`
 	ClosedAt    *float64 `json:"closed_at,omitempty"`

@@ -11,14 +11,15 @@ import (
 )
 
 type ConsensusCall struct {
-	ID          int64    `json:"id"`
-	ProjectID   int64    `json:"project_id"`
-	FeatureID   int64    `json:"feature_id"`
-	Title       string   `json:"title"`
-	Description string   `json:"description"`
-	Status      string   `json:"status"`
-	Eligible    int      `json:"eligible"`
-	WindowDays  float64  `json:"window_days"`
+	ID        int64   `json:"id"`
+	ProjectID int64   `json:"project_id"`
+	FeatureID int64   `json:"feature_id"`
+	OpenedBy  int64   `json:"opened_by"`
+	OpensAt   float64 `json:"opens_at"`
+	ClosesAt  float64 `json:"closes_at"`
+	Status    string  `json:"status"`
+	Result    *string  `json:"result"`
+	Summary   *string  `json:"summary"`
 	CreatedAt   float64  `json:"created_at"`
 	ClosedAt    *float64 `json:"closed_at,omitempty"`
 }
@@ -64,8 +65,8 @@ func (d *DB) CreateConsensusCall(ctx context.Context, projectID, featureID int64
 	}
 	now := float64(time.Now().Unix())
 	res, err := d.ExecContext(ctx, `
-		INSERT INTO consensus_calls (project_id, feature_id, title, description, status, eligible, window_days, created_at)
-		VALUES (?, ?, ?, ?, 'open', 0, 7, ?)`, projectID, featureID, title, description, now)
+		INSERT INTO consensus_calls (project_id, feature_id, opened_by, opens_at, closes_at, status)
+		VALUES (?, ?, 1, ?, ?, 'open')`, projectID, featureID, now, now)
 	if err != nil {
 		return ConsensusCall{}, err
 	}
@@ -75,10 +76,8 @@ func (d *DB) CreateConsensusCall(ctx context.Context, projectID, featureID int64
 
 func (d *DB) GetConsensusCall(ctx context.Context, id int64) (ConsensusCall, error) {
 	var c ConsensusCall
-	err := d.QueryRowContext(ctx, `SELECT id, project_id, feature_id, title, description, status,
-		eligible, window_days, created_at, closed_at FROM consensus_calls WHERE id=?`, id).Scan(
-		&c.ID, &c.ProjectID, &c.FeatureID, &c.Title, &c.Description, &c.Status,
-		&c.Eligible, &c.WindowDays, &c.CreatedAt, &c.ClosedAt)
+	err := d.QueryRowContext(ctx, `SELECT id, project_id, feature_id, opened_by, opens_at, closes_at, status, result, summary FROM consensus_calls WHERE id=?`, id).Scan(
+		&c.ID, &c.ProjectID, &c.FeatureID, &c.OpenedBy, &c.OpensAt, &c.ClosesAt, &c.Status, &c.Result, &c.Summary)
 	if errors.Is(err, sql.ErrNoRows) {
 		return ConsensusCall{}, fmt.Errorf("%w: consensus call %d", ErrNotFound, id)
 	}
@@ -171,9 +170,9 @@ func (d *DB) CloseConsensusCall(ctx context.Context, callID int64) (ConsensusSum
 	if err != nil {
 		return ConsensusSummary{}, err
 	}
-	c2, _ := d.GetConsensusCall(ctx, callID)
-	var counts governance.ConsensusCounts
-	counts.Eligible = c2.Eligible
+	
+	
+		var counts governance.ConsensusCounts
 	for _, p := range positions {
 		counts.Participants++
 		switch p.Stance {

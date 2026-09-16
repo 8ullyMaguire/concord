@@ -56,6 +56,13 @@ func (d *DB) CreateFeature(ctx context.Context, projectID, authorID int64, title
 		return Feature{}, fmt.Errorf("%w: project_id, author_id, and at least one validated complaint are required", ErrInvalid)
 	}
 	now := float64(time.Now().Unix())
+	// Verify complaints are validated before starting transaction
+	for _, cid := range linkedComplaints {
+		c, err := d.GetComplaint(ctx, cid)
+		if err != nil || c.Status != "validated" {
+			return Feature{}, fmt.Errorf("%w: complaint %d must be validated", ErrInvalid, cid)
+		}
+	}
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return Feature{}, err
@@ -71,11 +78,6 @@ func (d *DB) CreateFeature(ctx context.Context, projectID, authorID int64, title
 	featureID, _ := res.LastInsertId()
 	// Link to validated complaints
 	for _, cid := range linkedComplaints {
-		// Verify complaint is validated
-		c, err := d.GetComplaint(ctx, cid)
-		if err != nil || c.Status != "validated" {
-			return Feature{}, fmt.Errorf("%w: complaint %d must be validated", ErrInvalid, cid)
-		}
 		_, err = tx.ExecContext(ctx, `INSERT OR IGNORE INTO feature_complaints (feature_id, complaint_id) VALUES (?, ?)`, featureID, cid)
 		if err != nil {
 			return Feature{}, err

@@ -2,37 +2,41 @@ package store
 
 import (
 	"context"
-	"database/sql"
-	"errors"
-	"fmt"
 	"time"
 )
 
 type List struct {
 	ID          int64   `json:"id"`
 	ProjectID   int64   `json:"project_id"`
+	Slug      string  `json:"slug"`
 	Name        string  `json:"name"`
 	Description string  `json:"description"`
 	Status      string  `json:"status"`
 	CreatedAt   float64 `json:"created_at"`
+	UpdatedAt   float64 `json:"updated_at"`
 }
 
 type ListEntry struct {
 	ID        int64   `json:"id"`
 	ListID    int64   `json:"list_id"`
-	ProjectID int64   `json:"project_id"`
+	URL       string  `json:"url"`
 	Title     string  `json:"title"`
-	Body      string  `json:"body"`
+	Description string  `json:"description"`
+	Category  *string  `json:"category"`
 	Status    string  `json:"status"`
-	Votes     int     `json:"votes"`
+	ER        float64 `json:"elo_r"`
+	RD        float64 `json:"elo_rd"`
+	Vol       float64 `json:"elo_vol"`
+	ProposedBy int64  `json:"proposed_by"`
 	CreatedAt float64 `json:"created_at"`
+	UpdatedAt float64 `json:"updated_at"`
 }
 
-func (d *DB) CreateList(ctx context.Context, projectID int64, name, description string) (List, error) {
+func (d *DB) CreateList(ctx context.Context, projectID int64, slug, title, description string) (List, error) {
 	now := float64(time.Now().Unix())
 	res, err := d.ExecContext(ctx, `
-		INSERT INTO lists (project_id, name, description, status, created_at)
-		VALUES (?, ?, ?, 'open', ?)`, projectID, name, description, now)
+		INSERT INTO lists (project_id, slug, title, description, status, created_by, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 'open', 1, ?, ?)`, projectID, slug, title, description, now, now)
 	if err != nil {
 		return List{}, err
 	}
@@ -42,18 +46,16 @@ func (d *DB) CreateList(ctx context.Context, projectID int64, name, description 
 
 func (d *DB) GetList(ctx context.Context, id int64) (List, error) {
 	var l List
-	err := d.QueryRowContext(ctx, `SELECT id, project_id, name, description, status, created_at
-		FROM lists WHERE id=?`, id).Scan(
-		&l.ID, &l.ProjectID, &l.Name, &l.Description, &l.Status, &l.CreatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return List{}, fmt.Errorf("%w: list %d", ErrNotFound, id)
+	err := d.QueryRowContext(ctx, `SELECT id, project_id, slug, title, description, status, created_at, updated_at FROM lists WHERE id=?`, id).Scan(
+		&l.ID, &l.ProjectID, &l.Slug, &l.Name, &l.Description, &l.Status, &l.CreatedAt, &l.UpdatedAt)
+	if err != nil {
+		return List{}, err
 	}
-	return l, err
+	return l, nil
 }
 
-func (d *DB) ListLists(ctx context.Context, projectID int64) ([]List, error) {
-	rows, err := d.QueryContext(ctx, `SELECT id, project_id, name, description, status, created_at
-		FROM lists WHERE project_id=? ORDER BY created_at`, projectID)
+func (d *DB) GetListsByProject(ctx context.Context, projectID int64) ([]List, error) {
+	rows, err := d.QueryContext(ctx, `SELECT id, project_id, slug, title, description, status, created_at, updated_at FROM lists WHERE project_id=?`, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +63,7 @@ func (d *DB) ListLists(ctx context.Context, projectID int64) ([]List, error) {
 	var lists []List
 	for rows.Next() {
 		var l List
-		if err := rows.Scan(&l.ID, &l.ProjectID, &l.Name, &l.Description, &l.Status, &l.CreatedAt); err != nil {
+		if err := rows.Scan(&l.ID, &l.ProjectID, &l.Slug, &l.Name, &l.Description, &l.Status, &l.CreatedAt, &l.UpdatedAt); err != nil {
 			return nil, err
 		}
 		lists = append(lists, l)
@@ -72,8 +74,8 @@ func (d *DB) ListLists(ctx context.Context, projectID int64) ([]List, error) {
 func (d *DB) CreateListEntry(ctx context.Context, listID, projectID int64, title, body string) (ListEntry, error) {
 	now := float64(time.Now().Unix())
 	res, err := d.ExecContext(ctx, `
-		INSERT INTO list_entries (list_id, project_id, title, body, status, votes, created_at)
-		VALUES (?, ?, ?, ?, 'open', 0, ?)`, listID, projectID, title, body, now)
+		INSERT INTO list_entries (list_id, url, title, description, status, proposed_by, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 'proposed', 1, ?, ?)`, listID, projectID, title, body, now, now)
 	if err != nil {
 		return ListEntry{}, err
 	}
@@ -82,22 +84,11 @@ func (d *DB) CreateListEntry(ctx context.Context, listID, projectID int64, title
 }
 
 func (d *DB) GetListEntry(ctx context.Context, id int64) (ListEntry, error) {
-	var e ListEntry
-	err := d.QueryRowContext(ctx, `SELECT id, list_id, project_id, title, body, status, votes, created_at
-		FROM list_entries WHERE id=?`, id).Scan(
-		&e.ID, &e.ListID, &e.ProjectID, &e.Title, &e.Body, &e.Status, &e.Votes, &e.CreatedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return ListEntry{}, fmt.Errorf("%w: list entry %d", ErrNotFound, id)
-	}
-	return e, err
-}
-
-func (d *DB) VoteListEntry(ctx context.Context, entryID, userID int64) error {
-	now := float64(time.Now().Unix())
-	_, err := d.ExecContext(ctx, `INSERT OR IGNORE INTO list_entry_votes (entry_id, user_id, created_at) VALUES (?, ?, ?)`, entryID, userID, now)
+	var le ListEntry
+	err := d.QueryRowContext(ctx, `SELECT id, list_id, url, title, description, category, status, elo_r, elo_rd, elo_vol, proposed_by, created_at, updated_at FROM list_entries WHERE id=?`, id).Scan(
+		&le.ID, &le.ListID, &le.URL, &le.Title, &le.Description, &le.Category, &le.Status, &le.ER, &le.RD, &le.Vol, &le.ProposedBy, &le.CreatedAt, &le.UpdatedAt)
 	if err != nil {
-		return err
+		return ListEntry{}, err
 	}
-	_, err = d.ExecContext(ctx, `UPDATE list_entries SET votes = votes + 1 WHERE id = ?`, entryID)
-	return err
+	return le, nil
 }

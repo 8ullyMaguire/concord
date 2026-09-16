@@ -35,11 +35,11 @@ type RequestAnswerVote struct {
 	CreatedAt float64 `json:"created_at"`
 }
 
-func (d *DB) CreateRequest(ctx context.Context, projectID int64, title, body string) (Request, error) {
+func (d *DB) CreateRequest(ctx context.Context, projectID int64, authorID int64, title, body string) (Request, error) {
 	now := float64(time.Now().Unix())
 	res, err := d.ExecContext(ctx, `
-		INSERT INTO requests (project_id, title, body, status, created_at)
-		VALUES (?, ?, ?, 'open', ?)`, projectID, title, body, now)
+		INSERT INTO requests (project_id, author_id, title, body, status, created_at, updated_at)
+		VALUES (?, ?, ?, ?, 'open', ?, ?)`, projectID, authorID, title, body, now, now)
 	if err != nil {
 		return Request{}, err
 	}

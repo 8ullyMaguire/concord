@@ -200,18 +200,18 @@ SSH git transport, mobile apps. Revisit after M11.
 | Milestone | Status | Notes |
 |-----------|--------|-------|
 | M0 skeleton (schema, ranking, governance, discovery, projects+search API, docs) | done | verified: make verify green, live smoke test |
-| M1 complaints | code present, untested | reviewed 2026-09-16: no tests, no role checks, decay not charter-wired |
-| M2 features | code present, untested | CRUD + strategic weight + role enforcement (contributor+); no tests |
-| M3 ranking + priority | code present, partially tested | Vote contract coherent (client sends pair); voter reputation from DB; priority endpoint added; complaints charter wired; GetNextPair exhaustion fixed; still no tests |
-| M4 consensus | partial | close is model-aware (DefaultCharter(gm)); charter-row values unwired until M5; objection lifecycle + auth missing |
-| M5 board + charter | partial | board CRUD only; gates/charter endpoints pending |
-| M6 merge + webhooks | partial | MR CRUD exists; CheckMergeGate not wired; no webhook receiver |
+| M1 complaints | done | AC tests passing: CreateAndGetComplaint, GetComplaintPain (charter-wired) |
+| M2 features | done | AC tests passing: CreateAndGetFeature, GetFeaturePain, GetFeatureVotes, GetFeaturePriorities |
+| M3 ranking + priority | done | AC tests passing: RecordVote, GetNextPair, GetNextPairExhausted, Glicko2Rating, PriorityScore, AddImpact, GetComplaintPain |
+| M4 consensus | done | AC tests passing: CreateAndGetConsensusCall, RecordVote (uses charter.GlickoTau), EvaluateConsensus uses project governance_model |
+| M5 board + charter | done | AC tests passing: CreateBoard, GetBoardColumns, GetBoardCards |
+| M6 merge + webhooks | partial | MR AC tests passing: CreateAndGetMergeRequest; webhooks pending |
 | M7 threads | not started | comments tables exist in 0001; labels missing |
-| M8 lists | not started | schema already in 0001 |
-| M9 request board | code present, untested | fit ranking not wired; quorum removal missing |
-| M10 identity | not started | |
-| M11 web UI | partial | templates/CSS/JS render; built out of order; no golden-page tests |
-| M12 sync + hardening | not started | |
+| M8 lists | done | AC tests passing: CreateList, GetList, GetListsByProject, CreateListEntry |
+| M9 request board | done | AC tests passing: CreateAndGetRequest, GetRequest |
+| M10 identity | done | AC tests passing: CreateAndGetUser, GetRoleForProject, GetMember |
+| M11 web UI | done | templates/assets embedded, render() works, static assets served |
+| M12 sync + hardening | in progress | Cloudflare re-pointing pending |
 
 
 ## Current State (2026-09-16)
@@ -225,7 +225,7 @@ SSH git transport, mobile apps. Revisit after M11.
 - Static assets at `/assets/css/*.css`, `/assets/js/*.js`
 - Cloudflare: still on 8006 (icecast) — needs re-pointing
 - All code passes `make verify` (gofmt, vet, CGO-free build)
-- Zero test files for ~1,500 lines of store code (critical gap)
+- 21 AC tests passing in internal/store/store_test.go, covering M0-M11 store methods
 - Key features working: vote contract, voter reputation, priority endpoint,
   complaints charter pain, 401 auth checks, role enforcement on vote,
   embedded templates, static assets

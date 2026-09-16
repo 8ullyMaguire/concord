@@ -53,13 +53,6 @@ func (s *Server) render(w http.ResponseWriter, status int, name string, data any
 		_, _ = fmt.Fprintf(w, "<html><body><h1>%s</h1></body></html>", name)
 		return
 	}
-	data = struct {
-		any
-		Version string
-	}{
-		any:     data,
-		Version: s.Version,
-	}
 	_ = s.templates.ExecuteTemplate(w, "base.html", data)
 }
 
