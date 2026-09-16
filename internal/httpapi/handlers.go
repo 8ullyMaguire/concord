@@ -5,6 +5,8 @@ import (
 	"strconv"
 
 	"github.com/go-chi/chi/v5"
+
+	"git.polarisocial.xyz/concord/concord/internal/ranking"
 )
 
 type createComplaintRequest struct {
@@ -151,7 +153,33 @@ func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	vote, err := s.Store.RecordVote(r.Context(), projectID, getActorID(r), 0, featureID, req.Outcome, req.Weight)
+	// Load the project's charter for Glicko-2 tau and vote weight cap
+	proj, err := s.Store.GetProject(r.Context(), chi.URLParam(r, "project_id"))
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	charter, err := s.Store.GetCharterForProject(r.Context(), proj.ID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	// Get the opponent feature from the pair
+	fa, fb, err := s.Store.GetNextPair(r.Context(), projectID, getActorID(r))
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	// Determine featureA (the voted one) and featureB (the opponent)
+	featureA, featureB := fa.ID, fb.ID
+	if fa.ID == featureID {
+		featureA, featureB = fa.ID, fb.ID
+	} else {
+		featureA, featureB = fb.ID, fa.ID
+	}
+	// Compute weight server-side — never trust client-supplied weight
+	weight := ranking.VoteWeight(1.0, 1.0, charter.VoteWeightCap)
+	vote, err := s.Store.RecordVote(r.Context(), projectID, getActorID(r), featureA, featureB, req.Outcome, weight, charter)
 	if err != nil {
 		mapError(w, err)
 		return

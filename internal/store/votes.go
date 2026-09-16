@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"git.polarisocial.xyz/concord/concord/internal/ranking"
+	"git.polarisocial.xyz/concord/concord/internal/governance"
 )
 
 // PairwiseVote records a pairwise comparison between two features.
@@ -127,7 +128,7 @@ func (d *DB) GetNextPair(ctx context.Context, projectID, voterID int64) (Feature
 
 // RecordVote records a pairwise vote outcome (M3) and applies the
 // Glicko-2 rating update to both features via ApplyPairwiseVote.
-func (d *DB) RecordVote(ctx context.Context, projectID, voterID, featureA, featureB int64, outcome string, weight float64) (PairwiseVote, error) {
+func (d *DB) RecordVote(ctx context.Context, projectID, voterID, featureA, featureB int64, outcome string, weight float64, charter governance.Charter) (PairwiseVote, error) {
 	if outcome == "" {
 		return PairwiseVote{}, fmt.Errorf("%w: outcome is required", ErrInvalid)
 	}
@@ -150,7 +151,7 @@ func (d *DB) RecordVote(ctx context.Context, projectID, voterID, featureA, featu
 
 	// Apply the vote to Glicko-2 ratings
 	out := ranking.Outcome(outcome)
-	a2, b2 := ranking.ApplyPairwiseVote(fa, fb, out, weight, 0.3)
+	a2, b2 := ranking.ApplyPairwiseVote(fa, fb, out, ranking.VoteWeight(fa.StrategicWeight, 1.0, charter.VoteWeightCap), charter.GlickoTau)
 
 	// Persist updated ratings
 	_, err = d.ExecContext(ctx,

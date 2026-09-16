@@ -1,14 +1,13 @@
 [Unit]
 Description=Concord — complaint-driven, consensus-based forge
-After=network-online.target postgresql.service
+After=network-online.target
 Wants=network-online.target
 
 [Service]
 Type=simple
 ExecStart=/home/alvaro/mnt/thinkcentre/personal/documents/code/projects/concord/bin/concord
-Environment=CONCORD_LISTEN=0.0.0.0:8006
+Environment=CONCORD_LISTEN=127.0.0.1:8007
 Environment=CONCORD_DB=/home/alvaro/.local/share/concord/concord.db
-Environment=CONCORD_FORGEJO_SECRET=concord-forgejo-webhook-secret
 WorkingDirectory=/home/alvaro/mnt/thinkcentre/personal/documents/code/projects/concord
 Restart=always
 RestartSec=5

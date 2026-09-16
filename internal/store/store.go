@@ -4,6 +4,7 @@
 // consensus, and the board (docs/PLAN.md).
 package store
 
+
 import (
 	"context"
 	"database/sql"
@@ -66,6 +67,30 @@ func (d *DB) GetUser(ctx context.Context, username string) (User, error) {
 		return User{}, fmt.Errorf("%w: user %q", ErrNotFound, username)
 	}
 	return u, err
+}
+
+// GetCharterForProject loads the charter for a project by project_id.
+func (d *DB) GetCharterForProject(ctx context.Context, projectID int64) (governance.Charter, error) {
+	var c governance.Charter
+	err := d.QueryRowContext(ctx, `
+		SELECT quorum_ratio, quorum_min, consent_ratio, override_ratio,
+		       vote_window_days, merge_requires_quorum, merge_quorum_min,
+		       merge_quorum_ratio, require_reviewer_approval, wip_in_progress,
+		       wip_review, lam, mu, pain_halflife_days, rep_halflife_days,
+		       glicko_tau, vote_weight_cap
+		FROM charters WHERE project_id = ?`, projectID).Scan(
+		&c.QuorumRatio, &c.QuorumMin, &c.ConsentRatio, &c.OverrideRatio,
+		&c.VoteWindowDays, &c.MergeRequiresQuorum, &c.MergeQuorumMin,
+		&c.MergeQuorumRatio, &c.RequireReviewerApproval, &c.WIPInProgress,
+		&c.WIPReview, &c.Lam, &c.Mu, &c.PainHalflifeDays, &c.RepHalflifeDays,
+		&c.GlickoTau, &c.VoteWeightCap)
+	if errors.Is(err, sql.ErrNoRows) {
+		return governance.DefaultCharter(governance.GovernanceModel("collective")), nil
+	}
+	if err != nil {
+		return governance.Charter{}, fmt.Errorf("load charter: %w", err)
+	}
+	return c, nil
 }
 
 // ---------------------------------------------------------------- projects
