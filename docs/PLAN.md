@@ -200,15 +200,15 @@ SSH git transport, mobile apps. Revisit after M11.
 | Milestone | Status | Notes |
 |-----------|--------|-------|
 | M0 skeleton (schema, ranking, governance, discovery, projects+search API, docs) | done | verified: make verify green, live smoke test |
-| M1 complaints | not started | |
-| M2 features | not started | |
-| M3 ranking + priority | not started | math already in `internal/ranking` with tests |
-| M4 consensus | not started | rules in `internal/governance` with tests |
-| M5 board + charter | not started | columns seeded at project create |
-| M6 merge + webhooks | not started | |
-| M7 threads | not started | |
+| M1 complaints | code present, untested | reviewed 2026-09-16: no tests, no role checks, decay not charter-wired |
+| M2 features | code present, untested | CRUD + strategic weight; no role gate |
+| M3 ranking + priority | code present, NOT WIRED | votes stored but Elo never applied; no priority endpoint; pair-selection fallback bug |
+| M4 consensus | partial | close uses hardcoded DefaultCharter; objection lifecycle + auth missing |
+| M5 board + charter | partial | board CRUD only; gates/charter endpoints pending |
+| M6 merge + webhooks | partial | MR CRUD exists; CheckMergeGate not wired; no webhook receiver |
+| M7 threads | not started | comments tables exist in 0001; labels missing |
 | M8 lists | not started | schema already in 0001 |
-| M9 request board | not started | schema already in 0002; depends on M8's generalized decisions |
+| M9 request board | code present, untested | fit ranking not wired; quorum removal missing |
 | M10 identity | not started | |
-| M11 web UI | not started | |
+| M11 web UI | partial | templates/CSS/JS render; built out of order; no golden-page tests |
 | M12 sync + hardening | not started | |

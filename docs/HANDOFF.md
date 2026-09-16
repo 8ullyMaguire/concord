@@ -1,14 +1,15 @@
 # Concord — handoff
 
 For the implementing agent taking over from here. Read this, then
-`docs/PLAN.md`, then `docs/concord-spec.md` (§2, §4, §5, §15, §16), then
-`docs/ARCHITECTURE.md`.
+`docs/PLAN.md`, then `docs/concord-spec.md` (§2, §4, §5, §15, §16, §17),
+then `docs/ARCHITECTURE.md`.
 
 ## What exists right now (verified)
 
 - **Full platform, building and tested.** `make verify` is green: gofmt,
-  vet, all tests, CGO-free build of `bin/concord` (~21MB). `make verify`
-  must pass before every commit.
+  vet, all tests, CGO-free build of `bin/concord` (14.2MB). `make verify`
+  must pass before every commit. NOTE: green verify means the *old* tests
+  still pass — most new store code has no tests at all (see Known issues).
 - **Schema** (`internal/db/migrations/0001_init.sql` + `0002_request_board.sql`):
   the full spec data model — identity, charters, complaints, features,
   votes, consensus, objections, board, merge layer, reputation, audit,
@@ -50,19 +51,12 @@ For the implementing agent taking over from here. Read this, then
 
 ## Structure
 
-```
-cmd/concord/          entrypoint: flags → config → db open → migrate → serve
-internal/config/      env + flags (CONCORD_DB, CONCORD_LISTEN, CONCORD_FORGEJO_SECRET)
-internal/db/          sqlite open, migrate, schema
-internal/discovery/   health score engine + tests
-internal/governance/  role levels, charter defaults, quorum math, consensus outcomes, merge gate + tests
-internal/httpapi/     JSON API v1 + server-rendered web pages + templates
-internal/ranking/     Glicko-2 with Illinois solver + tests
-internal/store/       10 files: all CRUD operations with domain-error mapping
-templates/            html/template base + page templates
-web/assets/           CSS + JS for the polished website
-internal/db/migrations/ SQL migration files (0001_init.sql, 0002_request_board.sql)
-```
+See `docs/ARCHITECTURE.md` "Package map" — that is the single source of
+truth for the layout. Additions since the skeleton: `internal/store/` now
+has one file per domain, `internal/httpapi/handlers.go` holds the newer
+API handlers plus web page handlers, and `templates/` + `web/assets/`
+hold the server-rendered UI. Do not maintain a second map here; it drifted
+once already.
 
 ## Environment facts
 
@@ -113,7 +107,7 @@ Quick web tour:
    hanging CI.
 2. **FTS5 rows are rebuilt on write** by `ReindexProject` (tags, languages,
    name, description). If you add a searchable field, update the reindex
-   and its test. Triggers come in M11.
+   and its test. Triggers come in M12.
 3. **FK columns with "optional" ids:** pass `NULL`, not `0`
    (`project_tags.applied_by = 0` fails the FK — handled in
    `ApplyProjectTag`; keep the pattern).
@@ -124,8 +118,9 @@ Quick web tour:
    without rerunning that test.
 5. **vet parses `%` in test failure strings** — write "50 pct", not "50%".
 6. **Auth is interim:** mutating endpoints trust a body `actor` username
-   (trusted self-host model). M9 replaces it with sessions/OAuth; design
-   new endpoints with that in mind.
+   (trusted self-host model). M10 replaces it with sessions/OAuth; design
+   new endpoints with that in mind. Interim does NOT mean permissionless:
+   role checks (M1 ACs, M5 gates) are still required and currently missing.
 
 ## How the reviewer (Hermes) will check your work
 
@@ -142,32 +137,70 @@ Quick web tour:
 
 ## Milestone status
 
+Honest states after the 2026-09-16 review (reviewer-verified against the
+tree). "Complete" requires `make verify` green AND the milestone's AC
+tests from PLAN.md — none of M1–M3 met that bar; labels corrected.
+
 | Milestone | Status | Notes |
 |-----------|--------|-------|
-| M1 — Complaint lifecycle | Complete | CRUD + impact + validate + merge |
-| M2 — Feature lifecycle | Complete | CRUD + strategic weight |
-| M3 — Pairwise voting | Complete | Glicko-2 + pair selection |
-| M4 — Consensus engine | Partial | Create + position + objection + close stubs exist; full objection lifecycle and quorum checks need M4 completion |
-| M5 — Board + charter | Partial | Board CRUD exists; charter endpoints, WIP gates, board.move authorization pending |
-| M6 — Merge layer + Forgejo webhooks | Partial | MR CRUD + approve + execute + reject exist; webhook receiver, bot-merge, CheckMergeGate pending |
-| M7 — Threads | Not started | Nested comments, labels, votes, soft delete |
-| M8 — Collaborative lists | Not started | Generalized consensus calls, list FTS, entry ranking |
-| M9 — Request board | Partial | Store + API exist; fit ranking, duplicate answers, quorum removal pending |
-| M10 — Identity & auth | Not started | Sessions, Forgejo OAuth2 |
-| Web polish | Complete | html/template, CSS, JS, responsive design, proper 404 |
+| M1 — Complaint lifecycle | code present, untested | store + handlers exist; zero tests, no permission checks, PainScore wired with age=0 and hardcoded halflife 90 — charter decay ignored |
+| M2 — Feature lifecycle | code present, untested | CRUD + strategic weight; no tests, no role gate despite the function comment claiming "Maintainer+ only" |
+| M3 — Pairwise voting | code present, NOT WIRED | RecordVote stores rows but never calls ranking.ApplyPairwiseVote — ratings never move; VoteWeight/PriorityScore unused, no priority endpoint; GetNextPair fallback re-offers already-voted pairs |
+| M4 — Consensus | partial | create/position/objection/close exist; EvaluateConsensus called with hardcoded DefaultCharter, ignoring the project's charter; objection lifecycle + role auth missing; untested |
+| M5 — Board + charter | partial | board CRUD exists; charter endpoints, WIP gates, move authorization pending; untested |
+| M6 — Merge + webhooks | partial | MR CRUD/approve/execute/reject exist; CheckMergeGate NOT wired into execute; no webhook receiver, no bot-merge client; untested |
+| M7 — Threads | not started | comments + comment_votes tables already exist in 0001; labels table missing |
+| M8 — Lists | not started | schema in 0001; generalized decision targets are the prerequisite |
+| M9 — Request board | code present, untested | store + API exist; fit ranking not wired (same gap as M3); affiliation labels, duplicate-answer handling, quorum removal missing |
+| M10 — Identity & auth | not started | body-actor interim; role gates missing project-wide |
+| M11 — Web UI | partial | 6 templates + CSS/JS exist and render; built before M1–M9 gates (ordering violation); no golden-page tests |
+| M12 — Sync + hardening | not started | |
+
+## Known issues from review (fix before new features)
+
+1. **Votes don't rank (critical, spec §6).** `store.RecordVote` persists
+   the vote and returns. It must compute weight via
+   `ranking.VoteWeight` (reputation decay + role mult + charter cap),
+   apply `ranking.ApplyPairwiseVote`, persist the new ratings + vol,
+   write the reputation event and audit row. Until then, Concord's
+   central promise — computed priority — does nothing.
+2. **No role enforcement anywhere.** Any named actor can validate
+   complaints, set strategic weight, close consensus, move cards, and
+   execute merges. Add the role checks per the M1/M5 ACs.
+3. **Charter ignored at decision time.** `consensus.go` calls
+   `governance.EvaluateConsensus` with `DefaultCharter(Collective)` and
+   `complaints.go` hardcodes halflife 90 / age 0. Both must read the
+   project's charter (already loaded in `store.go`).
+4. **GetNextPair fallback bug.** The "fallback: closest pair overall"
+   block is a copy of the main loop and ignores `votedPairs`, so it
+   re-offers pairs the voter already voted on. Return an exhausted
+   signal instead. Also: scan errors are silently swallowed
+   (`if err := rows.Scan(...); err == nil`) — surface them.
+5. **Test debt.** ~1,500 lines of store code with zero test files and no
+   new httpapi tests. PLAN's ground rule 1 and the ACs make tests the
+   definition of done, not decoration.
 
 ## Next steps
 
-1. **M4 consensus objections** — implement `WithdrawObjection`,
-   `ResolveObjection`, `VetoObjection` in store + API handlers.
-2. **M5 board gates** — add role-based authorization to `handleMoveCard`,
-   implement charter endpoints, add WIP limit enforcement.
-3. **M6 Forgejo webhooks** — implement `POST /api/v1/hooks/forgejo`
-   with HMAC verification, bot-merge client.
-4. **M7 threads** — add `comments` and `labels` tables, nested comment CRUD.
-5. **M8/M9 completion** — generalized decision targets, fit ranking,
-   duplicate answer prevention, quorum-based spam removal.
-6. **M10 auth** — cookie sessions + Forgejo OAuth2.
+1. **Fix Known issues 1–4, then write the M1–M3 AC tests** (PLAN) —
+   permission denials, weight-scaled rating movement, decayed pain vs a
+   hand-computed value, priority ordering.
+2. **M4 consensus completion** — objection lifecycle
+   (`WithdrawObjection`, `ResolveObjection`, `VetoObjection`), project
+   charter in evaluation, quorum-gated close, role-gated early close.
+3. **M5 board gates** — role-based authorization in `handleMoveCard`,
+   charter endpoints, WIP limit enforcement.
+4. **M6 Forgejo webhooks** — `POST /api/v1/hooks/forgejo` with HMAC
+   verification (constant-time), wire `governance.CheckMergeGate` into
+   merge execution, bot-merge client behind a flag.
+5. **M7 threads** — labels table is new; comments/comment_votes already
+   exist in 0001, wire them.
+6. **M8/M9 completion** — generalized decision targets, fit ranking
+   wiring (same as Known issue 1), duplicate answers, quorum spam
+   removal.
+7. **M10 auth** — cookie sessions + Forgejo OAuth2.
+8. Keep new UI work behind the working API — no more UI before the gates
+   and tests exist.
 
 ## Current decision log (do not re-litigate silently)
 
