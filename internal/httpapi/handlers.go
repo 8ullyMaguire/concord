@@ -165,8 +165,9 @@ func (s *Server) handleGetFeature(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSetStrategicWeight(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if getActorID(r) == 0 {
-		mapError(w, fmt.Errorf("authentication required"))
+	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	if err := s.requireRole(projectID, "maintainer", r); err != nil {
+		mapError(w, err)
 		return
 	}
 	var req struct {
@@ -519,6 +520,16 @@ func getActorID(r *http.Request) int64 {
 }
 
 
+// roleHierarchy maps roles to numeric ranks for comparison.
+var roleHierarchy = map[string]int{
+	"guest":       0,
+	"user":        1,
+	"contributor": 2,
+	"reviewer":    3,
+	"maintainer":  4,
+	"owner":       5,
+}
+
 // requireRole returns an error if the actor's role in the project
 // is below the minimum required role. Returns nil if authorized.
 func (s *Server) requireRole(projectID int64, minRole string, r *http.Request) error {
@@ -527,7 +538,15 @@ func (s *Server) requireRole(projectID int64, minRole string, r *http.Request) e
 		return store.ErrAuth
 	}
 	role, _ := s.Store.GetRoleForProject(r.Context(), projectID, actorID)
-	if role == "guest" || role == "" {
+	actorRank, ok := roleHierarchy[role]
+	if !ok {
+		actorRank = 0
+	}
+	minRank, ok := roleHierarchy[minRole]
+	if !ok {
+		minRank = 2 // default to contributor
+	}
+	if actorRank < minRank {
 		return store.ErrPerm
 	}
 	return nil

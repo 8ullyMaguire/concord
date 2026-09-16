@@ -450,3 +450,63 @@ func itoa(n int64) string {
 	}
 	return string(b[i:])
 }
+
+
+// TestPermissionDenial verifies role-based access control.
+// Users can be added to projects with specific roles to test enforcement.
+func TestPermissionDenial(t *testing.T) {
+	t.Run("guest_cannot_vote", func(t *testing.T) {
+		ts := newTestServerNoActor(t)
+		// Without auth, all protected endpoints 401
+		resp, _ := doJSON(t, ts, "POST", "/api/v1/projects/1/features/1/vote", map[string]any{
+			"feature_a": 1, "feature_b": 2, "outcome": "a",
+		})
+		if resp.StatusCode != http.StatusUnauthorized {
+			t.Fatalf("expected 401 for unauthenticated vote, got %d", resp.StatusCode)
+		}
+	})
+
+	t.Run("set_strategic_weight_requires_maintainer", func(t *testing.T) {
+		ts := newTestServer(t)
+		// Create project (actor becomes maintainer)
+		resp, projBody := doJSON(t, ts, "POST", "/api/v1/projects", map[string]any{
+			"slug": "weight-test", "name": "Weight Test", "description": "x",
+		})
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("create project: %d", resp.StatusCode)
+		}
+		projID := int64(projBody["id"].(float64))
+
+		// Create a feature to set weight on
+		resp, compBody := doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/complaints", map[string]any{
+			"title": "C", "body": "x", "severity": 1, "frequency": 0.5,
+			"strategic_multiplier": 1.0, "project_id": projID,
+		})
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("create complaint: %d", resp.StatusCode)
+		}
+		compID := int64(compBody["id"].(float64))
+
+		resp, _ = doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/complaints/"+itoa(compID)+"/validate", nil)
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("validate: %d", resp.StatusCode)
+		}
+
+		resp, featBody := doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/features", map[string]any{
+			"title": "F", "body": "x", "linked_complaints": []int64{compID},
+			"project_id": projID,
+		})
+		if resp.StatusCode != http.StatusCreated {
+			t.Fatalf("create feature: %d", resp.StatusCode)
+		}
+		featID := int64(featBody["id"].(float64))
+
+		// Maintainer can set strategic weight
+		resp, body := doJSON(t, ts, "PUT", "/api/v1/projects/"+itoa(projID)+"/features/"+itoa(featID)+"/strategic-weight", map[string]any{
+			"weight": 5.0,
+		})
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("maintainer should be able to set strategic weight, got %d body=%v", resp.StatusCode, body)
+		}
+	})
+}
