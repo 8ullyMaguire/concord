@@ -54,7 +54,7 @@ func main() {
 		log.Fatalf("migrate: %v", err)
 	}
 
-	srv, err := httpapi.NewServer(&store.DB{DB: sqlDB}, version)
+	srv, err := httpapi.NewServer(&store.DB{DB: sqlDB}, version, cfg.WebhookSecret)
 	if err != nil {
 		log.Fatalf("create server: %v", err)
 	}

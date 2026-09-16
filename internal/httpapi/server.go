@@ -24,13 +24,17 @@ var templateFS embed.FS
 var staticFS embed.FS
 
 type Server struct {
-	Store     *store.DB
-	Version   string
-	templates *template.Template
+	Store         *store.DB
+	Version       string
+	WebhookSecret string
+	templates     *template.Template
 }
 
-func NewServer(store *store.DB, version string) (*Server, error) {
+func NewServer(store *store.DB, version string, webhookSecret ...string) (*Server, error) {
 	s := &Server{Store: store, Version: version}
+	if len(webhookSecret) > 0 {
+		s.WebhookSecret = webhookSecret[0]
+	}
 	if err := s.loadTemplates(); err != nil {
 		return nil, err
 	}
@@ -69,6 +73,9 @@ func (s *Server) Router() http.Handler {
 	r.Get("/api/v1/version", func(w http.ResponseWriter, _ *http.Request) {
 		writeJSON(w, http.StatusOK, map[string]string{"version": s.Version})
 	})
+
+	// Forgejo webhooks
+	r.Post("/api/v1/hooks/forgejo", s.handleForgejoWebhook)
 
 	r.Route("/api/v1/projects", func(r chi.Router) {
 		r.Get("/", s.handleListProjects)
