@@ -68,6 +68,10 @@ func (s *Server) handleAddImpact(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleValidateComplaint(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if getActorID(r) == 0 {
+		mapError(w, fmt.Errorf("authentication required"))
+		return
+	}
 	if err := s.Store.ValidateComplaint(r.Context(), id); err != nil {
 		mapError(w, err)
 		return
@@ -129,6 +133,10 @@ func (s *Server) handleGetFeature(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSetStrategicWeight(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if getActorID(r) == 0 {
+		mapError(w, fmt.Errorf("authentication required"))
+		return
+	}
 	var req struct {
 		Weight float64 `json:"weight"`
 	}
@@ -205,6 +213,10 @@ func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleGetNextPair(w http.ResponseWriter, r *http.Request) {
 	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	if getActorID(r) == 0 {
+		mapError(w, fmt.Errorf("authentication required"))
+		return
+	}
 	a, b, err := s.Store.GetNextPair(r.Context(), projectID, getActorID(r))
 	if err != nil {
 		mapError(w, err)
@@ -321,6 +333,10 @@ func (s *Server) handleMoveCard(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCreateMergeRequest(w http.ResponseWriter, r *http.Request) {
 	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	if getActorID(r) == 0 {
+		mapError(w, fmt.Errorf("authentication required"))
+		return
+	}
 	var req struct {
 		FeatureID int64  `json:"feature_id"`
 		Title     string `json:"title"`
@@ -439,6 +455,23 @@ func getActorID(r *http.Request) int64 {
 	}
 	return 0
 }
+
+
+// requireRole returns an error if the actor's role in the project
+// is below the minimum required role. Returns nil if authorized.
+func (s *Server) requireRole(projectID int64, minRole string, r *http.Request) error {
+	actorID := getActorID(r)
+	if actorID == 0 {
+		return fmt.Errorf("authentication required")
+	}
+	role, _ := s.Store.GetRoleForProject(r.Context(), projectID, actorID)
+	if role == "guest" || role == "" {
+		return fmt.Errorf("contributor role or higher required")
+	}
+	return nil
+}
+
+// getActorIDOr401 returns the actor ID or nil if not authenticated.
 
 // ---------------------------------------------------------------- health
 
