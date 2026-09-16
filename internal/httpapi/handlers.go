@@ -182,7 +182,8 @@ func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Compute weight server-side from voter reputation — never trust client-supplied weight
-	weight := ranking.VoteWeight(1.0, 1.0, charter.VoteWeightCap)
+	voterReputation, _ := s.Store.GetReputation(r.Context(), projectID, getActorID(r))
+	weight := ranking.VoteWeight(voterReputation, 1.0, charter.VoteWeightCap)
 	vote, err := s.Store.RecordVote(r.Context(), projectID, getActorID(r), req.FeatureA, req.FeatureB, req.Outcome, weight, charter)
 	if err != nil {
 		mapError(w, err)

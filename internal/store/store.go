@@ -93,6 +93,22 @@ func (d *DB) GetCharterForProject(ctx context.Context, projectID int64) (governa
 	return c, nil
 }
 
+
+// GetReputation returns the sum of reputation points for a user
+// in a project.
+func (d *DB) GetReputation(ctx context.Context, projectID, userID int64) (float64, error) {
+	var rep float64
+	err := d.QueryRowContext(ctx, `
+		SELECT COALESCE(SUM(points), 0) FROM reputation_events
+		WHERE project_id = ? AND user_id = ?`, projectID, userID).Scan(&rep)
+	if err != nil {
+		return 0, fmt.Errorf("load reputation: %w", err)
+	}
+	return rep, nil
+}
+
+// ---------------------------------------------------------------- projects
+
 // ---------------------------------------------------------------- projects
 
 type Project struct {
