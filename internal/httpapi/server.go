@@ -131,6 +131,10 @@ func (s *Server) Router() http.Handler {
 		})
 	})
 
+	// Charter
+	r.Get("/api/v1/projects/{project_id}/charter", s.handleGetCharter)
+	r.Put("/api/v1/projects/{project_id}/charter", s.handleUpdateCharter)
+
 	// Board
 	r.Route("/api/v1/projects/{project_id}/board", func(r chi.Router) {
 		r.Get("/", s.handleGetBoard)

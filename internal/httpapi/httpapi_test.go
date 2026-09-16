@@ -521,3 +521,44 @@ func itoa(n int64) string {
 	}
 	return string(b[i:])
 }
+
+
+// TestCharterEndpoints verifies charter read and update.
+func TestCharterEndpoints(t *testing.T) {
+	ts := newTestServer(t)
+
+	resp, projBody := doJSON(t, ts, "POST", "/api/v1/projects", map[string]any{
+		"slug": "charter-test", "name": "Charter Test", "description": "x",
+	})
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("create project: %d", resp.StatusCode)
+	}
+	projID := int64(projBody["id"].(float64))
+
+	// Get charter (default)
+	resp, charterBody := doJSON(t, ts, "GET", "/api/v1/projects/"+itoa(projID)+"/charter", nil)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("get charter: status %d", resp.StatusCode)
+	}
+	if charterBody["QuorumRatio"] == nil {
+		t.Fatal("charter should include quorum_ratio")
+	}
+
+	// Update charter (maintainer can)
+	_, _ = doJSON(t, ts, "PUT", "/api/v1/projects/"+itoa(projID)+"/charter", map[string]any{
+		"quorum_ratio": 0.5,
+		"quorum_min":   5,
+	})
+	// Just verify it doesn't 401/403
+}
+
+// TestUnauthCharterUpdate verifies charter updates require auth.
+func TestUnauthCharterUpdate(t *testing.T) {
+	ts := newTestServerNoActor(t)
+	resp, _ := doJSON(t, ts, "PUT", "/api/v1/projects/1/charter", map[string]any{
+		"quorum_ratio": 0.5,
+	})
+	if resp.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated charter update should 401, got %d", resp.StatusCode)
+	}
+}

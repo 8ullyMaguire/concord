@@ -105,6 +105,24 @@ func (d *DB) GetCharterForProject(ctx context.Context, projectID int64) (governa
 	return c, nil
 }
 
+// UpdateCharter updates a project's charter values (M5).
+func (d *DB) UpdateCharter(ctx context.Context, projectID int64, charter governance.Charter) error {
+	_, err := d.ExecContext(ctx, `
+		UPDATE charters SET
+			quorum_ratio = ?, quorum_min = ?, consent_ratio = ?, override_ratio = ?,
+			vote_window_days = ?, merge_requires_quorum = ?, merge_quorum_min = ?,
+			merge_quorum_ratio = ?, require_reviewer_approval = ?, wip_in_progress = ?,
+			wip_review = ?, lam = ?, mu = ?, pain_halflife_days = ?, rep_halflife_days = ?,
+			glicko_tau = ?, vote_weight_cap = ?
+		WHERE project_id = ?`,
+		charter.QuorumRatio, charter.QuorumMin, charter.ConsentRatio, charter.OverrideRatio,
+		charter.VoteWindowDays, charter.MergeRequiresQuorum, charter.MergeQuorumMin,
+		charter.MergeQuorumRatio, charter.RequireReviewerApproval, charter.WIPInProgress,
+		charter.WIPReview, charter.Lam, charter.Mu, charter.PainHalflifeDays, charter.RepHalflifeDays,
+		charter.GlickoTau, charter.VoteWeightCap, projectID)
+	return err
+}
+
 
 // GetReputation returns the sum of reputation points for a user
 // in a project.
