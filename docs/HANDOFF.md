@@ -59,7 +59,7 @@ domains.
 - Never put live SQLite on the NFS pool — the default DB path is local
   (`$XDG_DATA_HOME/concord/concord.db`); tests use `:memory:` DB with
   migrations (`db.Open(":memory:")` + `db.Migrate()`).
-- Default listen address `127.0.0.1:8007`.
+- Default listen address `127.0.0.1:8006`.
 
 ## Commands
 
@@ -74,13 +74,13 @@ make deploy    # build → stop → copy → start → healthz verify
 Quick API tour:
 
 ```
-curl -s localhost:8007/api/v1/healthz
-curl -s -X POST localhost:8007/api/v1/projects -H 'Content-Type: application/json' \
+curl -s localhost:8006/api/v1/healthz
+curl -s -X POST localhost:8006/api/v1/projects -H 'Content-Type: application/json' \
   -d '{"slug":"demo","name":"Demo"}'
-curl -s -X PUT localhost:8007/api/v1/projects/demo/tags -H 'Content-Type: application/json' \
+curl -s -X PUT localhost:8006/api/v1/projects/demo/tags -H 'Content-Type: application/json' \
   -d '{"tags":["governance"]}'
-curl -s 'localhost:8007/api/v1/search?tag=governance&min_health=0.5&sort=health'
-curl -s localhost:8007/api/v1/hooks/forgejo -X POST \
+curl -s 'localhost:8006/api/v1/search?tag=governance&min_health=0.5&sort=health'
+curl -s localhost:8006/api/v1/hooks/forgejo -X POST \
   -H 'Content-Type: application/json' \
   -H 'X-Gitea-Event: push' \
   -H 'X-Hub-Signature-256: sha256=...' \
@@ -90,10 +90,10 @@ curl -s localhost:8007/api/v1/hooks/forgejo -X POST \
 Quick web tour:
 
 ```
-# Visit http://localhost:8007/           — homepage
-# Visit http://localhost:8007/search     — search form
-# Visit http://localhost:8007/projects   — project listing
-# Visit http://localhost:8007/projects/demo/board — kanban board
+# Visit http://localhost:8006/           — homepage
+# Visit http://localhost:8006/search     — search form
+# Visit http://localhost:8006/projects   — project listing
+# Visit http://localhost:8006/projects/demo/board — kanban board
 ```
 
 ## Things that will bite you (learned the hard way here)
@@ -142,7 +142,7 @@ against the tree AND the live service). All milestones now AC-tested.
 | M9 request board | AC-tested | CRUD + answer + vote tests |
 | M10 identity | AC-tested | 401/403 live; role hierarchy matrix; granular role enforcement |
 | M11 web UI | AC-tested | embedded assets render + golden-page tests |
-| M12 sync + hardening | AC-tested | deployed 8007 + security middleware + rate limiting |
+| M12 sync + hardening | AC-tested | deployed 8006 + security middleware + rate limiting |
 
 ## Known issues (seventh pass, reviewer-verified)
 
@@ -157,7 +157,7 @@ against the tree AND the live service). All milestones now AC-tested.
    `charter.PainHalflifeDays` with real age.
 4. **Exhaustion.** `GetNextPair` errors when no unvoted pairs remain.
 5. **Deployment is real.** systemd user unit active on thinkcentre,
-   127.0.0.1:8007 listening, healthz + homepage + embedded CSS/JS
+   127.0.0.1:8006 listening, healthz + homepage + embedded CSS/JS
    verified by the reviewer via ssh.
 6. **Remotes in sync.** github and forgejo both at HEAD (6c80acf).
 7. **62 tests pass** across store + httpapi, including AC-grade tests
@@ -166,15 +166,11 @@ against the tree AND the live service). All milestones now AC-tested.
 
 ### Remaining (non-blocking)
 
-1. **Cloudflare ingress re-point — OWNER action.** The thinkcentre tunnel
-   is a remotely-managed cloudflared token tunnel (`/etc/cloudflared/token`,
-   no local config), so ingress lives in the Cloudflare dashboard:
-   Zero Trust → Networks → Tunnels → <tunnel> → Public Hostname
-   `concord.polarisocial.xyz` → change service `http://localhost:8006` →
-   `http://localhost:8007`. Then verify
-   `curl https://concord.polarisocial.xyz/api/v1/healthz`. No CF API token
-   exists on either machine, so this cannot be automated.
-2. **M7 httpapi round-trip tests** — optional; store-tested today.
+1. **M7 httpapi round-trip tests** — optional; store-tested today.
+
+Nothing else is blocking: the site is public at
+https://concord.polarisocial.xyz (healthz, homepage, and API verified by
+the reviewer through the existing Cloudflare tunnel).
 
 ### Finished by the reviewer (finisher pass, 2026-09-16)
 
@@ -195,6 +191,11 @@ against the tree AND the live service). All milestones now AC-tested.
    X-Frame-Options + nosniff, priorities endpoint auth-gated (the old
    "feature 0" error is gone), webhook receiver fails closed without a
    secret, per-visitor rate limiting proven live.
+5. **Port 8006 per owner decision (2026-09-16):** icecast2 was purged
+   from thinkcentre (`apt remove --purge`, zero packages left) and Concord
+   moved onto 8006 — the port the Cloudflare tunnel ingress already
+   pointed at. The domain went live with NO Cloudflare change; healthz,
+   homepage, and API verified publicly. Port 8007 is now free.
 
 ### Deployment (current)
 

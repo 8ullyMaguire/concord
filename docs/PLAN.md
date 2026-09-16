@@ -211,12 +211,12 @@ SSH git transport, mobile apps. Revisit after M11.
 | M9 request board | AC-tested | CRUD + answer + vote tests |
 | M10 identity | AC-tested | 401/403 live; role hierarchy matrix; granular role enforcement |
 | M11 web UI | AC-tested | embedded assets render + golden-page tests |
-| M12 sync + hardening | done | security headers, per-visitor rate limiting, audit wiring, make deploy healthz-verified on thinkcentre (4cc6aa3); CF ingress re-point pending owner |
+| M12 sync + hardening | done | security headers, per-visitor rate limiting, audit wiring, make deploy healthz-verified; live on 127.0.0.1:8006 and PUBLIC at concord.polarisocial.xyz (icecast2 removed per owner, ingress already pointed at 8006) |
 
 
 ## Current State (2026-09-16)
 
-- **Live on thinkcentre** at 127.0.0.1:8007
+- **Live on thinkcentre** at 127.0.0.1:8006
 - Healthz verified: `{"status":"ok"}`
 - Binary: `/home/alvaro/concord-deploy/concord` (~21MB embedded templates)
 - Service: `systemctl --user concord` (active, auto-restart)

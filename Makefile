@@ -3,7 +3,7 @@ VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo dev)
 PKG     := ./cmd/concord
 DEPLOY_DIR ?= $(HOME)/concord-deploy
 DEPLOY_HOST ?= localhost
-DEPLOY_PORT ?= 8007
+DEPLOY_PORT ?= 8006
 
 .PHONY: build test fmt vet verify run clean tidy deploy
 
