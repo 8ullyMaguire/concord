@@ -27,7 +27,12 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 	if req.GovernanceModel == "" {
 		req.GovernanceModel = "collective"
 	}
-	p, err := s.Store.CreateProject(r.Context(), getActorID(r), req.Slug, req.Name,
+	actorID := getActorID(r)
+	if actorID == 0 {
+		mapError(w, store.ErrAuth)
+		return
+	}
+	p, err := s.Store.CreateProject(r.Context(), actorID, req.Slug, req.Name,
 		req.Description, req.GovernanceModel, req.License)
 	if err != nil {
 		mapError(w, err)

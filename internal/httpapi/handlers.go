@@ -100,6 +100,10 @@ type createFeatureRequest struct {
 }
 
 func (s *Server) handleCreateFeature(w http.ResponseWriter, r *http.Request) {
+	if getActorID(r) == 0 {
+		mapError(w, store.ErrAuth)
+		return
+	}
 	var req createFeatureRequest
 	if !readJSON(w, r, &req) {
 		return
@@ -218,12 +222,7 @@ func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	// Load the project's charter for Glicko-2 tau and vote weight cap
-	proj, err := s.Store.GetProject(r.Context(), chi.URLParam(r, "project_id"))
-	if err != nil {
-		mapError(w, err)
-		return
-	}
-	charter, err := s.Store.GetCharterForProject(r.Context(), proj.ID)
+	charter, err := s.Store.GetCharterForProject(r.Context(), projectID)
 	if err != nil {
 		mapError(w, err)
 		return
@@ -307,13 +306,12 @@ func (s *Server) handleCastConsensusPosition(w http.ResponseWriter, r *http.Requ
 		return
 	}
 	var req struct {
-		Role   string `json:"role"`
-		Stance string `json:"stance"`
+		Position string `json:"position"`
 	}
 	if !readJSON(w, r, &req) {
 		return
 	}
-	pos, err := s.Store.CastPosition(r.Context(), callID, getActorID(r), req.Role, req.Stance)
+	pos, err := s.Store.CastPosition(r.Context(), callID, getActorID(r), req.Position)
 	if err != nil {
 		mapError(w, err)
 		return

@@ -18,20 +18,18 @@ type ConsensusCall struct {
 	OpensAt   float64 `json:"opens_at"`
 	ClosesAt  float64 `json:"closes_at"`
 	Status    string  `json:"status"`
-	Result    *string  `json:"result"`
-	Summary   *string  `json:"summary"`
-	CreatedAt   float64  `json:"created_at"`
-	ClosedAt    *float64 `json:"closed_at,omitempty"`
+	Result    *string `json:"result"`
+	Summary   *string `json:"summary"`
+	CreatedAt float64 `json:"created_at"`
+	ClosedAt  *float64 `json:"closed_at,omitempty"`
 }
 
 type Position struct {
-	ID        int64   `json:"id"`
 	CallID    int64   `json:"call_id"`
 	UserID    int64   `json:"user_id"`
-	Role      string  `json:"role"`
-	Stance    string  `json:"stance"`
-	Principle string  `json:"principle"`
-	CreatedAt float64 `json:"created_at"`
+	Position  string  `json:"position"`
+	Reason    string  `json:"reason"`
+	UpdatedAt float64 `json:"updated_at"`
 }
 
 type Objection struct {
@@ -40,7 +38,7 @@ type Objection struct {
 	UserID    int64   `json:"user_id"`
 	Principle string  `json:"principle"`
 	Violation string  `json:"violation"`
-	Remy      string  `json:"remedy"`
+	Remedy    string  `json:"remedy"`
 	Status    string  `json:"status"`
 	CreatedAt float64 `json:"created_at"`
 }
@@ -85,8 +83,8 @@ func (d *DB) GetConsensusCall(ctx context.Context, id int64) (ConsensusCall, err
 }
 
 func (d *DB) GetPositions(ctx context.Context, callID int64) ([]Position, error) {
-	rows, err := d.QueryContext(ctx, `SELECT id, call_id, user_id, role, stance, principle, created_at
-		FROM positions WHERE call_id=? ORDER BY created_at ASC`, callID)
+	rows, err := d.QueryContext(ctx, `SELECT call_id, user_id, position, reason, updated_at
+		FROM positions WHERE call_id=? ORDER BY updated_at ASC`, callID)
 	if err != nil {
 		return nil, err
 	}
@@ -94,7 +92,7 @@ func (d *DB) GetPositions(ctx context.Context, callID int64) ([]Position, error)
 	var positions []Position
 	for rows.Next() {
 		var p Position
-		if err := rows.Scan(&p.ID, &p.CallID, &p.UserID, &p.Role, &p.Stance, &p.Principle, &p.CreatedAt); err != nil {
+		if err := rows.Scan(&p.CallID, &p.UserID, &p.Position, &p.Reason, &p.UpdatedAt); err != nil {
 			return nil, err
 		}
 		positions = append(positions, p)
@@ -102,28 +100,28 @@ func (d *DB) GetPositions(ctx context.Context, callID int64) ([]Position, error)
 	return positions, rows.Err()
 }
 
-func (d *DB) CastPosition(ctx context.Context, callID, userID int64, role, stance string) (Position, error) {
-	now := float64(time.Now().Unix())
-	_, err := d.ExecContext(ctx, `
-		INSERT INTO positions (call_id, user_id, role, stance, created_at)
-		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(call_id, user_id) DO UPDATE SET stance=excluded.stance, role=excluded.role, created_at=excluded.created_at`,
-		callID, userID, role, stance, now)
-	if err != nil {
-		return Position{}, err
-	}
-	return d.GetPosition(ctx, callID, userID)
-}
-
 func (d *DB) GetPosition(ctx context.Context, callID, userID int64) (Position, error) {
 	var p Position
-	err := d.QueryRowContext(ctx, `SELECT id, call_id, user_id, role, stance, principle, created_at
+	err := d.QueryRowContext(ctx, `SELECT call_id, user_id, position, reason, updated_at
 		FROM positions WHERE call_id=? AND user_id=?`, callID, userID).Scan(
-		&p.ID, &p.CallID, &p.UserID, &p.Role, &p.Stance, &p.Principle, &p.CreatedAt)
+		&p.CallID, &p.UserID, &p.Position, &p.Reason, &p.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Position{}, fmt.Errorf("%w: position not found", ErrNotFound)
 	}
 	return p, err
+}
+
+func (d *DB) CastPosition(ctx context.Context, callID, userID int64, stance string) (Position, error) {
+	now := float64(time.Now().Unix())
+	_, err := d.ExecContext(ctx, `
+		INSERT INTO positions (call_id, user_id, position, updated_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(call_id, user_id) DO UPDATE SET position=excluded.position, updated_at=excluded.updated_at`,
+		callID, userID, stance, now)
+	if err != nil {
+		return Position{}, err
+	}
+	return d.GetPosition(ctx, callID, userID)
 }
 
 func (d *DB) CreateObjection(ctx context.Context, callID, userID int64, principle, violation, remedy string) (Objection, error) {
@@ -135,7 +133,7 @@ func (d *DB) CreateObjection(ctx context.Context, callID, userID int64, principl
 		return Objection{}, err
 	}
 	id, _ := res.LastInsertId()
-	return Objection{ID: id, CallID: callID, UserID: userID, Principle: principle, Violation: violation, Remy: remedy, Status: "open", CreatedAt: now}, nil
+	return Objection{ID: id, CallID: callID, UserID: userID, Principle: principle, Violation: violation, Remedy: remedy, Status: "open", CreatedAt: now}, nil
 }
 
 func (d *DB) GetObjections(ctx context.Context, callID int64) ([]Objection, error) {
@@ -148,7 +146,7 @@ func (d *DB) GetObjections(ctx context.Context, callID int64) ([]Objection, erro
 	var objections []Objection
 	for rows.Next() {
 		var o Objection
-		if err := rows.Scan(&o.ID, &o.CallID, &o.UserID, &o.Principle, &o.Violation, &o.Remy, &o.Status, &o.CreatedAt); err != nil {
+		if err := rows.Scan(&o.ID, &o.CallID, &o.UserID, &o.Principle, &o.Violation, &o.Remedy, &o.Status, &o.CreatedAt); err != nil {
 			return nil, err
 		}
 		objections = append(objections, o)
@@ -170,12 +168,10 @@ func (d *DB) CloseConsensusCall(ctx context.Context, callID int64) (ConsensusSum
 	if err != nil {
 		return ConsensusSummary{}, err
 	}
-	
-	
-		var counts governance.ConsensusCounts
+	var counts governance.ConsensusCounts
 	for _, p := range positions {
 		counts.Participants++
-		switch p.Stance {
+		switch p.Position {
 		case "consent":
 			counts.Consent++
 		case "stand_aside":
@@ -197,7 +193,6 @@ func (d *DB) CloseConsensusCall(ctx context.Context, callID int64) (ConsensusSum
 		}
 	}
 	counts.OpenObjections = openObj
-	// Get project's governance model to use the correct charter
 	var modelStr string
 	err = d.QueryRowContext(ctx,
 		`SELECT governance_model FROM projects WHERE id = ?`, c.ProjectID).Scan(&modelStr)
