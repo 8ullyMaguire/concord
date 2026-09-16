@@ -267,6 +267,10 @@ func (s *Server) handleGetConsensus(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleCastConsensusPosition(w http.ResponseWriter, r *http.Request) {
 	callID, _ := strconv.ParseInt(chi.URLParam(r, "call_id"), 10, 64)
+	if getActorID(r) == 0 {
+		mapError(w, fmt.Errorf("authentication required"))
+		return
+	}
 	var req struct {
 		Role   string `json:"role"`
 		Stance string `json:"stance"`
@@ -390,6 +394,10 @@ func (s *Server) handleExecuteMerge(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleRejectMerge(w http.ResponseWriter, r *http.Request) {
 	mrID, _ := strconv.ParseInt(chi.URLParam(r, "mr_id"), 10, 64)
 	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	if getActorID(r) == 0 {
+		mapError(w, fmt.Errorf("authentication required"))
+		return
+	}
 	if err := s.Store.RejectMerge(r.Context(), mrID, projectID); err != nil {
 		mapError(w, err)
 		return
