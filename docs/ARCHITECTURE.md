@@ -56,6 +56,10 @@ pure packages never import SQL; the store translates between them.
   write by the store).
 - **Lists (spec §16):** `lists`, `list_entries` (proposed → accepted by
   quorum; Glicko columns for ranking), `list_tags`, `list_entry_votes`.
+- **Request board (spec §17):** `requests` (natural-language need + tags),
+  `request_answers` (project references + fit rationale, Glicko columns,
+  UNIQUE per request×project), `request_answer_votes` (pairwise fit
+  ranking), `requests.accepted_answer_id` (display-only author marker).
 
 ## Governance invariants (never simplify these)
 

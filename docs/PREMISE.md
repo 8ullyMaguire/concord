@@ -26,7 +26,7 @@ Code hosting is the substrate. Decisions are the product.
 
 4. **Kanban with teeth.** Work moves through phases, and each advance is gated: nothing reaches Ready without consensus; nothing lands without a reviewer's technical approval and a quorum of collaborator confirmations. WIP limits protect attention.
 
-5. **Discovery is the point.** Projects are exhaustively, collaboratively tagged. Search is a query language, not a box: filter by tag, language and its percentage, license, governance model, and a transparent maintenance-health score — commit recency, review latency, contributor breadth, release cadence — where every component is exposed so you can reweight it yourself. API-first, with facets on every result.
+5. **Discovery is the point.** Projects are exhaustively, collaboratively tagged. Search is a query language, not a box: filter by tag, language and its percentage, license, governance model, and a transparent maintenance-health score — commit recency, review latency, contributor breadth, release cadence — where every component is exposed so you can reweight it yourself. API-first, with facets on every result. And when search isn't enough, ask the forge: the request board lets you describe what you need in plain language and get community-ranked project answers, so nobody has to start a Reddit thread or trawl alternativeto.net.
 
 6. **Lists are objects, not files.** Awesome lists become collaborative databases: anyone proposes entries, quorum admits them, pairwise ranking orders them, and search finds entries across every list on the instance.
 

@@ -141,7 +141,30 @@ facets still correct, filters still composable).
 - AC: propose → quorum → accepted flow test; rejected entry stays
   `rejected`; ranking moves entry order; list search returns facets.
 
-### M9 — Identity & auth
+### M9 — Request board (spec §17)
+- Generalized decisions from M8 are a prerequisite (spam-answer removal is
+  a quorum decision; affiliation checks reuse member/project ownership).
+- Store + API: `POST /requests` (user+, title, body with constraints,
+  optional project scope, tags), `GET /requests` (filter status/tag, sort
+  newest/active), `GET /requests/{id}` with answers ranked by fit
+  (Glicko columns; `affiliated: true` when the answerer is a member —
+  owner/maintainer — of the answered project).
+- Answers: `POST /requests/{id}/answers` (project_id + fit rationale;
+  UNIQUE request×project → duplicate answer returns the existing one for
+  editing instead of a 409), status transitions: `removed` only via a
+  quorum decision (M8 machinery), author `accept` marker stored on
+  `requests.accepted_answer_id` (display-only, never feeds the ranking).
+- Fit ranking: `GET /requests/{id}/vote/next` (pair selection among the
+  request's active answers, close ratings + high RD, exclude the voter's
+  past pairs), `POST .../vote` reusing `ranking.ApplyPairwiseVote` with
+  reputation-weighted votes.
+- AC: ranking reorders answers after fit votes; second answer for the
+  same project does not create a row; non-affiliated vs affiliated label
+  correctness; spam removal requires the quorum decision, a plain
+  maintainer delete is rejected; accepted marker is visible but does not
+  change order.
+
+### M10 — Identity & auth
 - Sessions (cookie), Forgejo OAuth2 login (Concord as client against the
   instance at `git.polarisocial.xyz`; test with a fake provider via
   httptest), Forgejo-user → Concord-user mapping, per-project role table.
@@ -150,15 +173,16 @@ facets still correct, filters still composable).
 - AC: unauthorized mutation → 401; role gating per project; token auth
   round-trip.
 
-### M10 — Web UI (server-rendered, search-first)
+### M11 — Web UI (server-rendered, search-first)
 - `html/template` pages: search (query builder + facets + saved searches —
   build this first), board, project home, complaint/feature pages, vote
-  widget, consensus pages, list pages with entry ranking.
+  widget, consensus pages, list pages with entry ranking, and the request
+  board (ask form, answer form, fit-vote widget, affiliation badges).
 - No SPA framework. Concord's own CSS, small and dark-theme friendly.
 - AC: golden-page smoke tests via httptest; every page reachable from the
   project home.
 
-### M11 — Forge sync & hardening
+### M12 — Forge sync & hardening
 - go-enry language percentages; metrics sync (webhooks + periodic
   recompute of health); rate limits; FTS external-content tables +
   triggers replacing rebuild-on-write; audit viewer; GDPR-style data
@@ -184,6 +208,7 @@ SSH git transport, mobile apps. Revisit after M11.
 | M6 merge + webhooks | not started | |
 | M7 threads | not started | |
 | M8 lists | not started | schema already in 0001 |
-| M9 identity | not started | |
-| M10 web UI | not started | |
-| M11 sync + hardening | not started | |
+| M9 request board | not started | schema already in 0002; depends on M8's generalized decisions |
+| M10 identity | not started | |
+| M11 web UI | not started | |
+| M12 sync + hardening | not started | |

@@ -3,7 +3,7 @@
 > A federated software forge where development is driven by real complaints, prioritized by pairwise Elo, decided through rough consensus, and executed on a kanban board.
 
 **Status:** concept spec — nothing built yet, no code.
-**Updated:** 2026-09-16 — collective-governance revision: collaborators steer by default (no single maintainer at the helm), projects get tags and computed priorities, kanban phases have gates, and both consensus and merge confirmation require quorum. Second revision same day: discovery and advanced search promoted to a first-class pillar (§15); collaborative lists added as a first-class replacement for awesome-lists (§16); user-driven/admin-light principle added (§2.10, §8).
+**Updated:** 2026-09-16 — collective-governance revision: collaborators steer by default (no single maintainer at the helm), projects get tags and computed priorities, kanban phases have gates, and both consensus and merge confirmation require quorum. Second revision same day: discovery and advanced search promoted to a first-class pillar (§15); collaborative lists added as a first-class replacement for awesome-lists (§16); user-driven/admin-light principle added (§2.10, §8). Third revision: request board for natural-language fit queries with community-ranked answers (§17).
 
 ---
 
@@ -423,6 +423,19 @@ Awesome lists are a structural weakness of the git-forge model: they live as mar
 - **Entries are ranked, not just listed.** Entries compete in pairwise comparisons (the same Glicko-2 engine as feature priority), so "best first" reflects community judgment instead of alphabetical accident. Categories group entries; ranking orders within and across them.
 - **Spam dies by reputation.** Entries proposed by low-reputation accounts need more confirmations; mass-proposed links are rate-limited and audited. Removal for spam is a moderation action, itself subject to quorum and appeal.
 - **Discovery integration.** Lists and their entries are first-class search citizens: find lists by tag, language, and health like projects — and find *entries across all lists* ("show me every Rust debugging tool ranked by community judgment, wherever it's curated").
+
+---
+
+## 17. Request Board (community fit-ranking)
+
+Discovery shouldn't require leaving the forge. The request board is where a user describes what they need in plain language — "a self-hosted Kanban with WIP limits that a small team can run on a Pi" — and the community answers with projects.
+
+- **Requests are structured questions, not forum threads.** A request states the need, the constraints, and the deal-breakers (license, self-hosting, language, platform). Requests are taggable and searchable, so the right people find them.
+- **Answers are project references, not opinions.** An answer links a project and adds a fit rationale: why it satisfies this request, where it falls short. One answer per project per request; duplicates merge.
+- **The community ranks fit.** Answers compete in pairwise comparisons — "which fits this request better?" — using the same Glicko-2 engine as everything else, so "best answer" reflects community judgment rather than author charisma or SEO. The request author may mark an accepted answer; that badge is displayed but does not override the ranking.
+- **Self-promotion is transparent, not banned.** Answers about the proposer's own project carry an affiliation label. Weight is unchanged, the affiliation is visible, and the ranking judges the rationale.
+- **Spam dies by quorum.** Off-topic or astroturfed answers are removed through the same quorum machinery as lists and moderation actions, with appeal.
+- **Discovery feedback loop.** Accepted request→project fits feed search and "related projects" (later milestone). Recurring unanswered requests are a complaint seed: the forge is missing something, and now it knows what.
 
 ---
 

@@ -11,11 +11,12 @@ For the implementing agent taking over from here. Read this, then
   `healthz`, project creation, tag application, metrics update, and a
   combined search (`?q=quorum&tag=governance&min_health=0.5`) returning
   the right hit with facets.
-- **Schema** (`internal/db/migrations/0001_init.sql`): the full spec data
-  model — identity, charters, complaints, features, votes, consensus,
-  objections, board, merge layer, reputation, audit, discovery
-  (project_tags/languages/metrics + `projects_fts` FTS5), and lists
-  (`lists`, `list_entries`, `list_entry_votes`) — all in one migration.
+- **Schema** (`internal/db/migrations/0001_init.sql` + `0002_request_board.sql`):
+  the full spec data model — identity, charters, complaints, features,
+  votes, consensus, objections, board, merge layer, reputation, audit,
+  discovery (project_tags/languages/metrics + `projects_fts` FTS5),
+  lists (`lists`, `list_entries`, `list_entry_votes`), and the request
+  board (`requests`, `request_answers`, `request_answer_votes`).
 - **Pure engines, tested:** `internal/ranking` (Glicko-2 with the
   Illinois solver — validated against Glickman's published worked
   example r'=1464.06, RD'=151.52, σ'=0.05999; pain scores; priority;
@@ -105,3 +106,9 @@ curl -s 'localhost:8410/api/v1/search?tag=governance&min_health=0.5&sort=health'
   migrations; SQLite now, Postgres later. All in ARCHITECTURE.md.
 - Governance: collective by default; merge = reviewer approval + quorum;
   admin-light; lists and moderation run through the same quorum machinery.
+- Request board accepted (spec §17, PLAN M9): answers are project
+  references ranked by pairwise fit votes; self-promotion is labeled, not
+  banned; spam removal goes through quorum; the author's accepted-answer
+  marker is display-only and never feeds the ranking. Semantic
+  auto-suggestion of candidate answers (local embeddings) is a possible
+  post-M12 addition — not committed.
