@@ -158,31 +158,39 @@ tests from PLAN.md — none of M1–M3 met that bar; labels corrected.
 
 ## Known issues (reviewer-verified 2026-09-16, second pass)
 
-### Fixed and verified (74d4a10)
+### Fixed and verified (914d111)
 
-1. **Vote contract is coherent.** `handleCastVote` now accepts
-   `feature_a + feature_b + outcome` from the client instead of
-   re-selecting the pair via `GetNextPair`. Validates both features
-   belong to the project. Outcome semantics are now stable
-   regardless of server-side ordering.
+1. **Vote contract is coherent.** `handleCastVote` accepts
+   `feature_a + feature_b + outcome` from client instead of
+   re-selecting via `GetNextPair`. Validates both features
+   belong to project.
 2. **Single weight computation.** `RecordVote` uses the
-   `weight` parameter directly instead of re-computing
-   `VoteWeight(fa.StrategicWeight, ...)` which misused feature
-   strategic weight as voter reputation.
-3. **Deploy ExecStart path fixed.** Changed from non-existent
-   sshfs path to `bin/concord` relative to WorkingDirectory.
-4. **Consensus is model-aware.** `consensus.go` reads the
+   `weight` parameter directly.
+3. **Voter reputation.** `handleCastVote` queries actual voter
+   reputation via `GetReputation` from `reputation_events`.
+4. **Deploy ExecStart path fixed.** `bin/concord` relative to
+   WorkingDirectory.
+5. **GetNextPair exhaustion.** Returns error when no unvoted
+   pairs remain instead of silently re-offering.
+6. **Complaints charter wiring.** `GetComplaintPain` uses
+   `charter.PainHalflifeDays` and computes actual age from
+   complaint creation time.
+7. **401 auth checks.** `handleCastVote`, `handleGetNextPair`,
+   `handleValidateComplaint`, `handleSetStrategicWeight`,
+   `handleCreateMergeRequest`, `handleApproveMerge`,
+   `handleExecuteMerge`, `handleRejectMerge`,
+   `handleCreateConsensus`, `handleCloseConsensus`,
+   `handleCastConsensusPosition`, `handleMoveCard`,
+   `handleCreateObjection` all return 401 for unknown actors.
+8. **Priority endpoint.** `handleFeaturePriorities` returns
+   features sorted by `ranking.PriorityScore`.
+9. **Consensus is model-aware.** `consensus.go` reads the
    project's `governance_model` and uses
    `governance.DefaultCharter(gm)`.
-5. **GetNextPair robustness.** Scan errors propagated and
-   `rows.Err` checked.
-6. **Web UI renders.** `render()` executes `base.html`; root `/` works.
-7. **Store `GetCharterForProject` added.** Loads charter from DB
-   for vote and complaint evaluation.
-
-**NOT fixed:** `handleCastVote` uses literal reputation=1.0
-in `VoteWeight(1.0, 1.0, cap)`. Should query actual voter
-reputation from DB. See pending #1.
+10. **Web UI renders.** `render()` executes `base.html`; root `/` works.
+11. **Store methods added:** `GetCharterForProject`, `GetReputation`,
+    `GetProjectByID`, `GetRoleForProject`, `GetMember`,
+    `GetFeaturePriorities`.
 
 ### Still pending (critical first)
 
