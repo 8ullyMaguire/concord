@@ -1,0 +1,13 @@
+{{define "content"}}
+<h1>Search</h1>
+<form method="GET" class="search-form">
+  <input type="text" name="q" value="{{.Query}}" placeholder="Search projects, features, complaints...">
+  <button type="submit" class="btn btn-primary">Search</button>
+</form>
+{{if .Query}}
+<section>
+  <h2>Results for "{{.Query}}"</h2>
+  <p>Search results appear here. Use the API or refine your query.</p>
+</section>
+{{end}}
+{{end}}

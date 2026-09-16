@@ -4,6 +4,7 @@
 package httpapi
 
 import (
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -15,6 +16,12 @@ import (
 
 	"git.polarisocial.xyz/concord/concord/internal/store"
 )
+
+//go:embed templates/*.html
+var templateFS embed.FS
+
+//go:embed assets/css/*.css assets/js/*.js
+var staticFS embed.FS
 
 type Server struct {
 	Store     *store.DB
@@ -31,10 +38,9 @@ func NewServer(store *store.DB, version string) (*Server, error) {
 }
 
 func (s *Server) loadTemplates() error {
-	templates, err := template.ParseGlob("templates/*.html")
+	templates, err := template.ParseFS(templateFS, "templates/*.html")
 	if err != nil {
-		s.templates = nil
-		return nil
+		return err
 	}
 	s.templates = templates
 	return nil
@@ -159,7 +165,7 @@ func (s *Server) Router() http.Handler {
 	r.Get("/projects", s.handleProjectsPage)
 	r.Get("/projects/{slug}", s.handleProjectPage)
 	r.Get("/projects/{slug}/board", s.handleBoardPage)
-	r.Mount("/assets", http.StripPrefix("/assets", http.FileServer(http.Dir("web/assets"))))
+	r.Mount("/assets", http.FileServer(http.FS(staticFS)))
 
 	return r
 }

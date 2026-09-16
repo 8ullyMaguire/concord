@@ -191,6 +191,11 @@ tests from PLAN.md — none of M1–M3 met that bar; labels corrected.
 11. **Store methods added:** `GetCharterForProject`, `GetReputation`,
     `GetProjectByID`, `GetRoleForProject`, `GetMember`,
     `GetFeaturePriorities`.
+12. **Templates embedded.** All HTML templates and CSS/JS assets
+    are now embedded at compile time with `//go:embed`, so the
+    site renders correctly on any deploy target.
+13. **Static assets served.** `/assets/css/*.css` and `/assets/js/*.js`
+    serve from the embedded filesystem.
 
 
 ### Still pending (critical first)
