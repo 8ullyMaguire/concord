@@ -23,6 +23,7 @@ var (
 	ErrDuplicate = errors.New("duplicate")
 	ErrInvalid   = errors.New("invalid")
 	ErrAuth      = errors.New("authentication required")
+	ErrPerm      = errors.New("permission denied")
 )
 
 // DB wraps the pool. All queries take ctx for cancellation.

@@ -30,6 +30,7 @@ func (s *Server) handleCreateComplaint(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	_ = s.Store.AddReputation(r.Context(), req.ProjectID, getActorID(r), "submit_complaint", 5.0)
 	writeJSON(w, http.StatusCreated, c)
 }
 
@@ -108,6 +109,7 @@ func (s *Server) handleCreateFeature(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	_ = s.Store.AddReputation(r.Context(), req.ProjectID, getActorID(r), "submit_feature", 5.0)
 	writeJSON(w, http.StatusCreated, f)
 }
 
@@ -187,13 +189,13 @@ func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
 	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
 	actorID := getActorID(r)
 	if actorID == 0 {
-		mapError(w, fmt.Errorf("authentication required"))
+		mapError(w, store.ErrAuth)
 		return
 	}
 	// Check actor is at least a contributor in this project
 	role, _ := s.Store.GetRoleForProject(r.Context(), projectID, actorID)
 	if role == "guest" {
-		mapError(w, fmt.Errorf("contributor role or higher required"))
+		mapError(w, store.ErrPerm)
 		return
 	}
 	var req castVoteRequest
@@ -212,7 +214,7 @@ func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if a.ProjectID != projectID || b.ProjectID != projectID {
-		mapError(w, fmt.Errorf("features must belong to project"))
+		mapError(w, store.ErrPerm)
 		return
 	}
 	// Load the project's charter for Glicko-2 tau and vote weight cap
@@ -234,6 +236,8 @@ func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	// Award reputation for voting
+	_ = s.Store.AddReputation(r.Context(), projectID, actorID, "vote", 1.0)
 	writeJSON(w, http.StatusCreated, vote)
 }
 
@@ -272,6 +276,7 @@ func (s *Server) handleCreateConsensus(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	_ = s.Store.AddReputation(r.Context(), projectID, getActorID(r), "create_consensus_call", 3.0)
 	writeJSON(w, http.StatusCreated, call)
 }
 
@@ -395,6 +400,7 @@ func (s *Server) handleCreateMergeRequest(w http.ResponseWriter, r *http.Request
 		mapError(w, err)
 		return
 	}
+	_ = s.Store.AddReputation(r.Context(), mr.ProjectID, getActorID(r), "create_merge_request", 3.0)
 	writeJSON(w, http.StatusCreated, mr)
 }
 
@@ -520,11 +526,11 @@ func getActorID(r *http.Request) int64 {
 func (s *Server) requireRole(projectID int64, minRole string, r *http.Request) error {
 	actorID := getActorID(r)
 	if actorID == 0 {
-		return fmt.Errorf("authentication required")
+		return store.ErrAuth
 	}
 	role, _ := s.Store.GetRoleForProject(r.Context(), projectID, actorID)
 	if role == "guest" || role == "" {
-		return fmt.Errorf("contributor role or higher required")
+		return store.ErrPerm
 	}
 	return nil
 }
