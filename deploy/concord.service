@@ -5,10 +5,10 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-ExecStart=bin/concord
+ExecStart=/home/alvaro/concord-deploy/concord
 Environment=CONCORD_LISTEN=127.0.0.1:8007
 Environment=CONCORD_DB=/home/alvaro/.local/share/concord/concord.db
-WorkingDirectory=/home/alvaro/mnt/thinkcentre/personal/documents/code/projects/concord
+WorkingDirectory=/home/alvaro/concord-deploy
 Restart=always
 RestartSec=5
 
