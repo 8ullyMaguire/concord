@@ -358,3 +358,36 @@ func firstScriptTag(body string) string {
 	}
 	return body[i : i+j+1]
 }
+
+// TestAssetVersionWorksWithoutATemplateLoad guards an ordering dependency that
+// a passing suite hid.
+//
+// loadAssetHashes used to be called from inside loadTemplates, so the hash
+// table was populated only as a side effect of parsing a template. Any code
+// path that served an asset before a template had been loaded saw an empty map
+// and quietly served everything as no-cache. The existing test passed because
+// it built a server first — and test order is not a contract.
+//
+// Go runs tests in source order within a file, so this one is named to sort
+// first and explicitly asserts the table is usable with nothing loaded.
+func TestAssetVersionWorksWithoutATemplateLoad(t *testing.T) {
+	if assetHashes != nil && len(assetHashes) > 0 {
+		t.Skip("another test already populated the hash table; the ordering this " +
+			"guards cannot be observed from here")
+	}
+	v := assetVersion("/assets/js/session.js")
+	if v == "" {
+		t.Fatal("assetVersion returned empty with nothing loaded: the hash table " +
+			"depends on a template load having happened first")
+	}
+	if len(v) != 12 {
+		t.Errorf("hash is %d chars, want 12: %q", len(v), v)
+	}
+	// And the headers must be right without any server having been built.
+	req := httptest.NewRequest(http.MethodGet, "/assets/js/session.js?v="+v, nil)
+	rec := httptest.NewRecorder()
+	staticHandler().ServeHTTP(rec, req)
+	if cc := rec.Header().Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+		t.Errorf("a correctly hashed asset served without a template load got %q", cc)
+	}
+}

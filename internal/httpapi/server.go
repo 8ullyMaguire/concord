@@ -142,6 +142,14 @@ type Server struct {
 }
 
 func NewServer(store *store.DB, version string, webhookSecret ...string) (*Server, error) {
+	// Hash the static assets here rather than inside loadTemplates. They were
+	// loaded as a side effect of template parsing, which meant any code path
+	// that served an asset without first building a server saw an empty map and
+	// quietly served every asset as no-cache. The {{ asset }} function and the
+	// cache headers must both work without a template load having happened
+	// first, so the dependency is stated here where it is visible.
+	loadAssetHashes(staticFS)
+
 	s := &Server{Store: store, Version: version}
 	if len(webhookSecret) > 0 {
 		s.WebhookSecret = webhookSecret[0]
@@ -159,9 +167,6 @@ func (s *Server) loadTemplates() error {
 	pages := []string{"index", "search", "projects", "project", "board",
 		"login", "register", "rank", "ranking"}
 
-	// Content-address the static assets before any template can reference them:
-	// the {{ asset }} function reads these hashes at render time.
-	loadAssetHashes(staticFS)
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
 		tmpl, err := template.New("").Funcs(template.FuncMap{

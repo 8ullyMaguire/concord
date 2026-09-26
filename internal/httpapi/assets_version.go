@@ -40,9 +40,16 @@ func loadAssetHashes(fsys fs.FS) {
 }
 
 // assetVersion returns the version query for a path, or "" if unknown.
+//
+// It computes the table on first use rather than trusting that something else
+// already did. The alternative is a package-level map that is empty until
+// something unrelated happens to run first, which is invisible until an asset
+// is served without cache headers for no visible reason — the kind of bug that
+// only shows up in production, where the server that is not a test binary never
+// parses a template.
 func assetVersion(path string) string {
 	if assetHashes == nil {
-		return ""
+		loadAssetHashes(staticFS)
 	}
 	return assetHashes[path]
 }
