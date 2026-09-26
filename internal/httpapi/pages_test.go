@@ -297,3 +297,64 @@ func TestProjectPageRendersComplaintsTheServerActuallyHas(t *testing.T) {
 		t.Error("the feature form's complaint picker has no list to choose from")
 	}
 }
+
+// TestStaticAssetsAreContentAddressed guards against the deploy-does-not-reach
+// the-browser problem.
+//
+// The assets are served from an embed.FS, so their URL never changes and the
+// browser is entitled to keep its copy. I lost several rounds debugging a form
+// that was working, because the script the browser held was the one from before
+// a fix. The URLs must now carry a content hash, and the cache headers must
+// differ between a hashed URL (cacheable forever) and a bare one (revalidate).
+func TestStaticAssetsAreContentAddressed(t *testing.T) {
+	ts := newTestServer(t)
+	body := htmlBody(t, ts, "/login")
+
+	// The markup must reference a hashed URL, not the bare path.
+	if strings.Contains(body, `src="/assets/js/session.js"`) {
+		t.Error("session.js is referenced without a version, so a deploy cannot invalidate it")
+	}
+	if !strings.Contains(body, "/assets/js/session.js?v=") {
+		t.Errorf("session.js has no content hash in the markup: %s", firstScriptTag(body))
+	}
+
+	// The hash must be real: the URL the page asked for must be the one that
+	// gets the immutable header.
+	res := getWith(t, ts, "/assets/js/session.js")
+	_ = res.Body.Close()
+	if cc := res.Header.Get("Cache-Control"); cc == "" || !strings.Contains(cc, "no-cache") {
+		t.Errorf("a bare asset URL should be revalidated, got Cache-Control %q", cc)
+	}
+
+	// A correct hash is cacheable forever, because that content can never change.
+	hash := assetHashes["/assets/js/session.js"]
+	if hash == "" {
+		t.Fatal("no hash recorded for session.js")
+	}
+	res2 := getWith(t, ts, "/assets/js/session.js?v="+hash)
+	_ = res2.Body.Close()
+	if cc := res2.Header.Get("Cache-Control"); !strings.Contains(cc, "immutable") {
+		t.Errorf("a hashed asset URL should be immutable, got Cache-Control %q", cc)
+	}
+	if res2.StatusCode != 200 {
+		t.Errorf("hashed asset URL returned %d", res2.StatusCode)
+	}
+
+	// Two different assets must not share a hash, or the URL stops identifying
+	// the content.
+	if assetHashes["/assets/js/rank.js"] == assetHashes["/assets/js/ranking.js"] {
+		t.Error("rank.js and ranking.js share a content hash")
+	}
+}
+
+func firstScriptTag(body string) string {
+	i := strings.Index(body, "<script")
+	if i < 0 {
+		return "(no script tag)"
+	}
+	j := strings.Index(body[i:], ">")
+	if j < 0 {
+		return body[i:]
+	}
+	return body[i : i+j+1]
+}

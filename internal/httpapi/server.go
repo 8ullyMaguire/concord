@@ -158,9 +158,15 @@ func (s *Server) loadTemplates() error {
 	// last-parsed page's body win on every route).
 	pages := []string{"index", "search", "projects", "project", "board",
 		"login", "register", "rank", "ranking"}
+
+	// Content-address the static assets before any template can reference them:
+	// the {{ asset }} function reads these hashes at render time.
+	loadAssetHashes(staticFS)
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
-		tmpl, err := template.ParseFS(templateFS, "templates/base.html", "templates/"+name+".html")
+		tmpl, err := template.New("").Funcs(template.FuncMap{
+			"asset": assetFunc(),
+		}).ParseFS(templateFS, "templates/base.html", "templates/"+name+".html")
 		if err != nil {
 			return err
 		}
@@ -333,7 +339,7 @@ func (s *Server) Router() http.Handler {
 	r.Get("/projects/{slug}/ranking", s.handleRankingPage)
 	r.Get("/login", s.handleLoginPage)
 	r.Get("/register", s.handleRegisterPage)
-	r.Mount("/assets", http.FileServer(http.FS(staticFS)))
+	r.Mount("/assets", staticHandler())
 
 	return r
 }
