@@ -37,6 +37,7 @@ func New(d *sql.DB) *DB { return &DB{DB: d} }
 type Member struct {
 	ProjectID   int64   `json:"project_id"`
 	UserID      int64   `json:"user_id"`
+	Username    string  `json:"username"`
 	Role        string  `json:"role"`
 	IsModerator int     `json:"is_moderator"`
 	JoinedAt    float64 `json:"joined_at"`

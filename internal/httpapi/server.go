@@ -247,6 +247,9 @@ func (s *Server) Router() http.Handler {
 
 	// Pairwise votes
 	r.Get("/api/v1/projects/{project_id}/votes/next", s.handleGetNextPair)
+	r.Post("/api/v1/projects/{project_id}/join", s.handleJoinProject)
+	r.Get("/api/v1/projects/{project_id}/members", s.handleListMembers)
+	r.Get("/api/v1/projects/{project_id}/tallies", s.handleFeatureTallies)
 	r.Get("/api/v1/projects/{project_id}/priorities", s.handleFeaturePriorities)
 	r.Post("/api/v1/projects/{project_id}/features/{feature_id}/vote", s.handleCastVote)
 

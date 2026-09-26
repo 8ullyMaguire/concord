@@ -3,6 +3,7 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -58,9 +59,49 @@ func newTestServer(t *testing.T) *httptest.Server {
 // still resolved by the real middleware on each request.
 func authenticated(next http.Handler, tok string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Header.Set("Authorization", "Bearer "+tok)
+		// Only supply the default identity when the request does not already
+		// carry one. Overwriting unconditionally would silently impersonate the
+		// project creator for every request, including the ones a test makes
+		// deliberately as somebody else — which showed up as a self-vote
+		// refusal for a second registered user.
+		// "X-No-Auth" is an explicit opt-out, needed because "no header" is not
+		// the same thing on this harness: the wrapper below supplies a default
+		// identity for any request that arrives without one, so a test that
+		// wants to prove an endpoint rejects anonymous callers cannot express
+		// that by omitting the header. Before the sentinel existed, the
+		// anonymous-complaint test passed a 201 and called it a 401 failure
+		// elsewhere — the assertion was testing the harness, not the handler.
+		if r.Header.Get("X-No-Auth") != "" {
+			r.Header.Del("X-No-Auth")
+		} else if r.Header.Get("Authorization") == "" {
+			r.Header.Set("Authorization", "Bearer "+tok)
+		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// registerOn creates an additional account on an existing server and returns
+// a token for it.
+//
+// The reason this exists: a project creator is a maintainer and can vote, but
+// they also authored the features, and handleCastVote refuses a self-vote —
+// correctly, because Glicko-2 cannot discount self-preference. A single-user
+// harness therefore cannot express the ordinary case at all, which is how a
+// site where nobody can vote shipped with a green suite. Ranking is a
+// multi-party act and the tests have to be too.
+func registerOn(t *testing.T, ts *httptest.Server, username string) string {
+	t.Helper()
+	pw := "test-password-123"
+	body := fmt.Sprintf(`{"username":%q,"password":%q,"display_name":%q}`, username, pw, username)
+	resp, tokBody := postJSON(t, ts, "/api/v1/auth/register", body)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("register %s: status %d body=%v", username, resp.StatusCode, tokBody)
+	}
+	tok, _ := tokBody["token"].(string)
+	if tok == "" {
+		t.Fatalf("register %s: no token in %v", username, tokBody)
+	}
+	return tok
 }
 
 func newTestServerNoActor(t *testing.T) *httptest.Server {
@@ -291,9 +332,14 @@ func TestAuthRequired(t *testing.T) {
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("POST /projects without auth should 401, got %d body=%v", resp.StatusCode, body)
 	}
+	// /priorities is deliberately public: it is the output of a process the
+	// public is invited to join, and requiring a token to read the ranking
+	// while anyone may read the proposals would make the site a black box.
+	// The private act is casting a vote, which TestAuthRequired still covers
+	// below via the votes/next route.
 	resp, _ = doJSON(t, ts, "GET", "/api/v1/projects/1/priorities", nil)
-	if resp.StatusCode != http.StatusUnauthorized {
-		t.Fatalf("GET /priorities without auth should 401, got %d", resp.StatusCode)
+	if resp.StatusCode == http.StatusUnauthorized {
+		t.Fatalf("GET /priorities should be public, got 401")
 	}
 	resp, _ = doJSON(t, ts, "POST", "/api/v1/projects/1/features", map[string]any{
 		"title": "x", "body": "y",
@@ -345,9 +391,12 @@ func TestVoteRoundTrip(t *testing.T) {
 	}
 	featB := int64(featBody["id"].(float64))
 
-	resp, voteBody := doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/features/"+itoa(featA)+"/vote", map[string]any{
-		"feature_a": featA, "feature_b": featB, "outcome": "a",
-	})
+	// A second person votes. The author cannot: see registerOn.
+	voterTok := registerOn(t, ts, "ranker")
+	resp, voteBody := postJSON(t, ts,
+		"/api/v1/projects/"+slugOf(t, ts, projID)+"/features/"+itoa(featA)+"/vote",
+		fmt.Sprintf(`{"feature_a":%d,"feature_b":%d,"outcome":"a"}`, featA, featB),
+		"Authorization", "Bearer "+voterTok)
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("cast vote: status %d body=%v", resp.StatusCode, voteBody)
 	}

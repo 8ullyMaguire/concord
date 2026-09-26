@@ -21,6 +21,15 @@ type createComplaintRequest struct {
 }
 
 func (s *Server) handleCreateComplaint(w http.ResponseWriter, r *http.Request) {
+	// This handler had no authentication check while every sibling did, so a
+	// complaint could be filed anonymously: getActorID returned 0 and it was
+	// written with author_id 0, attributing it to nobody. A complaint is a
+	// claim about a project and is the main input to the ranking, so it needs
+	// an author the same way a feature does.
+	if getActorID(r) == 0 {
+		mapError(w, store.ErrAuth)
+		return
+	}
 	var req createComplaintRequest
 	if !readJSON(w, r, &req) {
 		return
@@ -45,6 +54,8 @@ func (s *Server) handleCreateComplaint(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.Store.AddAudit(r.Context(), req.ProjectID, getActorID(r), "create_complaint", "complaint", c.ID, req.Title)
 	_ = s.Store.AddReputation(r.Context(), req.ProjectID, getActorID(r), "submit_complaint", 5.0)
+	// Taking part is what makes someone a participant; see JoinProject.
+	_ = s.Store.JoinProject(r.Context(), req.ProjectID, getActorID(r))
 	writeJSON(w, http.StatusCreated, c)
 }
 
@@ -133,6 +144,7 @@ func (s *Server) handleCreateFeature(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.Store.AddAudit(r.Context(), req.ProjectID, getActorID(r), "create_feature", "feature", f.ID, req.Title)
 	_ = s.Store.AddReputation(r.Context(), req.ProjectID, getActorID(r), "submit_feature", 5.0)
+	_ = s.Store.JoinProject(r.Context(), req.ProjectID, getActorID(r))
 	writeJSON(w, http.StatusCreated, f)
 }
 
@@ -151,10 +163,11 @@ func (s *Server) handleListFeatures(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleFeaturePriorities(w http.ResponseWriter, r *http.Request) {
-	if getActorID(r) == 0 {
-		mapError(w, store.ErrAuth)
-		return
-	}
+	// Deliberately public. This is the output of a process the public is
+	// invited to take part in; requiring a token to read the result while
+	// anyone may read the proposals would make the site a black box. The
+	// private act is casting a vote, not reading the ranking it produces.
+	//
 	// {project_id} is a slug, not a numeric id. This used to parse it as an
 	// integer, discard the error, and then pass that 0 to the ranking query
 	// while the project lookup immediately below did the right thing and
@@ -229,10 +242,13 @@ func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	// Check actor is at least a contributor in this project
-	role, _ := s.Store.GetRoleForProject(r.Context(), projectID, actorID)
-	if role == "guest" {
-		mapError(w, store.ErrPerm)
+	// A first vote enrols the voter, so the guest check cannot run before it.
+	// The order matters and was wrong at first: rejecting guests here made the
+	// very first vote impossible, because nobody is a member until they have
+	// voted or contributed. The one thing a guest must not do is vote *before*
+	// being let in, and JoinProject is what lets them in.
+	if err := s.Store.JoinProject(r.Context(), projectID, actorID); err != nil {
+		mapError(w, err)
 		return
 	}
 	var req castVoteRequest
@@ -254,6 +270,28 @@ func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
 		mapError(w, store.ErrPerm)
 		return
 	}
+	// Refuse a vote on your own feature, in either position. Glicko-2 cannot
+	// discount self-preference: a rating inflated by its own author's vote is
+	// not a measurement of anyone else's preference, and the author may vote
+	// for the same feature against every competitor, without limit. Both
+	// features are checked because the pair is unordered as presented.
+	//
+	// The message names the reason. A bare "permission denied" for an action
+	// the interface offered is indistinguishable from a bug to whoever hit it.
+	for _, fid := range []int64{req.FeatureA, req.FeatureB} {
+		isAuthor, err := s.Store.IsFeatureAuthor(r.Context(), fid, actorID)
+		if err != nil {
+			mapError(w, err)
+			return
+		}
+		if isAuthor {
+			writeJSON(w, http.StatusForbidden, map[string]string{
+				"error":  "you proposed one of these features",
+				"detail": "a feature cannot be ranked by the person who proposed it; ask someone who has no stake in the outcome",
+			})
+			return
+		}
+	}
 	// Load the project's charter for Glicko-2 tau and vote weight cap
 	charter, err := s.Store.GetCharterForProject(r.Context(), projectID)
 	if err != nil {
@@ -270,7 +308,83 @@ func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
 	}
 	_ = s.Store.AddAudit(r.Context(), projectID, actorID, "cast_vote", "vote", projectID, fmt.Sprintf("feature_a=%d feature_b=%d outcome=%s", req.FeatureA, req.FeatureB, req.Outcome))
 	_ = s.Store.AddReputation(r.Context(), projectID, actorID, "vote", 1.0)
+	// Enrol only after the vote has been recorded. Enrolling someone whose
+	// vote was refused would record a participation that did not happen.
+	_ = s.Store.JoinProject(r.Context(), projectID, actorID)
 	writeJSON(w, http.StatusCreated, vote)
+}
+
+// handleJoinProject enrols the caller as a contributor.
+//
+// Almost nobody needs this: filing a complaint, proposing a feature and voting
+// all enrol you as a side effect, which is the intended path. It exists for
+// the person who wants to vote before contributing anything — to rank a
+// backlog they did not write — and it is deliberately idempotent, so calling it
+// repeatedly never demotes a maintainer.
+func (s *Server) handleJoinProject(w http.ResponseWriter, r *http.Request) {
+	actorID := getActorID(r)
+	if actorID == 0 {
+		mapError(w, store.ErrAuth)
+		return
+	}
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
+	role, _ := s.Store.GetRoleForProject(r.Context(), projectID, actorID)
+	// A guest and a member get the same 200: the caller's goal is "I can take
+	// part", and telling a non-member that they were already enrolled would
+	// leak membership state for no benefit.
+	_ = role
+	if err := s.Store.JoinProject(r.Context(), projectID, actorID); err != nil {
+		mapError(w, err)
+		return
+	}
+	_ = s.Store.AddAudit(r.Context(), projectID, actorID, "join_project", "project", projectID, "")
+	after, _ := s.Store.GetRoleForProject(r.Context(), projectID, actorID)
+	writeJSON(w, http.StatusOK, map[string]string{"status": "joined", "role": after})
+}
+
+// handleListMembers returns the project's membership.
+//
+// Public, like the ranking. The roster answers "who is taking part", which is
+// the first question anyone asks of a community, and a project whose
+// membership is hidden reads as empty.
+// handleFeatureTallies returns how much attention each feature has received.
+//
+// Public, like the ranking. A rating without a count beside it is not
+// interpretable: 1500 from four votes and 1500 from four hundred are the same
+// number and mean very different things.
+func (s *Server) handleFeatureTallies(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
+	tallies, err := s.Store.FeatureTallies(r.Context(), projectID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if tallies == nil {
+		tallies = []store.FeatureTally{}
+	}
+	writeJSON(w, http.StatusOK, tallies)
+}
+
+func (s *Server) handleListMembers(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
+	members, err := s.Store.ListMembers(r.Context(), projectID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if members == nil {
+		members = []store.Member{}
+	}
+	writeJSON(w, http.StatusOK, members)
 }
 
 func (s *Server) handleGetNextPair(w http.ResponseWriter, r *http.Request) {
@@ -278,11 +392,21 @@ func (s *Server) handleGetNextPair(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	if getActorID(r) == 0 {
-		mapError(w, fmt.Errorf("authentication required"))
+	actorID := getActorID(r)
+	if actorID == 0 {
+		mapError(w, store.ErrAuth)
 		return
 	}
-	a, b, err := s.Store.GetNextPair(r.Context(), projectID, getActorID(r))
+	// The same check handleCastVote applies, and for the same reason: this
+	// endpoint used to serve a comparison to any authenticated account, which
+	// was then refused with 403 when it tried to answer. The API was inviting
+	// a vote it had already decided to reject. Better to refuse here, before
+	// the pair is shown, than after someone has read both descriptions.
+	if err := s.Store.JoinProject(r.Context(), projectID, actorID); err != nil {
+		mapError(w, err)
+		return
+	}
+	a, b, err := s.Store.GetNextPair(r.Context(), projectID, actorID)
 	if err != nil {
 		mapError(w, err)
 		return
