@@ -214,9 +214,6 @@ Neither produces a failing request, a stack trace, or a status code.
 
 ## Still open
 
-- **Static assets have no cache-busting.** A deploy does not invalidate a
-  browser's cached copy of `project.js`. I spent several rounds debugging a
-  form that was fine. Content-hashed asset URLs are the fix.
 - **The board still has no create-card endpoint** — only read and move, fed by
   the merge executor. Unchanged and deliberate; it is a product decision.
 - **localStorage rather than an HttpOnly cookie**, as before.
