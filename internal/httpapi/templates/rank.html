@@ -1,0 +1,24 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <p class="breadcrumb"><a href="/projects">Projects</a> / <span data-slug>{{.Slug}}</span></p>
+    <h1>Rank features · <span data-slug>{{.Slug}}</span></h1>
+    <p class="lede">One pair at a time. Comparing three or more at once is a
+      different and much worse question — people can hold a preference between
+      two things and have no meaningful ordering among seven.</p>
+  </div>
+  <a class="btn" href="/projects/{{.Slug}}/ranking">See the ranking</a>
+</div>
+
+<div id="rank-root">
+  <div class="empty-state">
+    <p class="empty-state-title">Loading a comparison…</p>
+  </div>
+</div>
+
+<div id="rank-progress" class="rank-progress" hidden>
+  <p><strong data-cast>0</strong> comparisons cast. <span data-remaining></span></p>
+</div>
+
+<script src="/assets/js/rank.js"></script>
+{{end}}

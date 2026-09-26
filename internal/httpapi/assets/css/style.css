@@ -681,6 +681,85 @@ a.card { display: block; color: inherit; }
 
 .detail-actions { display: flex; gap: 0.5rem; }
 
+
+/* ------------------------------------------------------------ ranking UI
+   The pairwise comparison and the resulting order. Two surfaces, one visual
+   system: the rank page is a decision, the ranking page is a result, and
+   they should not look like two products. */
+
+.rank-pair {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+@media (max-width: 640px) { .rank-pair { grid-template-columns: 1fr; } }
+
+.rank-card {
+  background: var(--surface, #fff);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 10px;
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+}
+.rank-card-head { margin-bottom: 0.5rem; }
+.rank-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--brand, #4f46e5);
+}
+.rank-title { font-size: 1.05rem; margin: 0 0 0.5rem; line-height: 1.35; }
+.rank-body { color: var(--muted, #64748b); font-size: 0.9rem; margin: 0 0 0.75rem; flex: 1; }
+.rank-meta { font-size: 0.78rem; color: var(--muted, #64748b); margin: 0; }
+.dim { opacity: 0.65; }
+
+.rank-actions { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 1rem; }
+.rank-actions-busy { opacity: 0.5; pointer-events: none; }
+.btn-quiet { background: transparent; border-color: var(--border, #e2e8f0); color: var(--muted, #64748b); }
+.btn-quiet:hover { background: var(--bg-subtle, #f8fafc); }
+
+.rank-note {
+  font-size: 0.8rem;
+  color: var(--muted, #64748b);
+  line-height: 1.55;
+  max-width: 62ch;
+}
+.rank-progress { margin-top: 1.5rem; font-size: 0.85rem; color: var(--muted, #64748b); }
+
+.ranking-meta { margin-bottom: 1rem; font-size: 0.88rem; color: var(--muted, #64748b); }
+.table-scroll { overflow-x: auto; }
+.ranking-table { width: 100%; border-collapse: collapse; font-size: 0.88rem; }
+.ranking-table th {
+  text-align: left;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted, #64748b);
+  border-bottom: 1px solid var(--border, #e2e8f0);
+  padding: 0.5rem 0.6rem;
+  white-space: nowrap;
+}
+.ranking-table td { padding: 0.7rem 0.6rem; border-bottom: 1px solid var(--border, #e2e8f0); vertical-align: top; }
+.ranking-table tr:last-child td { border-bottom: none; }
+.cell-rank { font-variant-numeric: tabular-nums; color: var(--muted, #64748b); width: 2.5rem; }
+.cell-num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.cell-title strong { font-weight: 600; }
+.cell-note {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted, #64748b);
+  line-height: 1.5;
+  max-width: 52ch;
+}
+/* An under-tested row is dimmed rather than hidden: it is genuinely ranked,
+   the point is only that the margin is wider than the gap. */
+.row-untested td { opacity: 0.72; }
+
+.error-state .empty-state-icon { color: #b45309; }
+
 /* ---------------------------------------------------------------- auth
    Sign-in and registration. The page is one centred card because there is
    exactly one thing to do on it; a wider layout would suggest there are
@@ -799,3 +878,45 @@ a.card { display: block; color: inherit; }
   .auth-page { padding: 1.5rem 1rem 2rem; }
   .auth-card { padding: 1.5rem; }
 }
+
+
+/* ------------------------------------------------------------- forms
+   Filing a complaint and proposing a feature. The feature form cannot be
+   submitted without choosing the complaint it answers, because an unlinked
+   feature has no pain score and therefore never ranks. */
+.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 1rem; }
+@media (max-width: 860px) { .form-grid { grid-template-columns: 1fr; } }
+
+.form-title { font-size: 1rem; margin: 0 0 0.35rem; }
+.form-note { font-size: 0.8rem; color: var(--muted, #64748b); line-height: 1.5; margin: 0 0 0.9rem; }
+.field { display: block; margin-bottom: 0.7rem; }
+.field > span {
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted, #64748b);
+  margin-bottom: 0.3rem;
+}
+.field input, .field textarea, .field select {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 7px;
+  font: inherit;
+  font-size: 0.88rem;
+  background: var(--bg, #fff);
+  color: inherit;
+}
+.field input:focus, .field textarea:focus, .field select:focus {
+  outline: 2px solid var(--brand, #4f46e5);
+  outline-offset: 1px;
+  border-color: transparent;
+}
+.field textarea { resize: vertical; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 0.7rem; }
+
+.form-status { font-size: 0.82rem; margin: 0.7rem 0 0; }
+.form-status-error { color: #b91c1c; }
+.form-status:not(.form-status-error) { color: var(--muted, #64748b); }

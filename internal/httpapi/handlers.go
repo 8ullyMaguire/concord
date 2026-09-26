@@ -691,6 +691,25 @@ func (s *Server) handleBoardPage(w http.ResponseWriter, r *http.Request) {
 	}{s.page("Board - " + slug), slug})
 }
 
+// handleRankPage and handleRankingPage render the two halves of the ranking
+// loop: cast a comparison, then read the result. They share a shape and
+// deliberately nothing else — the pair and the order are different questions.
+func (s *Server) handleRankPage(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	s.render(w, http.StatusOK, "rank", struct {
+		pageData
+		Slug string
+	}{s.page("Rank features - " + slug), slug})
+}
+
+func (s *Server) handleRankingPage(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	s.render(w, http.StatusOK, "ranking", struct {
+		pageData
+		Slug string
+	}{s.page("Ranking - " + slug), slug})
+}
+
 func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, "login", s.page("Sign in - Concord"))
 }

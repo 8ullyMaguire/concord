@@ -17,7 +17,10 @@
   // session.js owns the storage keys; reading them from two places is how the
   // header and the form end up disagreeing about whether anyone is signed in.
   function session() {
-    return window.ConcordSession ? new window.ConcordSession() : null;
+    // The shared instance, not a fresh one. A private copy is a second source
+    // of truth: it can disagree with the header the user is looking at, and
+    // nothing reports the disagreement.
+    return window.ConcordSession ? window.ConcordSession.instance() : null;
   }
 
   function showError(msg) {
@@ -41,8 +44,12 @@
 
   function store(token, user) {
     try {
+      // session.js owns the keys. Repeating the literals here is how the two
+      // files drift apart and a user ends up "signed in" to a header that
+      // cannot see the token that signed them in.
       localStorage.setItem('concord.token', token);
       localStorage.setItem('concord.user', JSON.stringify(user || {}));
+      if (window.ConcordSession) window.ConcordSession.instance().refresh();
     } catch (e) {
       // Private mode or a storage policy that blocks writes. The session will
       // not persist, so say so rather than leaving a form that silently

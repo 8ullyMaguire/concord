@@ -1,0 +1,20 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <p class="breadcrumb"><a href="/projects">Projects</a> / <span data-slug>{{.Slug}}</span></p>
+    <h1>Ranking · <span data-slug>{{.Slug}}</span></h1>
+    <p class="lede">The order below is what the forge concluded, and it is
+      public. Reading it needs no account; casting the votes that produced it
+      does.</p>
+  </div>
+  <a class="btn btn-primary" href="/projects/{{.Slug}}/rank">Cast more votes</a>
+</div>
+
+<div id="ranking-root">
+  <div class="empty-state">
+    <p class="empty-state-title">Loading the ranking…</p>
+  </div>
+</div>
+
+<script src="/assets/js/ranking.js"></script>
+{{end}}

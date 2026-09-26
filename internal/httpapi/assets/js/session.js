@@ -55,12 +55,40 @@
     return this.token ? { Authorization: 'Bearer ' + this.token } : {};
   };
 
+  // One shared instance.
+  //
+  // The constructor used to be exported on its own, so every caller built its
+  // own copy: auth.js stored a token into one, session.js painted the header
+  // from another, and a page that asked for the session got a fresh object
+  // that had never seen the token. That is not visible as an error — it shows
+  // up as a header that says "Sign in" to somebody who is signed in, and forms
+  // that render as though nobody were present.
+  var shared = null;
+  ConcordSession.instance = function () {
+    if (!shared) shared = new ConcordSession();
+    return shared;
+  };
+  // The token is written by auth.js after a successful login, so an instance
+  // created before that would keep reporting "signed out" for the life of the
+  // page. Reloading from storage on demand makes the value current.
+  ConcordSession.prototype.refresh = function () {
+    try {
+      this.token = localStorage.getItem(TOKEN_KEY);
+      var raw = localStorage.getItem(USER_KEY);
+      this.user = raw ? JSON.parse(raw) : null;
+    } catch (e) {
+      this.token = null;
+      this.user = null;
+    }
+    return this;
+  };
+
   window.ConcordSession = ConcordSession;
 
   function paint() {
     var link = document.querySelector('[data-auth-link]');
     if (!link) return;
-    var s = new ConcordSession();
+    var s = ConcordSession.instance().refresh();
     if (!s.signedIn()) {
       link.textContent = 'Sign in';
       link.href = '/login';

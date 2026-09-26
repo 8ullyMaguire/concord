@@ -156,7 +156,8 @@ func (s *Server) loadTemplates() error {
 	// Each page is parsed TOGETHER with base.html so its "content" define
 	// cannot collide with another page's (a shared namespace would make the
 	// last-parsed page's body win on every route).
-	pages := []string{"index", "search", "projects", "project", "board", "login", "register"}
+	pages := []string{"index", "search", "projects", "project", "board",
+		"login", "register", "rank", "ranking"}
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
 		tmpl, err := template.ParseFS(templateFS, "templates/base.html", "templates/"+name+".html")
@@ -328,6 +329,8 @@ func (s *Server) Router() http.Handler {
 	r.Get("/projects", s.handleProjectsPage)
 	r.Get("/projects/{slug}", s.handleProjectPage)
 	r.Get("/projects/{slug}/board", s.handleBoardPage)
+	r.Get("/projects/{slug}/rank", s.handleRankPage)
+	r.Get("/projects/{slug}/ranking", s.handleRankingPage)
 	r.Get("/login", s.handleLoginPage)
 	r.Get("/register", s.handleRegisterPage)
 	r.Mount("/assets", http.FileServer(http.FS(staticFS)))
