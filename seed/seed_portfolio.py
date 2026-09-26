@@ -19,10 +19,22 @@ import argparse
 import json
 import sys
 import urllib.error
+import time
 import urllib.request
 from typing import Any
 
 DEFAULT_BASE = "http://127.0.0.1:8006/api/v1"
+
+
+def as_items(payload) -> list:
+    """List endpoints return a bare JSON array; tolerate both shapes."""
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, dict):
+        for key in ("items", "complaints", "features", "projects"):
+            if isinstance(payload.get(key), list):
+                return payload[key]
+    return []
 
 
 class Client:
@@ -59,6 +71,23 @@ class Client:
     def post(self, path, body=None):
         return self.request("POST", path, body or {})
 
+    def post_retrying(self, path, body=None, attempts=8):
+        """POST, backing off when the rate limiter refuses.
+
+        The limiter allows 100 requests a minute per client IP, and a full
+        seed is roughly 60 requests. Running the seeder twice in a minute
+        crosses that, so a 429 is expected rather than exceptional — it should
+        be waited out, not reported as a failure.
+        """
+        for i in range(attempts):
+            status, body_out = self.post(path, body)
+            if status != 429:
+                return status, body_out
+            wait = 5.0 * (i + 1)
+            print(f"  rate limited, waiting {wait:.0f}s before retrying...")
+            time.sleep(wait)
+        return 429, {"error": "rate limited after retries"}
+
 
 def authenticate(base: str, username: str, password: str) -> Client:
     """Log in, creating the account if it does not exist yet."""
@@ -77,7 +106,7 @@ def authenticate(base: str, username: str, password: str) -> Client:
 
 
 def ensure_project(c: Client, p: dict) -> int:
-    status, body = c.post(
+    status, body = c.post_retrying(
         "/projects",
         {
             "slug": p["slug"],
@@ -105,7 +134,24 @@ def ensure_complaint(c: Client, project_id: int, slug: str, comp: dict) -> int:
     not optional bookkeeping here: skip it and every feature for this project
     is rejected.
     """
-    status, body = c.post(
+    # Look up by title first. CreateComplaint has no unique constraint on
+    # title, so it never returns 409: a re-run silently inserted a duplicate
+    # complaint, and because a feature's pain is the sum over its linked
+    # complaints, every duplicated complaint inflated the pain of every feature
+    # linked to it. Re-seeding was not idempotent and quietly corrupted the
+    # ranking it was meant to populate.
+    lstatus, lbody = c.get(f"/projects/{slug}/complaints")
+    if lstatus == 200:
+        existing = as_items(lbody)
+        match = next((x for x in existing if x.get("title") == comp["title"]), None)
+        if match is not None:
+            cid = int(match["id"])
+            vstatus, vbody = c.post_retrying(f"/projects/{slug}/complaints/{cid}/validate")
+            if vstatus not in (200, 400):
+                raise SystemExit(f"validate complaint {cid}: {vstatus} {vbody}")
+            return cid
+
+    status, body = c.post_retrying(
         f"/projects/{slug}/complaints",
         {
             "project_id": project_id,
@@ -122,7 +168,7 @@ def ensure_complaint(c: Client, project_id: int, slug: str, comp: dict) -> int:
         status, body = c.get(f"/projects/{slug}/complaints")
         if status != 200:
             raise SystemExit(f"complaints unreadable for {slug}: {body}")
-        items = body.get("complaints", body if isinstance(body, list) else [])
+        items = as_items(body)
         match = next((x for x in items if x.get("title") == comp["title"]), None)
         if match is None:
             raise SystemExit(f"complaint {comp['title']!r} not found on re-run")
@@ -132,18 +178,30 @@ def ensure_complaint(c: Client, project_id: int, slug: str, comp: dict) -> int:
 
     # Validate if not already. A second validation is a 400 ("only open
     # complaints can be validated"), which is fine.
-    vstatus, vbody = c.post(f"/projects/{slug}/complaints/{cid}/validate")
+    vstatus, vbody = c.post_retrying(f"/projects/{slug}/complaints/{cid}/validate")
     if vstatus not in (200, 400):
         raise SystemExit(f"validate complaint {cid}: {vstatus} {vbody}")
     return cid
 
 
 def ensure_feature(c: Client, project_id: int, slug: str, f: dict, complaint_ids: list[int]) -> None:
-    status, body = c.post(
+    title = f["title"]
+
+    # Check before creating. The API has no unique constraint on feature titles
+    # and no conflict status, so a naive create inserts a duplicate on every
+    # run; projects and complaints are matched by slug/title, and features must
+    # be too or re-seeding corrupts the ranking.
+    status, body = c.get(f"/projects/{slug}/features")
+    if status == 200:
+        items = as_items(body)
+        if any(x.get("title") == title for x in items):
+            return
+
+    status, body = c.post_retrying(
         f"/projects/{slug}/features",
         {
             "project_id": project_id,
-            "title": f["title"],
+            "title": title,
             "body": f.get("body", ""),
             "effort": f.get("effort", "M"),
             "linked_complaints": complaint_ids,
@@ -151,7 +209,7 @@ def ensure_feature(c: Client, project_id: int, slug: str, f: dict, complaint_ids
     )
     if status in (201, 409):
         return
-    raise SystemExit(f"create feature {f['title']!r} on {slug}: {status} {body}")
+    raise SystemExit(f"create feature {title!r} on {slug}: {status} {body}")
 
 
 def main() -> int:
