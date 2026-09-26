@@ -2,16 +2,16 @@ package httpapi
 
 import (
 	"net/http"
-	"strconv"
-
-	"github.com/go-chi/chi/v5"
 
 	"git.polarisocial.xyz/concord/concord/internal/governance"
 )
 
 // handleGetCharter returns the charter for a project.
 func (s *Server) handleGetCharter(w http.ResponseWriter, r *http.Request) {
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
 	charter, err := s.Store.GetCharterForProject(r.Context(), projectID)
 	if err != nil {
 		mapError(w, err)
@@ -22,7 +22,16 @@ func (s *Server) handleGetCharter(w http.ResponseWriter, r *http.Request) {
 
 // handleUpdateCharter updates a project's charter (maintainer+).
 func (s *Server) handleUpdateCharter(w http.ResponseWriter, r *http.Request) {
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	// Authenticate before resolving the project, so an anonymous caller gets 401
+	// whether or not the slug exists. The reverse order leaks which slugs are
+	// registered by making the status code depend on it.
+	if _, ok := s.requireWriteActor(w, r); !ok {
+		return
+	}
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
 	if err := s.requireRole(projectID, "maintainer", r); err != nil {
 		mapError(w, err)
 		return

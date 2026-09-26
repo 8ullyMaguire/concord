@@ -44,7 +44,21 @@ type visitorRate struct {
 	lastSeen time.Time
 }
 
+// limiter is process-global, so every test in this package shares one 100
+// req/minute budget keyed on the client IP — and every test in this package
+// runs on 127.0.0.1. Adding a handful of tests therefore starts producing 429s
+// in tests that ran fine a commit earlier, which is a test suite that reports
+// failures nobody caused.
+//
+// It is a variable rather than a const so tests can swap in a generous budget
+// and, where a test is specifically about limiting, a real one. Production
+// always gets defaultMaxRequests.
 var limiter = &rateLimiter{visitors: make(map[string]*visitorRate)}
+
+const defaultMaxRequests = 100
+
+// maxRequests reads the current limit, preferring a test override.
+var maxRequests = func() int { return defaultMaxRequests }
 
 // lastPrune tracks the last idle-bucket sweep so the visitors map cannot
 // grow without bound on a long-running server.
@@ -100,7 +114,7 @@ func rateLimit(next http.Handler) http.Handler {
 			v.lastSeen = now
 		default:
 			v.count++
-			if v.count > 100 {
+			if v.count > maxRequests() {
 				limiter.mu.Unlock()
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusTooManyRequests)
@@ -171,6 +185,9 @@ func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(securityHeaders)
 	r.Use(rateLimit)
+	// authenticate must come after rateLimit: an unauthenticated flood of bad
+	// tokens should be rate limited, not turned into 64 MiB argon2 verifications.
+	r.Use(s.authenticate)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
@@ -185,6 +202,13 @@ func (s *Server) Router() http.Handler {
 
 	// Forgejo webhooks
 	r.Post("/api/v1/hooks/forgejo", s.handleForgejoWebhook)
+
+	// Authentication. Everything else in the API already reads the actor from
+	// the request context; these are the only endpoints that establish it.
+	r.Post("/api/v1/auth/register", s.handleRegister)
+	r.Post("/api/v1/auth/login", s.handleLogin)
+	r.Post("/api/v1/auth/logout", s.handleLogout)
+	r.Get("/api/v1/auth/me", s.handleMe)
 
 	r.Route("/api/v1/projects", func(r chi.Router) {
 		r.Get("/", s.handleListProjects)

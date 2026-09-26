@@ -192,19 +192,26 @@ func (d *DB) GetComplaintPain(ctx context.Context, complaintID int64) (float64, 
 	if err != nil {
 		return 0, err
 	}
-	affected := 1.0 // reporter always counts
-	rows, err := d.QueryContext(ctx, `SELECT user_id FROM complaint_impacts WHERE complaint_id=?`, complaintID)
-	if err != nil {
+	// Count impacts with a plain aggregate rather than a cursor.
+	//
+	// The original form held a rows cursor open across GetProjectByID and
+	// GetCharterForProject below. db.Open sets SetMaxOpenConns(1), so those
+	// queries needed a connection that could not be issued until the cursor
+	// closed — which it never did, because it was closed by a defer after the
+	// function returned. The call deadlocked, so pain was never computed and
+	// every feature ranked with pain 0.
+	//
+	// COUNT(*) needs one connection and no nesting, so it cannot deadlock.
+	var impactCount int
+	if err := d.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM complaint_impacts WHERE complaint_id=?`, complaintID).Scan(&impactCount); err != nil {
 		return 0, err
 	}
-	defer rows.Close()
-	for rows.Next() {
-		var userID int64
-		if err := rows.Scan(&userID); err == nil {
-			affected += 1.0 + math.Log10(2.0) // simplified reputation weighting
-		}
+	affected := 1.0 // reporter always counts
+	for i := 0; i < impactCount; i++ {
+		affected += 1.0 + math.Log10(2.0) // simplified reputation weighting
 	}
-	_ = rows.Err()
+
 	// Load the project's charter for pain halflife
 	proj, err := d.GetProjectByID(ctx, c.ProjectID)
 	if err != nil {

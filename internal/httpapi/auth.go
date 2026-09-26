@@ -1,0 +1,121 @@
+package httpapi
+
+import (
+	"context"
+	"net/http"
+	"strings"
+
+	"github.com/go-chi/chi/v5"
+
+	"git.polarisocial.xyz/concord/concord/internal/store"
+)
+
+// actorKey is the context key for the authenticated user id.
+//
+// Deliberately a private typed key rather than the string "actor_id" that
+// getActorID used to read. Two reasons, both of which have bitten this codebase
+// already:
+//
+//   - A string key can collide with any other package that picks the same
+//     name. A typed unexported key cannot be constructed outside this package,
+//     so nothing can overwrite it by accident.
+//   - The old string key was read by 20-odd handlers and set by nothing, so
+//     every one of them silently saw actor 0 and returned 401. With a typed
+//     key, "set somewhere else" stops compiling.
+type actorKey struct{}
+
+// bearerToken extracts a token from the Authorization header, falling back to
+// an X-Auth-Token header for browser clients that cannot set headers on a
+// navigation. Returns "" when absent.
+func bearerToken(r *http.Request) string {
+	if h := r.Header.Get("Authorization"); h != "" {
+		// "Bearer clt_..." — case-insensitive scheme per RFC 7235.
+		if len(h) > 7 && strings.EqualFold(h[:7], "Bearer ") {
+			return strings.TrimSpace(h[7:])
+		}
+		return ""
+	}
+	return strings.TrimSpace(r.Header.Get("X-Auth-Token"))
+}
+
+// authenticate resolves a bearer token to a user id and puts it on the request
+// context.
+//
+// Two properties that are easy to get wrong and are load-bearing here:
+//
+//  1. A missing token is NOT an error. The request continues with no actor, so
+//     public reads keep working and writes still fail closed at their own
+//     getActorID checks. This is what makes "anonymous" the default rather than
+//     something every public handler has to special-case.
+//  2. A present but invalid token IS an error. Silently downgrading a bad
+//     token to anonymous would let a client with an expired credential believe
+//     it is still working, and would turn a typo into a confusing 401 on read
+//     instead of an honest one.
+func (s *Server) authenticate(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tok := bearerToken(r)
+		if tok == "" {
+			next.ServeHTTP(w, r)
+			return
+		}
+		uid, err := s.Store.ResolveToken(r.Context(), tok)
+		if err != nil {
+			mapError(w, store.ErrAuth)
+			return
+		}
+		ctx := context.WithValue(r.Context(), actorKey{}, uid)
+		next.ServeHTTP(w, r.WithContext(ctx))
+	})
+}
+
+// actorID returns the authenticated user id, or 0 when anonymous.
+func actorID(r *http.Request) int64 {
+	if a, ok := r.Context().Value(actorKey{}).(int64); ok {
+		return a
+	}
+	return 0
+}
+
+// requireProjectID resolves the {project_id} route parameter to a numeric
+// project id, writing the error response itself and returning false on failure.
+//
+// The parameter is named project_id but is filled with a *slug*: the sibling
+// route is /api/v1/projects/{slug}, the existing tests pass values like
+// "governance-lab", and GetProject looks up WHERE p.slug = ?. Twenty-one
+// handlers were written as
+//
+//	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+//
+// which parses a slug to 0, discards the error, and then queries project 0. The
+// tests did not catch it because they assert only that the status is 200, and
+// "no rows for project 0" is still 200.
+//
+// Discarding a parse error and continuing with the zero value is the defect
+// itself: it turns a bad request into a well-formed query against the wrong
+// row. This helper refuses instead.
+// requireWriteActor rejects an anonymous caller before the project is resolved.
+//
+// Authentication is checked first, deliberately, on every write path. The
+// reverse order would make the response code depend on whether a project
+// exists: an anonymous PUT to a real project and to a nonexistent one would
+// return 403 and 404 respectively, which is enough to enumerate the slugs
+// registered on the site. Checking the actor first makes both return 401, so
+// the only thing an anonymous caller can learn is that they are anonymous.
+func (s *Server) requireWriteActor(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	uid := getActorID(r)
+	if uid == 0 {
+		mapError(w, store.ErrAuth)
+		return 0, false
+	}
+	return uid, true
+}
+
+func (s *Server) requireProjectID(w http.ResponseWriter, r *http.Request) (int64, bool) {
+	slug := chi.URLParam(r, "project_id")
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		mapError(w, err)
+		return 0, false
+	}
+	return proj.ID, true
+}

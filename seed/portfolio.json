@@ -1,0 +1,356 @@
+{
+  "_comment": [
+    "Portfolio seed for Concord: every project PolarSoci Social is building or",
+    "maintaining, with the complaints worth ranking and the features proposed to",
+    "answer them.",
+    "",
+    "Scope rule: a repo appears here if PolarSoci Social wrote it. Upstream forks",
+    "kept only for reference (NodeBB, pyfedi, otwarchive, photon, chibisafe,",
+    "pamac, obscura, caveman, ferris, lasim, validator, news08) are excluded: they",
+    "are not candidates for the owner's design decisions, and listing them would",
+    "dilute the signal that the ranking exists to produce.",
+    "",
+    "Each project gets complaints (the pain) and features (the answer). A feature",
+    "must link to at least one validated complaint, so the chain the importer",
+    "walks is: create complaint -> validate -> create feature linking it.",
+    "",
+    "lorehaven, gravity and stash are deliberately absent: another agent owns",
+    "them, and their design is already being decided there."
+  ],
+  "projects": [
+    {
+      "slug": "concord",
+      "name": "Concord",
+      "description": "A consensus forge. Communities rank what should be built next by filing complaints and proposing features; Glicko-2 pairwise voting with strategic weighting turns that into a defensible priority order. The place the rest of this portfolio gets its roadmap.",
+      "governance_model": "collective",
+      "license": "AGPL-3.0",
+      "complaints": [
+        {
+          "title": "No authentication existed, so the site was read-only for everyone",
+          "body": "api_tokens was created in the initial migration and never written to. No middleware ever set the actor context, so all 21 write endpoints and the feature-ranking endpoint returned 401 for every caller while the test suite passed, because the harness injected the actor context by hand.",
+          "severity": 5,
+          "frequency": 1.0
+        },
+        {
+          "title": "Project-scoped routes silently operated on project 0",
+          "body": "The {project_id} route parameter is filled with a slug, but 21 handlers parsed it as an integer, discarded the error, and queried project 0. Reads returned an empty 200 rather than an error, so nothing looked broken.",
+          "severity": 5,
+          "frequency": 0.9
+        },
+        {
+          "title": "Anyone can hijack a ranking by voting on their own proposal",
+          "body": "The voting endpoints take the actor from the context, but the feature being voted on does not appear to be checked against the voter. A maintainer could rank a feature they authored to the top without any friction, and the Glicko-2 rating would treat it as genuine signal.",
+          "severity": 4,
+          "frequency": 0.4
+        }
+      ],
+      "features": [
+        {
+          "title": "Vote weight from demonstrated contribution, not account age",
+          "body": "Scale each vote by a reputation derived from complaints validated and features shipped, so the ranking reflects people who have shipped rather than whoever arrived first. Bounded to [0.5, 2.0] so it never becomes a plutocracy.",
+          "effort": "L",
+          "complaints": [0, 2]
+        },
+        {
+          "title": "Weight every vote by how much of the roadmap it would displace",
+          "body": "A feature that requires two others to be dropped first is not as cheap a win as its effort estimate suggests. Surface the dependency set with each feature so voters judge the trade, not the item.",
+          "effort": "L",
+          "complaints": [2]
+        },
+        {
+          "title": "A 48-hour deliberation period before any vote is counted",
+          "body": "Let a proposal be visible and argued before it enters the Glicko-2 pool. Prevents a burst of ranking from a small group in the first minutes from setting an anchor that is expensive to move later.",
+          "effort": "M",
+          "complaints": [2]
+        }
+      ]
+    },
+    {
+      "slug": "threadlight",
+      "name": "Threadlight",
+      "description": "A threaded discussion server in Go, split into an API and a SvelteKit frontend. Cursor-paginated threads, mentions, follows, and moderation that acts on a post rather than deleting a thread.",
+      "governance_model": "collective",
+      "license": "AGPL-3.0",
+      "complaints": [
+        {
+          "title": "No way to see why a thread is ranked where it is",
+          "body": "Ordering is a black box. A reader who disagrees with the order has no way to learn whether it is recency, engagement, or a stuck score, so the ordering cannot be argued with and therefore cannot be improved.",
+          "severity": 3,
+          "frequency": 0.6
+        },
+        {
+          "title": "Moderation removes content without recording why",
+          "body": "When a post is removed the reader sees a tombstone with no reason and no appeal path. The moderator's reasoning, which is the reusable part, is lost.",
+          "severity": 3,
+          "frequency": 0.35
+        }
+      ],
+      "features": [
+        {
+          "title": "Explain the ordering: show the score breakdown on each thread",
+          "body": "Render the components that produced the rank (recency, reply count, unique participants, penalty) on request. Turns an ordering people distrust into one they can argue with.",
+          "effort": "M",
+          "complaints": [0]
+        },
+        {
+          "title": "Every moderation action carries a reason and an appeal",
+          "body": "Store the reason with the tombstone, let the author contest it, and surface the resolution. Makes moderation decisions reviewable and turns them into a record the community can learn from.",
+          "effort": "M",
+          "complaints": [1]
+        },
+        {
+          "title": "Digest view for threads you follow",
+          "body": "A periodic summary of activity in followed threads, so following is not a reason to be notified constantly. Reduces the reason people unfollow.",
+          "effort": "M",
+          "complaints": [0]
+        }
+      ]
+    },
+    {
+      "slug": "threadlight-frontend",
+      "name": "Threadlight Web",
+      "description": "The SvelteKit client for Threadlight: 24 routes, typed API client, Vitest suite. Split out of the backend when the frontend grew past what a single Go module should carry.",
+      "governance_model": "collective",
+      "license": "AGPL-3.0",
+      "complaints": [
+        {
+          "title": "Twenty type errors and ten failing tests survived twenty-seven commits",
+          "body": "The pre-commit hook ran `npm run check 2>/dev/null || echo \"skipping\"`, which swallows every non-zero exit, and npx could not resolve svelte-check on the network mount anyway. A gate that cannot fail is not a gate.",
+          "severity": 4,
+          "frequency": 0.8
+        },
+        {
+          "title": "No loading or error state on any data-backed route",
+          "body": "Routes render synchronously from a client fetch. A slow network shows an empty page, which reads as an empty thread rather than a request in flight.",
+          "severity": 3,
+          "frequency": 0.7
+        }
+      ],
+      "features": [
+        {
+          "title": "SvelteKit load functions with explicit loading and error states",
+          "body": "Move data access into load functions so navigation blocks until data resolves, and every route has a defined loading and failure presentation instead of an empty page.",
+          "effort": "L",
+          "complaints": [1]
+        },
+        {
+          "title": "Enforce typecheck and tests in CI, not only in a hook",
+          "body": "A local hook is bypassed with --no-verify and never runs for a push from another machine. Run the same two commands in CI so the gate is a property of the repository rather than of one developer's setup.",
+          "effort": "S",
+          "complaints": [0]
+        },
+        {
+          "title": "Optimistic posting with rollback on failure",
+          "body": "Show a reply immediately and reconcile if the server rejects it, instead of blocking the composer on the round trip.",
+          "effort": "M",
+          "complaints": [1]
+        }
+      ]
+    },
+    {
+      "slug": "polaris",
+      "name": "Polaris",
+      "description": "The shared Go service library: configuration, database access, migrations, and the HTTP conventions every PolarSoci service is built on. The thing that makes the other services consistent rather than merely similar.",
+      "governance_model": "collective",
+      "license": "AGPL-3.0",
+      "complaints": [
+        {
+          "title": "The auth failure mode is invisible until production",
+          "body": "A service can build, pass its tests, and deploy while returning 401 to every write, because the tests inject the actor context directly instead of authenticating. The harness tested the handlers and not the system.",
+          "severity": 5,
+          "frequency": 0.7
+        },
+        {
+          "title": "Configuration drift between services is invisible until runtime",
+          "body": "Each service reads its own environment and reports its own error format. A misconfigured service is discovered by a user, not by a check.",
+          "severity": 3,
+          "frequency": 0.5
+        }
+      ],
+      "features": [
+        {
+          "title": "A testkit that authenticates the way production does",
+          "body": "Ship a harness that performs a real login and threads the resulting token, so no test can pass by injecting context that nothing sets in production. A test that can only pass because the harness lies is worse than no test.",
+          "effort": "M",
+          "complaints": [0]
+        },
+        {
+          "title": "One startup self-check that proves the service can write",
+          "body": "On boot, verify that the actor context resolves and that a write succeeds, and refuse to become ready if not. Turns a silent read-only deployment into a startup failure.",
+          "effort": "M",
+          "complaints": [0, 1]
+        },
+        {
+          "title": "Shared configuration schema with typed defaults and a diff report",
+          "body": "One schema every service validates against, so a setting that exists in one service and not another is a startup warning rather than a runtime surprise.",
+          "effort": "L",
+          "complaints": [1]
+        }
+      ]
+    },
+    {
+      "slug": "whitebois",
+      "name": "WhiteBois",
+      "description": "A community forum in Rust and Axum. Trust levels, level-gated forum access, markdown rendering, and a moderation model built on disclosure rather than deletion.",
+      "governance_model": "collective",
+      "license": "AGPL-3.0",
+      "complaints": [
+        {
+          "title": "Markdown link hrefs allowed attribute injection",
+          "body": "The renderer unescaped the URL and then interpolated it into an href without re-escaping, so a crafted URL could break out of the attribute and inject event handlers. Fixed by escaping after unescape and rejecting non-safe schemes, with a test asserting the escaped form.",
+          "severity": 5,
+          "frequency": 0.2
+        },
+        {
+          "title": "The database test suite fails 18 of 39 on a clean checkout",
+          "body": "Provisioning left a stale database and a warm Redis cache behind. A suite that cannot be trusted to pass is a suite nobody runs, so real regressions hide inside the noise.",
+          "severity": 4,
+          "frequency": 0.9
+        }
+      ],
+      "features": [
+        {
+          "title": "One deterministic database fixture: migrate from empty, every run",
+          "body": "Drop, create, migrate, seed, and flush the cache prefix as a single idempotent step that cannot inherit state. Turns 18 expected failures into zero, which is the precondition for trusting a red test.",
+          "effort": "M",
+          "complaints": [1]
+        },
+        {
+          "title": "A content security policy that reflects the disclosure model",
+          "body": "Because moderation hides rather than deletes, the renderer must never be trusted with script. Ship a strict CSP and test that a stored XSS payload cannot execute.",
+          "effort": "M",
+          "complaints": [0]
+        },
+        {
+          "title": "Explain every level gate to the reader who hit it",
+          "body": "A 403 that says only \"insufficient level\" teaches nothing. State the requirement, the current value, and the path to it, so the gate is a goal rather than a wall.",
+          "effort": "S",
+          "complaints": [0]
+        }
+      ]
+    },
+    {
+      "slug": "ficnexus",
+      "name": "FicHub",
+      "description": "A file sharing and discussion service in Rust. The founding project: the service, the community forum, and the trust model the other services learned from.",
+      "governance_model": "collective",
+      "license": "AGPL-3.0",
+      "complaints": [
+        {
+          "title": "Admin is a trust level rather than a flag",
+          "body": "Authority was expressed as a position on the trust ladder, so reaching admin meant passing through the same rungs as everyone else, and the two concerns could not be reasoned about independently.",
+          "severity": 3,
+          "frequency": 0.6
+        },
+        {
+          "title": "Edit windows and author privileges were entangled",
+          "body": "Authoring rights and timing rules were decided in one place, so changing the window silently changed who could edit. Each is a separate policy and needs a separate test.",
+          "severity": 3,
+          "frequency": 0.5
+        }
+      ],
+      "features": [
+        {
+          "title": "Separate the authority flag from the trust ladder",
+          "body": "An explicit is_admin flag, checked at the route, with the trust ladder continuing to mean what a member may do rather than who may administer. Two questions, two answers.",
+          "effort": "M",
+          "complaints": [0]
+        },
+        {
+          "title": "One test per gate, named for the rule rather than the route",
+          "body": "Gate tests should read as the policy they enforce, so a change to the policy is visible as a change to the test rather than as a route rename.",
+          "effort": "S",
+          "complaints": [1]
+        },
+        {
+          "title": "A trust ledger that shows how a member's level was earned",
+          "body": "Show which contributions moved a member's level and when, so the ladder is auditable and a mistake is correctable.",
+          "effort": "M",
+          "complaints": [0]
+        }
+      ]
+    },
+    {
+      "slug": "streakforge",
+      "name": "Streakforge",
+      "description": "A habit and streak tracker. Local-first, with streaks as a record of consistency rather than a number to protect.",
+      "governance_model": "collective",
+      "license": "AGPL-3.0",
+      "complaints": [
+        {
+          "title": "A broken streak is indistinguishable from a missed day",
+          "body": "Losing a long streak produces the same state as missing one day, so the cost of the mistake is invisible and the incentive to continue is the only thing carrying the user.",
+          "severity": 3,
+          "frequency": 0.5
+        },
+        {
+          "title": "No way to repair a streak retroactively",
+          "body": "A day genuinely completed while travelling cannot be recorded after the fact, so an honest streak breaks for a reason that is not a failure.",
+          "severity": 3,
+          "frequency": 0.6
+        }
+      ],
+      "features": [
+        {
+          "title": "Freeze days: a limited, explicit allowance",
+          "body": "Let a member spend a small number of freezes on days they could not have logged, and show the remaining balance. Preserves the honesty of the streak while acknowledging that a day is not always available.",
+          "effort": "M",
+          "complaints": [0, 1]
+        },
+        {
+          "title": "Longest streak as the headline, current streak as context",
+          "body": "Lead with the best run rather than the current one, so a recent slip is not the most prominent fact about a member's record.",
+          "effort": "S",
+          "complaints": [0]
+        },
+        {
+          "title": "Backdated entry with a visible audit note",
+          "body": "Permit logging a past day and mark it as added later. The streak stays honest because the correction is visible rather than hidden.",
+          "effort": "M",
+          "complaints": [1]
+        }
+      ]
+    },
+    {
+      "slug": "ferrisfeed",
+      "name": "FerrisFeed",
+      "description": "An RSS and Atom reader with filtering, folders, and a read-later queue. Built for a small number of sources read carefully rather than a large number read never.",
+      "governance_model": "collective",
+      "license": "AGPL-3.0",
+      "complaints": [
+        {
+          "title": "Filtering happens after the fact, not before the inbox",
+          "body": "Rules remove items that have already been fetched and counted, so a filter is invisible to the reader and the inbox size is not something filtering can actually change.",
+          "severity": 3,
+          "frequency": 0.6
+        },
+        {
+          "title": "Full-text search is unavailable offline",
+          "body": "The archive is local but the search is not, so the one feature that justifies keeping an archive cannot be used on a train.",
+          "severity": 3,
+          "frequency": 0.5
+        }
+      ],
+      "features": [
+        {
+          "title": "Rules run at fetch time and report what they removed",
+          "body": "Apply filters before an item enters the inbox, and show a per-rule count of what was hidden. A filter that changes nothing is indistinguishable from a filter that does not work.",
+          "effort": "L",
+          "complaints": [0]
+        },
+        {
+          "title": "Local full-text index over the archive",
+          "body": "Index titles, bodies, and feed names on device so search works with no network and no account.",
+          "effort": "L",
+          "complaints": [1]
+        },
+        {
+          "title": "Read-later as a first-class queue with a daily digest",
+          "body": "Save now, read later on a schedule, rather than treating the unread count as a debt to be paid down immediately.",
+          "effort": "M",
+          "complaints": [1]
+        }
+      ]
+    }
+  ]
+}

@@ -25,6 +25,19 @@ func (s *Server) handleCreateComplaint(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
+	// Default the strategic multiplier to 1.0 rather than leaving it at the
+	// zero value of an omitted field.
+	//
+	// PainScore multiplies by strategicMult, so a caller that sends severity
+	// and frequency but not the multiplier — the obvious thing to do, since
+	// only the first two appear in the complaint form — gets a pain score of
+	// exactly 0. The complaint is stored, validated, and linked to a feature,
+	// and it contributes nothing to that feature's priority with no indication
+	// of why. A zero multiplier is not a meaningful value; a neutral one is.
+	if req.StrategicMult <= 0 {
+		req.StrategicMult = 1.0
+	}
+
 	c, err := s.Store.CreateComplaint(r.Context(), req.ProjectID, getActorID(r), req.Title, req.Body, req.Severity, req.Frequency, req.StrategicMult)
 	if err != nil {
 		mapError(w, err)
@@ -36,7 +49,10 @@ func (s *Server) handleCreateComplaint(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListComplaints(w http.ResponseWriter, r *http.Request) {
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
 	status := r.URL.Query().Get("status")
 	complaints, err := s.Store.ListComplaints(r.Context(), projectID, status)
 	if err != nil {
@@ -121,7 +137,10 @@ func (s *Server) handleCreateFeature(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleListFeatures(w http.ResponseWriter, r *http.Request) {
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
 	status := r.URL.Query().Get("status")
 	features, err := s.Store.ListFeatures(r.Context(), projectID, status)
 	if err != nil {
@@ -131,13 +150,16 @@ func (s *Server) handleListFeatures(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, features)
 }
 
-
 func (s *Server) handleFeaturePriorities(w http.ResponseWriter, r *http.Request) {
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
 	if getActorID(r) == 0 {
 		mapError(w, store.ErrAuth)
 		return
 	}
+	// {project_id} is a slug, not a numeric id. This used to parse it as an
+	// integer, discard the error, and then pass that 0 to the ranking query
+	// while the project lookup immediately below did the right thing and
+	// produced proj.ID. Every caller with a non-numeric slug therefore ranked
+	// project 0. Resolve the project once and use its real id.
 	proj, err := s.Store.GetProject(r.Context(), chi.URLParam(r, "project_id"))
 	if err != nil {
 		mapError(w, err)
@@ -148,7 +170,7 @@ func (s *Server) handleFeaturePriorities(w http.ResponseWriter, r *http.Request)
 		mapError(w, err)
 		return
 	}
-	priorities, err := s.Store.GetFeaturePriorities(r.Context(), projectID, charter)
+	priorities, err := s.Store.GetFeaturePriorities(r.Context(), proj.ID, charter)
 	if err != nil {
 		mapError(w, err)
 		return
@@ -168,7 +190,10 @@ func (s *Server) handleGetFeature(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleSetStrategicWeight(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
 	if err := s.requireRole(projectID, "maintainer", r); err != nil {
 		mapError(w, err)
 		return
@@ -190,15 +215,18 @@ func (s *Server) handleSetStrategicWeight(w http.ResponseWriter, r *http.Request
 type castVoteRequest struct {
 	FeatureA int64   `json:"feature_a"`
 	FeatureB int64   `json:"feature_b"`
-	Outcome string  `json:"outcome"`
-	Weight  float64 `json:"weight"`
+	Outcome  string  `json:"outcome"`
+	Weight   float64 `json:"weight"`
 }
 
 func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
 	actorID := getActorID(r)
 	if actorID == 0 {
 		mapError(w, store.ErrAuth)
+		return
+	}
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
 		return
 	}
 	// Check actor is at least a contributor in this project
@@ -246,7 +274,10 @@ func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetNextPair(w http.ResponseWriter, r *http.Request) {
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
 	if getActorID(r) == 0 {
 		mapError(w, fmt.Errorf("authentication required"))
 		return
@@ -270,7 +301,10 @@ func (s *Server) handleCreateConsensus(w http.ResponseWriter, r *http.Request) {
 		mapError(w, fmt.Errorf("authentication required"))
 		return
 	}
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
 	var req createConsensusRequest
 	if !readJSON(w, r, &req) {
 		return
@@ -400,7 +434,10 @@ func (s *Server) handleCloseConsensus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetBoard(w http.ResponseWriter, r *http.Request) {
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
 	columns, cards, err := s.Store.GetBoard(r.Context(), projectID)
 	if err != nil {
 		mapError(w, err)
@@ -411,7 +448,10 @@ func (s *Server) handleGetBoard(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleMoveCard(w http.ResponseWriter, r *http.Request) {
 	cardID, _ := strconv.ParseInt(chi.URLParam(r, "card_id"), 10, 64)
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
 	newColumn := r.URL.Query().Get("to")
 	if getActorID(r) == 0 {
 		mapError(w, fmt.Errorf("authentication required"))
@@ -425,7 +465,10 @@ func (s *Server) handleMoveCard(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleCreateMergeRequest(w http.ResponseWriter, r *http.Request) {
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
 	if getActorID(r) == 0 {
 		mapError(w, fmt.Errorf("authentication required"))
 		return
@@ -462,7 +505,10 @@ func (s *Server) handleApproveMerge(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleExecuteMerge(w http.ResponseWriter, r *http.Request) {
 	mrID, _ := strconv.ParseInt(chi.URLParam(r, "mr_id"), 10, 64)
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
 	if getActorID(r) == 0 {
 		mapError(w, fmt.Errorf("authentication required"))
 		return
@@ -476,7 +522,10 @@ func (s *Server) handleExecuteMerge(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRejectMerge(w http.ResponseWriter, r *http.Request) {
 	mrID, _ := strconv.ParseInt(chi.URLParam(r, "mr_id"), 10, 64)
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
 	if getActorID(r) == 0 {
 		mapError(w, fmt.Errorf("authentication required"))
 		return
@@ -518,14 +567,18 @@ func (s *Server) handleBoardPage(w http.ResponseWriter, r *http.Request) {
 	}{s.page("Board - " + slug), slug})
 }
 
+// getActorID returns the authenticated user id, or 0 when anonymous.
+//
+// It delegates to actorID, which reads the typed actorKey that the
+// authenticate middleware sets. The old implementation read the string key
+// "actor_id", which nothing ever set: grep found no context.WithValue anywhere
+// in non-test code, so every caller saw 0 and every write returned 401.
+//
+// Kept as a separate name because 62 call sites depend on it, and a missed
+// rename would be a handler that silently stopped authenticating.
 func getActorID(r *http.Request) int64 {
-	actor := r.Context().Value("actor_id")
-	if a, ok := actor.(int64); ok {
-		return a
-	}
-	return 0
+	return actorID(r)
 }
-
 
 // roleHierarchy maps roles to numeric ranks for comparison.
 var roleHierarchy = map[string]int{

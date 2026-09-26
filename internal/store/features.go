@@ -30,17 +30,17 @@ type Feature struct {
 	CreatedAt       float64 `json:"created_at"`
 	UpdatedAt       float64 `json:"updated_at"`
 }
+
 // FeaturePriority carries a feature's priority score for the leaderboard.
 type FeaturePriority struct {
-	ID             int64   `json:"id"`
-	Title          string  `json:"title"`
-	EloR           float64 `json:"elo_r"`
-	EloRD          float64 `json:"elo_rd"`
-	PainScore      float64 `json:"pain_score"`
+	ID              int64   `json:"id"`
+	Title           string  `json:"title"`
+	EloR            float64 `json:"elo_r"`
+	EloRD           float64 `json:"elo_rd"`
+	PainScore       float64 `json:"pain_score"`
 	StrategicWeight float64 `json:"strategic_weight"`
-	PriorityScore  float64 `json:"priority_score"`
+	PriorityScore   float64 `json:"priority_score"`
 }
-
 
 // FeatureComplaintLink links a feature to a complaint.
 type FeatureComplaintLink struct {
@@ -146,7 +146,19 @@ func (d *DB) GetFeaturePriorities(ctx context.Context, projectID int64, charter 
 	var result []FeaturePriority
 	for _, f := range features {
 		// Sum pain across all complaints linked to this feature
-		var painSum float64
+		// Collect the linked complaint ids first, then close the rows before
+		// querying anything else.
+		//
+		// db.Open sets SetMaxOpenConns(1): the pool has exactly one connection.
+		// Calling GetComplaintPain while rows from feature_complaints is still
+		// open asks for a second connection, so the request waits for one that
+		// cannot be handed out until the open rows is closed — which happens
+		// four lines below. The handler hung for the full request timeout, and
+		// because the query is correct the failure looked like a network
+		// problem rather than a deadlock.
+		//
+		// Read the ids into a slice, close rows, then do the per-complaint work.
+		var cids []int64
 		rows, err := d.QueryContext(ctx, `SELECT complaint_id FROM feature_complaints WHERE feature_id=?`, f.ID)
 		if err != nil {
 			return nil, err
@@ -154,23 +166,31 @@ func (d *DB) GetFeaturePriorities(ctx context.Context, projectID int64, charter 
 		for rows.Next() {
 			var cid int64
 			if err := rows.Scan(&cid); err == nil {
-				p, err := d.GetComplaintPain(ctx, cid)
-				if err != nil {
-					return nil, err
-				}
-				painSum += p
+				cids = append(cids, cid)
 			}
 		}
 		rows.Close()
+		if err := rows.Err(); err != nil {
+			return nil, err
+		}
+
+		var painSum float64
+		for _, cid := range cids {
+			p, err := d.GetComplaintPain(ctx, cid)
+			if err != nil {
+				return nil, err
+			}
+			painSum += p
+		}
 		prio := ranking.PriorityScore(f.EloR, f.EloRD, painSum, f.StrategicWeight, charter.Lam, charter.Mu)
 		result = append(result, FeaturePriority{
-			ID:             f.ID,
-			Title:          f.Title,
-			EloR:           f.EloR,
-			EloRD:          f.EloRD,
-			PainScore:      painSum,
+			ID:              f.ID,
+			Title:           f.Title,
+			EloR:            f.EloR,
+			EloRD:           f.EloRD,
+			PainScore:       painSum,
 			StrategicWeight: f.StrategicWeight,
-			PriorityScore:  prio,
+			PriorityScore:   prio,
 		})
 	}
 	sort.Slice(result, func(i, j int) bool {

@@ -6,6 +6,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"io/fs"
 	"sort"
 	"strconv"
 	"strings"
@@ -19,6 +20,16 @@ var migrationsFS embed.FS
 // each inside its own transaction, and records the version in
 // schema_migrations. Files are named NNNN_description.sql.
 func Migrate(ctx context.Context, d *sql.DB) error {
+	return migrateFS(ctx, d, migrationsFS, "migrations")
+}
+
+// migrateFS is Migrate with the source of migration files supplied, so a test
+// can exercise version handling against a temporary directory instead of
+// whatever happens to be embedded in the binary. The shipped migrations are
+// compiled in, which is deliberate — a deployable binary must not depend on a
+// directory it might not have — but it also means the interesting cases
+// (duplicate versions, ordering) cannot be tested through Migrate alone.
+func migrateFS(ctx context.Context, d *sql.DB, fsys fs.FS, dir string) error {
 	if _, err := d.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version    INTEGER PRIMARY KEY,
@@ -27,7 +38,7 @@ func Migrate(ctx context.Context, d *sql.DB) error {
 		return fmt.Errorf("create schema_migrations: %w", err)
 	}
 
-	entries, err := migrationsFS.ReadDir("migrations")
+	entries, err := fs.ReadDir(fsys, dir)
 	if err != nil {
 		return fmt.Errorf("read migrations: %w", err)
 	}
@@ -38,6 +49,27 @@ func Migrate(ctx context.Context, d *sql.DB) error {
 		}
 	}
 	sort.Strings(names)
+
+	// Reject duplicate versions before running anything.
+	//
+	// schema_migrations is keyed on version alone, so two files sharing a
+	// version are not an error: whichever sorts first is applied and the other
+	// is silently skipped forever. This is not hypothetical — 0002_auth.sql and
+	// 0002_request_board.sql briefly coexisted, the auth columns were never
+	// created, and the only symptom was unrelated tests failing on a missing
+	// table. A migration runner that cannot tell you a migration did not run is
+	// not a migration runner.
+	seen := make(map[int64]string, len(names))
+	for _, name := range names {
+		version, err := versionOf(name)
+		if err != nil {
+			return fmt.Errorf("bad migration filename %q: %w", name, err)
+		}
+		if prev, dup := seen[version]; dup {
+			return fmt.Errorf("duplicate migration version %d: %q and %q", version, prev, name)
+		}
+		seen[version] = name
+	}
 
 	for _, name := range names {
 		version, err := versionOf(name)
@@ -54,7 +86,7 @@ func Migrate(ctx context.Context, d *sql.DB) error {
 			return fmt.Errorf("check migration %d: %w", version, err)
 		}
 
-		body, err := migrationsFS.ReadFile("migrations/" + name)
+		body, err := fs.ReadFile(fsys, dir+"/"+name)
 		if err != nil {
 			return fmt.Errorf("read %s: %w", name, err)
 		}

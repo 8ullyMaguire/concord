@@ -16,7 +16,10 @@ func (s *Server) handleCreateComment(w http.ResponseWriter, r *http.Request) {
 		mapError(w, store.ErrAuth)
 		return
 	}
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
 	threadID, _ := strconv.ParseInt(chi.URLParam(r, "thread_id"), 10, 64)
 	threadKind := chi.URLParam(r, "thread_kind")
 
@@ -39,7 +42,10 @@ func (s *Server) handleCreateComment(w http.ResponseWriter, r *http.Request) {
 
 // handleGetThreadComments retrieves comments for a thread.
 func (s *Server) handleGetThreadComments(w http.ResponseWriter, r *http.Request) {
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
 	threadID, _ := strconv.ParseInt(chi.URLParam(r, "thread_id"), 10, 64)
 	threadKind := chi.URLParam(r, "thread_kind")
 	comments, err := s.Store.GetThreadComments(r.Context(), projectID, threadID, threadKind)
@@ -66,7 +72,10 @@ func (s *Server) handleDeleteComment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if c.AuthorID != getActorID(r) {
-		projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+		projectID, ok := s.requireProjectID(w, r)
+		if !ok {
+			return
+		}
 		role, _ := s.Store.GetRoleForProject(r.Context(), projectID, getActorID(r))
 		if role != "maintainer" && role != "owner" {
 			mapError(w, store.ErrPerm)

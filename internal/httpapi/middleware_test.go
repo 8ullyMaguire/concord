@@ -27,10 +27,17 @@ func TestSecurityHeaders(t *testing.T) {
 }
 
 func TestRateLimit(t *testing.T) {
-	// Use a fresh rate limiter to avoid pollution from other tests
+	// Use a fresh rate limiter to avoid pollution from other tests, and restore
+	// the production budget: TestMain raises maxRequests for the rest of the
+	// suite, so without this the 101st request would still be 200.
 	origLimiter := limiter
 	limiter = &rateLimiter{visitors: make(map[string]*visitorRate)}
-	defer func() { limiter = origLimiter }()
+	origMax := maxRequests
+	maxRequests = func() int { return defaultMaxRequests }
+	defer func() {
+		limiter = origLimiter
+		maxRequests = origMax
+	}()
 
 	handler := rateLimit(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -61,7 +68,12 @@ func TestRateLimitPerVisitor(t *testing.T) {
 	// loopback proxy must get its own bucket.
 	origLimiter := limiter
 	limiter = &rateLimiter{visitors: make(map[string]*visitorRate)}
-	defer func() { limiter = origLimiter }()
+	origMax := maxRequests
+	maxRequests = func() int { return defaultMaxRequests }
+	defer func() {
+		limiter = origLimiter
+		maxRequests = origMax
+	}()
 
 	handler := rateLimit(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

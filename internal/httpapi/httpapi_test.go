@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -31,16 +30,37 @@ func newTestServer(t *testing.T) *httptest.Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	router := srv.Router()
-	injectActor := func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ctx := context.WithValue(r.Context(), "actor_id", u.ID)
-			next.ServeHTTP(w, r.WithContext(ctx))
-		})
+	// Authenticate the way a real client does: with a bearer token resolved by
+	// the authenticate middleware.
+	//
+	// This used to inject context.WithValue(ctx, "actor_id", u.ID) directly,
+	// which is precisely the thing production never does — no middleware set
+	// that key, so every real request saw actor 0 and returned 401 while the
+	// whole suite passed. A harness that hand-builds the auth context tests the
+	// handlers, not the system. Now the token round-trips through
+	// RegisterUser -> ResolveToken -> actorKey.
+	// The user already exists (CreateUser above), so give it a credential the
+	// way the admin path would, then log in to get a real token.
+	if err := st.SetPassword(t.Context(), u.Username, "test-password-123"); err != nil {
+		t.Fatalf("set password: %v", err)
 	}
-	ts := httptest.NewServer(injectActor(router))
+	_, tok, err := st.Login(t.Context(), u.Username, "test-password-123")
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	ts := httptest.NewServer(authenticated(srv.Router(), tok))
 	t.Cleanup(ts.Close)
 	return ts
+}
+
+// authenticated wraps a handler so every request carries tok. This models a
+// client that logged in once and is now making ordinary calls; the token is
+// still resolved by the real middleware on each request.
+func authenticated(next http.Handler, tok string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		r.Header.Set("Authorization", "Bearer "+tok)
+		next.ServeHTTP(w, r)
+	})
 }
 
 func newTestServerNoActor(t *testing.T) *httptest.Server {
@@ -85,9 +105,17 @@ func doJSON(t *testing.T, ts *httptest.Server, method, path string, body any) (*
 		t.Fatalf("%s %s: %v", method, path, err)
 	}
 	defer resp.Body.Close()
-	var out map[string]any
-	if err := json.NewDecoder(resp.Body).Decode(&out); err != nil {
+	// Several list endpoints (GET /api/v1/projects) return a bare JSON array,
+	// which cannot be unmarshalled into map[string]any. Decode into any first
+	// and wrap an array under "items" so every caller has a map to read, while
+	// object responses pass through unchanged.
+	var raw any
+	if err := json.NewDecoder(resp.Body).Decode(&raw); err != nil {
 		t.Fatalf("decode response: %v", err)
+	}
+	out, ok := raw.(map[string]any)
+	if !ok {
+		out = map[string]any{"items": raw}
 	}
 	return resp, out
 }
@@ -285,7 +313,7 @@ func TestVoteRoundTrip(t *testing.T) {
 	}
 	projID := int64(projBody["id"].(float64))
 
-	resp, compBody := doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/complaints", map[string]any{
+	resp, compBody := doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/complaints", map[string]any{
 		"title": "Vote complaint", "body": "needs fixing", "severity": 3,
 		"frequency": 1.0, "strategic_multiplier": 2.0, "project_id": projID,
 	})
@@ -294,12 +322,12 @@ func TestVoteRoundTrip(t *testing.T) {
 	}
 	compID := int64(compBody["id"].(float64))
 
-	resp, _ = doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/complaints/"+itoa(compID)+"/validate", nil)
+	resp, _ = doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/complaints/"+itoa(compID)+"/validate", nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("validate complaint: status %d", resp.StatusCode)
 	}
 
-	resp, featBody := doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/features", map[string]any{
+	resp, featBody := doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/features", map[string]any{
 		"title": "Feature A", "body": "first option", "linked_complaints": []int64{compID},
 		"project_id": projID,
 	})
@@ -308,7 +336,7 @@ func TestVoteRoundTrip(t *testing.T) {
 	}
 	featA := int64(featBody["id"].(float64))
 
-	resp, featBody = doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/features", map[string]any{
+	resp, featBody = doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/features", map[string]any{
 		"title": "Feature B", "body": "second option", "linked_complaints": []int64{compID},
 		"project_id": projID,
 	})
@@ -317,7 +345,7 @@ func TestVoteRoundTrip(t *testing.T) {
 	}
 	featB := int64(featBody["id"].(float64))
 
-	resp, voteBody := doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/features/"+itoa(featA)+"/vote", map[string]any{
+	resp, voteBody := doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/features/"+itoa(featA)+"/vote", map[string]any{
 		"feature_a": featA, "feature_b": featB, "outcome": "a",
 	})
 	if resp.StatusCode != http.StatusCreated {
@@ -338,7 +366,7 @@ func TestConsensusFiveOutcomes(t *testing.T) {
 	}
 	projID := int64(projBody["id"].(float64))
 
-	resp, compBody := doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/complaints", map[string]any{
+	resp, compBody := doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/complaints", map[string]any{
 		"title": "Consensus complaint", "body": "x", "severity": 1, "frequency": 0.5,
 		"strategic_multiplier": 1.0, "project_id": projID,
 	})
@@ -347,12 +375,12 @@ func TestConsensusFiveOutcomes(t *testing.T) {
 	}
 	compID := int64(compBody["id"].(float64))
 
-	resp, _ = doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/complaints/"+itoa(compID)+"/validate", nil)
+	resp, _ = doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/complaints/"+itoa(compID)+"/validate", nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("validate complaint: %d", resp.StatusCode)
 	}
 
-	resp, featBody := doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/features", map[string]any{
+	resp, featBody := doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/features", map[string]any{
 		"title": "Consensus feature", "body": "x", "linked_complaints": []int64{compID},
 		"project_id": projID,
 	})
@@ -361,7 +389,7 @@ func TestConsensusFiveOutcomes(t *testing.T) {
 	}
 	featID := int64(featBody["id"].(float64))
 
-	resp, callBody := doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/consensus", map[string]any{
+	resp, callBody := doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/consensus", map[string]any{
 		"feature_id": featID, "title": "Test call", "description": "x",
 	})
 	if resp.StatusCode != http.StatusCreated {
@@ -371,7 +399,7 @@ func TestConsensusFiveOutcomes(t *testing.T) {
 
 	outcomes := []string{"consent", "abstain", "stand_aside", "block", "consent"}
 	for i, stance := range outcomes {
-		resp, body := doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/consensus/"+itoa(callID)+"/position", map[string]any{
+		resp, body := doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/consensus/"+itoa(callID)+"/position", map[string]any{
 			"position": stance,
 		})
 		if resp.StatusCode != http.StatusCreated {
@@ -404,7 +432,7 @@ func TestPermissionDenial(t *testing.T) {
 		}
 		projID := int64(projBody["id"].(float64))
 
-		resp, compBody := doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/complaints", map[string]any{
+		resp, compBody := doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/complaints", map[string]any{
 			"title": "C", "body": "x", "severity": 1, "frequency": 0.5,
 			"strategic_multiplier": 1.0, "project_id": projID,
 		})
@@ -413,12 +441,12 @@ func TestPermissionDenial(t *testing.T) {
 		}
 		compID := int64(compBody["id"].(float64))
 
-		resp, _ = doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/complaints/"+itoa(compID)+"/validate", nil)
+		resp, _ = doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/complaints/"+itoa(compID)+"/validate", nil)
 		if resp.StatusCode != http.StatusOK {
 			t.Fatalf("validate: %d", resp.StatusCode)
 		}
 
-		resp, featBody := doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/features", map[string]any{
+		resp, featBody := doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/features", map[string]any{
 			"title": "F", "body": "x", "linked_complaints": []int64{compID},
 			"project_id": projID,
 		})
@@ -427,7 +455,7 @@ func TestPermissionDenial(t *testing.T) {
 		}
 		featID := int64(featBody["id"].(float64))
 
-		resp, body := doJSON(t, ts, "PUT", "/api/v1/projects/"+itoa(projID)+"/features/"+itoa(featID)+"/strategic-weight", map[string]any{
+		resp, body := doJSON(t, ts, "PUT", "/api/v1/projects/"+slugOf(t, ts, projID)+"/features/"+itoa(featID)+"/strategic-weight", map[string]any{
 			"weight": 5.0,
 		})
 		if resp.StatusCode != http.StatusOK {
@@ -447,7 +475,7 @@ func TestObjectionLifecycle(t *testing.T) {
 	}
 	projID := int64(projBody["id"].(float64))
 
-	resp, compBody := doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/complaints", map[string]any{
+	resp, compBody := doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/complaints", map[string]any{
 		"title": "Obj complaint", "body": "x", "severity": 1, "frequency": 0.5,
 		"strategic_multiplier": 1.0, "project_id": projID,
 	})
@@ -456,12 +484,12 @@ func TestObjectionLifecycle(t *testing.T) {
 	}
 	compID := int64(compBody["id"].(float64))
 
-	resp, _ = doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/complaints/"+itoa(compID)+"/validate", nil)
+	resp, _ = doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/complaints/"+itoa(compID)+"/validate", nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("validate complaint: %d", resp.StatusCode)
 	}
 
-	resp, featBody := doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/features", map[string]any{
+	resp, featBody := doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/features", map[string]any{
 		"title": "Obj feature", "body": "x", "linked_complaints": []int64{compID},
 		"project_id": projID,
 	})
@@ -470,7 +498,7 @@ func TestObjectionLifecycle(t *testing.T) {
 	}
 	featID := int64(featBody["id"].(float64))
 
-	resp, callBody := doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/consensus", map[string]any{
+	resp, callBody := doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/consensus", map[string]any{
 		"feature_id": featID, "title": "Obj call", "description": "x",
 	})
 	if resp.StatusCode != http.StatusCreated {
@@ -478,7 +506,7 @@ func TestObjectionLifecycle(t *testing.T) {
 	}
 	callID := int64(callBody["id"].(float64))
 
-	resp, objBody := doJSON(t, ts, "POST", "/api/v1/projects/"+itoa(projID)+"/consensus/"+itoa(callID)+"/objection", map[string]any{
+	resp, objBody := doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/consensus/"+itoa(callID)+"/objection", map[string]any{
 		"principle": "Fairness",
 		"violation": "Process was rushed",
 		"remedy":    "Extend discussion period",
@@ -491,7 +519,7 @@ func TestObjectionLifecycle(t *testing.T) {
 		t.Fatalf("expected objection status open, got %v", objBody["status"])
 	}
 
-	resp, _ = doJSON(t, ts, "PUT", "/api/v1/projects/"+itoa(projID)+"/consensus/objections/"+itoa(objID)+"/resolve", map[string]any{
+	resp, _ = doJSON(t, ts, "PUT", "/api/v1/projects/"+slugOf(t, ts, projID)+"/consensus/objections/"+itoa(objID)+"/resolve", map[string]any{
 		"status":     "resolved",
 		"resolution": "Discussion period extended by 3 days",
 	})
@@ -522,7 +550,6 @@ func itoa(n int64) string {
 	return string(b[i:])
 }
 
-
 // TestCharterEndpoints verifies charter read and update.
 func TestCharterEndpoints(t *testing.T) {
 	ts := newTestServer(t)
@@ -536,7 +563,7 @@ func TestCharterEndpoints(t *testing.T) {
 	projID := int64(projBody["id"].(float64))
 
 	// Get charter (default)
-	resp, charterBody := doJSON(t, ts, "GET", "/api/v1/projects/"+itoa(projID)+"/charter", nil)
+	resp, charterBody := doJSON(t, ts, "GET", "/api/v1/projects/"+slugOf(t, ts, projID)+"/charter", nil)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("get charter: status %d", resp.StatusCode)
 	}
@@ -545,7 +572,7 @@ func TestCharterEndpoints(t *testing.T) {
 	}
 
 	// Update charter (maintainer can)
-	_, _ = doJSON(t, ts, "PUT", "/api/v1/projects/"+itoa(projID)+"/charter", map[string]any{
+	_, _ = doJSON(t, ts, "PUT", "/api/v1/projects/"+slugOf(t, ts, projID)+"/charter", map[string]any{
 		"quorum_ratio": 0.5,
 		"quorum_min":   5,
 	})
@@ -561,4 +588,39 @@ func TestUnauthCharterUpdate(t *testing.T) {
 	if resp.StatusCode != http.StatusUnauthorized {
 		t.Fatalf("unauthenticated charter update should 401, got %d", resp.StatusCode)
 	}
+}
+
+// slugOf resolves a project id to the slug the routes expect.
+//
+// The project-scoped routes are /api/v1/projects/{project_id}/..., but that
+// parameter carries a *slug* — the sibling route is /api/v1/projects/{slug} and
+// GetProject matches on p.slug. These tests used to interpolate the numeric id
+// with itoa(projID), which the old handlers happened to accept: they parsed the
+// path as an integer, and on a fresh database project 1 is also the first
+// project, so the two agreed by coincidence. The tests therefore encoded the
+// bug rather than the contract, and every one of them would have started
+// failing the moment a second project existed in an earlier position.
+func slugOf(t *testing.T, ts *httptest.Server, projectID int64) string {
+	t.Helper()
+	res, body := doJSON(t, ts, "GET", "/api/v1/projects", nil)
+	if res.StatusCode != 200 {
+		t.Fatalf("list projects: %d %v", res.StatusCode, body)
+	}
+	// The list endpoint returns a bare JSON array; doJSON wraps it under a
+	// synthetic key so its map return type can carry any top-level shape.
+	items, _ := body["items"].([]any)
+	if items == nil {
+		items, _ = body["projects"].([]any)
+	}
+	for _, it := range items {
+		m, _ := it.(map[string]any)
+		if m == nil {
+			continue
+		}
+		if int64(m["id"].(float64)) == projectID {
+			return m["slug"].(string)
+		}
+	}
+	t.Fatalf("no project with id %d in list (got %d items)", projectID, len(items))
+	return ""
 }

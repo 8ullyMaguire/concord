@@ -90,7 +90,10 @@ func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
 		mapError(w, store.ErrAuth)
 		return
 	}
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
 	var req struct {
 		Title string `json:"title"`
 		Body  string `json:"body"`
@@ -109,7 +112,10 @@ func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
 
 // handleListRequests returns requests for a project.
 func (s *Server) handleListRequests(w http.ResponseWriter, r *http.Request) {
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
 	requests, err := s.Store.GetRequestsByProject(r.Context(), projectID)
 	if err != nil {
 		mapError(w, err)
@@ -123,7 +129,10 @@ func (s *Server) handleListRequests(w http.ResponseWriter, r *http.Request) {
 
 // handleListLists returns lists for a project.
 func (s *Server) handleListLists(w http.ResponseWriter, r *http.Request) {
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
 	lists, err := s.Store.GetListsByProject(r.Context(), projectID)
 	if err != nil {
 		mapError(w, err)
@@ -141,7 +150,10 @@ func (s *Server) handleCreateList(w http.ResponseWriter, r *http.Request) {
 		mapError(w, store.ErrAuth)
 		return
 	}
-	projectID, _ := strconv.ParseInt(chi.URLParam(r, "project_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
 	var req struct {
 		Slug        string `json:"slug"`
 		Title       string `json:"title"`
