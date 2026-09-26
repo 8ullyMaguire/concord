@@ -1,6 +1,6 @@
 # Concord — membership, and a voting interface that exists
 
-Status: **written 2026-09-26.** Companion to `auth-and-portfolio-import.md`.
+Status: **implemented 2026-09-26** (`a76bec9`, `a5d440c`, tag `v0.4.0-voting`). Companion to `auth-and-portfolio-import.md`.
 This is the third and deepest instance of the same defect that document describes.
 
 ---
@@ -165,3 +165,58 @@ Every one of these is a claim that can be false, so each is a test:
   ranking path.
 - **No changes to the Glicko-2 maths.** It is correct and tested. The bug was
   that nobody could reach it.
+
+---
+
+## Result
+
+All ten verification claims hold, and each was checked by reverting the fix and
+confirming the named test fails.
+
+| # | Claim | Test | Reverting the fix |
+|---|---|---|---|
+| 1 | A new account can vote in a project it did not create | `TestRegisteredUserCanVoteInProjectTheyDidNotCreate` | re-adding the guest gate fails it and 3 others |
+| 2 | Filing a complaint enrols the author | `TestFilingComplaintEnrolsAuthor` | asserts `author_id != 0` and the role |
+| 3 | Join never demotes a maintainer | `TestJoinProjectDoesNotDemoteMaintainer` | three joins, role still `maintainer` |
+| 4 | An author cannot vote on their own feature | `TestAuthorCannotVoteOnOwnFeature` | deleting the loop fails it |
+| 5 | `/priorities` is public | `TestPrioritiesArePubliclyReadable` | re-adding the auth check fails it |
+| 6 | `/votes/next` no longer invites a vote it refuses | `TestFirstVoteIsPossible` | the guest gate fails it |
+| 7 | The ranking lists every feature with a deviation | `TestRankingPageUsesTheForgeOrder` | asserts `elo_rd` and no client `.sort(` |
+| 8 | The rank page offers a pair and all five outcomes | `TestRankPageReferencesTheRealRoutes`, `TestRankPageOffersAllFiveOutcomes` | — |
+| 9 | A skip is recorded and is not a loss | `TestSkipIsRecordedAndDoesNotCountAsALoss` | — |
+| 10 | The project page can file and validate | `TestProjectPageHasTheForms` | — |
+
+**Verified live, by hand, as a freshly registered account that owns no
+project:** registered; was offered a real pair; cast two votes; watched the
+count advance and a new pair load; saw concord's ratings move off their 1500
+seed with real pain scores (4.57 / 1.11 / 1.11) and vote counts. Filed a
+complaint through the form and watched it appear. The self-vote refusal returns
+403 with its reason stated.
+
+## Three defects found while implementing, not predicted by it
+
+**The ordering bug.** Rejecting guests *before* enrolling made a first vote
+impossible: nobody is a member until they have voted or contributed, so the one
+act that grants membership was the act that required it. Pinned by
+`TestFirstVoteIsPossible`, whose comment says not to "tidy" it back.
+
+**`ConcordSession` had no shared instance.** Exported as a bare constructor, so
+every caller built a private copy. Not an error — a header reading "Sign in" to
+a signed-in visitor, and forms that render as though nobody were present.
+
+**A function was stringified into the markup.** `+ complaintCards +` instead of
+`+ complaintCards(complaints) +` rendered project.js's own source as visible
+page text. Every status was 200 and "the page mentions Complaints" passed — the
+word was inside a function body.
+
+The last two are the argument for browser verification as a distinct step.
+Neither produces a failing request, a stack trace, or a status code.
+
+## Still open
+
+- **Static assets have no cache-busting.** A deploy does not invalidate a
+  browser's cached copy of `project.js`. I spent several rounds debugging a
+  form that was fine. Content-hashed asset URLs are the fix.
+- **The board still has no create-card endpoint** — only read and move, fed by
+  the merge executor. Unchanged and deliberate; it is a product decision.
+- **localStorage rather than an HttpOnly cookie**, as before.
