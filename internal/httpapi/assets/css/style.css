@@ -680,3 +680,122 @@ a.card { display: block; color: inherit; }
 }
 
 .detail-actions { display: flex; gap: 0.5rem; }
+
+/* ---------------------------------------------------------------- auth
+   Sign-in and registration. The page is one centred card because there is
+   exactly one thing to do on it; a wider layout would suggest there are
+   choices to make, and there are not. */
+
+.auth-page {
+  display: flex;
+  justify-content: center;
+  padding: 3rem 1rem 4rem;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 26rem;
+  background: #fff;
+  border: 1px solid var(--slate-200);
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .04), 0 8px 24px -12px rgba(15, 23, 42, .12);
+}
+
+.auth-title { font-size: 1.5rem; margin-bottom: .5rem; }
+
+.auth-sub {
+  color: var(--slate-500);
+  font-size: .925rem;
+  margin-bottom: 1.5rem;
+}
+
+.auth-form { display: flex; flex-direction: column; }
+
+.auth-label {
+  font-size: .8125rem;
+  font-weight: 600;
+  color: var(--slate-600);
+  margin-bottom: .375rem;
+}
+
+.auth-label:first-of-type { margin-top: 0; }
+
+.auth-optional {
+  font-weight: 400;
+  color: var(--slate-400);
+}
+
+.auth-input {
+  width: 100%;
+  padding: .625rem .75rem;
+  font: inherit;
+  font-size: .9375rem;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--slate-300);
+  border-radius: 8px;
+  margin-bottom: .25rem;
+  transition: border-color .15s, box-shadow .15s;
+}
+
+/* A visible focus ring is not optional: the whole form is reached by keyboard
+   for anyone who does not use a pointer, and removing the outline leaves them
+   with no indication of which field is focused. */
+.auth-input:focus {
+  outline: none;
+  border-color: var(--indigo);
+  box-shadow: 0 0 0 3px var(--indigo-light);
+}
+
+.auth-input:focus-visible { box-shadow: 0 0 0 3px var(--indigo-light); }
+
+.auth-hint {
+  font-size: .75rem;
+  color: var(--slate-400);
+  margin-bottom: .875rem;
+}
+
+.auth-hint code {
+  font-size: .9em;
+  background: var(--slate-100);
+  padding: .05em .3em;
+  border-radius: 4px;
+}
+
+.auth-submit {
+  margin-top: 1rem;
+  width: 100%;
+  justify-content: center;
+  padding: .625rem 1rem;
+  font-size: .9375rem;
+}
+
+.auth-submit:disabled { opacity: .6; cursor: progress; }
+
+.auth-error {
+  background: #fef2f2;
+  border: 1px solid #fecaca;
+  color: #991b1b;
+  border-radius: 8px;
+  padding: .625rem .75rem;
+  font-size: .875rem;
+  margin-bottom: 1rem;
+}
+
+.auth-alt {
+  margin-top: 1.25rem;
+  padding-top: 1.25rem;
+  border-top: 1px solid var(--slate-200);
+  font-size: .875rem;
+  color: var(--slate-500);
+  text-align: center;
+}
+
+/* Below the fold of a short card the hint and the error can collide on a
+   narrow screen; give the button a little air rather than letting the card
+   grow a scrollbar. */
+@media (max-width: 30rem) {
+  .auth-page { padding: 1.5rem 1rem 2rem; }
+  .auth-card { padding: 1.5rem; }
+}

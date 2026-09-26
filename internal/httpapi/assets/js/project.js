@@ -81,16 +81,38 @@
       })
       .then(function (p) {
         box.innerHTML = '<div class="loading-spinner"></div>';
-        return fetch('/api/v1/projects/' + p.id + '/features')
-          .then(function (r) { return r.ok ? r.json() : []; })
+        // By slug, not by p.id. The project-scoped routes take a slug: the
+        // sibling route is /api/v1/projects/{slug} and the server resolves it
+        // with GetProject, which matches on p.slug. Passing p.id here made every
+        // request 404, and because the handler below maps a non-OK response to
+        // an empty array, the page rendered a confident "No features yet" for a
+        // project that had three. A failure that looks like a valid empty
+        // result is worse than an error, because nothing prompts anyone to look.
+        return fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/features')
+          .then(function (r) {
+            if (r.status === 401) throw { auth: true };
+            if (!r.ok) throw { status: r.status };
+            return r.json();
+          })
           .then(function (features) { box.innerHTML = render(p, features); });
       })
       .catch(function (err) {
-        box.innerHTML = err && err.notFound
-          ? notFound(slug)
-          : '<div class="empty-state"><div class="empty-state-icon">\u26A0\uFE0F</div>' +
-            '<p class="empty-state-title">Could not load project</p>' +
-            '<p class="empty-state-description">The API did not respond. Try again.</p></div>';
+        if (err && err.notFound) {
+          box.innerHTML = notFound(slug);
+        } else if (err && err.auth) {
+          // 401 on a project-scoped read is unexpected: reads are public. Say so
+          // rather than rendering an empty page, because an empty page reads as
+          // "this project has no features" and nobody investigates that.
+          box.innerHTML = '<div class="empty-state"><div class="empty-state-icon">\u26A0\uFE0F</div>' +
+            '<p class="empty-state-title">Sign in to see features</p>' +
+            '<p class="empty-state-description">Reading features requires an account. ' +
+            '<a class="btn btn-primary" href="/login">Sign in</a></p></div>';
+        } else {
+          var code = err && err.status ? ' (HTTP ' + err.status + ')' : '';
+          box.innerHTML = '<div class="empty-state"><div class="empty-state-icon">\u26A0\uFE0F</div>' +
+            '<p class="empty-state-title">Could not load project' + code + '</p>' +
+            '<p class="empty-state-description">The API did not respond as expected. Try again.</p></div>';
+        }
       });
   });
 })();

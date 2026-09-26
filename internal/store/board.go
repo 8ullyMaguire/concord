@@ -6,7 +6,7 @@ import (
 
 type BoardColumn struct {
 	Name     string `json:"name"`
-	WIP      *int  `json:"wip"`
+	WIP      *int   `json:"wip"`
 	Position int    `json:"position"`
 }
 

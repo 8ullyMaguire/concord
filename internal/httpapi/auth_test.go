@@ -488,3 +488,88 @@ func TestComplaintDefaultsStrategicMultiplier(t *testing.T) {
 			"silently zeroes this complaint's contribution to feature priority", got)
 	}
 }
+
+// TestAuthPagesRender: the API having a login endpoint is not the same as a
+// visitor being able to sign in. These pages are the only route to a token, so
+// a template that fails to parse or a route that was never registered leaves
+// the site permanently read-only with nothing visibly broken.
+func TestAuthPagesRender(t *testing.T) {
+	ts := newAuthServer(t)
+	for _, p := range []string{"/login", "/register"} {
+		res := getWith(t, ts, p)
+		if res.StatusCode != http.StatusOK {
+			t.Errorf("GET %s: got %d, want 200", p, res.StatusCode)
+		}
+	}
+}
+
+// TestAuthPagesPostToTheAPI guards the wiring rather than the styling: the form
+// must name the endpoints that exist. A typo here produces a 404 that the page
+// TestAuthPagesReferenceRealEndpoints guards the wiring rather than the
+// styling: the page must reference the script that talks to the API, and the
+// endpoints that script calls must exist. A 404 on either leaves a form that
+// does nothing on submit.
+func TestAuthPagesReferenceRealEndpoints(t *testing.T) {
+	ts := newAuthServer(t)
+
+	for _, tc := range []struct{ path, mustContain string }{
+		{"/login", `id="login-form"`},
+		{"/login", "/assets/js/auth.js"},
+		{"/register", `id="register-form"`},
+		{"/register", "/assets/js/auth.js"},
+		// The password field must be a password field. A typo that leaves
+		// type="text" puts a password in plain sight on screen, and no
+		// assertion on "does the page load" would notice.
+		{"/login", `type="password"`},
+	} {
+		if body := htmlBody(t, ts, tc.path); !strings.Contains(body, tc.mustContain) {
+			t.Errorf("%s does not contain %q", tc.path, tc.mustContain)
+		}
+	}
+
+	// Every page carries the session script, so the header can reflect who is
+	// signed in.
+	for _, p := range []string{"/", "/projects", "/login", "/register"} {
+		if body := htmlBody(t, ts, p); !strings.Contains(body, "/assets/js/session.js") {
+			t.Errorf("%s does not load session.js, so the header cannot show the session", p)
+		}
+	}
+
+	// And the endpoints the script calls must be routed. 404 means missing.
+	for _, path := range []string{"/api/v1/auth/login", "/api/v1/auth/register", "/api/v1/auth/me"} {
+		if res := getWith(t, ts, path); res.StatusCode == 404 {
+			t.Errorf("%s is not routed; the sign-in form cannot work", path)
+		}
+	}
+}
+
+// htmlBody fetches a page and returns its text. Unlike getJSON it does not try
+// to parse the response, because these routes serve HTML.
+func htmlBody(t *testing.T, ts *httptest.Server, path string) string {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodGet, ts.URL+path, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := testClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	b, err := io.ReadAll(res.Body)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(b)
+}
+
+// visitor, and the form doing nothing on submit.
+func TestStaticAssetsAreServed(t *testing.T) {
+	ts := newAuthServer(t)
+	for _, p := range []string{"/assets/js/session.js", "/assets/js/auth.js", "/assets/js/project.js", "/assets/css/style.css"} {
+		res := getWith(t, ts, p)
+		if res.StatusCode != http.StatusOK {
+			t.Errorf("GET %s: got %d, want 200", p, res.StatusCode)
+		}
+	}
+}

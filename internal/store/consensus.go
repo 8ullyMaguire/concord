@@ -11,16 +11,16 @@ import (
 )
 
 type ConsensusCall struct {
-	ID        int64   `json:"id"`
-	ProjectID int64   `json:"project_id"`
-	FeatureID int64   `json:"feature_id"`
-	OpenedBy  int64   `json:"opened_by"`
-	OpensAt   float64 `json:"opens_at"`
-	ClosesAt  float64 `json:"closes_at"`
-	Status    string  `json:"status"`
-	Result    *string `json:"result"`
-	Summary   *string `json:"summary"`
-	CreatedAt float64 `json:"created_at"`
+	ID        int64    `json:"id"`
+	ProjectID int64    `json:"project_id"`
+	FeatureID int64    `json:"feature_id"`
+	OpenedBy  int64    `json:"opened_by"`
+	OpensAt   float64  `json:"opens_at"`
+	ClosesAt  float64  `json:"closes_at"`
+	Status    string   `json:"status"`
+	Result    *string  `json:"result"`
+	Summary   *string  `json:"summary"`
+	CreatedAt float64  `json:"created_at"`
 	ClosedAt  *float64 `json:"closed_at,omitempty"`
 }
 
@@ -170,8 +170,6 @@ func (d *DB) ResolveObjection(ctx context.Context, id int64, status, resolution 
 		UPDATE objections SET status=?, resolution=? WHERE id=?`, status, resolution, id)
 	return err
 }
-
-
 
 func (d *DB) CloseConsensusCall(ctx context.Context, callID int64) (ConsensusSummary, error) {
 	c, err := d.GetConsensusCall(ctx, callID)

@@ -1,0 +1,25 @@
+{{define "content"}}
+<div class="auth-page">
+  <div class="auth-card">
+    <h1 class="auth-title">Sign in</h1>
+    <p class="auth-sub">Concord is readable by anyone. An account is what lets you file complaints, propose features, and vote on what gets built next.</p>
+
+    <div id="auth-error" class="auth-error" role="alert" hidden></div>
+
+    <form id="login-form" class="auth-form" autocomplete="on">
+      <label class="auth-label" for="login-username">Username</label>
+      <input class="auth-input" id="login-username" name="username" type="text"
+             autocomplete="username" required autocapitalize="none" spellcheck="false">
+
+      <label class="auth-label" for="login-password">Password</label>
+      <input class="auth-input" id="login-password" name="password" type="password"
+             autocomplete="current-password" required>
+
+      <button class="btn btn-primary auth-submit" type="submit">Sign in</button>
+    </form>
+
+    <p class="auth-alt">No account? <a href="/register">Create one</a></p>
+  </div>
+</div>
+<script src="/assets/js/auth.js"></script>
+{{end}}

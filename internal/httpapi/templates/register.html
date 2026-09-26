@@ -1,0 +1,32 @@
+{{define "content"}}
+<div class="auth-page">
+  <div class="auth-card">
+    <h1 class="auth-title">Create an account</h1>
+    <p class="auth-sub">Your account is how your votes are counted. Nothing is published under your name unless you write it yourself.</p>
+
+    <div id="auth-error" class="auth-error" role="alert" hidden></div>
+
+    <form id="register-form" class="auth-form" autocomplete="on">
+      <label class="auth-label" for="reg-username">Username</label>
+      <input class="auth-input" id="reg-username" name="username" type="text"
+             autocomplete="username" required autocapitalize="none" spellcheck="false"
+             pattern="[a-z0-9._-]+" title="Lowercase letters, digits, dot, dash and underscore">
+      <p class="auth-hint">Lowercase letters, digits, <code>.</code>, <code>-</code> and <code>_</code>.</p>
+
+      <label class="auth-label" for="reg-display">Display name <span class="auth-optional">optional</span></label>
+      <input class="auth-input" id="reg-display" name="display_name" type="text"
+             autocomplete="nickname" maxlength="80">
+
+      <label class="auth-label" for="reg-password">Password</label>
+      <input class="auth-input" id="reg-password" name="password" type="password"
+             autocomplete="new-password" required minlength="8">
+      <p class="auth-hint">At least 8 characters. A short passphrase beats a short word with symbols.</p>
+
+      <button class="btn btn-primary auth-submit" type="submit">Create account</button>
+    </form>
+
+    <p class="auth-alt">Already registered? <a href="/login">Sign in</a></p>
+  </div>
+</div>
+<script src="/assets/js/auth.js"></script>
+{{end}}

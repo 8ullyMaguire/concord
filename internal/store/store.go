@@ -4,7 +4,6 @@
 // consensus, and the board (docs/PLAN.md).
 package store
 
-
 import (
 	"context"
 	"database/sql"
@@ -36,11 +35,11 @@ func New(d *sql.DB) *DB { return &DB{DB: d} }
 // ---------------------------------------------------------------- users
 
 type Member struct {
-	ProjectID    int64   `json:"project_id"`
-	UserID       int64   `json:"user_id"`
-	Role         string  `json:"role"`
-	IsModerator  int     `json:"is_moderator"`
-	JoinedAt     float64 `json:"joined_at"`
+	ProjectID   int64   `json:"project_id"`
+	UserID      int64   `json:"user_id"`
+	Role        string  `json:"role"`
+	IsModerator int     `json:"is_moderator"`
+	JoinedAt    float64 `json:"joined_at"`
 }
 
 type User struct {
@@ -122,7 +121,6 @@ func (d *DB) UpdateCharter(ctx context.Context, projectID int64, charter governa
 		charter.GlickoTau, charter.VoteWeightCap, projectID)
 	return err
 }
-
 
 // GetReputation returns the sum of reputation points for a user
 // in a project.
@@ -315,13 +313,11 @@ func (d *DB) GetProject(ctx context.Context, slug string) (Project, error) {
 	return p, err
 }
 
-
-
 // GetProjectByID loads a project by its numeric ID.
 func (d *DB) GetProjectByID(ctx context.Context, projectID int64) (Project, error) {
 	var p Project
 	err := d.QueryRowContext(ctx, `
-		SELECT ` + projectColumns + ` FROM projects p
+		SELECT `+projectColumns+` FROM projects p
 		LEFT JOIN project_metrics m ON m.project_id = p.id
 		WHERE p.id = ?`, projectID).Scan(
 		&p.ID, &p.Slug, &p.Name, &p.Description,

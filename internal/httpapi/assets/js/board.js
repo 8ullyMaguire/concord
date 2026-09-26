@@ -30,8 +30,11 @@
       })
       .then(function (p) {
         return Promise.all([
-          fetch('/api/v1/projects/' + p.id + '/board').then(function (r) { return r.ok ? r.json() : { columns: [], cards: [] }; }),
-          fetch('/api/v1/projects/' + p.id + '/features').then(function (r) { return r.ok ? r.json() : []; })
+          // By slug, not p.id: the project-scoped routes resolve a slug.
+          // Passing p.id 404s, and the fallbacks below turn that into an empty
+          // board that looks like a project with nothing on it.
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/board').then(function (r) { return r.ok ? r.json() : { columns: [], cards: [] }; }),
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/features').then(function (r) { return r.ok ? r.json() : []; })
         ]).then(function (res) { return { project: p, board: res[0], features: res[1] }; });
       })
       .then(function (ctx) {

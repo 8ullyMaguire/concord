@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"time"
 
-	"git.polarisocial.xyz/concord/concord/internal/ranking"
 	"git.polarisocial.xyz/concord/concord/internal/governance"
+	"git.polarisocial.xyz/concord/concord/internal/ranking"
 )
 
 // PairwiseVote records a pairwise comparison between two features.

@@ -567,6 +567,14 @@ func (s *Server) handleBoardPage(w http.ResponseWriter, r *http.Request) {
 	}{s.page("Board - " + slug), slug})
 }
 
+func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
+	s.render(w, http.StatusOK, "login", s.page("Sign in - Concord"))
+}
+
+func (s *Server) handleRegisterPage(w http.ResponseWriter, r *http.Request) {
+	s.render(w, http.StatusOK, "register", s.page("Create an account - Concord"))
+}
+
 // getActorID returns the authenticated user id, or 0 when anonymous.
 //
 // It delegates to actorID, which reads the typed actorKey that the

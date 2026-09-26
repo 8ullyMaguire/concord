@@ -8,7 +8,7 @@ import (
 type List struct {
 	ID          int64   `json:"id"`
 	ProjectID   int64   `json:"project_id"`
-	Slug      string  `json:"slug"`
+	Slug        string  `json:"slug"`
 	Name        string  `json:"name"`
 	Description string  `json:"description"`
 	Status      string  `json:"status"`
@@ -17,19 +17,19 @@ type List struct {
 }
 
 type ListEntry struct {
-	ID        int64   `json:"id"`
-	ListID    int64   `json:"list_id"`
-	URL       string  `json:"url"`
-	Title     string  `json:"title"`
+	ID          int64   `json:"id"`
+	ListID      int64   `json:"list_id"`
+	URL         string  `json:"url"`
+	Title       string  `json:"title"`
 	Description string  `json:"description"`
-	Category  *string  `json:"category"`
-	Status    string  `json:"status"`
-	ER        float64 `json:"elo_r"`
-	RD        float64 `json:"elo_rd"`
-	Vol       float64 `json:"elo_vol"`
-	ProposedBy int64  `json:"proposed_by"`
-	CreatedAt float64 `json:"created_at"`
-	UpdatedAt float64 `json:"updated_at"`
+	Category    *string `json:"category"`
+	Status      string  `json:"status"`
+	ER          float64 `json:"elo_r"`
+	RD          float64 `json:"elo_rd"`
+	Vol         float64 `json:"elo_vol"`
+	ProposedBy  int64   `json:"proposed_by"`
+	CreatedAt   float64 `json:"created_at"`
+	UpdatedAt   float64 `json:"updated_at"`
 }
 
 func (d *DB) CreateList(ctx context.Context, projectID int64, slug, title, description string) (List, error) {
