@@ -71,6 +71,9 @@ class Client:
     def post(self, path, body=None):
         return self.request("POST", path, body or {})
 
+    def put(self, path, body=None):
+        return self.request("PUT", path, body or {})
+
     def post_retrying(self, path, body=None, attempts=8):
         """POST, backing off when the rate limiter refuses.
 
@@ -194,7 +197,16 @@ def ensure_feature(c: Client, project_id: int, slug: str, f: dict, complaint_ids
     status, body = c.get(f"/projects/{slug}/features")
     if status == 200:
         items = as_items(body)
-        if any(x.get("title") == title for x in items):
+        match = next((x for x in items if x.get("title") == title), None)
+        if match is not None:
+            # Re-run: the feature exists, so do not create a second one — but
+            # still reconcile the status. Skipping it made the seed
+            # order-dependent: a run interrupted between create and set-status
+            # left a feature stuck at draft, and every later run agreed it was
+            # fine because the title matched.
+            wanted = f.get("status")
+            if wanted and wanted != match.get("status"):
+                set_status(c, project_id, slug, int(match["id"]), wanted, "portfolio seed re-run")
             return
 
     status, body = c.post_retrying(
@@ -207,9 +219,34 @@ def ensure_feature(c: Client, project_id: int, slug: str, f: dict, complaint_ids
             "linked_complaints": complaint_ids,
         },
     )
-    if status in (201, 409):
+    if status == 201:
+        # A feature is always created as `draft`; CreateFeature takes no status
+        # and there is no other way to change one. The trust-gated route does,
+        # so the seed states the real status immediately after creating it.
+        wanted = f.get("status")
+        if wanted and wanted != "draft":
+            set_status(c, project_id, slug, body["id"], wanted, f.get("body", ""))
+        return
+    if status == 409:
         return
     raise SystemExit(f"create feature {title!r} on {slug}: {status} {body}")
+
+
+def set_status(c: Client, project_id: int, slug: str, feature_id: int, new_status: str, reason: str) -> None:
+    """Set a feature's status through the trust-gated route.
+
+    Refuses to continue on failure rather than seeding a feature that silently
+    stays `draft`: a portfolio where everything reads as an idea is worse than
+    no portfolio, because it is wrong in a way nobody notices.
+    """
+    status, body = c.put(
+        f"/projects/{slug}/features/{feature_id}/status",
+        {"status": new_status, "reason": "portfolio seed"},
+    )
+    if status != 200:
+        raise SystemExit(
+            f"set status {new_status!r} on {slug} feature {feature_id}: {status} {body}"
+        )
 
 
 def main() -> int:

@@ -254,6 +254,7 @@ func (s *Server) Router() http.Handler {
 		r.Route("/{id}", func(r chi.Router) {
 			r.Get("/", s.handleGetFeature)
 			r.Put("/strategic-weight", s.handleSetStrategicWeight)
+			r.Put("/status", s.handleSetFeatureStatus)
 		})
 	})
 

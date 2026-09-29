@@ -1,354 +1,507 @@
 {
   "_comment": [
-    "Portfolio seed for Concord: every project PolarSoci Social is building or",
-    "maintaining, with the complaints worth ranking and the features proposed to",
-    "answer them.",
+    "Seed for the Concord instance on thinkcentre, generated 2026-09-29 from the",
+    "master build file (~/secondbrain/90-Meta/2026-09-28-master-build-todo.md) and",
+    "from each repo's own docs, not from memory.",
     "",
-    "Scope rule: a repo appears here if PolarSoci Social wrote it. Upstream forks",
-    "kept only for reference (NodeBB, pyfedi, otwarchive, photon, chibisafe,",
-    "pamac, obscura, caveman, ferris, lasim, validator, news08) are excluded: they",
-    "are not candidates for the owner's design decisions, and listing them would",
-    "dilute the signal that the ranking exists to produce.",
+    "Status vocabulary is Concord's features.status enum, which is the only place",
+    "these words can live coherently:",
+    "  draft         idea nobody has looked at yet",
+    "  discussion    specified, not agreed",
+    "  consensus     agreed, not started",
+    "  ready         small enough to pick up, no open question",
+    "  in_progress   being worked right now",
+    "  review        claimed done, awaiting verification",
+    "  shipped       implemented AND verified by a command that was run",
+    "  rejected      explicitly not doing, with a reason",
     "",
-    "Each project gets complaints (the pain) and features (the answer). A feature",
-    "must link to at least one validated complaint, so the chain the importer",
-    "walks is: create complaint -> validate -> create feature linking it.",
-    "",
-    "lorehaven, gravity and stash are deliberately absent: another agent owns",
-    "them, and their design is already being decided there."
+    "Every feature links at least one complaint, because Concord's model is",
+    "complaint-driven: a feature answers a validated pain. A feature with no",
+    "complaint is rejected by the API, which is correct - it means the feature",
+    "is not yet justified by anything anyone complained about."
   ],
   "projects": [
     {
-      "slug": "concord",
-      "name": "Concord",
-      "description": "A consensus forge. Communities rank what should be built next by filing complaints and proposing features; Glicko-2 pairwise voting with strategic weighting turns that into a defensible priority order. The place the rest of this portfolio gets its roadmap.",
+      "slug": "lorebook",
+      "name": "Lorebook",
+      "description": "Tauri ebook library manager. Calibre-compatible: reads and writes the same metadata.db, ports Calibre's filename parsers and search grammar rather than inventing near-miss versions of them. Rust workspace, SvelteKit UI, 14 milestones in docs/PLAN.md.",
+      "governance_model": "maintainer_led",
+      "license": "MIT",
+      "complaints": [
+        {
+          "title": "A library built before the curation pipeline has to be rebuilt, not restyled",
+          "body": "M1 and M2 shipped before any identity logic existed, so the library view was built against unstable identities. PLAN.md says so explicitly: 'A library view built before this has unstable identities and no metadata worth filtering by, and has to be rebuilt rather than restyled.' The milestone ordering was correct but the cost was paid up front.",
+          "severity": 4,
+          "frequency": 0.2
+        },
+        {
+          "title": "Near-miss Calibre compatibility is worse than none",
+          "body": "Calibre's filename grammar and search language are a user-facing compatibility surface. A subtly different parser produces plausible-looking wrong results, and a user cannot tell a bug from a mismatch. PLAN.md: 'a subtly different grammar is worse than none.'",
+          "severity": 4,
+          "frequency": 0.6
+        },
+        {
+          "title": "A silently empty column is indistinguishable from a book with no data",
+          "body": "The template language's unknown-function case is specified as a visible in-cell error precisely because a silent empty string cannot be told apart from real absence. Every layer below this inherits the same duty: a decision nobody can see is a decision nobody made.",
+          "severity": 3,
+          "frequency": 0.4
+        }
+      ],
+      "features": [
+        {
+          "title": "M3.1 Filename parsers ported from Calibre's own save format",
+          "body": "SHIPPED and verified 2026-09-29, commit 171a07a, tag m3-1-filename-parsers. crates/lorebook-parse with 33 table-driven cases. Conventions derived from what Calibre actually writes ({author} - {title}({series} #{n})({pubdate})[tags]) rather than from parse_name_string, which is no longer public upstream. Five mutations killed, including a rsplit stem bug that returned the extension as the title.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            1
+          ]
+        },
+        {
+          "title": "M3.2 Deduplication with version awareness",
+          "body": "SHIPPED and verified 2026-09-29, commit 0ff3560. Pure decision function plus a table-driven test. The agent's first attempt carried a test named after a mutation it did not actually catch; that was caught by mutating the code and re-running, and the duplicate test was deleted rather than renamed.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0,
+            2
+          ]
+        },
+        {
+          "title": "M3.3 Inbox store layer",
+          "body": "SHIPPED and verified 2026-09-29, commit 220752f, tag m3-3-inbox. inbox_items existed in additive.sql with no Rust writer at all, so M3.2's ProposeInbox variant had nowhere to go and every dedup proposal evaporated silently. propose_inbox_item refuses confidence == 1.0 as a caller error, because the schema's DEFAULT 1.0 means 'user asserted this' and spec 3.6 auto-accepts at 0.7 or above. 23 tests pass, Calibre 9.15 interop 11/11.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0,
+            2
+          ]
+        },
+        {
+          "title": "Wire the 0.7 confidence threshold that decides library vs inbox",
+          "body": "Spec 3.6 says confidence >= 0.7 goes to the library and below goes to the inbox. No such comparison exists anywhere in the tree. The store refuses 1.0 but nothing yet routes on 0.5 vs 0.7, so every candidate currently has to be proposed by hand. Boundary tests at 0.499 / 0.500 / 0.501 asserting the bucket, because off-by-one here silently merges or splits a user's library.",
+          "effort": "M",
+          "status": "ready",
+          "complaints": [
+            0,
+            2
+          ]
+        },
+        {
+          "title": "M3.3 end-to-end: scan a directory with a duplicate pair into the inbox",
+          "body": "PLAN.md's own verification for M3.3, and still not done: the store layer is proven but the scan pipeline does not yet feed it. Scan a directory containing one duplicate pair, confirm the pair lands in inbox_items, accept it, confirm one book with two sources.",
+          "effort": "M",
+          "status": "ready",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M4 Port Calibre's search parser and compile to FTS5",
+          "body": "Port, do not reinvent: the search language is a compatibility surface. Includes the FTS5 index. PLAN.md puts M5 (template language) before M6 (composite columns) because the default column set contains composite columns, so building M6 first opens the app on a broken library view.",
+          "effort": "L",
+          "status": "consensus",
+          "complaints": [
+            1
+          ]
+        },
+        {
+          "title": "M5 Template language with a fixed function registry",
+          "body": "#length and #read_dates must work verbatim. An unknown function must produce a visible error in the cell, never a silent empty string. Gating for M7, because plugins use the template language.",
+          "effort": "L",
+          "status": "consensus",
+          "complaints": [
+            2,
+            1
+          ]
+        },
+        {
+          "title": "M6 Default column set, column editor, tag browser, virtual libraries",
+          "body": "Must come after M5. Ordered explicitly by spec 10 for the reason above.",
+          "effort": "L",
+          "status": "discussion",
+          "complaints": [
+            2
+          ]
+        },
+        {
+          "title": "M7 WASM plugin host, capability grants, event bus",
+          "body": "The gating decision for M8. PLAN.md is emphatic: do not build the built-in plugins first 'because they are easier' - the spec's reason for making them plugins is the reason they must come second. A plugin API only the app uses is an API nobody has tested.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M8 Built-in plugins: Count Pages, Metadata Backfill, Filename Parser, Action Chains, EpubMerge/Split",
+          "body": "Must come after M7, on purpose.",
+          "effort": "XL",
+          "status": "draft",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M9 Instance sync (lore_metadata) and per-field 'instance suggests'",
+          "body": "Must come after M3: no signals without the curation pipeline.",
+          "effort": "XL",
+          "status": "discussion",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M11 reading_state and #read_progress",
+          "body": "Must come after M5. Depends on the template language for the column.",
+          "effort": "M",
+          "status": "draft",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M12 Tiered analytics with a separate exchange consent",
+          "body": "Must come after M9. Consent is a separate grant from the M9 sync consent, deliberately.",
+          "effort": "L",
+          "status": "draft",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M13 OPDS and the Calibre sync protocol, localhost-bound",
+          "body": "Must come after M9 and M11. Localhost binding is a decision, not a default - Calibre's own OPDS server is what this interoperates with.",
+          "effort": "L",
+          "status": "draft",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M14 EPUB/AZW3/MOBI readers and writers",
+          "body": "Must come after M2, which is done.",
+          "effort": "XL",
+          "status": "draft",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M1 window-level check is still untagged",
+          "body": "WebKitGTK does not paint under the current Hyprland session, so the webview-to-IPC hop is unproven. M2 does not close it; the two are independent. This is the one piece of M1 that cannot be verified headlessly and needs a real compositor session.",
+          "effort": "S",
+          "status": "ready",
+          "complaints": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "commons",
+      "name": "Commons",
+      "description": "A media platform with consent at its core. 32 specs, 8 plans, ~2300 commits. The differentiating property is a consent clause that every object read must go through, enforced by a test that greps the workspace for SELECTs against the object table outside the one sanctioned file.",
       "governance_model": "collective",
       "license": "AGPL-3.0",
       "complaints": [
         {
-          "title": "No authentication existed, so the site was read-only for everyone",
-          "body": "api_tokens was created in the initial migration and never written to. No middleware ever set the actor context, so all 21 write endpoints and the feature-ranking endpoint returned 401 for every caller while the test suite passed, because the harness injected the actor context by hand.",
-          "severity": 5,
-          "frequency": 1.0
+          "title": "A declared dependency is not a feature",
+          "body": "async-graphql and async-graphql-axum were declared in commons-api and in the workspace root and called from no .rs file in the workspace. A crate manifest was clean, Cargo.lock had zero mentions, and a grep gate passed - two independent checks agreeing with a wrong conclusion, because the evidence pointed at a different file than the bug.",
+          "severity": 4,
+          "frequency": 0.7
         },
         {
-          "title": "Project-scoped routes silently operated on project 0",
-          "body": "The {project_id} route parameter is filled with a slug, but 21 handlers parsed it as an integer, discarded the error, and queried project 0. Reads returned an empty 200 rather than an error, so nothing looked broken.",
-          "severity": 5,
-          "frequency": 0.9
+          "title": "A deferral mistaken for an obligation kept a finished ticket open for four passes",
+          "body": "T-P6-007 was carried as NOT CLOSED for four passes because the handoff treated a named follow-on (the upload attestation test) as an unmet deliverable. The ticket's own acceptance criteria were section 5, and none of the six mentioned upload. Twelve tests added, all gates green, and still 'not closed'.",
+          "severity": 3,
+          "frequency": 0.5
         },
         {
-          "title": "Anyone can hijack a ranking by voting on their own proposal",
-          "body": "The voting endpoints take the actor from the context, but the feature being voted on does not appear to be checked against the voter. A maintainer could rank a feature they authored to the top without any friction, and the Glicko-2 rating would treat it as genuine signal.",
+          "title": "A test that can be inverted is worse than a weak one",
+          "body": "The consent test used a headerless request as its 'anonymous' caller. A headerless request IS the local owner, so owner and anonymous were the same caller and the leak assertion was vacuous - it would have passed against the exact bug it exists to catch. Fixed with an assert_ne! placed before the substantive assertions so the next failure names the real cause.",
+          "severity": 5,
+          "frequency": 0.3
+        },
+        {
+          "title": "Grepping a file for a path finds the path in its prose",
+          "body": "A spec recorded two missing REST routes. Both mentions were inside comments. A route built on that measurement would have been a second HTTP surface for a feature that deliberately has one, and it would have looked correct, passed its own tests, and been wrong.",
+          "severity": 4,
+          "frequency": 0.6
+        },
+        {
+          "title": "Keyset paging had never crossed a process boundary",
+          "body": "Cursor's only constructor was #[cfg(test)] pub(crate) and nothing in the workspace serialized one, so the after: field on the GraphQL PageInput could not be implemented at all. The plan assumed a small decode_cursor function; it was a design decision about a type that deliberately cannot be decoded.",
           "severity": 4,
           "frequency": 0.4
         }
       ],
       "features": [
         {
-          "title": "Vote weight from demonstrated contribution, not account age",
-          "body": "Scale each vote by a reputation derived from complaints validated and features shipped, so the ranking reflects people who have shipped rather than whoever arrived first. Bounded to [0.5, 2.0] so it never becomes a plutocracy.",
-          "effort": "L",
-          "complaints": [0, 2]
-        },
-        {
-          "title": "Weight every vote by how much of the roadmap it would displace",
-          "body": "A feature that requires two others to be dropped first is not as cheap a win as its effort estimate suggests. Surface the dependency set with each feature so voters judge the trade, not the item.",
-          "effort": "L",
-          "complaints": [2]
-        },
-        {
-          "title": "A 48-hour deliberation period before any vote is counted",
-          "body": "Let a proposal be visible and argued before it enters the Glicko-2 pool. Prevents a burst of ranking from a small group in the first minutes from setting an anchor that is expensive to move later.",
+          "title": "T-P6-010 wire after: into the GraphQL resolver",
+          "body": "SHIPPED and verified 2026-09-29, commit 231f6d3. after_paging 10 passed / 0 failed against live Postgres, and mutation-proven: making the resolver decode the cursor and discard it kills 4 of 10, precisely the four load-bearing ones. The other six stayed green, which is the discrimination that shows the suite measures the cursor rather than the harness.",
           "effort": "M",
-          "complaints": [2]
+          "status": "shipped",
+          "complaints": [
+            4
+          ]
+        },
+        {
+          "title": "T-P6-004b remainder: route rejections_for and speaker_cluster_proposals",
+          "body": "SHIPPED and verified 2026-09-29, commit 8e98ccb. Both store functions existed and were tested with nothing routing to them. Now GET /media/:object_id/speaker-clusters and /rejections through the same media_path() consent gate. Declared in both the router and v1_routes plus the OpenAPI list. interview_route 28 passed / 0 failed, with byte-identical 404 parity for absent and denied objects on both new routes.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Section 14.1 consent attestation",
+          "body": "The real remaining hole, deferred across three tickets because every upload endpoint depends on it and it is a security boundary rather than a feature. Nothing exists today: no attestation type, no caller. A wrong attestation is an unauthenticated write path, so the spec has to be written before any upload route exists rather than discovered while building one.",
+          "effort": "L",
+          "status": "ready",
+          "complaints": [
+            2,
+            0
+          ]
+        },
+        {
+          "title": "Upload endpoints, once 14.1 exists",
+          "body": "Blocked on the attestation. Spec 4 lists these as deferred pending 14.1 consent attestation and a multipart body limit policy. Two of the three are already fixed by 14.1; the body limit policy is still an open decision.",
+          "effort": "L",
+          "status": "draft",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "WASM sandbox (spec 4.4) and plugin UI extension points",
+          "body": "A validated manifest is not a sandboxed plugin - there is no WASM isolation today and HostApi is a Rust trait native code does not have to go through. The host enforces the declared capability set; it does not enforce arbitrary code execution. Anyone reading the crate as a security boundary needs to know which half they have.",
+          "effort": "XL",
+          "status": "discussion",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Client SDK generated from the OpenAPI document",
+          "body": "Last on purpose, so it generates from a document that has stopped moving. The document itself is done and drift-tested against the served route list.",
+          "effort": "L",
+          "status": "draft",
+          "complaints": [
+            1
+          ]
+        },
+        {
+          "title": "DLNA subtitles as virtual folders (spec 5420, 3135)",
+          "body": "The next open slice of section 11.2. The event handlers for it exist in content_browse where a test can reach the gate; the rest does not.",
+          "effort": "M",
+          "status": "ready",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "AirPlay and bitcode cast paths",
+          "body": "Deliberately out of scope for the DLNA ticket: no device to measure against in CI, and two protocols would make a DLSA discovery test ambiguous. Worth revisiting with hardware.",
+          "effort": "L",
+          "status": "draft",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Jellyfin compatibility (issue 2747)",
+          "body": "One of the four deferred halves from T-P6-007, ordered after the attestation and GraphQL because it unblocks the least.",
+          "effort": "XL",
+          "status": "draft",
+          "complaints": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "whitebois",
+      "name": "Whitebois",
+      "description": "Community platform with an event subsystem, derived values, visits and reputation. 8 migrations, 13 tables, 9 functions, 16 invariants. 76 tests, mutation-checked 5/5.",
+      "governance_model": "collective",
+      "license": "MIT",
+      "complaints": [
+        {
+          "title": "A harness that reported success for tests that never ran",
+          "body": "29 tests across three binaries returned early because pool() yields None when DATABASE_URL is unset, and the run still printed '29 passed' in 0.00s. sqlx then records applied migrations and skips them, so mutating 0001_init.sql after it had been applied changed nothing and three mutations 'survived' - a fact about sqlx, not about the tests. The tell is now the runtime: 0.00s means a skip.",
+          "severity": 5,
+          "frequency": 0.3
+        },
+        {
+          "title": "deny_unknown_fields does not propagate into a nested struct",
+          "body": "FileConfig carried the attribute all along, so a [dlna] block with 'enabeld = true' parsed cleanly, the typo was ignored, and the feature stayed off - no log, no way for a user to tell a typo from a bug. The most transferable finding of that pass.",
+          "severity": 3,
+          "frequency": 0.5
+        },
+        {
+          "title": "A global badge award would hit the entire site",
+          "body": "ending_an_event_only_awards_to_its_own_participants exists to catch exactly this: the award function scores event_count as 'events ever joined', so a fourth user joining a different event would have been scored as if they attended. The mutation is the proof the test is real.",
+          "severity": 4,
+          "frequency": 0.2
+        }
+      ],
+      "features": [
+        {
+          "title": "Spec 20.1 complete, 12 of 12 items",
+          "body": "SHIPPED 2026-09-28, HEAD 7c086c4, tag v0.3.0-event-lifecycle. 76 tests, schema check clean, mutation check 5 killed / 0 survived, mirrored to ~/code/rust/whitebois with trees byte-identical apart from gitignored build artifacts.",
+          "effort": "XL",
+          "status": "shipped",
+          "complaints": [
+            0,
+            2
+          ]
+        },
+        {
+          "title": "Untangle the 12 pre-existing clippy warnings",
+          "body": "Deliberately left alone at the end of the last pass: outside section 20.1, and a milestone that mixes a new feature with unrelated cleanup is one nobody can bisect. This is its own ticket now.",
+          "effort": "S",
+          "status": "ready",
+          "complaints": [
+            1
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "ficnexus",
+      "name": "FicNexus",
+      "description": "Fanfiction discovery and search. Active, last commit 2026-09-27. No plan file surveyed yet - the next thing needed is a status survey like the one commons got.",
+      "governance_model": "maintainer_led",
+      "license": "",
+      "complaints": [
+        {
+          "title": "No surveyed plan, so no one knows what is finished",
+          "body": "Every other active project in the master build file has a docs/PLAN.md or a vault spec that can be read. This one does not, which means the only way to answer 'is it done' is to read the code, and nobody has. The first deliverable should be a survey, not a feature.",
+          "severity": 3,
+          "frequency": 0.5
+        }
+      ],
+      "features": [
+        {
+          "title": "Status survey: what exists, what is specified, what is missing",
+          "body": "Read the code, not a status line. The 2026-09-26 audit found two repos 'documented as done' that were not, in opposite directions, so every claim needs a file:line. Output is a table with a definition of done per open item.",
+          "effort": "M",
+          "status": "ready",
+          "complaints": [
+            0
+          ]
         }
       ]
     },
     {
       "slug": "threadlight",
       "name": "Threadlight",
-      "description": "A threaded discussion server in Go, split into an API and a SvelteKit frontend. Cursor-paginated threads, mentions, follows, and moderation that acts on a post rather than deleting a thread.",
-      "governance_model": "collective",
-      "license": "AGPL-3.0",
+      "description": "Comment subsystem and frontend, mirrored on gaming-pc and thinkcentre. Last commit 2026-09-27 on both. The 2026-09-26 audit found a 722-line comment subsystem sitting untracked, one git clean from gone.",
+      "governance_model": "maintainer_led",
+      "license": "",
       "complaints": [
         {
-          "title": "No way to see why a thread is ranked where it is",
-          "body": "Ordering is a black box. A reader who disagrees with the order has no way to learn whether it is recency, engagement, or a stuck score, so the ordering cannot be argued with and therefore cannot be improved.",
-          "severity": 3,
-          "frequency": 0.6
-        },
-        {
-          "title": "Moderation removes content without recording why",
-          "body": "When a post is removed the reader sees a tombstone with no reason and no appeal path. The moderator's reasoning, which is the reusable part, is lost.",
-          "severity": 3,
-          "frequency": 0.35
-        }
-      ],
-      "features": [
-        {
-          "title": "Explain the ordering: show the score breakdown on each thread",
-          "body": "Render the components that produced the rank (recency, reply count, unique participants, penalty) on request. Turns an ordering people distrust into one they can argue with.",
-          "effort": "M",
-          "complaints": [0]
-        },
-        {
-          "title": "Every moderation action carries a reason and an appeal",
-          "body": "Store the reason with the tombstone, let the author contest it, and surface the resolution. Makes moderation decisions reviewable and turns them into a record the community can learn from.",
-          "effort": "M",
-          "complaints": [1]
-        },
-        {
-          "title": "Digest view for threads you follow",
-          "body": "A periodic summary of activity in followed threads, so following is not a reason to be notified constantly. Reduces the reason people unfollow.",
-          "effort": "M",
-          "complaints": [0]
-        }
-      ]
-    },
-    {
-      "slug": "threadlight-frontend",
-      "name": "Threadlight Web",
-      "description": "The SvelteKit client for Threadlight: 24 routes, typed API client, Vitest suite. Split out of the backend when the frontend grew past what a single Go module should carry.",
-      "governance_model": "collective",
-      "license": "AGPL-3.0",
-      "complaints": [
-        {
-          "title": "Twenty type errors and ten failing tests survived twenty-seven commits",
-          "body": "The pre-commit hook ran `npm run check 2>/dev/null || echo \"skipping\"`, which swallows every non-zero exit, and npx could not resolve svelte-check on the network mount anyway. A gate that cannot fail is not a gate.",
-          "severity": 4,
-          "frequency": 0.8
-        },
-        {
-          "title": "No loading or error state on any data-backed route",
-          "body": "Routes render synchronously from a client fetch. A slow network shows an empty page, which reads as an empty thread rather than a request in flight.",
-          "severity": 3,
-          "frequency": 0.7
-        }
-      ],
-      "features": [
-        {
-          "title": "SvelteKit load functions with explicit loading and error states",
-          "body": "Move data access into load functions so navigation blocks until data resolves, and every route has a defined loading and failure presentation instead of an empty page.",
-          "effort": "L",
-          "complaints": [1]
-        },
-        {
-          "title": "Enforce typecheck and tests in CI, not only in a hook",
-          "body": "A local hook is bypassed with --no-verify and never runs for a push from another machine. Run the same two commands in CI so the gate is a property of the repository rather than of one developer's setup.",
-          "effort": "S",
-          "complaints": [0]
-        },
-        {
-          "title": "Optimistic posting with rollback on failure",
-          "body": "Show a reply immediately and reconcile if the server rejects it, instead of blocking the composer on the round trip.",
-          "effort": "M",
-          "complaints": [1]
-        }
-      ]
-    },
-    {
-      "slug": "polaris",
-      "name": "Polaris",
-      "description": "The shared Go service library: configuration, database access, migrations, and the HTTP conventions every PolarSoci service is built on. The thing that makes the other services consistent rather than merely similar.",
-      "governance_model": "collective",
-      "license": "AGPL-3.0",
-      "complaints": [
-        {
-          "title": "The auth failure mode is invisible until production",
-          "body": "A service can build, pass its tests, and deploy while returning 401 to every write, because the tests inject the actor context directly instead of authenticating. The harness tested the handlers and not the system.",
-          "severity": 5,
-          "frequency": 0.7
-        },
-        {
-          "title": "Configuration drift between services is invisible until runtime",
-          "body": "Each service reads its own environment and reports its own error format. A misconfigured service is discovered by a user, not by a check.",
-          "severity": 3,
-          "frequency": 0.5
-        }
-      ],
-      "features": [
-        {
-          "title": "A testkit that authenticates the way production does",
-          "body": "Ship a harness that performs a real login and threads the resulting token, so no test can pass by injecting context that nothing sets in production. A test that can only pass because the harness lies is worse than no test.",
-          "effort": "M",
-          "complaints": [0]
-        },
-        {
-          "title": "One startup self-check that proves the service can write",
-          "body": "On boot, verify that the actor context resolves and that a write succeeds, and refuse to become ready if not. Turns a silent read-only deployment into a startup failure.",
-          "effort": "M",
-          "complaints": [0, 1]
-        },
-        {
-          "title": "Shared configuration schema with typed defaults and a diff report",
-          "body": "One schema every service validates against, so a setting that exists in one service and not another is a startup warning rather than a runtime surprise.",
-          "effort": "L",
-          "complaints": [1]
-        }
-      ]
-    },
-    {
-      "slug": "whitebois",
-      "name": "WhiteBois",
-      "description": "A community forum in Rust and Axum. Trust levels, level-gated forum access, markdown rendering, and a moderation model built on disclosure rather than deletion.",
-      "governance_model": "collective",
-      "license": "AGPL-3.0",
-      "complaints": [
-        {
-          "title": "Markdown link hrefs allowed attribute injection",
-          "body": "The renderer unescaped the URL and then interpolated it into an href without re-escaping, so a crafted URL could break out of the attribute and inject event handlers. Fixed by escaping after unescape and rejecting non-safe schemes, with a test asserting the escaped form.",
+          "title": "A 722-line comment subsystem was sitting untracked",
+          "body": "Found by the 2026-09-26 audit. An uncommitted tree is not a backup, and this one was one git clean away from total loss. The tree was surveyed and committed later, but the exposure was real and it is the reason the whole master build file exists.",
           "severity": 5,
           "frequency": 0.2
         },
         {
-          "title": "The database test suite fails 18 of 39 on a clean checkout",
-          "body": "Provisioning left a stale database and a warm Redis cache behind. A suite that cannot be trusted to pass is a suite nobody runs, so real regressions hide inside the noise.",
+          "title": "Two mirrors, one canonical, no verified sync",
+          "body": "The repo exists on both gaming-pc and the thinkcentre pool. Whether the two agree is not established, and a mirror that has silently diverged is worse than no mirror because it looks like a backup.",
           "severity": 4,
-          "frequency": 0.9
+          "frequency": 0.4
         }
       ],
       "features": [
         {
-          "title": "One deterministic database fixture: migrate from empty, every run",
-          "body": "Drop, create, migrate, seed, and flush the cache prefix as a single idempotent step that cannot inherit state. Turns 18 expected failures into zero, which is the precondition for trusting a red test.",
-          "effort": "M",
-          "complaints": [1]
-        },
-        {
-          "title": "A content security policy that reflects the disclosure model",
-          "body": "Because moderation hides rather than deletes, the renderer must never be trusted with script. Ship a strict CSP and test that a stored XSS payload cannot execute.",
-          "effort": "M",
-          "complaints": [0]
-        },
-        {
-          "title": "Explain every level gate to the reader who hit it",
-          "body": "A 403 that says only \"insufficient level\" teaches nothing. State the requirement, the current value, and the path to it, so the gate is a goal rather than a wall.",
+          "title": "Verify the two mirrors are actually in sync",
+          "body": "Compare the two HEADs and, if they differ, diff the trees rather than trusting either log. Cheap to check and it is the difference between a backup and a coincidence.",
           "effort": "S",
-          "complaints": [0]
-        }
-      ]
-    },
-    {
-      "slug": "ficnexus",
-      "name": "FicHub",
-      "description": "A file sharing and discussion service in Rust. The founding project: the service, the community forum, and the trust model the other services learned from.",
-      "governance_model": "collective",
-      "license": "AGPL-3.0",
-      "complaints": [
-        {
-          "title": "Admin is a trust level rather than a flag",
-          "body": "Authority was expressed as a position on the trust ladder, so reaching admin meant passing through the same rungs as everyone else, and the two concerns could not be reasoned about independently.",
-          "severity": 3,
-          "frequency": 0.6
-        },
-        {
-          "title": "Edit windows and author privileges were entangled",
-          "body": "Authoring rights and timing rules were decided in one place, so changing the window silently changed who could edit. Each is a separate policy and needs a separate test.",
-          "severity": 3,
-          "frequency": 0.5
-        }
-      ],
-      "features": [
-        {
-          "title": "Separate the authority flag from the trust ladder",
-          "body": "An explicit is_admin flag, checked at the route, with the trust ladder continuing to mean what a member may do rather than who may administer. Two questions, two answers.",
-          "effort": "M",
-          "complaints": [0]
-        },
-        {
-          "title": "One test per gate, named for the rule rather than the route",
-          "body": "Gate tests should read as the policy they enforce, so a change to the policy is visible as a change to the test rather than as a route rename.",
-          "effort": "S",
-          "complaints": [1]
-        },
-        {
-          "title": "A trust ledger that shows how a member's level was earned",
-          "body": "Show which contributions moved a member's level and when, so the ladder is auditable and a mistake is correctable.",
-          "effort": "M",
-          "complaints": [0]
+          "status": "ready",
+          "complaints": [
+            1
+          ]
         }
       ]
     },
     {
       "slug": "streakforge",
       "name": "Streakforge",
-      "description": "A habit and streak tracker. Local-first, with streaks as a record of consistency rather than a number to protect.",
-      "governance_model": "collective",
-      "license": "AGPL-3.0",
+      "description": "Habit and streak tracking. Last commit 2026-09-27. The 2026-09-26 audit found 77 files staged as deleted here.",
+      "governance_model": "maintainer_led",
+      "license": "",
       "complaints": [
         {
-          "title": "A broken streak is indistinguishable from a missed day",
-          "body": "Losing a long streak produces the same state as missing one day, so the cost of the mistake is invisible and the incentive to continue is the only thing carrying the user.",
-          "severity": 3,
-          "frequency": 0.5
-        },
-        {
-          "title": "No way to repair a streak retroactively",
-          "body": "A day genuinely completed while travelling cannot be recorded after the fact, so an honest streak breaks for a reason that is not a failure.",
-          "severity": 3,
-          "frequency": 0.6
+          "title": "77 files were staged as deleted at survey time",
+          "body": "Found by the 2026-09-26 audit and not yet explained. A staged deletion is a decision someone made and did not finish; until it is resolved the tree is ambiguous about intent.",
+          "severity": 4,
+          "frequency": 0.3
         }
       ],
       "features": [
         {
-          "title": "Freeze days: a limited, explicit allowance",
-          "body": "Let a member spend a small number of freezes on days they could not have logged, and show the remaining balance. Preserves the honesty of the streak while acknowledging that a day is not always available.",
-          "effort": "M",
-          "complaints": [0, 1]
-        },
-        {
-          "title": "Longest streak as the headline, current streak as context",
-          "body": "Lead with the best run rather than the current one, so a recent slip is not the most prominent fact about a member's record.",
+          "title": "Resolve the 77 staged deletions",
+          "body": "Either they were intentional and should be committed, or they were an accident that should be reverted. Both are one command; leaving them staged is the only option with no meaning.",
           "effort": "S",
-          "complaints": [0]
-        },
-        {
-          "title": "Backdated entry with a visible audit note",
-          "body": "Permit logging a past day and mark it as added later. The streak stays honest because the correction is visible rather than hidden.",
-          "effort": "M",
-          "complaints": [1]
+          "status": "ready",
+          "complaints": [
+            0
+          ]
         }
       ]
     },
     {
-      "slug": "ferrisfeed",
-      "name": "FerrisFeed",
-      "description": "An RSS and Atom reader with filtering, folders, and a read-later queue. Built for a small number of sources read carefully rather than a large number read never.",
-      "governance_model": "collective",
-      "license": "AGPL-3.0",
+      "slug": "zeph",
+      "name": "Zeph",
+      "description": "Agent tooling. Last commit 2026-09-28. Listed in the master build file among the active projects; not yet surveyed for scope or state.",
+      "governance_model": "maintainer_led",
+      "license": "",
       "complaints": [
         {
-          "title": "Filtering happens after the fact, not before the inbox",
-          "body": "Rules remove items that have already been fetched and counted, so a filter is invisible to the reader and the inbox size is not something filtering can actually change.",
-          "severity": 3,
-          "frequency": 0.6
-        },
-        {
-          "title": "Full-text search is unavailable offline",
-          "body": "The archive is local but the search is not, so the one feature that justifies keeping an archive cannot be used on a train.",
+          "title": "Unsurveyed, so its state is unknown",
+          "body": "Same position as ficnexus: active and recent, but no plan has been read, so nothing can be said about what is done. A survey is the prerequisite for any implementation claim.",
           "severity": 3,
           "frequency": 0.5
         }
       ],
       "features": [
         {
-          "title": "Rules run at fetch time and report what they removed",
-          "body": "Apply filters before an item enters the inbox, and show a per-rule count of what was hidden. A filter that changes nothing is indistinguishable from a filter that does not work.",
-          "effort": "L",
-          "complaints": [0]
-        },
-        {
-          "title": "Local full-text index over the archive",
-          "body": "Index titles, bodies, and feed names on device so search works with no network and no account.",
-          "effort": "L",
-          "complaints": [1]
-        },
-        {
-          "title": "Read-later as a first-class queue with a daily digest",
-          "body": "Save now, read later on a schedule, rather than treating the unread count as a debt to be paid down immediately.",
+          "title": "Status survey and definition of done",
+          "body": "Same shape as the ficnexus survey: read the code, cite file:line, and produce a table with a definition of done per open item.",
           "effort": "M",
-          "complaints": [1]
+          "status": "ready",
+          "complaints": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "lorebot",
+      "name": "LoreBot",
+      "description": "Bot surface for the Lorebook ecosystem. Last commit 2026-09-28, unsurveyed for scope or completion.",
+      "governance_model": "maintainer_led",
+      "license": "",
+      "complaints": [
+        {
+          "title": "Unsurveyed, so its state is unknown",
+          "body": "Active and recent, but no plan read. A survey is the prerequisite for any implementation claim.",
+          "severity": 3,
+          "frequency": 0.5
+        }
+      ],
+      "features": [
+        {
+          "title": "Status survey and definition of done",
+          "body": "Read the code, cite file:line, produce a table with a definition of done per open item.",
+          "effort": "M",
+          "status": "ready",
+          "complaints": [
+            0
+          ]
         }
       ]
     }
