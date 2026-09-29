@@ -66,7 +66,14 @@ class Client:
             raise SystemExit(f"cannot reach {url}: {e.reason}")
 
     def get(self, path):
-        return self.request("GET", path)
+        """GET, backing off on 429.
+
+        The rate limiter covers every method, not just writes, so a dedup
+        lookup can be refused exactly like a create. This matters more than it
+        looks: a refused lookup used to be indistinguishable from "no such
+        feature", so the caller created a duplicate instead of waiting.
+        """
+        return self._with_rate_retry("GET", path, None)
 
     def post(self, path, body=None):
         return self.request("POST", path, body or {})
@@ -74,16 +81,21 @@ class Client:
     def put(self, path, body=None):
         return self.request("PUT", path, body or {})
 
-    def post_retrying(self, path, body=None, attempts=8):
-        """POST, backing off when the rate limiter refuses.
+    def _with_rate_retry(self, method, path, body, attempts=12):
+        """Call a mutating verb, backing off when the rate limiter refuses.
 
-        The limiter allows 100 requests a minute per client IP, and a full
-        seed is roughly 60 requests. Running the seeder twice in a minute
-        crosses that, so a 429 is expected rather than exceptional — it should
-        be waited out, not reported as a failure.
+        The limiter allows 100 requests a minute per client IP. A full seed is
+        roughly 210 requests across 12 projects, so a 429 is expected rather
+        than exceptional — it should be waited out, not reported as a failure.
+
+        This is deliberately a single helper for every verb. It was originally
+        attached to POST only, and the status write added later used a bare
+        put(): a 429 there aborted a run that had already created the feature,
+        leaving a run that reported a hard error for what is a wait. Every
+        mutating call goes through here so that cannot recur.
         """
         for i in range(attempts):
-            status, body_out = self.post(path, body)
+            status, body_out = self.request(method, path, body)
             if status != 429:
                 return status, body_out
             wait = 5.0 * (i + 1)
@@ -91,15 +103,25 @@ class Client:
             time.sleep(wait)
         return 429, {"error": "rate limited after retries"}
 
+    def post_retrying(self, path, body=None, attempts=12):
+        return self._with_rate_retry("POST", path, body, attempts)
+
+    def put_retrying(self, path, body=None, attempts=12):
+        return self._with_rate_retry("PUT", path, body, attempts)
+
 
 def authenticate(base: str, username: str, password: str) -> Client:
     """Log in, creating the account if it does not exist yet."""
     c = Client(base)
-    status, body = c.post("/auth/login", {"username": username, "password": password})
+    # Login and register go through the retrying verb too. A seed started in
+    # the same minute as a previous one hits the limiter on its very first
+    # request, and "could not authenticate: 429" is a misleading way to report
+    # "wait a moment".
+    status, body = c.post_retrying("/auth/login", {"username": username, "password": password})
     if status == 200:
         return Client(base, str(body["token"]))
 
-    status, body = c.post(
+    status, body = c.post_retrying(
         "/auth/register",
         {"username": username, "password": password, "display_name": username},
     )
@@ -144,6 +166,10 @@ def ensure_complaint(c: Client, project_id: int, slug: str, comp: dict) -> int:
     # linked to it. Re-seeding was not idempotent and quietly corrupted the
     # ranking it was meant to populate.
     lstatus, lbody = c.get(f"/projects/{slug}/complaints")
+    if lstatus not in (200, 404):
+        raise SystemExit(
+            f"cannot list complaints of {slug} to check for {comp['title']!r}: {lstatus} {lbody}"
+        )
     if lstatus == 200:
         existing = as_items(lbody)
         match = next((x for x in existing if x.get("title") == comp["title"]), None)
@@ -195,6 +221,16 @@ def ensure_feature(c: Client, project_id: int, slug: str, f: dict, complaint_ids
     # run; projects and complaints are matched by slug/title, and features must
     # be too or re-seeding corrupts the ranking.
     status, body = c.get(f"/projects/{slug}/features")
+    if status != 200:
+        # Do not fall through to create. The previous code only handled 200 and
+        # treated every other status as "not found", so a 429 on this lookup
+        # inserted a duplicate — and the seed then reported success. Duplicates
+        # are worse than a failed run: they corrupt the ranking the portfolio
+        # exists to populate, and the ranking is the thing that is hard to
+        # notice being wrong.
+        raise SystemExit(
+            f"cannot list features of {slug} to check for {title!r}: {status} {body}"
+        )
     if status == 200:
         items = as_items(body)
         match = next((x for x in items if x.get("title") == title), None)
@@ -239,7 +275,7 @@ def set_status(c: Client, project_id: int, slug: str, feature_id: int, new_statu
     stays `draft`: a portfolio where everything reads as an idea is worse than
     no portfolio, because it is wrong in a way nobody notices.
     """
-    status, body = c.put(
+    status, body = c.put_retrying(
         f"/projects/{slug}/features/{feature_id}/status",
         {"status": new_status, "reason": "portfolio seed"},
     )

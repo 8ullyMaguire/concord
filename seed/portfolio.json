@@ -18,7 +18,11 @@
     "Every feature links at least one complaint, because Concord's model is",
     "complaint-driven: a feature answers a validated pain. A feature with no",
     "complaint is rejected by the API, which is correct - it means the feature",
-    "is not yet justified by anything anyone complained about."
+    "is not yet justified by anything anyone complained about.",
+    "lorehaven, stashforge, stashbox-fork and gravity were added 2026-09-29 from their",
+    "own ledgers (requirements.csv, SPEC.md, PLAN.md, issues-open.json). The master build",
+    "file at 90-Meta/2026-09-28-master-build-todo.md had excluded lorehaven, gravity and",
+    "stash as owned by other agents; the owner lifted that by naming them here."
   ],
   "projects": [
     {
@@ -501,6 +505,1463 @@
           "status": "ready",
           "complaints": [
             0
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "lorehaven",
+      "name": "Lorehaven",
+      "description": "Self-hosted home for fanfiction: read without an account, write without a publishing queue, import the library you already have, take it offline. Rust + Postgres. Built from docs/goal.md with 678 rows tracked in docs/requirements.csv \u2014 the repo maintains its own honest ledger, which is the only source used here.",
+      "governance_model": "maintainer_led",
+      "license": "",
+      "complaints": [
+        {
+          "title": "A progress document is not evidence that the code works",
+          "body": "lorehaven keeps docs/requirements.csv with a status column and an evidence column per row, precisely because a claim of completion is worthless without a command behind it. The three implemented grades distinguish a fully-tested row from a locally-tested one from one verified end to end, and they are not interchangeable: 289 rows are fully tested, 193 are tested locally, and 116 are verified E2E.",
+          "severity": 4,
+          "frequency": 0.4
+        },
+        {
+          "title": "678 individual requirements are not 678 independent pieces of work",
+          "body": "Seeding one feature per ledger row would make this project 40x larger than every other in the portfolio and hide the shape of what is left. Milestone grouping keeps the counts exact in the body while making the project comparable.",
+          "severity": 2,
+          "frequency": 0.3
+        },
+        {
+          "title": "Three milestones hold 76 of the 78 outstanding requirements",
+          "body": "M45 (45 planned), M59 (17) and M60 (11) are where the remaining work actually is. A flat 'planned' list would make that invisible.",
+          "severity": 3,
+          "frequency": 0.4
+        }
+      ],
+      "features": [
+        {
+          "title": "M0: 12 implemented",
+          "body": "Milestone M0: 12 implemented, none outstanding. Areas: platform (12). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M09: 41 implemented",
+          "body": "Milestone M09: 41 implemented, none outstanding. Areas: db/rating_integrity (41). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M1: 9 implemented",
+          "body": "Milestone M1: 9 implemented, none outstanding. Areas: design (9). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M10: 37 implemented",
+          "body": "Milestone M10: 37 implemented, none outstanding. Areas: db/secrets (31), search (3), discovery (2), reading (1). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M11: 12 implemented",
+          "body": "Milestone M11: 12 implemented, none outstanding. Areas: discovery (12). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M12: 6 implemented",
+          "body": "Milestone M12: 6 implemented, none outstanding. Areas: community (5), identity (1). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M13: 1 implemented",
+          "body": "Milestone M13: 1 implemented, none outstanding. Areas: events (1). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M14: 1 implemented",
+          "body": "Milestone M14: 1 implemented, none outstanding. Areas: governance (1). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M15: 9 implemented",
+          "body": "Milestone M15: 9 implemented, none outstanding. Areas: economy (9). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M15.9-15.10: 42 implemented",
+          "body": "Milestone M15.9-15.10: 42 implemented, none outstanding. Areas: db/search (42). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M18: 6 implemented",
+          "body": "Milestone M18: 6 implemented, none outstanding. Areas: community (6). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M2: 11 implemented, 1 unsupported",
+          "body": "Milestone M2: 11 implemented, 1 deliberately unsupported. The unsupported rows are recorded as rejected rather than planned because the ledger already decided against them. Areas: identity (11), community (1).",
+          "effort": "M",
+          "status": "rejected",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M29: 7 implemented",
+          "body": "Milestone M29: 7 implemented, none outstanding. Areas: discovery (5), taxonomy (2). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M3: 9 implemented",
+          "body": "Milestone M3: 9 implemented, none outstanding. Areas: writing (8), works (1). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M32: 36 implemented",
+          "body": "Milestone M32: 36 implemented, none outstanding. Areas: db/narration (32), media (4). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M33: 4 implemented",
+          "body": "Milestone M33: 4 implemented, none outstanding. Areas: community (4). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M34: 4 implemented",
+          "body": "Milestone M34: 4 implemented, none outstanding. Areas: community (4). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M35: 6 implemented",
+          "body": "Milestone M35: 6 implemented, none outstanding. Areas: community (6). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M38: 20 implemented",
+          "body": "Milestone M38: 20 implemented, none outstanding. Areas: db/work_backlink (20). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M39: 5 implemented",
+          "body": "Milestone M39: 5 implemented, none outstanding. Areas: directory (5). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M4: 13 implemented",
+          "body": "Milestone M4: 13 implemented, none outstanding. Areas: reading (13). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M40: 3 implemented",
+          "body": "Milestone M40: 3 implemented, none outstanding. Areas: works (3). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M41: 34 implemented",
+          "body": "Milestone M41: 34 implemented, none outstanding. Areas: db/longevity (31), community (2), discovery (1). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M42: 6 implemented",
+          "body": "Milestone M42: 6 implemented, none outstanding. Areas: exports (6). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M43: 56 implemented",
+          "body": "Milestone M43: 56 implemented, none outstanding. Areas: db/instance_theme (23), db/browse (16), discovery (9), browse (5). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M45: 16 implemented, 45 planned",
+          "body": "Milestone M45: 16 implemented, 45 planned and not started. Areas: governance (17), discovery (11), community (6), admin (6). Ledger rows carry the individual requirements; this groups them so the milestone is one comparable unit.",
+          "effort": "L",
+          "status": "discussion",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M46: 3 implemented",
+          "body": "Milestone M46: 3 implemented, none outstanding. Areas: works (3). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M47: 9 implemented",
+          "body": "Milestone M47: 9 implemented, none outstanding. Areas: settings (9). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M5: 3 implemented",
+          "body": "Milestone M5: 3 implemented, none outstanding. Areas: jobs (1), storage (1), secrets (1). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M52: 9 implemented",
+          "body": "Milestone M52: 9 implemented, none outstanding. Areas: discovery (9). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M53: 2 implemented, 2 planned",
+          "body": "Milestone M53: 2 implemented, 2 planned and not started. Areas: imports (4). Ledger rows carry the individual requirements; this groups them so the milestone is one comparable unit.",
+          "effort": "L",
+          "status": "discussion",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M54: 1 implemented, 1 planned",
+          "body": "Milestone M54: 1 implemented, 1 planned and not started. Areas: integrations (2). Ledger rows carry the individual requirements; this groups them so the milestone is one comparable unit.",
+          "effort": "L",
+          "status": "discussion",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M55: 2 implemented",
+          "body": "Milestone M55: 2 implemented, none outstanding. Areas: platform (2). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M56: 1 implemented",
+          "body": "Milestone M56: 1 implemented, none outstanding. Areas: platform (1). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M57: 5 implemented",
+          "body": "Milestone M57: 5 implemented, none outstanding. Areas: platform (2), taxonomy (1), governance (1), discovery (1). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M57A: 9 implemented",
+          "body": "Milestone M57A: 9 implemented, none outstanding. Areas: platform (5), privacy (3), discovery (1). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M58: 7 implemented",
+          "body": "Milestone M58: 7 implemented, none outstanding. Areas: directory (7). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M59: 10 implemented, 17 planned",
+          "body": "Milestone M59: 10 implemented, 17 planned and not started. Areas: library (11), imports (6), preservation (6), governance (4). Ledger rows carry the individual requirements; this groups them so the milestone is one comparable unit.",
+          "effort": "L",
+          "status": "discussion",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M6: 13 implemented, 2 unsupported",
+          "body": "Milestone M6: 13 implemented, 2 deliberately unsupported. The unsupported rows are recorded as rejected rather than planned because the ledger already decided against them. Areas: imports (12), credentials (2), preservation (1).",
+          "effort": "M",
+          "status": "rejected",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M60: 0 implemented, 11 planned",
+          "body": "Milestone M60: 0 implemented, 11 planned and not started. Areas: platform (11). Ledger rows carry the individual requirements; this groups them so the milestone is one comparable unit.",
+          "effort": "L",
+          "status": "discussion",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M7: 6 implemented, 1 unsupported",
+          "body": "Milestone M7: 6 implemented, 1 deliberately unsupported. The unsupported rows are recorded as rejected rather than planned because the ledger already decided against them. Areas: app/exports (4), exports (2), offline (1).",
+          "effort": "M",
+          "status": "rejected",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M8: 2 implemented",
+          "body": "Milestone M8: 2 implemented, none outstanding. Areas: library (1), reading (1). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "M9: 5 implemented",
+          "body": "Milestone M9: 5 implemented, none outstanding. Areas: reading (5). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "MPG: 1 implemented",
+          "body": "Milestone PG: 1 implemented, none outstanding. Areas: platform (1). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Unassigned milestone rows: 104 implemented",
+          "body": "Milestone unassigned: 104 implemented, none outstanding. Areas: general (104). Status is taken from the requirements ledger's own column, not from a progress document.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "stashforge",
+      "name": "StashForge",
+      "description": "A fork of stashapp/stash turned into one binary that is a private library manager and a self-governed public curation site at once. Media never leaves the owner's host; the metadata is a shared commons that contributes by default and opts out per library, and who may change it is decided by quorum or moderators, never by an owner override. Plus a P2P downloader plugin (BitTorrent + ed2k over Kademlia). Tracked in docs/requirements.csv, R001-R073.",
+      "governance_model": "collective",
+      "license": "",
+      "complaints": [
+        {
+          "title": "The ledger says 9 of 73 requirements are done, and the two columns that disagree are the ones that matter",
+          "body": "R001-R006 are 'shipped' and R007-R009 are 'tested'. The rest are 'specified', which is the honest state of a project whose plan is written per-step. The gap between 'specified' and 'tested' is where this project actually lives.",
+          "severity": 3,
+          "frequency": 0.5
+        },
+        {
+          "title": "A fork inherits upstream's tests, and an inherited test suite measures the wrong thing",
+          "body": "The base is stashapp/stash develop at b6b09dd5. Upstream's tests assert upstream's behaviour; the whole point of the fork is to differ. Every milestone here has to be judged by a test that fails against the base.",
+          "severity": 4,
+          "frequency": 0.5
+        },
+        {
+          "title": "Governance on top of upstream's models duplicates what upstream already has",
+          "body": "The sibling stash-box fork carries 4,480 lines of native edit/vote consensus. Porting a parallel proposal/ballot system onto an archive that already has one produces a fork of a different product.",
+          "severity": 3,
+          "frequency": 0.3
+        }
+      ],
+      "features": [
+        {
+          "title": "R001: Fork of upstream stash with local private library",
+          "body": "Ledger R001, thread foundation. Priority M4. Spec \u00a71. Ledger status: shipped. Built and shipped. Baseline recorded in BASELINE.md",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R002: Users sessions invite keys rate limiting auth migration",
+          "body": "Ledger R002, thread foundation. Priority M1. Spec \u00a79. Ledger status: shipped. Users table plus argon2id; legacy hashPassword not used",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R003: Edit proposals with per-field values and typed ballots",
+          "body": "Ledger R003, thread foundation. Priority M2. Spec \u00a74. Ledger status: shipped. Commons \u00a78.1-8.5 replaced flat net-vote counting",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R004: Audit log and notifications for every state change",
+          "body": "Ledger R004, thread foundation. Priority M2. Spec \u00a74.2. Ledger status: shipped. Every state change appends to collab_audit",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R005: Consent exporter dry-run first and commons endpoint",
+          "body": "Ledger R005, thread foundation. Priority M3. Spec \u00a76. Ledger status: shipped. Opt-out is a hard stop in the publish path not a query filter",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R006: Metadata sharing federation transport",
+          "body": "Ledger R006, thread foundation. Priority M3. Spec \u00a76.5. Ledger status: shipped. Opt-in per peer with a per-peer key",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R007: Mode enforcement TLS requirement 2FA access grants wizard",
+          "body": "Ledger R007, thread foundation. Priority M4. Spec \u00a78. Ledger status: tested. Depends on R002. Server side done no UI. step 4.3 NOT enforced: library_id is on no target table",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R008: Public hosting mode with the wizard",
+          "body": "Ledger R008, thread foundation. Priority M4. Spec \u00a78. Ledger status: tested. Depends on R007. No UI yet. Behaviour is server-side only",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R009: P2P downloader as an installable plugin (BitTorrent ed2k Kad)",
+          "body": "Ledger R009, thread foundation. Priority M5. Spec \u00a77. Ledger status: tested. Depends on R005. Plugin host is three transports; verified against pkg/plugin/config.go",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R010: Recommendations for performers scenes studios sites tags lists",
+          "body": "Ledger R010, thread discovery. Priority high. Spec \u00a76a.5. Ledger status: specified. Depends on R003. Draft \u00a74. Spec owns 5 mentions of recommend/discover but no ranked surface exists; no recommendation table in migrations",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R011: Personal taste fingerprint from votes tags and curation",
+          "body": "Ledger R011, thread discovery. Priority high. Spec \u00a76a.5. Ledger status: specified. Depends on R003. Draft \u00a72 \u00a79. Genuinely new: taste/gravity has ZERO spec mentions. Portable across instances",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R012: Instance taste gravity and personal gravity slider",
+          "body": "Ledger R012, thread discovery. Priority high. Spec \u00a76a.5. Ledger status: specified. Depends on R011. Draft \u00a71 \u00a74. Bends ranking toward instance theme while respecting personal taste",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R013: Cross-instance discovery ranked by local gravity plus peer similarity",
+          "body": "Ledger R013, thread discovery. Priority high. Spec \u00a76a.5. Ledger status: specified. Depends on R010 R011 R012. Depends on federation R006 existing",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R014: Home feed personalized plus mesh trending",
+          "body": "Ledger R014, thread discovery. Priority medium. Spec \u00a76a.5. Ledger status: specified. Depends on R010. Depends on recommendations R010",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R015: Entity pages with similar-to and users-like-you-also-liked",
+          "body": "Ledger R015, thread discovery. Priority medium. Spec \u00a76a.5. Ledger status: specified. Depends on R010. Appears-in and curated-by and preservation-status surfaces",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R016: Discovery boards community lists rankings guides",
+          "body": "Ledger R016, thread discovery. Priority low. Spec \u00a76a.5. Ledger status: specified. Depends on R003. Community-made lists; overlaps the existing directory work R031",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R017: Recommendation API for third-party discovery",
+          "body": "Ledger R017, thread discovery. Priority low. Spec \u00a76a.5. Ledger status: specified. Depends on R010. Public API surface over the ranking",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R018: Minimum three replicas for a scene by default",
+          "body": "Ledger R018, thread preservation. Priority high. Spec \u00a76a.9. Ledger status: specified. Depends on R006. Draft \u00a73. Core new idea. preservation has 6 spec mentions but all are about the audit trail, not content replicas",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R019: Per-instance min and max replica counts and opt-outs",
+          "body": "Ledger R019, thread preservation. Priority high. Spec \u00a76a.9. Ledger status: specified. Depends on R018. Operator controls incl. storage budget and retention",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R020: Replication scheduling to peers with capacity and similar taste",
+          "body": "Ledger R020, thread preservation. Priority high. Spec \u00a76a.9. Ledger status: specified. Depends on R018 R011. Automatic; the mesh schedules rather than the operator",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R021: Health checks manifest verification and automatic repair",
+          "body": "Ledger R021, thread preservation. Priority high. Spec \u00a76a.9. Ledger status: specified. Depends on R020. Detect a missing replica and restore it",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R022: Metadata always replicated; content replication follows policy",
+          "body": "Ledger R022, thread preservation. Priority medium. Spec \u00a76a.9. Ledger status: specified. Depends on R018 R019. Two different policies for two different objects",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R023: Preservation quest and badge for hosting replicas",
+          "body": "Ledger R023, thread preservation. Priority low. Spec \u00a76a.9. Ledger status: specified. Depends on R018 R028. Gamification of preservation; rarity-weighted",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R024: Emergency preservation rules and per-scene overrides",
+          "body": "Ledger R024, thread preservation. Priority low. Spec \u00a76a.9. Ledger status: specified. Depends on R019. Global default plus per-scene override plus emergency",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R025: Trust levels 0-5 from public to steward",
+          "body": "Ledger R025, thread trust. Priority high. Spec \u00a76a.11. Ledger status: specified. Depends on R003. Draft \u00a76. Spec has 47 mentions of trust/tier/reputation but those are vote-weighting tiers, not access levels. GENUINELY NEW use of the word",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R026: Opt-in content viewing unlocked by trust",
+          "body": "Ledger R026, thread trust. Priority high. Spec \u00a76a.11. Ledger status: specified. Depends on R025. High-trust users explicitly opt in. Never automatic on reaching a level",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R027: Low-trust users get collages and metadata for identification",
+          "body": "Ledger R027, thread trust. Priority high. Spec \u00a76a.11. Ledger status: specified. Depends on R025 R029. Metadata access is not gated on content access",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R028: Reputation earned via edits verification identification preservation",
+          "body": "Ledger R028, thread trust. Priority high. Spec \u00a76a.11. Ledger status: specified. Depends on R003 R031. Trust is earned by contribution not purchased",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R029: Snapshot collage 12-24 evenly spaced frames per scene",
+          "body": "Ledger R029, thread identification. Priority high. Spec \u00a76a.13. Ledger status: specified. Depends on R005. Draft \u00a78. ident/collage has only 2 spec mentions. Hover-scrubbable storyboard",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R030: Identification board which-was-that with voting and bounties",
+          "body": "Ledger R030, thread identification. Priority high. Spec \u00a76a.13. Ledger status: specified. Depends on R029 R003. Draft \u00a75. Solved queries become canonical links feeding R010",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R031: Duplicate detection via perceptual hashing and metadata similarity",
+          "body": "Ledger R031, thread identification. Priority high. Spec \u00a76a.13. Ledger status: specified. Depends on R005 R030. Spec has 12 mentions but for proposals and merges, not perceptual hashing. New mechanism",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R032: Merge duplicates and multi-user verification of important edits",
+          "body": "Ledger R032, thread identification. Priority medium. Spec \u00a76a.13. Ledger status: specified. Depends on R031 R003. Merge is governance-gated not a free action",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R033: Detective reputation solve streaks and badges",
+          "body": "Ledger R033, thread identification. Priority low. Spec \u00a76a.13. Ledger status: specified. Depends on R030. Gamification of identification",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R034: Completion score per entity from missing metadata",
+          "body": "Ledger R034, thread curation. Priority high. Spec \u00a76a.15. Ledger status: specified. Depends on R003. Draft \u00a77. Curation has 12 spec mentions (quests exist in plan) but no completion-score mechanism",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R035: Curation quests with progress bars everywhere",
+          "body": "Ledger R035, thread curation. Priority high. Spec \u00a76a.15. Ledger status: specified. Depends on R034 R028. Add birthdates for 5 performers; link 10 unlinked scenes",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R036: Bounties for high-impact gaps",
+          "body": "Ledger R036, thread curation. Priority medium. Spec \u00a76a.15. Ledger status: specified. Depends on R035 R028. Bonus XP for rare performers and lost studios",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R037: Federated joint curation campaigns between similar instances",
+          "body": "Ledger R037, thread curation. Priority low. Spec \u00a76a.15. Ledger status: specified. Depends on R035 R011. Requires peers with similar taste",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R038: Adopt a site or performer as primary curator",
+          "body": "Ledger R038, thread curation. Priority low. Spec \u00a76a.15. Ledger status: specified. Depends on R028. Long-lived ownership of one entity",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R039: Pairwise Elo voting for performers scenes studios sites tags",
+          "body": "Ledger R039, thread ranking. Priority high. Spec \u00a76a.16. Ledger status: specified. Depends on R003 R028. Draft \u00a79. elo/ranking has ZERO spec mentions. Glicko-2 or TrueSkill named as candidates",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R040: Multiple leaderboards overall by genre era studio country instance",
+          "body": "Ledger R040, thread ranking. Priority medium. Spec \u00a76a.16. Ledger status: specified. Depends on R039. Local mesh and global scopes",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R041: Time decay on rankings",
+          "body": "Ledger R041, thread ranking. Priority medium. Spec \u00a76a.16. Ledger status: specified. Depends on R039. Rankings reflect current relevance",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R042: Federated rankings across instances",
+          "body": "Ledger R042, thread ranking. Priority medium. Spec \u00a76a.16. Ledger status: specified. Depends on R039 R006. Local instance peer-mesh and global",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R043: Gamified voting streaks daily matchups bracket tournaments",
+          "body": "Ledger R043, thread ranking. Priority low. Spec \u00a76a.16. Ledger status: specified. Depends on R039 R028. Retention mechanic",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R044: Annual awards community vote plus Elo plus reviews",
+          "body": "Ledger R044, thread ranking. Priority low. Spec \u00a76a.16. Ledger status: specified. Depends on R039 R033. Drives attention not governance",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R045: Site and network profiles URL pricing payment methods features",
+          "body": "Ledger R045, thread directory. Priority medium. Spec \u00a76a.17. Ledger status: specified. Depends on R003. Draft \u00a710. directory/reviews has 16 spec mentions: the directory largely EXISTS. Extend not create",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R046: Studio profiles with roster notable scenes completion score",
+          "body": "Ledger R046, thread directory. Priority medium. Spec \u00a76a.17. Ledger status: specified. Depends on R034 R045. Extends the existing studio entity",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R047: User reviews and ratings with verified usage flags",
+          "body": "Ledger R047, thread directory. Priority medium. Spec \u00a76a.17. Ledger status: specified. Depends on R045 R028. Structured review attached to a site",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R048: Verified badges studios and performers claim profiles",
+          "body": "Ledger R048, thread directory. Priority low. Spec \u00a76a.17. Ledger status: specified. Depends on R045 R028. Claim-and-confirm rather than operator-granted",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R049: User lists best-of collections and guides",
+          "body": "Ledger R049, thread directory. Priority low. Spec \u00a76a.17. Ledger status: specified. Depends on R016. Editorial lists",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R050: XP levels badges and streaks",
+          "body": "Ledger R050, thread gamification. Priority medium. Spec \u00a76a.10. Ledger status: specified. Depends on R028. Draft \u00a712. gamification has ZERO spec mentions. Whichever reputation R028 defines is what XP draws from",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R051: Leaderboards for curators voters reviewers identifiers preservationists",
+          "body": "Ledger R051, thread gamification. Priority low. Spec \u00a76a.10. Ledger status: specified. Depends on R050. Local mesh and global scopes",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R052: Guilds for niche or studio teams",
+          "body": "Ledger R052, thread gamification. Priority low. Spec \u00a76a.10. Ledger status: specified. Depends on R050. Collective archive completion",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R053: Mentorship experienced editors guide new contributors",
+          "body": "Ledger R053, thread gamification. Priority low. Spec \u00a76a.10. Ledger status: specified. Depends on R028 R050. Deliberate low priority; moderation load",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R054: Public API GraphQL and REST with SDKs and webhooks",
+          "body": "Ledger R054, thread ecosystem. Priority medium. Spec \u00a76a.18. Ledger status: specified. Depends on R010 R006. Draft \u00a711. The GraphQL surface already exists (\u00a710); REST SDKs and webhooks are new",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R055: Browser extension overlaying scores on an adult site",
+          "body": "Ledger R055, thread ecosystem. Priority low. Spec \u00a76a.18. Ledger status: specified. Depends on R039 R017. Out of core scope; a separate repository",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R056: Mobile app for voting quests and the ident board",
+          "body": "Ledger R056, thread ecosystem. Priority low. Spec \u00a76a.18. Ledger status: specified. Depends on R025 R030 R035. Out of core scope; a separate repository",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R057: Stash app two-way sync push edits pull metadata",
+          "body": "Ledger R057, thread ecosystem. Priority high. Spec \u00a76a.18. Ledger status: specified. Depends on R005 R003. Already a client of stash-box; extend to StashForge instances",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R058: Developer sandbox with sample data",
+          "body": "Ledger R058, thread ecosystem. Priority low. Spec \u00a76a.18. Ledger status: specified. Depends on R054. Test environment for third-party tools",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R059: Federation protocol open spec for peering and replication",
+          "body": "Ledger R059, thread ecosystem. Priority high. Spec \u00a76a.18. Ledger status: specified. Depends on R006 R018. Draft \u00a711. The wire format that R018/R020/R013 all depend on",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R060: SEO public pages for every entity",
+          "body": "Ledger R060, thread ecosystem. Priority low. Spec \u00a76a.18. Ledger status: specified. Depends on R003. Draft \u00a710. Zero spec mentions. Privacy trade-off: do NOT index consented-out material",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R061: Instance theme and gravity operator control",
+          "body": "Ledger R061, thread governance. Priority high. Spec \u00a76a.12. Ledger status: specified. Depends on R012. Operator sets the theme the instance bends toward",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R062: Trust thresholds for content access operator control",
+          "body": "Ledger R062, thread governance. Priority high. Spec \u00a76a.12. Ledger status: specified. Depends on R025 R026. Operator sets the ceiling",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R063: Federation agreements which peers to trust",
+          "body": "Ledger R063, thread governance. Priority high. Spec \u00a76a.12. Ledger status: specified. Depends on R018 R059. Operator controls the peer set",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R064: High-trust subset delegation for gravity tuning",
+          "body": "Ledger R064, thread governance. Priority low. Spec \u00a76a.12. Ledger status: specified. Depends on R025 R061. Delegated not operator-only",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R065: Portable taste fingerprint users carry between instances",
+          "body": "Ledger R065, thread governance. Priority medium. Spec \u00a76a.12. Ledger status: specified. Depends on R011 R057. Never carries content or identity credentials",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R066: Trust and reputation attestation across instances",
+          "body": "Ledger R066, thread trust. Priority medium. Spec \u00a76a.11. Ledger status: specified. Depends on R025 R059. Attested claims not shared account state",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R067: Guild and team discovery surfaces",
+          "body": "Ledger R067, thread discovery. Priority low. Spec \u00a76a.5. Ledger status: specified. Depends on R052. Cross-referenced with gamification R052",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R068: Mesh trending aggregated across peers",
+          "body": "Ledger R068, thread discovery. Priority medium. Spec \u00a76a.5. Ledger status: specified. Depends on R010 R006. Cross-instance trending",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R069: Snapshot coverage as a completion-score input",
+          "body": "Ledger R069, thread curation. Priority medium. Spec \u00a76a.15. Ledger status: specified. Depends on R029 R034. Collage coverage counts toward completion",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R070: Performer and source links as completion-score inputs",
+          "body": "Ledger R070, thread curation. Priority medium. Spec \u00a76a.15. Ledger status: specified. Depends on R034. Unlinked scenes are the canonical gap",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R071: Recommendation surfaces for instances themselves",
+          "body": "Ledger R071, thread discovery. Priority low. Spec \u00a76a.5. Ledger status: specified. Depends on R010 R063. Discover which instances share your taste",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R072: Preferred peer instances for replication",
+          "body": "Ledger R072, thread preservation. Priority medium. Spec \u00a76a.9. Ledger status: specified. Depends on R019 R063. Operator names preferred peers",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "R073: Users can see how recommendations differ across instances",
+          "body": "Ledger R073, thread discovery. Priority low. Spec \u00a76a.5. Ledger status: specified. Depends on R013 R065. Same fingerprint two lenses",
+          "effort": "M",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "stashbox-fork",
+      "name": "Stash-box fork (federated discovery mesh)",
+      "description": "Fork of github.com/stashapp/stash-box, pinned at b4b8aef2. A federated mesh of independently operated metadata instances: catalog everything, curate together, discover everywhere, preserve forever. Metadata-first, discovery-first, preservation-first, with preservation automatic by default (a scene on three instances unless configured otherwise) and trust unlocking content. Direction decided 2026-09-29: the mesh is the destination, upstreamable fixes are a standing constraint, a running instance is the prerequisite.",
+      "governance_model": "collective",
+      "license": "",
+      "complaints": [
+        {
+          "title": "A fork with no stated product direction is a clone that will drift",
+          "body": "SPEC \u00a76 recorded the open question and four candidate directions (A port StashForge governance, B upstream contributions, C private instance, D other). \u00a76.1 then decided it: C is the prerequisite, B is a constraint on how work is shaped, and the destination is the mesh. That decision is why the phases below exist and why the issue backlog is finite.",
+          "severity": 4,
+          "frequency": 0.4
+        },
+        {
+          "title": "Two of the upstream repo's own documented claims were false on this host",
+          "body": "SPEC \u00a72 says every fact was measured on the clone rather than taken from the README or CLAUDE.md, and records where the two disagree \u2014 two claims are false. A fork built on documentation rather than measurement starts from a wrong baseline.",
+          "severity": 4,
+          "frequency": 0.4
+        },
+        {
+          "title": "Preservation by default is a promise the current architecture cannot keep",
+          "body": "\u00a77.3 says a scene should exist on at least three instances unless configured otherwise. There is no replication code in the tree, so the default is currently a promise rather than a behaviour, and a promise nobody has measured is a promise that will be broken quietly.",
+          "severity": 4,
+          "frequency": 0.3
+        }
+      ],
+      "features": [
+        {
+          "title": "Upstream issue backlog: 177 open (48 help-wanted)",
+          "body": "Tracked in docs/track/issues-open.json, harvested 2026-09-26. 125 enhancement, 48 help wanted, 4 unlabelled. These are upstream's issues, not this fork's requirements, and they are the stated prerequisite: each is a bounded, provable defect that leaves the tree in a state worth building the mesh on top of. Individual issues are not expanded here \u2014 a survey decides which matter.",
+          "effort": "L",
+          "status": "ready",
+          "complaints": [
+            1
+          ]
+        },
+        {
+          "title": "Build from scratch: Elo / Glicko / TrueSkill ranking",
+          "body": "SPEC \u00a77.16 verified by search, not assumed: No rating code anywhere outside test fixtures. The mesh needs this capability and nothing in this repository provides it, so it is new work rather than an extension.",
+          "effort": "XL",
+          "status": "draft",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Build from scratch: Snapshot collages / storyboards",
+          "body": "SPEC \u00a77.16 verified by search, not assumed: images exist as opaque width/height metadata only. The mesh needs this capability and nothing in this repository provides it, so it is new work rather than an extension.",
+          "effort": "XL",
+          "status": "draft",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Build from scratch: Identification board",
+          "body": "SPEC \u00a77.16 verified by search, not assumed: absent from schema, services and all 18 frontend page dirs. The mesh needs this capability and nothing in this repository provides it, so it is new work rather than an extension.",
+          "effort": "XL",
+          "status": "draft",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Build from scratch: Completion scores",
+          "body": "SPEC \u00a77.16 verified by search, not assumed: no per-entity completeness notion exists. The mesh needs this capability and nothing in this repository provides it, so it is new work rather than an extension.",
+          "effort": "XL",
+          "status": "draft",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Build from scratch: Federation and replication",
+          "body": "SPEC \u00a77.16 verified by search, not assumed: single-instance only. The mesh needs this capability and nothing in this repository provides it, so it is new work rather than an extension.",
+          "effort": "XL",
+          "status": "draft",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Build from scratch: Reviews, directories, XP and badges",
+          "body": "SPEC \u00a77.16 verified by search, not assumed: none present. The mesh needs this capability and nothing in this repository provides it, so it is new work rather than an extension.",
+          "effort": "XL",
+          "status": "draft",
+          "complaints": [
+            0
+          ]
+        }
+      ]
+    },
+    {
+      "slug": "gravity",
+      "name": "Gravity",
+      "description": "Federated, self-hostable social platform for fiction and fandom. Rust + SvelteKit, Postgres. No engagement-tuned algorithms, no engagement metrics shown to authors, no ads. The product spec is docs/spec/SPEC.md (3,982 lines) and it is the authority \u2014 section numbers are cited in code comments and tests. Mirrored to ForgeJo and GitHub with a deliberate five-topic difference that is a platform limit, not drift.",
+      "governance_model": "collective",
+      "license": "",
+      "complaints": [
+        {
+          "title": "A handoff that contradicts itself is worse than no handoff",
+          "body": "The file's own CURRENT STATE banner records a correction: an earlier note ended 'the Phase-19 T65-T68 hook exists. That was false. feed_builder.rs was a 15-line stub. It was caught by verifying against the tree rather than against the line, which is the only reason it was caught.",
+          "severity": 4,
+          "frequency": 0.5
+        },
+        {
+          "title": "A key is not an address",
+          "body": "fetch_remote() took a did:key and nothing could say where to fetch from \u2014 no column in the schema held a base_url. The function could not be implemented, and the reason was not in the ticket list.",
+          "severity": 4,
+          "frequency": 0.4
+        },
+        {
+          "title": "A number that does not reconcile is a number nobody measured",
+          "body": "The handoff reconciles 1486 workspace tests against 1005 in the db crate by checking that server --test api moved 168 to 178, exactly the 10 new tests. It notes this repo has hit the does-not-add-up case three times. Agreeing totals are the only free signal that both numbers were real.",
+          "severity": 3,
+          "frequency": 0.4
+        }
+      ],
+      "features": [
+        {
+          "title": "Phase Phase 0: Foundation (est. 4\u20136 weeks)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 1: Web MVP: ontology governance, trust, moderation, Q&A (est. 6\u20138 weeks)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 1b: Invitation system (est. 2\u20133 weeks)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 2: Discovery, search & the feed machine (est. 6\u20138 weeks)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 3: Social layer (est. 8\u201310 weeks)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 4: Theme gravity, DNA & governance (est. 5\u20136 weeks)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 5: Truth & evidence (est. 3\u20134 weeks)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 6: Federation & portable identity (est. 8\u201310 weeks)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 7: PWA, Tauri local node & privacy (est. 6\u20138 weeks)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 8: Marketplace, extensibility & economy (est. 7\u20138 weeks)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 10: Everything-app layer (v4.8) (est. 6\u20138 weeks)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 11: Roadmap kanban & Elo consensus (v4.9) (est. 2\u20133 weeks)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 12: Tiered gravity & auto-federation (v4.10) (est. 4\u20135 weeks)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 13: Community structure (v4.11) (est. 4\u20135 weeks)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 14: Safety & flexibility layer (v4.12) (est. 4\u20135 weeks)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 16: Advocacy rewards & creator content directives (v4.16) (est. 2\u20133 weeks)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 17: Mainstream mode, recommendation engine & ranker experiments (v4.17) (est. 4\u20136 weeks)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 20: Ranking objectives, entity adapters and experiments (T75\u2013T79)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 21: Payout cap and surplus promotion to new creators (T80\u2013T84, planned)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Phase Phase 22: Source import spine, calibrated decision layer & operator diagnostics (T85\u2013T96, planned)",
+          "body": "From docs/spec/PLAN.md. The specification is 3,982 lines and cites its own section numbers in code comments and tests, so a section reference is a usable pointer. Ordering in the plan is strict and several phases exist because a cheaper ordering opens the app on a broken surface.",
+          "effort": "XL",
+          "status": "consensus",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "Ticket work T1-T96 (87 recorded done)",
+          "body": "gravity works in numbered tickets rather than one feature per row. The handoff explicitly marks 9 as DONE with commit hashes, and names the highest ticket referenced as T96. Individual tickets are not expanded here; a survey should read the handoff's own audit trail. What is recorded below is the state that document states, not a fresh measurement.",
+          "effort": "L",
+          "status": "in_progress",
+          "complaints": [
+            0
+          ]
+        },
+        {
+          "title": "build_theme_vector() \u2014 the one deliberately unfinished stub",
+          "body": "Returns None, so Jaccard remains the live path. The handoff's reasoning is that \u00a714.16b calls the vector an optimization, not a requirement, and names Jaccard as the universal fallback, so the system is correct without it. It does need pgvector plus an embedder, and there is no embedding storage anywhere in the schema. That is a feature with a model-version story behind it, not a query to write.",
+          "effort": "L",
+          "status": "draft",
+          "complaints": [
+            2
+          ]
+        },
+        {
+          "title": "\u00a714.16d disclosure gradient (open / structural / none)",
+          "body": "Implemented and load-bearing: an instance must be able to auto-federate WITHOUT disclosing themes that are kink, explicit or political. The privacy requirement turned out to be the same mechanism as the signature requirement \u2014 a document is only as private as its signature, so fixing the fake signature is what makes coarse disclosure safe. The three views publish tag names plus a theme vector, per-tier counts only, or nothing.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            2
+          ]
+        },
+        {
+          "title": "instance_endpoints: where a remote instance lives",
+          "body": "fetch_remote() was blocked on something the ticket list never mentioned: its only argument was a remote_instance_did, and a did:key is a key, not an address. instance_endpoints now holds (DID, base_url) per local instance, admin-supplied and never inferred from a key, with address changes recorded in federation_endpoint_history. The fetcher itself is public-IP-only, DNS-rebinding-closed by connecting to the checked literal address, redirect-per-hop re-checked, with a total deadline and no proxy.",
+          "effort": "M",
+          "status": "shipped",
+          "complaints": [
+            2
           ]
         }
       ]
