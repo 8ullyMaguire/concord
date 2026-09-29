@@ -235,6 +235,25 @@ func (s *Server) Router() http.Handler {
 
 	r.Get("/api/v1/search", s.handleSearch)
 
+	// Criteria-aware ranking (2026-09-29). Criteria are per-project, proposable,
+	// and each carries its own Glicko-2 pool, so "best designed" and "best
+	// lightweight" are different questions rather than one blended score.
+	r.Route("/api/v1/projects/{project_id}/criteria", func(r chi.Router) {
+		r.Get("/", s.handleListCriteria)
+		r.Post("/", s.handleCreateCriterion)
+		r.Route("/{id}", func(r chi.Router) {
+			r.Post("/vote", s.handleCastCriterionVote)
+			r.Put("/active", s.handleSetCriterionActive)
+		})
+	})
+	// A weight vector belongs in a body, so composite ranking is a POST. It is
+	// the one query in the API that is not a plain GET.
+	r.Post("/api/v1/projects/{project_id}/rank/composite", s.handleCompositeRank)
+	r.Route("/api/v1/projects/{project_id}/criteria-profiles", func(r chi.Router) {
+		r.Get("/", s.handleListCriteriaProfiles)
+		r.Post("/", s.handleSaveCriteriaProfile)
+	})
+
 	// Complaints
 	r.Route("/api/v1/projects/{project_id}/complaints", func(r chi.Router) {
 		r.Get("/", s.handleListComplaints)
