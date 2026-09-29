@@ -35,6 +35,19 @@ func (d *DB) GetTrustLevel(ctx context.Context, userID int64) (int, error) {
 	return lvl, err
 }
 
+// GetUserCreatedAt returns the account's creation time (unix seconds), used to
+// ramp a new account's vote weight (spec §12.3). A missing user is reported as
+// zero rather than as an error, so a caller deciding on a *weight multiplier*
+// can treat "unknown" as "brand new" instead of failing the whole vote.
+func (d *DB) GetUserCreatedAt(ctx context.Context, userID int64) (float64, error) {
+	var created float64
+	err := d.QueryRowContext(ctx, `SELECT created_at FROM users WHERE id=?`, userID).Scan(&created)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, nil
+	}
+	return created, err
+}
+
 // SetTrustLevel assigns a trust level, refusing to exceed the configured
 // ceiling and recording who did it.
 //

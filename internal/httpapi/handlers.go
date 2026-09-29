@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -301,6 +302,14 @@ func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
 	// Compute weight server-side from voter reputation — never trust client-supplied weight
 	voterReputation, _ := s.Store.GetReputation(r.Context(), projectID, actorID)
 	weight := ranking.VoteWeight(voterReputation, 1.0, charter.VoteWeightCap)
+	// Ramp a new account's weight from zero over its first week (spec §12.3).
+	// A throwaway account cannot buy influence; a real new contributor is not
+	// locked out of the vote it came to cast.
+	createdAt, err := s.Store.GetUserCreatedAt(r.Context(), actorID)
+	if err == nil {
+		age := ranking.AccountAgeDays(createdAt, float64(time.Now().Unix()))
+		weight *= ranking.AgeGateMultiplier(age)
+	}
 	vote, err := s.Store.RecordVote(r.Context(), projectID, actorID, req.FeatureA, req.FeatureB, req.Outcome, weight, charter)
 	if err != nil {
 		mapError(w, err)

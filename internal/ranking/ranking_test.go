@@ -126,6 +126,91 @@ func TestVoteWeight(t *testing.T) {
 		}
 	}
 }
+func TestAgeGateMultiplier(t *testing.T) {
+	cases := []struct {
+		name string
+		age  float64
+		want float64
+	}{
+		{"brand new account has no weight", 0, 0.0},
+		{"half the window is half weight", AccountAgeGateDays / 2, 0.5},
+		{"at the window is full weight", AccountAgeGateDays, 1.0},
+		{"beyond the window stays at full", AccountAgeGateDays * 10, 1.0},
+		{"a year-old account is unaffected", 365, 1.0},
+		// Clock skew must not penalise the voter: a created_at slightly in the
+		// future reads as brand new (weight 0), not as a negative multiplier.
+		{"future created_at reads as brand new", -0.5, 0.0},
+		{"far-future created_at is still clamped", -30, 0.0},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := AgeGateMultiplier(c.age); math.Abs(got-c.want) > 1e-9 {
+				t.Errorf("AgeGateMultiplier(%v) = %v, want %v", c.age, got, c.want)
+			}
+		})
+	}
+}
+
+func TestAccountAgeDays(t *testing.T) {
+	now := 1_700_000_000.0
+	if got, want := AccountAgeDays(now, now), 0.0; math.Abs(got-want) > 1e-9 {
+		t.Errorf("AccountAgeDays(now, now) = %v, want 0", got)
+	}
+	if got, want := AccountAgeDays(now-7*86400, now), 7.0; math.Abs(got-want) > 1e-9 {
+		t.Errorf("AccountAgeDays(7d ago) = %v, want 7", got)
+	}
+}
+
+// The gate is a multiplier on weight, so it must never make a vote *stronger*
+// than the unramped weight — only weaker, and never negative.
+func TestAgeGateOnlyReducesWeight(t *testing.T) {
+	full := VoteWeight(50, 1.0, 3.0)
+	for _, age := range []float64{0, 1, 3, 6, 6.9, 7, 30} {
+		gated := full * AgeGateMultiplier(age)
+		if gated > full+1e-9 {
+			t.Errorf("age %v: gated weight %v exceeded ungated %v", age, gated, full)
+		}
+		if gated < 0 {
+			t.Errorf("age %v: gated weight %v is negative", age, gated)
+		}
+	}
+}
+
+// A brand-new account weighs zero. The vote is still recorded, but it must
+// leave the ratings completely untouched — including RD and volatility, since
+// priority is scored on the lower confidence bound and shrinking RD is itself
+// a way to push a feature up the board.
+func TestAgeGateZeroWeightIsFullNoOp(t *testing.T) {
+	if m := AgeGateMultiplier(0); m != 0 {
+		t.Fatalf("expected zero multiplier for a brand-new account, got %v", m)
+	}
+	a := Feature{R: 1500, RD: 350, Vol: 0.06}
+	b := Feature{R: 1500, RD: 400, Vol: 0.07}
+	a2, b2 := ApplyPairwiseVote(a, b, OutcomeA, 0, 0.5)
+	if a2 != a || b2 != b {
+		t.Errorf("zero-weight vote changed state: a %+v -> %+v, b %+v -> %+v", a, a2, b, b2)
+	}
+}
+
+// A partially-ramped account (day 3 of 7) does move the rating, and moves it
+// strictly less than a fully-established voter would.
+func TestAgeGateRampScalesButPreservesInfluence(t *testing.T) {
+	a := Feature{R: 1500, RD: 350, Vol: 0.06}
+	b := Feature{R: 1500, RD: 350, Vol: 0.06}
+	ramped, _ := ApplyPairwiseVote(a, b, OutcomeA, 0.5, 0.5)
+	full, _ := ApplyPairwiseVote(a, b, OutcomeA, 1.0, 0.5)
+	if ramped.R == a.R {
+		t.Error("a half-ramped account should still move the rating")
+	}
+	// "Less influence" means a smaller *move* from the starting rating, not a
+	// lower ending rating: a weaker voter's outcome is a shorter step away
+	// from the prior. Asserting on the delta catches the real property.
+	if rampedDelta, fullDelta := ramped.R-a.R, full.R-a.R; rampedDelta >= fullDelta {
+		t.Errorf("half-ramped voter moved rating by %v, full voter by %v: the ramp did not damp the vote",
+			rampedDelta, fullDelta)
+	}
+}
+
 func TestPainAndPriority(t *testing.T) {
 	// severity 5, frequency 1, affected 10, no decay: 5·ln(11) ≈ 11.9829
 	pain := PainScore(5, 1, 1, 10, 0, 90)

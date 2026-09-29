@@ -129,3 +129,91 @@ func TestDefaultCharterCollectiveIsQuorumGated(t *testing.T) {
 		t.Fatal("technical approval must be required by default")
 	}
 }
+
+func TestDeadlineExpiry(t *testing.T) {
+	const day = 24 * 3600
+	opens := 1000.0
+	closes := opens + 7*day // the default 7-day vote window
+
+	t.Run("a call inside its window is not expired", func(t *testing.T) {
+		d := Deadline{OpensAt: opens, ClosesAt: closes}
+		if d.Expired(opens + day) {
+			t.Error("a call with time left must not be expired")
+		}
+		if d.Expired(opens) {
+			t.Error("a call that has not even opened must not be expired")
+		}
+	})
+
+	t.Run("past the window with no extensions used, it is extendable not expired", func(t *testing.T) {
+		d := Deadline{OpensAt: opens, ClosesAt: closes}
+		if d.Expired(closes + 1) {
+			t.Error("a call that may still be extended must not be expired")
+		}
+		if !d.Extendable() {
+			t.Error("expected the first extension to be available")
+		}
+	})
+
+	t.Run("running out of extensions freezes rather than expires", func(t *testing.T) {
+		d := Deadline{OpensAt: opens, ClosesAt: closes, Extensions: MaxWindowExtensions}
+		// Still inside the final window: alive, and can be closed explicitly.
+		if d.Expired(opens + day) {
+			t.Error("a frozen call with time left must not be expired")
+		}
+		// Past the final deadline: over.
+		if !d.Expired(closes + 1) {
+			t.Error("a call past its final deadline must be expired")
+		}
+		if d.Extendable() {
+			t.Error("a call at the extension cap must not be extendable")
+		}
+	})
+
+	t.Run("extensions preserve the original window length", func(t *testing.T) {
+		d := Deadline{OpensAt: opens, ClosesAt: opens + 3*day} // a custom 3-day window
+		d2, ok := d.Extend()
+		if !ok {
+			t.Fatal("first extension should be granted")
+		}
+		if want := opens + 6*day; d2.ClosesAt != want {
+			t.Errorf("ClosesAt = %v, want %v (original 3-day span, not a shortened one)", d2.ClosesAt, want)
+		}
+		if d2.Extensions != 1 {
+			t.Errorf("Extensions = %d, want 1", d2.Extensions)
+		}
+		if d2.OpensAt != d.OpensAt {
+			t.Error("extending must not move opens_at")
+		}
+	})
+
+	t.Run("at most MaxWindowExtensions are granted", func(t *testing.T) {
+		d := Deadline{OpensAt: opens, ClosesAt: closes}
+		granted := 0
+		for {
+			next, ok := d.Extend()
+			if !ok {
+				break
+			}
+			d, granted = next, granted+1
+		}
+		if granted != MaxWindowExtensions {
+			t.Errorf("granted %d extensions, want exactly MaxWindowExtensions=%d", granted, MaxWindowExtensions)
+		}
+		// And the call is now genuinely over rather than merely frozen.
+		if !d.Expired(d.ClosesAt + 1) {
+			t.Error("a call that exhausted every extension should be expired past its deadline")
+		}
+	})
+
+	t.Run("a degenerate zero-length window still gets a real span", func(t *testing.T) {
+		d := Deadline{OpensAt: opens, ClosesAt: opens}
+		d2, ok := d.Extend()
+		if !ok {
+			t.Fatal("expected an extension")
+		}
+		if d2.ClosesAt <= opens {
+			t.Errorf("a zero-span window must still be extended by a positive amount, got %v", d2.ClosesAt)
+		}
+	})
+}

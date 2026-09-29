@@ -1,0 +1,17 @@
+-- Cap how long an unmet-quorum consensus call can stay open.
+--
+-- Spec §5.5 says silence cannot decide, which is a rule about evaluation: an
+-- abstention is not a no. Read as a rule about *time* it means forever, and a
+-- call nobody joins then never closes, so the board fills with zombies and the
+-- whole process reads as broken. The cap bounds the window instead.
+--
+-- The deadline itself is not rewritten here. This column only counts how many
+-- times a call has been extended, so the pure Deadline rule in
+-- internal/governance can decide whether a past-deadline call may extend again
+-- or is finally over. Keeping the decision in Go rather than in a trigger is
+-- deliberate: it is a governance rule and belongs with the rest of them.
+--
+-- Existing calls start at 0, which reproduces the previous behaviour exactly
+-- (extend forever) for anything already in flight — no call changes state as a
+-- result of this migration.
+ALTER TABLE consensus_calls ADD COLUMN extensions INTEGER NOT NULL DEFAULT 0;

@@ -210,3 +210,55 @@ func (c Charter) WIPFor(phase string) int {
 		return 0
 	}
 }
+
+// MaxWindowExtensions bounds how far an unmet quorum may push a call's
+// deadline (spec §5.5: "silence cannot decide").
+//
+// Silence not deciding is a rule about *evaluation*, not about eternity. With
+// no cap, a call nobody joins stays open forever and accumulates a board of
+// zombies that makes the whole process look broken. With a cap, a call that
+// still has not reached quorum when the window runs out expires, and expiry is
+// deliberately distinct from rejection: nobody voted against it, it simply
+// ran out of attention. Reusing "rejected" would put a project's failure to
+// find participants in the same bucket as a proposal that was argued down.
+const MaxWindowExtensions = 2
+
+// Deadline is a consensus call's open/close bookkeeping.
+type Deadline struct {
+	OpensAt    float64
+	ClosesAt   float64
+	Extensions int // window extensions already applied
+}
+
+// Expired reports whether the call is past its final deadline and therefore can
+// no longer be extended.
+//
+// A call that is inside its window, or that has already been extended the
+// maximum number of times but still has time left, returns false — running out
+// of extensions freezes the deadline rather than expiring the call on the spot.
+// The two are different: a frozen call can still be closed by an explicit
+// decision, whereas an expired one is over.
+func (d Deadline) Expired(now float64) bool {
+	if now < d.ClosesAt {
+		return false
+	}
+	return d.Extensions >= MaxWindowExtensions
+}
+
+// Extendable reports whether an unmet-quorum call may still push its deadline.
+func (d Deadline) Extendable() bool { return d.Extensions < MaxWindowExtensions }
+
+// Extend returns a new deadline one window-length later, or the deadline
+// unchanged and false if no extension remains. The window length is the
+// original opens_at→closes_at span, so extending does not silently shorten the
+// window on a call that was created with a custom duration.
+func (d Deadline) Extend() (Deadline, bool) {
+	if !d.Extendable() {
+		return d, false
+	}
+	span := d.ClosesAt - d.OpensAt
+	if span <= 0 {
+		span = 24 * 3600 // a degenerate window still gets one day, not zero
+	}
+	return Deadline{OpensAt: d.OpensAt, ClosesAt: d.ClosesAt + span, Extensions: d.Extensions + 1}, true
+}

@@ -17,12 +17,44 @@ type Metrics struct {
 
 // Weights are the transparent, exposed components of the health score.
 // They must sum to 1 — users may reweight their own search (spec §15).
+//
+// They are *expected* to sum to 1, not required to: the value is a plain
+// struct so callers can construct one from user input, and a hand-typed
+// `Weights{Recency: 0.5, Responsiveness: 0.5}` sums to 1 by accident rather
+// than by intent. Nothing stopped a malformed set from producing a score
+// outside [0,1], which would then be written into project_metrics.health_score
+// and read back as if it were a normalised score. HealthScore normalises, so
+// the invariant is enforced where it is used rather than trusted at the call
+// site.
 type Weights struct {
 	Recency, Responsiveness, Breadth, Cadence float64
 }
 
 // DefaultWeights is Concord's neutral weighting.
 var DefaultWeights = Weights{Recency: 0.35, Responsiveness: 0.25, Breadth: 0.20, Cadence: 0.20}
+
+// Normalized returns w rescaled so its components sum to 1, and reports
+// whether any rescaling was needed.
+//
+// An all-zero weight set is returned unchanged alongside ok=false: there is no
+// meaningful normalisation of "no opinion", and silently substituting the
+// defaults would make a caller that passed zeros unable to tell its input was
+// rejected. The zero set scores 0 everywhere, which is honest.
+func (w Weights) Normalized() (Weights, bool) {
+	sum := w.Recency + w.Responsiveness + w.Breadth + w.Cadence
+	if sum <= 0 {
+		return w, false
+	}
+	if math.Abs(sum-1.0) < 1e-9 {
+		return w, true
+	}
+	return Weights{
+		Recency:        w.Recency / sum,
+		Responsiveness: w.Responsiveness / sum,
+		Breadth:        w.Breadth / sum,
+		Cadence:        w.Cadence / sum,
+	}, true
+}
 
 // Breakdown exposes each component so search UIs can show *why* a project
 // scores what it scores.
@@ -65,7 +97,14 @@ func cadenceScore(releases90d int) float64 {
 // HealthScore computes the composite maintenance-health score in [0,1].
 // Every component is exposed in the returned Breakdown (spec §15:
 // "transparent, not vibes").
+//
+// The weights are normalised first, so a caller that supplied a set not summing
+// to 1 gets a score on the same scale as everyone else's rather than one that
+// can exceed 1 or collapse toward 0.
 func HealthScore(m Metrics, w Weights) Breakdown {
+	if n, ok := w.Normalized(); ok {
+		w = n
+	}
 	b := Breakdown{
 		Recency:        recencyScore(m.LastCommitAgeDays),
 		Responsiveness: responsivenessScore(m.MedianReviewHours),

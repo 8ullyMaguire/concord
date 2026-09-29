@@ -392,6 +392,13 @@ func TestVoteRoundTrip(t *testing.T) {
 	featB := int64(featBody["id"].(float64))
 
 	// A second person votes. The author cannot: see registerOn.
+	//
+	// The account is seconds old, so the account-age gate (spec §12.3) gives it
+	// zero weight: the vote is accepted and recorded, but carries no influence.
+	// That is the intended behaviour for a fresh account, not a defect — so the
+	// assertion is that the weight is exactly 0 and the vote still lands, not
+	// that the weight is positive. A positive-weight path is covered by
+	// TestAgeGateRampScalesButPreservesInfluence in the ranking package.
 	voterTok := registerOn(t, ts, "ranker")
 	resp, voteBody := postJSON(t, ts,
 		"/api/v1/projects/"+slugOf(t, ts, projID)+"/features/"+itoa(featA)+"/vote",
@@ -400,8 +407,13 @@ func TestVoteRoundTrip(t *testing.T) {
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("cast vote: status %d body=%v", resp.StatusCode, voteBody)
 	}
-	if voteBody["weight"].(float64) <= 0 {
-		t.Fatalf("expected positive vote weight, got %v", voteBody["weight"])
+	if got := voteBody["weight"].(float64); got != 0 {
+		t.Fatalf("a brand-new account should weigh exactly 0, got %v", got)
+	}
+	// The vote must still be recorded — the gate reduces influence, it does not
+	// discard participation.
+	if voteBody["outcome"] != "a" {
+		t.Fatalf("vote should still be recorded, got %v", voteBody)
 	}
 }
 
