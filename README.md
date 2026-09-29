@@ -29,7 +29,43 @@ curl -s 'localhost:8410/api/v1/search?q=consensus&tag=governance&sort=health'
 
 Environment: `CONCORD_DB` (default `$XDG_DATA_HOME/concord/concord.db`),
 `CONCORD_LISTEN` (default `127.0.0.1:8410`),
-`CONCORD_FORGEJO_SECRET` (webhook HMAC secret, optional).
+`CONCORD_FORGEJO_SECRET` (webhook HMAC secret, optional),
+`CONCORD_TRUST_LEVEL_MIN` (minimum trust level required to set a feature's
+status, default `1`).
+
+### Trust levels and feature status
+
+A feature is created as `draft`. Changing its status is normally a side effect
+of the governance flow: a consensus call can set `consensus`, and an approved
+merge request sets `shipped`. `PUT /api/v1/projects/{slug}/features/{id}/status`
+is the direct route, for the cases the flow cannot express — importing a
+portfolio that already has a state, or a maintainer recording a decision out of
+band.
+
+That route is gated on a per-user `trust_level` (migration `0004`), compared
+against `CONCORD_TRUST_LEVEL_MIN`. The threshold defaults to the highest level
+`trust_config.max_level` allows, so **an unconfigured instance is locked**: a
+freshly registered account cannot set a status. An unparseable or negative value
+falls back to the default rather than opening the gate.
+
+Trust level is deliberately not the same thing as a project role. A role is
+granted per project and answers "what may this person do here"; a trust level is
+per user and answers "how much do we believe them on this instance". Coupling
+them would change an account's power when it joins a project.
+
+To grant a level, use the store's `SetTrustLevel` (it enforces the ceiling and
+writes a `trust_grants` audit row) rather than a bare `UPDATE`:
+
+```sql
+-- one-off bootstrap, on an account that already exists
+UPDATE users SET trust_level = 1 WHERE username = 'someone';
+INSERT INTO trust_grants (user_id, level, granted_by, reason, created_at)
+SELECT id, 1, id, 'bootstrap', strftime('%s','now')
+  FROM users WHERE username = 'someone';
+```
+
+To raise the instance ceiling, edit `trust_config.max_level` (default `1`) —
+a level above it cannot be assigned by any path.
 
 ## Layout
 
