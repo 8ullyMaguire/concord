@@ -258,17 +258,29 @@ func Composite(
 		return nil
 	}
 
-	// Effective weights: the caller's where they gave one, else the criterion's
-	// own default. An explicit weight of 0 must win over the default, so the
-	// caller's map is consulted first.
+	// Effective weights.
+	//
+	// If the caller named any criterion, that list is the whole query: an
+	// unnamed criterion is EXCLUDED. Otherwise every active criterion
+	// contributes at its own default.
+	//
+	// The earlier behaviour — unnamed criteria joining at their default — made
+	// "rank by design only" blend efficiency in at an equal weight, and the
+	// result matched neither criterion's own ordering. The weighting interface
+	// was answering a question nobody asked. Callers who want everything can
+	// send nothing and get the defaults.
 	caller := make(map[int64]float64, len(weights))
 	for _, w := range weights {
 		caller[w.CriterionID] = w.Weight
 	}
+	restrict := len(caller) > 0
 	eff := make([]Weight, 0, len(active))
 	for _, c := range active {
 		w, ok := caller[c.ID]
 		if !ok {
+			if restrict {
+				continue
+			}
 			w = c.DefaultW
 		}
 		eff = append(eff, Weight{CriterionID: c.ID, Weight: w})

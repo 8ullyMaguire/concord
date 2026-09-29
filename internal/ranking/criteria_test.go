@@ -23,6 +23,81 @@ func closeTo(t *testing.T, got, want, tol float64, what string) {
 	}
 }
 
+// Naming one criterion must rank by THAT criterion alone.
+//
+// This test exists because the first implementation got it wrong: an unnamed
+// criterion fell back to its own default weight, so "rank by design only"
+// blended efficiency in at 0.5 and returned an order matching neither
+// criterion. Caught only by inspecting a live response, because the unit tests
+// all passed weights for every criterion and so never exercised the case.
+func TestNamingOneCriterionExcludesTheOthers(t *testing.T) {
+	cs := []Criterion{crit(1, "design", DirHigher, 1), crit(2, "efficiency", DirHigher, 1)}
+	// Design: f1 > f2 > f3. Efficiency: f3 > f2 > f1 — exactly reversed.
+	rs := map[int64][]Rating{
+		1: {rat(1, 1, 1700, 30, 10), rat(2, 1, 1500, 30, 10), rat(3, 1, 1300, 30, 10)},
+		2: {rat(1, 2, 1300, 30, 10), rat(2, 2, 1500, 30, 10), rat(3, 2, 1700, 30, 10)},
+	}
+
+	byDesign := Composite(cs, rs, []Weight{{CriterionID: 1, Weight: 1}}, CompositeOptions{})
+	if len(byDesign) != 3 {
+		t.Fatalf("want 3 results, got %d", len(byDesign))
+	}
+	for _, r := range byDesign {
+		if len(r.Contributions) != 1 {
+			t.Fatalf("feature %d has %d contributions; naming one criterion "+
+				"must exclude the rest", r.FeatureID, len(r.Contributions))
+		}
+		if r.Contributions[0].CriterionID != 1 {
+			t.Errorf("feature %d contributed criterion %d, want 1",
+				r.FeatureID, r.Contributions[0].CriterionID)
+		}
+	}
+	if byDesign[0].FeatureID != 1 {
+		t.Errorf("design leader = %d, want 1", byDesign[0].FeatureID)
+	}
+
+	// And it must equal the single-criterion path, or "best designed" answers
+	// two different questions depending on which endpoint you call.
+	direct := RankByCriterion(cs[0], rs[1])
+	for i := range direct {
+		if direct[i].FeatureID != byDesign[i].FeatureID {
+			t.Errorf("position %d: single-criterion=%d composite=%d",
+				i, direct[i].FeatureID, byDesign[i].FeatureID)
+		}
+	}
+
+	// Naming the other one must give the reverse order.
+	byEfficiency := Composite(cs, rs, []Weight{{CriterionID: 2, Weight: 1}}, CompositeOptions{})
+	if byEfficiency[0].FeatureID != 3 {
+		t.Errorf("efficiency leader = %d, want 3", byEfficiency[0].FeatureID)
+	}
+}
+
+// Naming no criteria at all still means "everything at its defaults", so a
+// caller who just wants the project's overall view is not left with nothing.
+func TestNoWeightsUsesEveryDefault(t *testing.T) {
+	cs := []Criterion{crit(1, "design", DirHigher, 2), crit(2, "speed", DirHigher, 1)}
+	rs := map[int64][]Rating{
+		1: {rat(1, 1, 1700, 30, 10), rat(2, 1, 1300, 30, 10)},
+		2: {rat(1, 2, 1700, 30, 10), rat(2, 2, 1300, 30, 10)},
+	}
+	got := Composite(cs, rs, nil, CompositeOptions{})
+	if len(got) != 2 {
+		t.Fatalf("want 2 results, got %d", len(got))
+	}
+	if len(got[0].Contributions) != 2 {
+		t.Errorf("no weights gave %d contributions, want both criteria",
+			len(got[0].Contributions))
+	}
+	// The 2:1 default must be honoured, not flattened to equal weight.
+	w1 := map[string]float64{}
+	for _, c := range got[0].Contributions {
+		w1[c.Slug] = c.Weight
+	}
+	closeTo(t, w1["design"], 2.0/3.0, 1e-9, "design default share")
+	closeTo(t, w1["speed"], 1.0/3.0, 1e-9, "speed default share")
+}
+
 // A single feature has nothing to be compared against. Scoring it 1.0 would
 // claim it is the best thing in the project, which is an assertion nobody voted
 // for. 0.5 means "unranked", and is the whole point of the test.
