@@ -230,6 +230,22 @@ func (s *Server) Router() http.Handler {
 			r.Put("/tags", s.handleProjectTags)
 			r.Put("/languages", s.handleProjectLanguages)
 			r.Put("/metrics", s.handleProjectMetrics)
+
+			// Project documents (2026-09-30): a project's README, spec, plan
+			// and wiki. These are the documents that explain a project; until
+			// now they lived only in a repository and were invisible here.
+			//
+			// Nested under {slug} rather than {project_id} so they sit beside
+			// the rest of the project surface and share its slug resolution.
+			// Write requires contributor, delete requires maintainer.
+			r.Route("/documents", func(r chi.Router) {
+				r.Get("/", s.handleListDocuments)
+				r.Put("/", s.handlePutDocument)
+				r.Get("/kinds", s.handleDocumentKinds)
+				r.Get("/search", s.handleSearchDocuments)
+				r.Get("/{doc_id}", s.handleGetDocument)
+				r.Delete("/{doc_id}", s.handleDeleteDocument)
+			})
 		})
 	})
 
