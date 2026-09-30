@@ -207,6 +207,23 @@ func (d *DB) DeleteDocument(ctx context.Context, projectID, docID int64) error {
 	return nil
 }
 
+// hasFtsOperator reports whether the query uses FTS5 syntax rather than being
+// a single bare term: AND, OR, NOT, NEAR, ^, *, :, or a bracketed phrase.
+// Words are lowercased for the test because FTS5 keywords are case-insensitive.
+func hasFtsOperator(q string) bool {
+	lower := strings.ToLower(q)
+	for _, kw := range []string{" and ", " or ", " not ", " near "} {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	// A leading ^ anchors, a trailing * is a prefix, ':' is a column filter and
+	// '(' or ')' already excluded the term from the rewrite above.
+	return strings.HasPrefix(strings.TrimSpace(lower), "^") ||
+		strings.HasSuffix(q, "*") ||
+		strings.Contains(q, ":")
+}
+
 // ErrInvalidQuery is a malformed FTS5 expression from the caller.
 //
 // A sentinel rather than a substring test at the HTTP layer: the driver
@@ -225,6 +242,22 @@ func (d *DB) SearchDocuments(ctx context.Context, projectID int64, query string,
 	}
 	if limit <= 0 || limit > 100 {
 		limit = 20
+	}
+
+	// A bare term containing a hyphen is the overwhelmingly common case --
+	// "language-neutral", "content-addressed", "best-version" -- and FTS5 reads
+	// the hyphen as the NOT operator. So `language-neutral` searches for
+	// documents containing "language" and *not* "neutral", silently returning
+	// the wrong rows. Escaping the term in quotes makes the hyphen literal.
+	//
+	// Only unquoted single terms are rewritten. A caller who writes a real
+	// FTS5 expression (`"exact phrase" AND tag:x`) must get FTS5 semantics, and
+	// there is no way to tell the two apart by inspection -- so a query
+	// containing whitespace, a quote or an operator keyword is passed through
+	// untouched. A user typing a hyphenated word gets a search; a user who
+	// knows FTS5 gets FTS5.
+	if !strings.ContainsAny(query, " \"()") && !hasFtsOperator(query) {
+		query = `"` + strings.ReplaceAll(query, `"`, `""`) + `"`
 	}
 
 	rows, err := d.QueryContext(ctx, `

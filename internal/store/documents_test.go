@@ -278,3 +278,81 @@ func TestSearchDocuments_is_scoped_to_its_project(t *testing.T) {
 		t.Errorf("search leaked %d documents from another project", len(hits))
 	}
 }
+
+// A hyphenated term must be searched literally.
+//
+// FTS5 reads the hyphen in "language-neutral" as the NOT operator, so the
+// unescaped query silently returns documents containing "language" and not
+// "neutral" -- the wrong answer, with a 200 and no error. Found by searching
+// the real Tessera spec, where every architectural term is hyphenated.
+func TestSearchDocuments_hyphenated_term_is_literal(t *testing.T) {
+	d, uid, pid := documentsFixture(t)
+	ctx := context.Background()
+
+	if _, err := d.PutDocument(ctx, pid, uid, "spec", "arch", "Spec",
+		"Concepts are language-neutral; labels are not."); err != nil {
+		t.Fatalf("PutDocument: %v", err)
+	}
+	// A document with only the two halves of the term, and none of the phrase.
+	// If the hyphen is treated as NOT, the spec above is excluded and this one
+	// is returned: the test then fails on the wrong slug rather than a count.
+	if _, err := d.PutDocument(ctx, pid, uid, "readme", "readme", "Readme",
+		"The language is configurable and the neutral tone is optional."); err != nil {
+		t.Fatalf("PutDocument readme: %v", err)
+	}
+
+	hits, err := d.SearchDocuments(ctx, pid, "language-neutral", 10)
+	if err != nil {
+		t.Fatalf("SearchDocuments: %v", err)
+	}
+	if len(hits) != 1 {
+		t.Fatalf("got %d hits, want 1: %+v", len(hits), hits)
+	}
+	if hits[0].Kind != "spec" {
+		t.Errorf("hit kind = %q, want spec (the hyphen was read as NOT)", hits[0].Kind)
+	}
+}
+
+// A caller who writes real FTS5 syntax must still get FTS5 semantics, not a
+// quoted literal.
+func TestSearchDocuments_fts5_syntax_still_works(t *testing.T) {
+	d, uid, pid := documentsFixture(t)
+	ctx := context.Background()
+
+	if _, err := d.PutDocument(ctx, pid, uid, "readme", "readme", "Readme",
+		"alpha beta gamma"); err != nil {
+		t.Fatalf("PutDocument: %v", err)
+	}
+	if _, err := d.PutDocument(ctx, pid, uid, "spec", "s", "Spec",
+		"alpha only"); err != nil {
+		t.Fatalf("PutDocument spec: %v", err)
+	}
+
+	// alpha NOT beta: FTS5's NOT, and only the spec matches.
+	hits, err := d.SearchDocuments(ctx, pid, "alpha NOT beta", 10)
+	if err != nil {
+		t.Fatalf("SearchDocuments: %v", err)
+	}
+	if len(hits) != 1 || hits[0].Kind != "spec" {
+		t.Fatalf("alpha NOT beta: got %+v, want only the spec", hits)
+	}
+}
+
+// A multi-word bare query is treated as a phrase, not as an AND of terms.
+// "Definition of done" should find the document containing that phrase.
+func TestSearchDocuments_multiword_query_matches_a_phrase(t *testing.T) {
+	d, uid, pid := documentsFixture(t)
+	ctx := context.Background()
+
+	if _, err := d.PutDocument(ctx, pid, uid, "plan", "p", "Plan",
+		"Definition of done for Phases A-B"); err != nil {
+		t.Fatalf("PutDocument: %v", err)
+	}
+	hits, err := d.SearchDocuments(ctx, pid, "Definition of done", 10)
+	if err != nil {
+		t.Fatalf("SearchDocuments: %v", err)
+	}
+	if len(hits) != 1 {
+		t.Errorf("got %d hits for a phrase query, want 1", len(hits))
+	}
+}
