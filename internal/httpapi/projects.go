@@ -99,6 +99,22 @@ func (s *Server) handleProjectTags(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, p)
 }
 
+// handleGetProjectTags returns the names of a project's tags.
+//
+// The write half existed and the read half did not, which made `PUT /tags`
+// unverifiable from a client: it answered 200 with the project body, and the
+// project body has no tags in it. Found while adding Tessera's 13 tags -- all
+// correctly stored, none of them readable.
+func (s *Server) handleGetProjectTags(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	tags, err := s.Store.ProjectTags(r.Context(), slug)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string][]string{"tags": tags})
+}
+
 type languagesRequest struct {
 	Languages []store.Language `json:"languages"`
 }

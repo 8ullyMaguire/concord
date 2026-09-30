@@ -228,6 +228,10 @@ func (s *Server) Router() http.Handler {
 		r.Route("/{slug}", func(r chi.Router) {
 			r.Get("/", s.handleGetProject)
 			r.Put("/tags", s.handleProjectTags)
+			// The read half of the tags surface. Without it, PUT /tags is
+			// write-only: the handler returns the project, which carries no
+			// tags, so a client cannot confirm what it stored.
+			r.Get("/tags", s.handleGetProjectTags)
 			r.Put("/languages", s.handleProjectLanguages)
 			r.Put("/metrics", s.handleProjectMetrics)
 

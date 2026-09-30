@@ -385,6 +385,44 @@ func (d *DB) ApplyProjectTag(ctx context.Context, slug, tag string, appliedBy in
 	return d.ReindexProject(ctx, id)
 }
 
+// ProjectTags returns the names of every tag attached to a project, sorted.
+//
+// This exists because tags were write-only. `PUT /projects/{slug}/tags`
+// attached them and the handler then returned the project -- whose struct has no
+// Tags field -- so the caller got a 200 with no way to confirm what was stored
+// and no route anywhere to read them back. Thirteen tags on Tessera were
+// invisible: correct in the database, absent from the API, and only discoverable
+// by opening the database by hand.
+//
+// Sorted rather than in insertion order so two callers comparing the result get
+// the same string, which is what makes it assertable in a test.
+func (d *DB) ProjectTags(ctx context.Context, slug string) ([]string, error) {
+	id, err := d.projectIDBySlug(ctx, slug)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := d.QueryContext(ctx, `
+		SELECT t.name
+		FROM project_tags pt
+		JOIN tags t ON t.id = pt.tag_id
+		WHERE pt.project_id = ?
+		ORDER BY t.name`, id)
+	if err != nil {
+		return nil, fmt.Errorf("project tags: %w", err)
+	}
+	defer rows.Close()
+
+	out := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, fmt.Errorf("scan project tag: %w", err)
+		}
+		out = append(out, name)
+	}
+	return out, rows.Err()
+}
+
 // ensureTag creates-or-returns a global-namespace tag (project_id NULL).
 func (d *DB) ensureTag(ctx context.Context, name string) (int64, error) {
 	name = strings.ToLower(strings.TrimSpace(strings.ReplaceAll(name, " ", "-")))
