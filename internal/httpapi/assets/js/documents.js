@@ -143,9 +143,37 @@
         '<p class="empty-state-description">It exists, but has no content yet.</p></div>';
     }
 
+    // Two separate questions, previously conflated behind one size threshold.
+    //
+    // 1. Does this document need a table of contents? That depends on how many
+    //    headings it has, not how many bytes it has. The old single threshold
+    //    (200 KB) meant the TOC was only ever built for a document no larger
+    //    than the biggest in the corpus -- which is 55 KB -- so it was dead code.
+    //    The 36 KB frontend spec has 22 headings and rendered with no nav at all.
+    //
+    // 2. Does this document need lazy section rendering? That is purely a size
+    //    question: 1.7 MB of markdown in one innerHTML locks the tab. Below the
+    //    threshold the whole body is assigned at once, which is correct and fast
+    //    for a 55 KB document.
+    //
+    // So a mid-sized document now gets a TOC and renders whole; only a large one
+    // gets the section-splitting treatment.
     if (body.length < BIG_DOC_BYTES) {
-      return head + '<article class="markdown-body" data-markdown>' +
-        escapeTextForAttr(body) + '</article>';
+      // Nothing is deferred below the threshold, so the body is rendered as one
+      // article and the TOC is built afterwards from the ids the renderer
+      // actually emitted (see buildTOCFromDOM).
+      //
+      // It used to be built from splitSections' count instead, which is a
+      // parallel guess at the same numbering. The two disagreed: splitSections
+      // treats the run of text before the first H2 as its own section, so it
+      // counts one more section than the document has H2s. That produced a TOC
+      // with links to #doc-s-8..13 that point at nothing, and duplicate ids for
+      // every heading after the first block. Reading the ids back is the only
+      // construction that cannot drift from the markup it links to.
+      return head +
+        '<div class="doc-large"><nav class="doc-toc" aria-label="Sections" hidden></nav>' +
+        '<article class="markdown-body" data-markdown>' +
+        escapeTextForAttr(body) + '</article></div>';
     }
 
     // Large document: render section by section on demand, so the first paint
@@ -218,9 +246,41 @@
       var text = el.textContent || '';
       // markdown.js escapes authored HTML itself, so its output is the only
       // innerHTML assignment on this page.
-      el.innerHTML = window.ConcordMarkdown.render(text);
+      //
+      // idStart: on the large-document path each section is its own [data-markdown]
+      // node, rendered by its own render() call. Heading ids are numbered from
+      // zero per render, so without the section index every section emits
+      // doc-s-0 and the contents list can only ever reach the first one.
+      var holder = el.closest('[data-section-body]');
+      var idStart = holder ? Number(holder.getAttribute('data-section-body')) : 0;
+      el.innerHTML = window.ConcordMarkdown.render(text, { idStart: idStart });
       el.removeAttribute('data-markdown');
     });
+    // After rendering, not before: the TOC is built from ids that only exist
+    // once the markdown has been rendered.
+    buildTOCFromDOM(root);
+  }
+
+  // buildTOCFromDOM fills a TOC nav from the H2 ids the renderer emitted.
+  //
+  // It reads the rendered headings rather than recomputing their numbering, so a
+  // link cannot exist without its target. A document with fewer than two
+  // headings gets no nav at all -- an empty "Contents" panel is worse than none.
+  function buildTOCFromDOM(root) {
+    var nav = root.querySelector('nav.doc-toc[hidden]');
+    if (!nav) return;
+    var headings = Array.prototype.slice.call(
+      root.querySelectorAll('.markdown-body h2[id^="doc-s-"]'));
+    if (headings.length < 2) {
+      nav.parentNode && nav.parentNode.removeChild(nav);
+      return;
+    }
+    nav.innerHTML = '<h2 class="doc-toc-title">Contents</h2><ol>' +
+      headings.map(function (h) {
+        return '<li><a class="doc-toc-link" href="#' + h.id + '">' +
+          esc(h.textContent || 'Introduction') + '</a></li>';
+      }).join('') + '</ol>';
+    nav.removeAttribute('hidden');
   }
 
   function wire(box, slug, doc) {
@@ -262,7 +322,12 @@
           if (!e.isIntersecting) return;
           var el = e.target.querySelector('[data-markdown]');
           if (el && el.hasAttribute('data-markdown')) {
-            el.innerHTML = window.ConcordMarkdown.render(el.textContent || '');
+            // Same idStart the eager path passes -- otherwise a section rendered
+            // here numbers its headings from 0 and the contents list cannot
+            // reach it.
+            var idx = Number(e.target.getAttribute('data-section-body')) || 0;
+            el.innerHTML = window.ConcordMarkdown.render(el.textContent || '',
+              { idStart: idx });
             el.removeAttribute('data-markdown');
             e.target.classList.remove('is-pending');
           }
@@ -276,9 +341,22 @@
       a.addEventListener('click', function (ev) {
         ev.preventDefault();
         var n = a.getAttribute('data-section');
-        var target = n === '0'
-          ? box.querySelector('.doc-large > .markdown-body')
-          : box.querySelector('[data-section-body="' + n + '"]');
+        var target;
+        if (n === null) {
+          // A whole-body document. Its headings carry real ids (doc-s-N), so the
+          // link names its target directly. Scrolling the wrapper rather than
+          // the heading would land at the section's top edge, which for the
+          // first heading is the document header itself.
+          var id = (a.getAttribute('href') || '').replace(/^#/, '');
+          target = id ? box.querySelector('#' + CSS.escape(id)) : null;
+        } else {
+          // A lazily-rendered section: the heading may not exist yet, because the
+          // section that contains it is still a placeholder. Fall back to the
+          // wrapper, which occupies space and is therefore scrollable.
+          target = n === '0'
+            ? box.querySelector('.doc-large > .markdown-body')
+            : box.querySelector('[data-section-body="' + n + '"]');
+        }
         if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     });

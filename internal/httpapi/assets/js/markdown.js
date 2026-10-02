@@ -53,6 +53,33 @@
     return url;
   }
 
+  // Heading ids, for the documents viewer's table of contents.
+  //
+  // Only level-2 headings get an id. That is a deliberate constraint, not an
+  // oversight: the TOC is built from splitSections(), which splits a document at
+  // level-2 headings and numbers those sections 0, 1, 2, ... So "the nth
+  // section" and "doc-s-n" have to be the same n. An earlier version numbered
+  // every heading level, which made the two schemes disagree the moment a
+  // document contained an H3 -- the third H2 would be doc-s-7 while the TOC
+  // linked to doc-s-3.
+  //
+  // Ids come from a counter rather than from the heading text. Text-derived ids
+  // ("Installation" -> "installation") collide on any document that repeats a
+  // heading, which real specs do constantly; a counter cannot.
+  //
+  // The large-document path renders one section per render() call, so each call
+  // needs to know where in the document it sits. That is what idStart is for,
+  // and documents.js passes the section index. Without it every section would
+  // restart at doc-s-0 and all but the first would be unreachable.
+  function nextHeadingId(start) {
+    var n = start;
+    return function () {
+      var id = 'doc-s-' + n;
+      n++;
+      return id;
+    };
+  }
+
   // inline renders the span-level syntax. Text is escaped first and markup is
   // re-introduced after, so authored '<' can never become a tag: escaping happens
   // on the way in, not on the way out where a miss would be invisible.
@@ -149,7 +176,13 @@
   // CommonMark implementation because the alternative — a parser that handles
   // every construct — means trusting a much larger attack surface on content we
   // do not control.
-  function render(source) {
+  function render(source, opts) {
+    opts = opts || {};
+    // A per-call allocator, not a module-level counter reset. The documents page
+    // renders more than one markdown node per page -- a summary and the body --
+    // and with a shared counter the second node restarted at doc-s-0, so half
+    // the ids on the page were duplicates and the contents list had dead links.
+    var nextId = nextHeadingId(opts.idStart || 0);
     var src = String(source == null ? '' : source).replace(/\r\n?/g, '\n');
     var lines = src.split('\n');
     var out = [];
@@ -183,11 +216,18 @@
       // Blank line.
       if (/^\s*$/.test(line)) { i++; continue; }
 
+
       // ATX heading. Up to 6 hashes; the trailing-# closing sequence is stripped.
       var h = line.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/);
       if (h) {
         var level = h[1].length;
-        out.push('<h' + level + ' class="md-h' + level + '">' + renderInline(h[2]) + '</h' + level + '>');
+        // Only H2 gets an id. Without one a table of contents is a list of text
+        // that goes nowhere: the documents viewer links to #doc-s-N, which only
+        // works if this renderer numbers the same way. See nextHeadingId for why
+        // H2 specifically is the level that numbering is defined against.
+        var hid = level === 2 ? nextId() : '';
+        out.push('<h' + level + (hid ? ' id="' + hid + '"' : '') +
+          ' class="md-h' + level + '">' + renderInline(h[2]) + '</h' + level + '>');
         i++;
         continue;
       }

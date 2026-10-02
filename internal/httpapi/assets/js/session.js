@@ -85,21 +85,98 @@
 
   window.ConcordSession = ConcordSession;
 
+  // The account link used to point at '#account', a fragment that exists nowhere
+  // in the document, so signing in led to a dead click. There is no account page
+  // in this build, so it now goes to the projects list the account can act on and
+  // stops pretending to be a link into a profile that is not implemented.
+  var ACCOUNT_HREF = '/projects';
+
   function paint() {
     var link = document.querySelector('[data-auth-link]');
-    if (!link) return;
+    var signout = document.querySelector('[data-signout]');
     var s = ConcordSession.instance().refresh();
-    if (!s.signedIn()) {
-      link.textContent = 'Sign in';
-      link.href = '/login';
-      link.removeAttribute('title');
-      return;
+
+    if (link) {
+      if (!s.signedIn()) {
+        link.textContent = 'Sign in';
+        link.href = '/login';
+        link.removeAttribute('title');
+      } else {
+        var name = s.name();
+        link.textContent = name || 'Account';
+        link.href = ACCOUNT_HREF;
+        link.title = 'Signed in as ' + (name || 'this account');
+      }
     }
-    var name = s.name();
-    link.textContent = name || 'Account';
-    link.href = '#account';
-    link.title = 'Signed in as ' + (name || 'this account');
+
+    if (signout) {
+      signout.hidden = !s.signedIn();
+      signout.disabled = false;
+      signout.textContent = 'Sign out';
+    }
   }
+
+  // signOut ends the session on the server and locally, in that order.
+  //
+  // The server call matters: RevokeToken invalidates the bearer token, so
+  // clearing localStorage alone leaves a working credential in a database until
+  // it expires. That is the difference between signing out and pretending to.
+  //
+  // The local clear runs in a finally, so a failed or slow request cannot leave
+  // the person staring at a "Sign out" button that silently did nothing. If the
+  // revoke fails the token is still gone from this browser; the failure is
+  // reported rather than swallowed, because silently ignoring it would be a lie
+  // about a security-relevant action.
+  function signOut() {
+    var s = ConcordSession.instance();
+    var button = document.querySelector('[data-signout]');
+    if (button) {
+      button.disabled = true;
+      button.textContent = 'Signing out\u2026';
+    }
+
+    var done = function (failed) {
+      s.clear();
+      if (failed) {
+        if (button) {
+          button.disabled = false;
+          button.textContent = 'Sign out failed \u2014 try again';
+        }
+      } else {
+        // Full reload rather than a soft swap: every page caches rendered data
+        // keyed on the session, and none of them observe the change.
+        window.location.href = '/';
+      }
+    };
+
+    if (!s.token) { done(false); return; }
+
+    try {
+      fetch('/api/v1/auth/logout', {
+        method: 'POST',
+        headers: s.authHeaders()
+      }).then(function (res) {
+        // Only a 2xx counts as revoked. `res.status !== 204 && !res.ok` looked
+        // equivalent and is not: it treats a 401 as success, which is the exact
+        // case where the token is still live and the user believes otherwise.
+        done(!(res.status >= 200 && res.status < 300));
+      }).catch(function () {
+        done(true);
+      });
+    } catch (e) {
+      done(true);
+    }
+  }
+
+  ConcordSession.signOut = signOut;
+
+  document.addEventListener('click', function (e) {
+    var t = e.target;
+    if (t && t.closest && t.closest('[data-signout]')) {
+      e.preventDefault();
+      signOut();
+    }
+  });
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', paint);

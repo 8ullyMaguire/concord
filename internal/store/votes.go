@@ -52,7 +52,15 @@ func (d *DB) GetNextPair(ctx context.Context, projectID, voterID int64) (Feature
 		return Feature{}, Feature{}, fmt.Errorf("iterating features: %w", err)
 	}
 	if len(features) < 2 {
-		return Feature{}, Feature{}, fmt.Errorf("need at least 2 features to vote")
+		// ErrConflict, not a bare error. A bare fmt.Errorf falls through mapError
+		// to `default` and answers 500, so a project with one feature showed
+		// "Could not load a comparison -- HTTP 500" with a Try again button that
+		// fails identically forever. Nothing here is broken and nothing about the
+		// request is malformed: the instance simply has nothing to compare yet,
+		// which is ErrConflict's exact meaning -- a valid request the current
+		// state refuses, and a client that retries unchanged should expect the
+		// same answer. See docs/KNOWN-ISSUES.md (2026-10-02).
+		return Feature{}, Feature{}, fmt.Errorf("%w: need at least 2 features to vote", ErrConflict)
 	}
 
 	// Get pairs this voter already voted on

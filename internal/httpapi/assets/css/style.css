@@ -117,6 +117,27 @@ main.container {
 
 .site-nav a.active { background: var(--indigo-light); color: #4338ca; }
 
+/* Sign out sits in the nav but is a button, so it needs the link treatment
+   restated -- it inherits none of it. Styled to be visually a nav item while
+   remaining a real button, because the action it performs is a POST and must
+   not be reachable by a crawler following an href. */
+.site-nav .nav-signout {
+  border-radius: 0.5rem;
+  padding: 0.375rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  font-family: inherit;
+  color: var(--slate-600);
+  background: none;
+  border: 0;
+  cursor: pointer;
+  transition: background-color 0.15s, color 0.15s;
+}
+.site-nav .nav-signout:hover:not(:disabled) { background: var(--slate-100); color: var(--ink); }
+.site-nav .nav-signout:disabled { cursor: default; opacity: 0.7; }
+/* hidden must win over the flex layout, or the button reserves space while empty */
+.site-nav .nav-signout[hidden] { display: none; }
+
 /* Footer ---------------------------------------------------------------- */
 
 .site-footer {
@@ -721,6 +742,45 @@ a.card { display: block; color: inherit; }
 .btn-quiet { background: transparent; border-color: var(--border, #e2e8f0); color: var(--muted, #64748b); }
 .btn-quiet:hover { background: var(--bg-subtle, #f8fafc); }
 
+.kanban-note {
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  color: var(--muted, #64748b);
+}
+
+/* The 404 page. .notfound centres because it is a single short message with no
+   surrounding context, unlike .empty-state inside a page body. The button row
+   is a plain flex gap rather than .rank-actions, so it inherits no voting
+   layout. */
+.notfound {
+  margin: 4rem auto;
+  text-align: center;
+  max-width: 44ch;
+}
+.notfound-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  justify-content: center;
+  margin-top: 1.25rem;
+}
+
+.rank-keys {
+  font-size: 0.8rem;
+  color: var(--muted, #64748b);
+  margin: 0 0 0.75rem;
+}
+/* kbd needs an explicit font: the inherited one renders the arrows at a
+   different size and the row visibly jitters between pages. */
+.rank-keys kbd {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 0.9em;
+  background: var(--slate-100);
+  border: 1px solid var(--slate-200);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 0.05em 0.35em;
+}
 .rank-note {
   font-size: 0.8rem;
   color: var(--muted, #64748b);
@@ -1007,6 +1067,14 @@ a.card { display: block; color: inherit; }
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 0.875em; background: var(--slate-100);
   padding: 0.125em 0.3125em; border-radius: 4px; border: 1px solid var(--slate-200);
+  /* Inline code can be one long unbreakable token -- a flag, a path, a UUID.
+     Without this it sets its own width and overflows the document: measured at
+     601-647px wide at a 375px viewport, clipping the tail because the page
+     itself does not scroll sideways. break-word breaks an unbreakable token;
+     word-break: break-all would also chop ordinary prose mid-word. `anywhere`
+     additionally allows the box to shrink below its content width, which is what
+     keeps the flex/grid parent from being widened by the code span. */
+  overflow-wrap: anywhere;
 }
 .markdown-body .md-code {
   background: var(--slate-50); border: 1px solid var(--slate-200);
@@ -1061,6 +1129,7 @@ button:focus-visible,
 [tabindex]:focus-visible,
 summary:focus-visible,
 .site-nav a:focus-visible,
+.site-nav .nav-signout:focus-visible,
 .btn:focus-visible,
 .btn-quiet:focus-visible,
 .doc-kind:focus-visible,
@@ -1076,6 +1145,7 @@ textarea:focus-visible {
 /* Elements that sit on a coloured or already-ringed surface need the offset
    pulled in, or the ring lands under the border and looks like a mistake. */
 .site-nav a:focus-visible,
+.site-nav .nav-signout:focus-visible,
 .doc-kind:focus-visible { outline-offset: -2px; }
 
 /* A filled button is the one case where an indigo ring is invisible: .btn-primary

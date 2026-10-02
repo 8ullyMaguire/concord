@@ -50,16 +50,54 @@
       'or <a href="/register">create one</a> — registration takes a moment.</p></div>';
   }
 
-  function errorState(message) {
+  // An empty state is not an error: it is the ordinary answer for a voter who
+  // has nothing left to do, and it gets a forward link instead of a retry.
+  function emptyState(icon, title, description) {
+    return '<div class="empty-state">' +
+      '<div class="empty-state-icon">' + icon + '</div>' +
+      '<p class="empty-state-title">' + esc(title) + '</p>' +
+      '<p class="empty-state-description">' + esc(description) + '</p>' +
+      '<a class="btn btn-primary" href="/projects/' + encodeURIComponent(slug) +
+      '/ranking">See the ranking anyway</a></div>';
+  }
+
+  function errorState(message, retriable) {
     // A failure is rendered as a failure. Mapping a non-OK response to an empty
     // list is what made this site claim "No features yet" for a project with
     // three of them: the 404 looked like a valid empty answer, so nothing
     // prompted anyone to look.
+    //
+    // `retriable` defaults to true, so an unexpected failure keeps its Try again
+    // button. It is false for the states that retrying cannot fix -- a project
+    // with fewer than two features, a voter with nothing left to compare --
+    // because offering a button that fails identically is worse than no button.
     return '<div class="empty-state error-state">' +
       '<div class="empty-state-icon">\u26A0</div>' +
       '<p class="empty-state-title">Could not load a comparison</p>' +
       '<p class="empty-state-description">' + esc(message) + '</p>' +
-      '<button class="btn btn-primary" id="rank-retry">Try again</button></div>';
+      (retriable === false ? '' :
+        '<button class="btn btn-primary" id="rank-retry">Try again</button>') + '</div>';
+  }
+
+  // 409 is the store's "a valid request the current state refuses". For this
+  // endpoint that means one of two unretriable states: not enough features to
+  // compare, or this voter has exhausted the pairs. Both are reported as an
+  // empty state with a way forward rather than as an error with a dead button.
+  function unretriable(res, body) {
+    if (res.status !== 409 && res.status !== 422) return null;
+    var why = (body && (body.error || body.detail)) || '';
+    var few = /at least 2 features/i.test(why);
+    if (few) {
+      return emptyState('\u{1F4CB}',
+        'Nothing to compare yet',
+        'Ranking works by showing two features side by side. This project has ' +
+        'fewer than two, so there is no pair to vote on. Propose a second ' +
+        'feature and this page will have something to ask you.');
+    }
+    return emptyState('\u{1F64F}',
+      'You have voted on every pair here',
+      'Nothing left to compare for this project. New features will appear on ' +
+      'this page as they are proposed.');
   }
 
   function featureCard(f, side) {
@@ -101,6 +139,7 @@
         '<button class="btn" data-outcome="neither">Neither</button>' +
         '<button class="btn btn-quiet" data-outcome="skip">No preference</button>' +
       '</div>' +
+      keyHint() +
       '<p class="rank-note">A rating of 1500 ± 350 has barely been compared ' +
       'against anything. The ± is the uncertainty, and it is shown because ' +
       'a bare number would present noise as a measurement.</p>';
@@ -109,6 +148,55 @@
     Array.prototype.forEach.call(actions.querySelectorAll('button'), function (btn) {
       btn.addEventListener('click', function () { submit(btn.getAttribute('data-outcome')); });
     });
+  }
+
+  // Keyboard shortcuts. Every key routes through submit(), the same function the
+  // buttons call, so a key and a click cannot diverge in behaviour.
+  //
+  // The mapping is the one the frontend spec promises (7.2): arrows for the four
+  // real outcomes plus skip. ArrowLeft means A and ArrowRight means B, which
+  // reads left-to-right across the pair rather than encoding a preference
+  // direction -- so it does not invert if the pair is ever presented B first.
+  //
+  // Guards, each for a concrete failure:
+  //   - a pair must be on screen, so a stray arrow on the empty or signed-out
+  //     states does nothing;
+  //   - a key held down must not fire repeatedly, which would spend a voter's
+  //     whole queue on one keypress;
+  //   - keys are ignored while focus is in a text field or other editable
+  //     context, where an arrow means cursor movement;
+  //   - modified keystrokes are ignored, so a browser shortcut or an Alt+Left
+  //     back-navigation is not swallowed.
+  var KEY_OUTCOMES = {
+    ArrowLeft: 'a',
+    ArrowRight: 'b',
+    ArrowUp: 'both',
+    ArrowDown: 'neither',
+    s: 'skip',
+    S: 'skip'
+  };
+
+  function isTypingContext(el) {
+    if (!el) return false;
+    var tag = el.tagName;
+    return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' ||
+      el.isContentEditable === true;
+  }
+
+  function onKeyDown(ev) {
+    if (ev.defaultPrevented || ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    if (ev.repeat) return;                      // held key: one vote, not a queue
+    if (isTypingContext(ev.target)) return;     // arrows still mean caret movement
+    if (!window.__pair) return;                 // nothing to vote on
+    var outcome = KEY_OUTCOMES[ev.key];
+    if (!outcome) return;
+    ev.preventDefault();
+    submit(outcome);
+  }
+
+  function keyHint() {
+    return '<p class="rank-keys">Keyboard: <kbd>&larr;</kbd> A, <kbd>&rarr;</kbd> B, ' +
+      '<kbd>&uarr;</kbd> both, <kbd>&darr;</kbd> neither, <kbd>S</kbd> skip.</p>';
   }
 
   function submit(outcome) {
@@ -181,7 +269,14 @@
       }
       if (!res.ok) {
         return res.text().then(function (txt) {
-          root.innerHTML = errorState('HTTP ' + res.status + ': ' + txt);
+          // Parse the body so the 409 can be recognised. A malformed body falls
+          // back to the old rendering, which is the safe direction: an
+          // unrecognised failure stays a visible error.
+          var body = null;
+          try { body = JSON.parse(txt); } catch (e) { /* not JSON */ }
+          var friendly = unretriable(res, body);
+          root.innerHTML = friendly ||
+            errorState('HTTP ' + res.status + ': ' + txt);
           return null;
         });
       }
@@ -208,5 +303,9 @@
     document.addEventListener('click', function (e) {
       if (e.target && e.target.id === 'rank-retry') { window.__pair = null; load(); }
     });
+    // One listener for the page's life, rather than one per rendered pair: the
+    // handler reads window.__pair, so a newly rendered pair is picked up without
+    // rebinding, and re-binding on every render would leak one listener per vote.
+    document.addEventListener('keydown', onKeyDown);
   }
 })();

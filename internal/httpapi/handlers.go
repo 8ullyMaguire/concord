@@ -1295,11 +1295,15 @@ func (s *Server) handleProjectPage(w http.ResponseWriter, r *http.Request) {
 	// it is fetched from the API, which enforces visibility independently.
 	proj, err := s.Store.GetProject(r.Context(), slug)
 	if err != nil {
-		mapError(w, err)
+		// A miss on a page route gets the styled 404, not a JSON body. The
+		// status is still 404 in both branches below, and the reason string is
+		// deliberately the same for "no such project" and "not yours" so the page
+		// cannot be used to probe which slugs exist.
+		s.notFoundPage(w, r, "There is no project at this address.")
 		return
 	}
 	if !s.projectReadable(r, proj) {
-		mapError(w, store.ErrNotFound)
+		s.notFoundPage(w, r, "There is no project at this address.")
 		return
 	}
 	s.render(w, http.StatusOK, "project", struct {
@@ -1320,11 +1324,15 @@ func (s *Server) handleDocumentsPage(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	proj, err := s.Store.GetProject(r.Context(), slug)
 	if err != nil {
-		mapError(w, err)
+		// A miss on a page route gets the styled 404, not a JSON body. The
+		// status is still 404 in both branches below, and the reason string is
+		// deliberately the same for "no such project" and "not yours" so the page
+		// cannot be used to probe which slugs exist.
+		s.notFoundPage(w, r, "There is no project at this address.")
 		return
 	}
 	if !s.projectReadable(r, proj) {
-		mapError(w, store.ErrNotFound)
+		s.notFoundPage(w, r, "There is no project at this address.")
 		return
 	}
 	s.render(w, http.StatusOK, "documents", struct {
@@ -1341,11 +1349,15 @@ func (s *Server) handleBoardPage(w http.ResponseWriter, r *http.Request) {
 	// it is fetched from the API, which enforces visibility independently.
 	proj, err := s.Store.GetProject(r.Context(), slug)
 	if err != nil {
-		mapError(w, err)
+		// A miss on a page route gets the styled 404, not a JSON body. The
+		// status is still 404 in both branches below, and the reason string is
+		// deliberately the same for "no such project" and "not yours" so the page
+		// cannot be used to probe which slugs exist.
+		s.notFoundPage(w, r, "There is no project at this address.")
 		return
 	}
 	if !s.projectReadable(r, proj) {
-		mapError(w, store.ErrNotFound)
+		s.notFoundPage(w, r, "There is no project at this address.")
 		return
 	}
 	s.render(w, http.StatusOK, "board", struct {
@@ -1365,11 +1377,15 @@ func (s *Server) handleRankPage(w http.ResponseWriter, r *http.Request) {
 	// it is fetched from the API, which enforces visibility independently.
 	proj, err := s.Store.GetProject(r.Context(), slug)
 	if err != nil {
-		mapError(w, err)
+		// A miss on a page route gets the styled 404, not a JSON body. The
+		// status is still 404 in both branches below, and the reason string is
+		// deliberately the same for "no such project" and "not yours" so the page
+		// cannot be used to probe which slugs exist.
+		s.notFoundPage(w, r, "There is no project at this address.")
 		return
 	}
 	if !s.projectReadable(r, proj) {
-		mapError(w, store.ErrNotFound)
+		s.notFoundPage(w, r, "There is no project at this address.")
 		return
 	}
 	s.render(w, http.StatusOK, "rank", struct {
@@ -1386,11 +1402,15 @@ func (s *Server) handleRankingPage(w http.ResponseWriter, r *http.Request) {
 	// it is fetched from the API, which enforces visibility independently.
 	proj, err := s.Store.GetProject(r.Context(), slug)
 	if err != nil {
-		mapError(w, err)
+		// A miss on a page route gets the styled 404, not a JSON body. The
+		// status is still 404 in both branches below, and the reason string is
+		// deliberately the same for "no such project" and "not yours" so the page
+		// cannot be used to probe which slugs exist.
+		s.notFoundPage(w, r, "There is no project at this address.")
 		return
 	}
 	if !s.projectReadable(r, proj) {
-		mapError(w, store.ErrNotFound)
+		s.notFoundPage(w, r, "There is no project at this address.")
 		return
 	}
 	s.render(w, http.StatusOK, "ranking", struct {

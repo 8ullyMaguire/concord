@@ -1,0 +1,13 @@
+{{define "content"}}
+<div class="empty-state notfound">
+  <div class="empty-state-icon">🧭</div>
+  <p class="empty-state-title">Not found</p>
+  <p class="empty-state-description">
+    {{if .Reason}}{{.Reason}}{{else}}There is nothing at this address.{{end}}
+  </p>
+  <p class="notfound-links">
+    <a class="btn btn-primary" href="/projects">Browse projects</a>
+    <a class="btn" href="/search">Search</a>
+  </p>
+</div>
+{{end}}

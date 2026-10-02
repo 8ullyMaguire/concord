@@ -53,20 +53,50 @@
           return;
         }
 
+        // No cards at all, but the project has columns: say why, rather than
+        // rendering nine zeroes that read as "broken" instead of "empty".
+        if (!cards.length) {
+          var hasWork = (ctx.features || []).length > 0;
+          box.innerHTML = '<div class="empty-state"><div class="empty-state-icon">\u{1F4C5}</div>' +
+            '<p class="empty-state-title">Nothing on the board yet</p>' +
+            '<p class="empty-state-description">' + (hasWork
+              ? 'None of this project\u2019s ' + ctx.features.length +
+                ' features have a workflow status that matches a column yet.'
+              : 'This project has no features yet, so there is nothing to place.') +
+            '</p><p class="empty-state-description">' +
+            'A card appears here once a feature carries a status like ' +
+            'draft, in_progress or shipped.</p></div>';
+          if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
+          return;
+        }
+
+        var derivedCount = cards.filter(function (c) { return c.derived; }).length;
         var html = '<div class="kanban-board">';
         columns.forEach(function (col) {
           var inCol = cards.filter(function (c) { return c.column === col.name; });
+          // A derived card is sitting in its status column, not placed there by
+          // a person. Over-colouring them would imply the board had been curated;
+          // a caption below the board states the number instead.
           html += '<div class="kanban-column"><div class="kanban-column-header">' +
             '<span class="kanban-column-title">' + esc(col.name) + '</span>' +
             '<span class="kanban-column-count">' + inCol.length + (col.wip ? ' / WIP ' + col.wip : '') + '</span>' +
             '</div>';
           inCol.forEach(function (c) {
-            var title = titles[c.feature_id] || ('Feature #' + c.feature_id);
+            // The server sends the title for derived cards; the fetched feature
+            // list covers placed ones. Fall back rather than printing "Feature
+            // #0" for a card that somehow has no feature id.
+            var title = c.title || titles[c.feature_id] ||
+              (c.feature_id ? 'Feature #' + c.feature_id : 'Unknown item');
             html += '<div class="kanban-card">' + esc(title) + '</div>';
           });
           html += '</div>';
         });
         html += '</div>';
+        if (derivedCount) {
+          html += '<p class="kanban-note">' + derivedCount + ' of ' + cards.length +
+            ' cards sit here because of the feature\u2019s own status, not because ' +
+            'anyone placed them on the board.</p>';
+        }
         box.innerHTML = html;
         if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
       })

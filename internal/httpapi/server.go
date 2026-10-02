@@ -165,8 +165,13 @@ func (s *Server) loadTemplates() error {
 	// last-parsed page's body win on every route).
 	// "documents" (2026-10-02) renders a project's README, spec, plan and ADR
 	// history. The API for all of it existed since 2026-09-30; the page did not.
+	// "notfound" (2026-10-02) is the page a browser lands on for a bad slug.
+	// Before it existed every HTML route answered a miss with mapError, which
+	// writes JSON -- so a mistyped URL returned 404 with a raw
+	// {"error": "not found"} body and not one link. The status was correct; only
+	// the presentation was missing.
 	pages := []string{"index", "search", "projects", "project", "board",
-		"login", "register", "rank", "ranking", "documents"}
+		"login", "register", "rank", "ranking", "documents", "notfound"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -179,6 +184,34 @@ func (s *Server) loadTemplates() error {
 		s.pages[name] = tmpl
 	}
 	return nil
+}
+
+// notFoundPage answers a miss on an HTML route with the styled 404 page.
+//
+// It exists because mapError is the wrong tool for a browser. mapError writes
+// JSON, which is right for /api/v1/... and wrong for a page: a person who
+// mistypes a project slug was served {"error": "not found"} as a document with
+// no links out of it.
+//
+// The status is unchanged and must stay 404, not 403. Answering a slug the
+// caller cannot see with 403 would confirm the slug exists, and that is the
+// anti-enumeration decision these handlers already make deliberately (see
+// handleProjectPage). This function therefore takes a reason string for the
+// page's own copy and nothing that would distinguish absent from forbidden.
+func (s *Server) notFoundPage(w http.ResponseWriter, r *http.Request, reason string) {
+	s.render(w, http.StatusNotFound, "notfound", struct {
+		pageData
+		Reason string
+	}{s.page("Not found"), reason})
+}
+
+// isAPIPath reports whether a path belongs to the JSON API. Used only to pick a
+// representation for a 404 -- never to decide access -- so a path that is not
+// under /api/ is treated as a browser page, which is the safer of the two
+// mistakes: serving a browser JSON is cosmetic, serving an API client an HTML
+// page breaks a machine consumer.
+func isAPIPath(path string) bool {
+	return strings.HasPrefix(path, "/api/")
 }
 
 func (s *Server) render(w http.ResponseWriter, status int, name string, data any) {
@@ -205,7 +238,16 @@ func (s *Server) Router() http.Handler {
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
 	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		// One catch-all serves both audiences. An unmatched /api/v1/... path is
+		// an API client and wants JSON; an unmatched browser path is a person
+		// who followed a bad link and wants a page with somewhere to go. Both
+		// keep the same status. Before this, /nope/nope returned a raw
+		// {"error": "not found"} as a web page.
+		if isAPIPath(r.URL.Path) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return
+		}
+		s.notFoundPage(w, r, "There is nothing at this address.")
 	})
 
 	r.Get("/api/v1/healthz", s.handleHealthz)

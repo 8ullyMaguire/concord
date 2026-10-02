@@ -18,6 +18,11 @@
       <a href="/search">Search</a>
       <a href="/projects">Projects</a>
       <a href="/login" data-auth-link="login">Sign in</a>
+      <!-- Shown only while signed in, by session.js. The endpoint this calls
+           existed from the start (POST /api/v1/auth/logout) but nothing in the
+           interface invoked it, so the only way to end a session was to clear
+           localStorage by hand. -->
+      <button type="button" class="nav-signout" data-signout hidden>Sign out</button>
     </nav>
   </div>
 </header>
