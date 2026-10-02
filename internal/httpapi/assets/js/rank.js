@@ -187,11 +187,19 @@
       }
       return res.json();
     }).then(function (pair) {
+      // Every outcome above funnels through here: a pair, a 404, a 500, an
+      // anonymous prompt. Clearing aria-busy in one place rather than at each
+      // innerHTML assignment means the error and empty paths cannot be the two
+      // that were forgotten -- and an error left aria-busy is an error a screen
+      // reader never announces, because aria-busy suppresses live-region
+      // updates inside the region it marks.
+      if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);
       if (pair === null) return;
       window.__pair = pair && pair.feature_a ? pair : null;
       renderPair(window.__pair);
     }).catch(function (err) {
       root.innerHTML = errorState(err && err.message ? err.message : String(err));
+      if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);
     });
   }
 

@@ -118,8 +118,10 @@
       fetch(base + '/tallies').then(function (r) { return r.ok ? r.json() : []; })
     ]).then(function (res) {
       render(res[0], res[1]);
+      if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);
     }).catch(function (err) {
       root.innerHTML = errorState(err && err.message ? err.message : String(err));
+      if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);
     });
   }
 

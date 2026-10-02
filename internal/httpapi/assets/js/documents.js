@@ -345,9 +345,16 @@
         wire(box, slug, doc || { body: '' });
       })
       .catch(function () {
-        box.innerHTML = '<div class="empty-state"><div class="empty-state-icon">⚠️</div>' +
+        box.innerHTML = '<div class="empty-state"><div class="empty-state-icon">\u26A0\uFE0F</div>' +
           '<p class="empty-state-title">Could not load documents</p>' +
           '<p class="empty-state-description">The API did not respond as expected. Try again.</p></div>';
+        // The error path is where aria-busy is most often forgotten, and it is
+        // the worst place to forget it: aria-busy suppresses live-region
+        // updates inside the region, so an error left busy is an error a screen
+        // reader never announces. Caught by hand in a browser with the API
+        // blocked -- the Go tests assert done() exists in the file, not that
+        // every catch calls it.
+        if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
       });
   });
 })();

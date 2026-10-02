@@ -305,6 +305,12 @@
           });
       })
       .catch(function (err) {
+        // Outside the branches on purpose. This catch has three outcomes to
+        // render -- notFound, auth, and a plain failure -- and clearing inside
+        // only the last one covers a third of them. Found by mutation M9, which
+        // removed the clear and the test still passed, because the stubbed
+        // failure happens to land in that last branch.
+        if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
         if (err && err.notFound) {
           box.innerHTML = notFound(slug);
         } else if (err && err.auth) {

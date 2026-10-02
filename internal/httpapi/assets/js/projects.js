@@ -43,6 +43,7 @@
           grid.innerHTML = '<div class="empty-state"><div class="empty-state-icon">\u{1F4E6}</div>' +
             '<p class="empty-state-title">No projects yet</p>' +
             '<p class="empty-state-description">Be the first: POST a project to /api/v1/projects.</p></div>';
+          if (window.ConcordSkeleton) window.ConcordSkeleton.done(grid);
           return;
         }
         grid.innerHTML = '<div class="grid-responsive-2">' + list.map(card).join('') + '</div>';
@@ -52,6 +53,10 @@
         grid.innerHTML = '<div class="empty-state"><div class="empty-state-icon">\u26A0\uFE0F</div>' +
           '<p class="empty-state-title">Could not load projects</p>' +
           '<p class="empty-state-description">The API did not respond. Try again.</p></div>';
+        // Cleared on the failure path as well as the success path: aria-busy
+        // suppresses live-region updates inside the region it marks, so an error
+        // left busy is an error a screen reader never hears about.
+        if (window.ConcordSkeleton) window.ConcordSkeleton.done(grid);
       });
   });
 })();

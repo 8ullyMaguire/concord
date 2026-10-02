@@ -82,9 +82,19 @@
       .then(function (data) {
         renderResults(container, data);
         renderChips(chipsBox, data.facets, activeTags, q);
+        // This script sets aria-busy itself rather than inheriting it from the
+        // template, so it owns clearing it. The non-ok branch above resolves as
+        // a SUCCESS with zero results, which means a 404 or a 401 arrives here,
+        // not in the catch below -- so the clear has to be here as well or those
+        // statuses leave the region permanently busy.
+        if (window.ConcordSkeleton) window.ConcordSkeleton.done(container);
       })
       .catch(function () {
         container.innerHTML = emptyState('\u26A0\uFE0F', 'Search failed', 'The search service did not respond. Try again.');
+        // Clear aria-busy on the failure path too: aria-busy suppresses
+        // live-region updates inside the region, so "Search failed" left busy is
+        // a failure nobody hears.
+        if (window.ConcordSkeleton) window.ConcordSkeleton.done(container);
       });
   });
 })();
