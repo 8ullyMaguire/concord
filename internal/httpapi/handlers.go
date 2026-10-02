@@ -1308,6 +1308,31 @@ func (s *Server) handleProjectPage(w http.ResponseWriter, r *http.Request) {
 	}{s.page(slug), slug})
 }
 
+// handleDocumentsPage renders the document viewer for a project.
+//
+// The visibility check is not decoration. This page renders for anonymous
+// callers, and a 200 for a private project confirms the slug exists and puts
+// its name in the title bar, which is enough to enumerate the instance. The
+// documents themselves are fetched from the API, which enforces visibility
+// independently -- so a private project's documents 404 on the data fetch even
+// though the shell rendered.
+func (s *Server) handleDocumentsPage(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		mapError(w, store.ErrNotFound)
+		return
+	}
+	s.render(w, http.StatusOK, "documents", struct {
+		pageData
+		Slug string
+	}{s.page("Documents - " + slug), slug})
+}
+
 func (s *Server) handleBoardPage(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	// The page itself is a template shell, but it still must not render for a

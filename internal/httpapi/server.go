@@ -163,8 +163,10 @@ func (s *Server) loadTemplates() error {
 	// Each page is parsed TOGETHER with base.html so its "content" define
 	// cannot collide with another page's (a shared namespace would make the
 	// last-parsed page's body win on every route).
+	// "documents" (2026-10-02) renders a project's README, spec, plan and ADR
+	// history. The API for all of it existed since 2026-09-30; the page did not.
 	pages := []string{"index", "search", "projects", "project", "board",
-		"login", "register", "rank", "ranking"}
+		"login", "register", "rank", "ranking", "documents"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -474,6 +476,7 @@ func (s *Server) Router() http.Handler {
 	r.Get("/projects/{slug}/board", s.handleBoardPage)
 	r.Get("/projects/{slug}/rank", s.handleRankPage)
 	r.Get("/projects/{slug}/ranking", s.handleRankingPage)
+	r.Get("/projects/{slug}/documents", s.handleDocumentsPage)
 	r.Get("/login", s.handleLoginPage)
 	r.Get("/register", s.handleRegisterPage)
 	r.Mount("/assets", staticHandler())

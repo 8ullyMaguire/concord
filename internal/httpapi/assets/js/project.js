@@ -195,7 +195,7 @@
       });
   }
 
-  function render(p, features, complaints) {
+  function render(p, features, complaints, documents) {
     var badges = '<div class="pill-row" style="margin-top:0.75rem;">' +
       '<span class="badge badge-indigo">' + esc(p.governance_model || 'governed') + '</span>' +
       (p.license ? '<span class="badge badge-slate">' + esc(p.license) + '</span>' : '') +
@@ -221,6 +221,9 @@
       '<p class="page-subtitle">' + esc(p.description || 'No description yet.') + '</p></div>' +
       '<div class="detail-actions">' +
       '<a class="btn btn-primary" href="/projects/' + esc(p.slug) + '/board">Open board</a>' +
+      '<a class="btn" href="/projects/' + esc(p.slug) + '/documents">Documents' +
+      (documents ? ' <span class="badge badge-slate">' + documents.length + '</span>' : '') +
+      '</a>' +
       '<a class="btn btn-secondary" href="/projects">Back</a>' +
       '</div></div>' +
       '<div class="card mb-6">' + badges + healthBar(p.health_score) + meta + '</div>' +
@@ -280,14 +283,21 @@
           // showing the complaints as unavailable.
           fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/complaints')
             .then(function (r) { return r.ok ? r.json() : []; })
+            .catch(function () { return []; }),
+          // Documents are a count badge and a link, not content on this page,
+          // so a failure here degrades to no badge rather than to an error. The
+          // same reasoning as complaints: a third failing request must not cost
+          // us the two that matter.
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/documents')
+            .then(function (r) { return r.ok ? r.json() : []; })
             .catch(function () { return []; })
         ])
           .then(function (res) {
-            var features = res[0], complaints = res[1];
+            var features = res[0], complaints = res[1], documents = res[2];
             // The feature form's select needs the complaint list at render
             // time, so it is stashed rather than threaded through the markup.
             window.__complaints = complaints || [];
-            box.innerHTML = render(p, features, complaints);
+            box.innerHTML = render(p, features, complaints, documents);
             wire(box, slug, p.id);
           });
       })

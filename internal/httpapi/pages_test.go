@@ -285,8 +285,12 @@ func TestProjectPageRendersComplaintsTheServerActuallyHas(t *testing.T) {
 	if !strings.Contains(js, "complaintCards(complaints)") {
 		t.Error("render does not call complaintCards with the complaint list")
 	}
-	if !strings.Contains(js, "render(p, features, complaints)") {
-		t.Error("render is not given the complaints it fetched")
+	// render now takes documents as a fourth argument (2026-10-02, the document
+	// badge), so the call carries all three lists it fetched. The assertion is on
+	// the prefix rather than the whole call so adding a fifth list does not
+	// require editing this test -- which is how it went stale when it did.
+	if !strings.Contains(js, "render(p, features, complaints, documents)") {
+		t.Error("render is not given the complaints and documents it fetched")
 	}
 	if !strings.Contains(js, "/complaints") {
 		t.Error("project.js never reads the complaint list")

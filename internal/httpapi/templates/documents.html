@@ -1,0 +1,9 @@
+{{define "content"}}
+<div class="page-header">
+  <h1 class="page-title">Documents <span class="muted" style="color:var(--slate-500);font-weight:400;">&middot; {{.Slug}}</span></h1>
+  <p class="page-subtitle">What this project is, what it must do, how it is being built, and why.</p>
+</div>
+<div id="project-documents"><div class="loading-spinner" role="status" aria-label="Loading documents"></div></div>
+<script src="{{ asset "/assets/js/markdown.js" }}"></script>
+<script src="{{ asset "/assets/js/documents.js" }}"></script>
+{{end}}

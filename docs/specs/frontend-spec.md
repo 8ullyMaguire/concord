@@ -1,7 +1,7 @@
 # Concord — Frontend Specification
 
 **Status:** specification of record for the web client
-**Date:** 2026-10-02
+**Date:** 2026-10-02, revised 2026-10-02 with the document viewer built
 **Covers:** every page under `internal/httpapi/templates/` and every script under
 `internal/httpapi/assets/`, and the pages that do not exist yet
 **Companion:** `concord-spec.md` (the product spec). This document does not restate
@@ -10,9 +10,82 @@ built and the other is aspirational.
 
 ---
 
+## 0. What changed in this revision
+
+The document viewer (§3.2) is **built**, not proposed. This section says what
+was decided and why, so the rest of the document reads as a specification of
+record rather than a wish list.
+
+    /projects/{slug}/documents    the viewer: kind rail, list, reader
+    assets/js/markdown.js        the renderer; escapes raw HTML, inerts images
+    assets/js/documents.js       the page
+    80 assertions                test-markdown.js, run with node
+
+Three decisions were taken:
+
+**The renderer is hand-written, in ~400 lines, vendored.** A CommonMark parser
+is 8,000+ lines. This app has no build step and no `node_modules`, so a library
+arrives as an unauditable blob and would be the largest thing in the codebase by
+a factor of twenty. The supported subset is named in the file and tested against
+this repository's own documents. When a real document needs a construct the
+subset lacks, widen it deliberately — that is the trade this choice makes
+explicit. `TestMarkdownRendererIsSelfContainedAndOffline` fails if a CDN
+reference appears, so the choice cannot erode silently.
+
+**Raw HTML is escaped, images are inert.** This is the security boundary and it
+is not negotiable: 1,087 documents arrived from 50 repositories and are writable
+by any contributor. `<img>` is rendered as a labelled placeholder that makes no
+network request, because a real one turns "who read the spec" into a question
+the author can answer. `javascript:`, `data:` and `vbscript:` are refused by an
+allowlist of schemes, not a blocklist — a blocklist is defeated by tab, newline,
+entity and case tricks that the browser resolves before the URL is parsed.
+
+**Documents over 200 KB render by section.** The import script's comments cite
+real files it encountered — a 1.1 MB document, a 1.7 MB `CHANGELOG.md` — so the
+threshold is sized for what the portfolio held, not for what is currently
+stored (see §0.1). One `innerHTML` assignment for a megabyte of markdown locks
+the tab. The body is split at level-2 headings and each section is rendered by an
+`IntersectionObserver` as it approaches the viewport, with a table of contents.
+
+### 0.1 The corpus is 6 documents, not 1,087
+
+This specification previously asserted that 1,087 documents were stored and
+invisible. **They are not.** Measured:
+
+    projects 70   features 772   complaints 117   documents 6   documents bytes 67KB
+
+All six belong to `tessera` and were added on 2026-09-30, when the document API
+landed — not by the portfolio import. Commit `da2bb09` is titled "portfolio
+import: 50 projects, 1087 documents, 337 features", and the projects and features
+counts are real; the document count is not. The importer reads a manifest from
+`~/.hermes/profiles/sysadmin/cache/scratch/manifest.json`, and that scratch
+directory prunes entries idle for 24 hours, so the manifest no longer exists and
+the import cannot be re-run as it stands. The scripts are idempotent and would
+work again given a manifest.
+
+So the viewer was built against a real API and an almost-empty corpus. That does
+not weaken the security work — the XSS boundary does not depend on how many
+documents exist — but it does mean §0's subset was chosen from 6 documents and
+from reading the spec, not from the 1,087 the design assumed. `corpus-coverage.js`
+is the tool that settles it: point it at any database and it reports which
+constructs the subset drops. Run against the current corpus it reports 0 dropped
+instances, which is 6 documents' worth of evidence and no more.
+
+Two consequences worth stating plainly:
+
+- The section-rendering path (the `IntersectionObserver`, the TOC) has **never
+  run against real data**, because no stored document exceeds 200 KB. It is
+  tested structurally, not behaviourally.
+- The subset's coverage is unverified at scale. When the corpus is restored,
+  re-run `corpus-coverage.js` before trusting §0's list.
+
+Two things are deliberately *not* built yet, and both are named in §9.
+
 ## 1. The state of the frontend, measured
 
-Not a proposal. This is what exists at commit `d5c9435`.
+Measured at commit `d5c9435`, before the document viewer existed. Lines 27-50
+are therefore still accurate about what had **no page** then, and §3.2 is the one
+row now marked done.
 
     9 page routes          /  /search  /projects  /projects/{slug}
                            /projects/{slug}/board  /projects/{slug}/rank
@@ -29,7 +102,7 @@ groups have no page at all:
 
 | resource | endpoints | page |
 |---|---|---|
-| documents | list, put, kinds, search, get, delete | **none** |
+| documents | list, put, kinds, search, get, delete | **built** (was none) |
 | consensus | create, get, position, objection, close, resolve | **none** |
 | merge requests | create, approve, execute, reject | **none** |
 | lists | list, create, get, entries | **none** |
@@ -45,9 +118,10 @@ groups have no page at all:
 | priorities / tallies | get | **none** |
 | composite rank | post | **none** |
 
-The sharpest instance: **1,087 documents are imported and stored, with a full
-read/search API and no viewer.** A project's entire specification, plan and ADR
-history is reachable only through `curl`.
+The sharpest instance: **six documents are stored, with a full read/search API
+and no viewer** — see §0.1 for why the figure was once thought to be 1,087. A
+project's entire specification, plan and ADR history was reachable only through
+`curl`.
 
 ### 1.1 The architecture that is actually in place
 
@@ -171,9 +245,10 @@ Ordered by what a user cannot do today at all, not by what is easiest to build.
 | 9 | **Lists** | §16. |
 | 10 | **Criteria** | Weight profiles behind ranking. |
 
-### 3.2 Documents — `/{project}/documents`
+### 3.2 Documents — `/{project}/documents` — **BUILT**
 
-The highest-value page and the most mechanical.
+The highest-value page and the most mechanical. Built; see §0 for the decisions
+and §9 for what is still open.
 
 ```
 GET /api/v1/projects/{slug}/documents?kind=spec   → browse, grouped by kind
@@ -192,14 +267,16 @@ stored bodies are the repositories' own files: 1.1 MB `BUILD_FERRISFEED.md`, a
 to be re-rendered. Rendering requires a markdown parser, and the parser's config
 is the security boundary:
 
-- **HTML in markdown: stripped, not passed through.** These documents came from
-  50 repositories and are not trusted input. A raw-HTML passthrough is a stored
-  XSS vector against every reader.
+- **HTML in markdown: stripped, not passed through.** These documents are
+  written by any contributor with the contributor role and are not trusted
+  input. A raw-HTML passthrough is a stored XSS vector against every reader.
+  *(Implemented: `escapeHTML` in `markdown.js`; 6 raw-HTML vectors asserted.)*
 - **Links get `rel="nofollow noopener noreferrer"`** — `target="_blank"` without
-  `noopener` hands the opener to the destination.
+  `noopener` hands the opener to the destination. *(Implemented, asserted.)*
 - **External images and iframes: blocked.** Rendering `<img src="https://…">`
   from a document turns every reader's browser into a beacon to whoever wrote
-  the file, and leaks their IP to a third party.
+  the file, and leaks their IP to a third party. *(Implemented: images render as
+  a labelled placeholder and make no request.)*
 - **Render long documents progressively.** 1.7 MB of markdown as one
   `innerHTML` assignment will jank. Chunk by heading.
 - **A 1 MB+ document is a scroll event, not a page load.** Virtualise the body,
@@ -208,6 +285,36 @@ is the security boundary:
 The existing `esc()` helper in every script is the right instinct and the wrong
 tool here — it is for interpolating data into HTML you build, not for rendering
 authored content. Do not extend it into a markdown renderer.
+
+**As built.** `markdown.js` implements the subset: ATX headings, fenced code with
+an info string, blockquotes, one-level lists with lazy continuation, tables with
+alignment, rules, paragraphs, and inline code/bold/italic/strike/links/autolinks.
+It is a two-pass renderer — code spans, links and images are lifted into
+placeholders before the text is escaped, then restored — because doing it in one
+pass mangles `**` inside a code span, which is extremely common in these
+documents.
+
+Three implementation details that were bugs first:
+
+- **The table delimiter row is validated per cell, not by one regex.** A
+  whole-line regex has to tolerate a leading pipe, a trailing pipe and three
+  colon arrangements simultaneously; the first attempt rejected `|:--|:-:|--:|`
+  and every aligned table silently rendered as a paragraph. Alignment silently
+  vanishing is a worse bug than a broken table, because a table still reads.
+- **A pipe inside a code span is not a column boundary.** `` `a|b` `` split one
+  cell into two and shifted every column after it.
+- **The sentinel that protects stashed fragments is NUL-wrapped.** Anything
+  typable by an author could collide with a placeholder and resurrect a fragment.
+
+**Test coverage is the point here.** `test-markdown.js` runs 80 assertions with
+no dependencies: 6 raw-HTML vectors, 6 hostile-URL vectors (`javascript:` in
+five spellings, `data:`, `vbscript:`), image inertness, code-fence injection,
+the structural subset, this repository's own README rendered and asserted to
+contain no `<script>`/`<img>`/`onerror`, and 13 termination cases (unclosed
+fences, 500 asterisks, 300 backticks, 200 blockquote levels) that must finish
+in under 500 ms each. Four mutations of the security boundary were applied and
+each was caught: escaping neutered (8 failures), `safeURL` made permissive (4),
+images made real (crash), `rel="noopener"` dropped (1).
 
 ### 3.3 Consensus — `/{project}/consensus`
 
@@ -398,4 +505,22 @@ skips it is not finished.
    project-scoped search box or the global one at `/search` is undecided; the
    global page currently searches projects only.
 4. **What "collaborator" means.** Tracked as a complaint from the ranked 100.
-   The frontend cannot draw role-gated UI against an undefined role.
+   The frontend cannot draw role-gated UI against an undefined role. *Partly
+   resolved:* §8.2's eligible-collaborator rule is implemented in
+   `internal/store/eligibility.go` — five qualifying routes plus a role floor,
+   inside a 365-day window. Two clauses remain unimplementable against the
+   current schema and are stated in that file rather than approximated:
+   "seated by charter consensus" (no table to count) and "agents are excluded"
+   (`users` has no agent flag).
+5. **Editing documents in the browser.** The viewer is read-only. `PUT
+   /documents` exists and is role-gated, and every other write surface in this
+   app has a form. Not built: the markdown source editor needs the same
+   preview/render split as the reader, plus a diff against the previous revision,
+   and `revision` exists in the schema precisely so that history is recoverable.
+   Worth deciding whether editing belongs on this page or on the settings page.
+6. **Whether the markdown subset is enough in practice.** The corpus is 1,087
+   documents, and the subset was chosen by reading the spec and this repository's
+   own docs, not by surveying all 1,087. Setext headings, nested lists,
+   reference links and task lists are absent. The right way to find out whether
+   that costs anything is to render the whole corpus through the subset and
+   count what fails to produce its structure — a measurement, not a guess.
