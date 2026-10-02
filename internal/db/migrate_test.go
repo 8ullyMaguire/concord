@@ -228,7 +228,6 @@ func TestMigrateFailsWhenABackfillMatchesNothing(t *testing.T) {
 			feature_id INTEGER,
 			question TEXT NOT NULL DEFAULT '',
 			use_case TEXT,
-			baseline_entry_id INTEGER,
 			created_at REAL NOT NULL
 		);
 		CREATE TABLE pairwise_votes (
@@ -274,7 +273,7 @@ func TestMigrateFailsWhenABackfillMatchesNothing(t *testing.T) {
 		-- assertion refuses.
 		CREATE TABLE arenas_new (id INTEGER PRIMARY KEY, type TEXT NOT NULL,
 			project_id INTEGER, feature_id INTEGER, question TEXT NOT NULL DEFAULT '',
-			use_case TEXT, baseline_entry_id INTEGER, created_at REAL NOT NULL);
+			use_case TEXT, created_at REAL NOT NULL);
 		ALTER TABLE pairwise_votes RENAME TO pairwise_votes_old;
 		CREATE TABLE pairwise_votes (
 			id INTEGER PRIMARY KEY,

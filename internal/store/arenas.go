@@ -68,10 +68,6 @@ type Arena struct {
 	UseCase   string  `json:"use_case,omitempty"`
 	CreatedAt float64 `json:"created_at"`
 
-	// BaselineEntryID is the permanent "do nothing" competitor (§6.3). Set for
-	// solution arenas and nil elsewhere.
-	BaselineEntryID int64 `json:"baseline_entry_id,omitempty"`
-
 	// Count is the number of competitors, filled by the list queries because a
 	// client showing "3 options" should not have to count them.
 	Count int `json:"count"`
@@ -202,15 +198,15 @@ func (d *DB) FindArena(ctx context.Context, arenaType string, projectID, feature
 	var args []any
 	switch arenaType {
 	case ArenaFeaturePriority:
-		q = `SELECT id, type, project_id, feature_id, question, use_case, baseline_entry_id, created_at
+		q = `SELECT id, type, project_id, feature_id, question, use_case, created_at
 		     FROM arenas WHERE type = ? AND project_id = ?`
 		args = []any{arenaType, projectID}
 	case ArenaSolution:
-		q = `SELECT id, type, project_id, feature_id, question, use_case, baseline_entry_id, created_at
+		q = `SELECT id, type, project_id, feature_id, question, use_case, created_at
 		     FROM arenas WHERE type = ? AND feature_id = ?`
 		args = []any{arenaType, featureID}
 	case ArenaAlternatives, ArenaUseCase:
-		q = `SELECT id, type, project_id, feature_id, question, use_case, baseline_entry_id, created_at
+		q = `SELECT id, type, project_id, feature_id, question, use_case, created_at
 		     FROM arenas WHERE type = ? AND project_id = ? AND use_case = ?`
 		args = []any{arenaType, projectID, strings.TrimSpace(useCase)}
 	default:
@@ -221,10 +217,10 @@ func (d *DB) FindArena(ctx context.Context, arenaType string, projectID, feature
 
 func (d *DB) scanArena(row *sql.Row) (Arena, error) {
 	var a Arena
-	var project, feature, baseline sql.NullInt64
+	var project, feature sql.NullInt64
 	var useCase sql.NullString
 	err := row.Scan(&a.ID, &a.Type, &project, &feature, &a.Question, &useCase,
-		&baseline, &a.CreatedAt)
+		&a.CreatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Arena{}, ErrArenaNotFound
 	}
@@ -233,7 +229,6 @@ func (d *DB) scanArena(row *sql.Row) (Arena, error) {
 	}
 	a.ProjectID = project.Int64
 	a.FeatureID = feature.Int64
-	a.BaselineEntryID = baseline.Int64
 	a.UseCase = useCase.String
 	return a, nil
 }
@@ -241,15 +236,15 @@ func (d *DB) scanArena(row *sql.Row) (Arena, error) {
 // GetArena reads one arena by id, with its competitor count.
 func (d *DB) GetArena(ctx context.Context, id int64) (Arena, error) {
 	var a Arena
-	var project, feature, baseline sql.NullInt64
+	var project, feature sql.NullInt64
 	var useCase sql.NullString
 	err := d.QueryRowContext(ctx, `
 		SELECT a.id, a.type, a.project_id, a.feature_id, a.question, a.use_case,
-		       a.baseline_entry_id, a.created_at,
+		       a.created_at,
 		       (SELECT COUNT(*) FROM arena_entries e WHERE e.arena_id = a.id)
 		FROM arenas a WHERE a.id = ?`, id).Scan(
 		&a.ID, &a.Type, &project, &feature, &a.Question, &useCase,
-		&baseline, &a.CreatedAt, &a.Count)
+		&a.CreatedAt, &a.Count)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Arena{}, ErrArenaNotFound
 	}
@@ -258,7 +253,6 @@ func (d *DB) GetArena(ctx context.Context, id int64) (Arena, error) {
 	}
 	a.ProjectID = project.Int64
 	a.FeatureID = feature.Int64
-	a.BaselineEntryID = baseline.Int64
 	a.UseCase = useCase.String
 	return a, nil
 }
@@ -271,7 +265,7 @@ func (d *DB) ListArases(ctx context.Context, arenaType string, limit int) ([]Are
 	}
 	rows, err := d.QueryContext(ctx, `
 		SELECT a.id, a.type, a.project_id, a.feature_id, a.question, a.use_case,
-		       a.baseline_entry_id, a.created_at,
+		       a.created_at,
 		       (SELECT COUNT(*) FROM arena_entries e WHERE e.arena_id = a.id)
 		FROM arenas a WHERE a.type = ? ORDER BY a.id LIMIT ?`, arenaType, limit)
 	if err != nil {
@@ -281,15 +275,14 @@ func (d *DB) ListArases(ctx context.Context, arenaType string, limit int) ([]Are
 	var out []Arena
 	for rows.Next() {
 		var a Arena
-		var project, feature, baseline sql.NullInt64
+		var project, feature sql.NullInt64
 		var useCase sql.NullString
 		if err := rows.Scan(&a.ID, &a.Type, &project, &feature, &a.Question,
-			&useCase, &baseline, &a.CreatedAt, &a.Count); err != nil {
+			&useCase, &a.CreatedAt, &a.Count); err != nil {
 			return nil, err
 		}
 		a.ProjectID = project.Int64
 		a.FeatureID = feature.Int64
-		a.BaselineEntryID = baseline.Int64
 		a.UseCase = useCase.String
 		out = append(out, a)
 	}
@@ -526,8 +519,8 @@ func (d *DB) CastArenaVote(ctx context.Context, arenaID, voterID int64, aType st
 	// to the baseline."
 	//
 	// The baseline is resolved from arena_entries.is_baseline, not from
-	// arenas.baseline_entry_id. Those were two representations of one fact, and
-	// the code consulted the one nothing populates: baseline_entry_id is only ever
+	// the column arenas.baseline_entry_id. Those were two representations of one
+	// fact, and the code consulted the one nothing populates: that column was only ever
 	// set by the not-yet-written solutions table. So this branch never fired, and
 	// "neither" fell through to a 0.5/0.5 draw -- both competitors held their
 	// rating while doing nothing quietly outranked them. The flag is the

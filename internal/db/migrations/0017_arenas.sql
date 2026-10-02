@@ -55,9 +55,12 @@ CREATE TABLE arenas (
     -- differently for different use cases and those are different arenas.
     use_case   TEXT,
 
-    -- §6.3: "Every solution arena has a permanent baseline: do nothing /
-    -- document the workaround." NULL for arenas with no baseline.
-    baseline_entry_id INTEGER,
+    -- §6.3's "every solution arena has a permanent baseline" is recorded as
+    -- arena_entries.is_baseline, not here. This column existed and nothing ever
+    -- wrote it, so "neither" scored as a 0.5/0.5 draw in every solution arena
+    -- instead of a loss to doing nothing; 0018 drops it. Kept out of this
+    -- migration rather than added-then-removed, so a fresh install does not
+    -- build and immediately rebuild a table.
 
     created_at REAL NOT NULL
 );
@@ -82,13 +85,12 @@ CREATE UNIQUE INDEX idx_arenas_alternatives
 -- arena and its votes are attached to it. Without this backfill every historical
 -- vote would be invisible to the arena queries, and a recompute from the log
 -- would silently drop the entire ranking history.
-INSERT INTO arenas (id, type, project_id, feature_id, question, use_case, baseline_entry_id, created_at)
+INSERT INTO arenas (id, type, project_id, feature_id, question, use_case, created_at)
 SELECT p.id,
        'feature-priority',
        p.id,
        NULL,
        'Which should we prioritize first?',
-       NULL,
        NULL,
        COALESCE(p.created_at, 0)
 FROM projects p;
