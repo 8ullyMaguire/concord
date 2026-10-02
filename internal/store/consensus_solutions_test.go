@@ -337,9 +337,20 @@ func TestTheVoterThresholdIsScaledToProjectSize(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateSolution: %v", err)
 	}
+	// §8.2: a contributor role is not eligibility. The author has to ship
+	// something, or the project's eligible count is 0 and this test is measuring
+	// a degenerate case rather than the scaling it claims to check.
+	if _, err := d.ExecContext(ctx,
+		`UPDATE solutions SET status = 'consensus' WHERE id = ?`, sol.ID); err != nil {
+		t.Fatalf("accept solution: %v", err)
+	}
 	eligible, err := d.EligibleCollaboratorCount(ctx, pid)
 	if err != nil {
 		t.Fatalf("EligibleCollaboratorCount: %v", err)
+	}
+	if eligible == 0 {
+		t.Fatalf("no eligible collaborators after shipping a solution; the fixture cannot " +
+			"demonstrate scaling from a population of zero")
 	}
 	if eligible >= 3 {
 		t.Skipf("project has %d eligible collaborators, so the scaling never binds", eligible)

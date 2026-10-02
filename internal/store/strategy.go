@@ -83,25 +83,6 @@ const (
 // opened, so applying it would layer one decision on top of another.
 var ErrProposalStale = errors.New("proposal is stale: the target changed since it was opened")
 
-// EligibleCollaboratorCount implements §8.2: a user is an eligible collaborator
-// if they hold contributor or above in the project.
-//
-// §8.2 is stricter than this — it also requires qualifying activity in a
-// trailing window. The window needs a contribution ledger that does not exist
-// yet, so this counts roles and the caller-facing documentation says so. The
-// threshold being computed against a well-defined population is the part every
-// consensus decision depends on, and it is better defined narrowly than left
-// implicit; §8.2's activity window is tracked in the spec-issue complaint and
-// lands with the contribution ledger.
-func (d *DB) EligibleCollaboratorCount(ctx context.Context, projectID int64) (int, error) {
-	var n int
-	err := d.QueryRowContext(ctx, `
-		SELECT COUNT(*) FROM members
-		WHERE project_id = ?
-		  AND role IN ('contributor','reviewer','maintainer','owner')`, projectID).Scan(&n)
-	return n, err
-}
-
 // ProposeStrategicWeight opens a proposal to change a feature's weight.
 //
 // Refuses when a pending proposal already exists for the feature, so two people
@@ -213,6 +194,22 @@ func (d *DB) RatifyStrategicWeightProposal(ctx context.Context, proposalID, user
 	charter, err := d.GetCharterForProject(ctx, p.ProjectID)
 	if err != nil {
 		return StrategicWeightProposal{}, err
+	}
+	// The consenter must themselves be an eligible collaborator. Without this a
+	// freshly-registered account that merely joined the project could supply the
+	// deciding consent -- and §8.2's role-and-activity test exists precisely so
+	// that arriving is not the same as participating.
+	//
+	// This is not a formality. With a project whose eligible count is 0,
+	// QuorumThreshold returns 0, so the single consent below satisfies quorum and
+	// ratifies the proposal on its own: the exact outcome the proposer-cannot-consent
+	// guard above exists to prevent, reached by a different route.
+	ok, err := d.IsEligibleCollaborator(ctx, p.ProjectID, userID)
+	if err != nil {
+		return StrategicWeightProposal{}, err
+	}
+	if !ok {
+		return p, fmt.Errorf("%w: only an eligible collaborator can consent to a proposal", ErrPerm)
 	}
 	eligible, err := d.EligibleCollaboratorCount(ctx, p.ProjectID)
 	if err != nil {

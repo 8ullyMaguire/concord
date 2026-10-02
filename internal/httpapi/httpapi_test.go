@@ -562,7 +562,11 @@ func TestPermissionDenial(t *testing.T) {
 	})
 
 	t.Run("set_strategic_weight_requires_maintainer", func(t *testing.T) {
-		ts := newTestServer(t)
+		// WithStore, not newTestServer: the consent below has to make a solution
+		// 'shipped', and there is no route for that (§6.5 moves statuses as a side
+		// effect of consensus), so the store handle is the only way to build the
+		// fixture §8.2 asks for.
+		ts, st := newTestServerWithStore(t)
 		resp, projBody := doJSON(t, ts, "POST", "/api/v1/projects", map[string]any{
 			"slug": "weight-test", "name": "Weight Test", "description": "x",
 		})
@@ -667,10 +671,55 @@ func TestPermissionDenial(t *testing.T) {
 				}
 
 				// A fresh registration is a guest, and consent requires
-				// contributor. Joining is the documented path, and it is also
-				// what makes the user an eligible collaborator (§8.2).
+				// contributor. Joining is the documented path and grants the
+				// role; §8.2 additionally requires a qualifying contribution in
+				// the trailing window, so joining ALONE is no longer enough to
+				// make somebody an eligible collaborator. This test's premise --
+				// "the project has one eligible collaborator plus this new
+				// account, so quorum is 2" -- only holds if the consenter has
+				// actually done something, so they file a complaint first.
 				postJSON(t, ts, "/api/v1/projects/"+slug+"/join", "{}",
 					"Authorization", "Bearer "+tok)
+				// A complaint alone is NOT a qualifying contribution under §8.2:
+				// route (2) wants a validated complaint that LED TO a shipped
+				// solution. The consenter therefore files a complaint, it gets
+				// validated, a feature links it, and they ship the solution on
+				// that feature -- four steps, because that is what §8.2 asks for.
+				_, consBody := postJSON(t, ts, "/api/v1/projects/"+slug+"/complaints",
+					fmt.Sprintf(`{"project_id":%d,"title":"from the consenter",`+
+						`"body":"b","severity":3,"frequency":1.0}`, projID),
+					"Authorization", "Bearer "+tok)
+				consComplaint := int64(consBody["id"].(float64))
+				postJSON(t, ts, "/api/v1/projects/"+slug+"/complaints/"+itoa(consComplaint)+"/validate",
+					"{}", "Authorization", "Bearer "+tok)
+				// The feature is authored by the project owner (actor 1) and the
+				// solution by a third account, because §5.2 refuses a feature's
+				// author from authoring its solutions. That is also the realistic
+				// shape: §8.2 route (2) credits the person whose complaint led to
+				// the fix -- the consenter -- not whoever wrote the code.
+				_, fixer := postJSON(t, ts, "/api/v1/auth/register",
+					`{"username":"fixer","password":"correct horse battery"}`)
+				fixerTok, _ := fixer["token"].(string)
+				if fixerTok == "" {
+					t.Fatalf("register fixer: %v", fixer)
+				}
+				postJSON(t, ts, "/api/v1/projects/"+slug+"/join", "{}",
+					"Authorization", "Bearer "+fixerTok)
+				_, consFeat := postJSON(t, ts, "/api/v1/projects/"+slug+"/features",
+					fmt.Sprintf(`{"project_id":%d,"author_id":1,"title":"consenter's complaint, fixed",`+
+						`"body":"b","linked_complaints":[%d]}`, projID, consComplaint),
+					"Authorization", "Bearer "+tok)
+				consFeatureID := int64(consFeat["id"].(float64))
+				_, consSol := postJSON(t, ts,
+					"/api/v1/projects/"+slug+"/features/"+itoa(consFeatureID)+"/solutions",
+					`{"title":"the fix","type":"build-new"}`,
+					"Authorization", "Bearer "+fixerTok)
+				consSolutionID := int64(consSol["solution"].(map[string]any)["id"].(float64))
+				// There is no route to set a solution's status: §6.5 moves them as
+				// a side effect of consensus. The store handle reaches the row
+				// directly, which is what a ratified call would have done.
+				st.ExecContext(t.Context(),
+					`UPDATE solutions SET status='shipped' WHERE id = ?`, consSolutionID)
 				resp, body := postJSON(t, ts,
 					"/api/v1/projects/"+slug+"/strategy/weight-proposals/"+itoa(proposalID)+"/consent",
 					"{}", "Authorization", "Bearer "+tok)
