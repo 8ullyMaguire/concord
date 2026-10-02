@@ -513,6 +513,26 @@ func (s *Server) checkDuplicates(w http.ResponseWriter, r *http.Request, kind, t
 	}
 	ctx := r.Context()
 
+	// Cross-project scope, and this is the §6.1 line: "Duplicate detection at
+	// filing time uses semantic similarity before submit, and ALSO searches other
+	// projects ('this was fixed in X')".
+	//
+	// The store already supports instance-wide search -- FindSimilar documents
+	// projectID == 0 as "the whole instance, which is the 'this was fixed in X'
+	// case" -- and this call was passing the current project, so a verbatim copy of
+	// a complaint filed elsewhere was invisible: same text, score 1.0, no match.
+	// The comment above the store method described behaviour the handler did not
+	// use, which is the worst kind of drift.
+	//
+	// Instance-wide rather than per-project, so one query covers both the likelier
+	// same-project duplicate and the §6.1 cross-project gift. Each result carries
+	// its own project_id, so a filer can tell which is which.
+	//
+	// 0 is the store's documented "whole instance" sentinel, not a missing
+	// argument: FindSimilarField reads projectID > 0 as a filter and anything else
+	// as no filter.
+	scope := int64(0)
+
 	// Two queries, two fields.
 	//
 	// The title is checked on its own because that is the strongest single signal
@@ -527,14 +547,14 @@ func (s *Server) checkDuplicates(w http.ResponseWriter, r *http.Request, kind, t
 	// no warning. The full-text query is still run, because two complaints can
 	// share a vague title and an identical description, which the title alone
 	// would miss.
-	sims, err := s.Store.FindSimilarField(ctx, kind, title, projectID, store.FieldTitle, 5)
+	sims, err := s.Store.FindSimilarField(ctx, kind, title, scope, store.FieldTitle, 5)
 	if err != nil {
 		// A failure to check must not block the filing: refusing on an internal
 		// error would lose a real complaint to a bug in the similarity code.
 		return nil, true
 	}
 	if len(sims) == 0 && strings.TrimSpace(body) != "" {
-		if full, ferr := s.Store.FindSimilarField(ctx, kind, title+" "+body, projectID, store.FieldFull, 5); ferr == nil {
+		if full, ferr := s.Store.FindSimilarField(ctx, kind, title+" "+body, scope, store.FieldFull, 5); ferr == nil {
 			sims = full
 		}
 	}

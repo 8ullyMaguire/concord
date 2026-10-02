@@ -227,6 +227,48 @@ func TestSimilarityResponseCarriesCoverage(t *testing.T) {
 	}
 }
 
+// TestFilingChecksForDuplicatesOutsideTheCurrentProject is the filing-path half of
+// §6.1's "also searches other projects".
+//
+// TestCrossProjectSearchFindsTheSameProblemElsewhere already covers the /similar
+// endpoint, and it passed while the filing path was still project-scoped: filing a
+// verbatim copy of a complaint from another project returned 201 with no top_score,
+// because checkDuplicates passed projectID instead of 0. Two tests, one requirement,
+// and the one that passed tested the wrong caller.
+func TestFilingChecksForDuplicatesOutsideTheCurrentProject(t *testing.T) {
+	ts, _ := withEmbedder(t)
+	postJSON(t, ts, "/api/v1/projects", `{"slug":"origin","name":"Origin","description":"d"}`)
+	postJSON(t, ts, "/api/v1/projects", `{"slug":"elsewhere","name":"Elsewhere","description":"d"}`)
+
+	const title = "The exporter silently drops the final row"
+	resp, body := postJSON(t, ts, "/api/v1/projects/origin/complaints",
+		`{"project_id":1,"title":"`+title+`","body":"every export loses one","severity":4}`)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("file in origin: %d %v", resp.StatusCode, body)
+	}
+
+	// Same text, different project. Identical text scores 1.0, so a working
+	// cross-project scope must refuse this outright.
+	resp, body = postJSON(t, ts, "/api/v1/projects/elsewhere/complaints",
+		`{"project_id":2,"title":"`+title+`","body":"a different context entirely","severity":4}`)
+	if resp.StatusCode != http.StatusConflict {
+		t.Fatalf("a verbatim copy filed in another project was accepted (%d); the filing "+
+			"path is still project-scoped", resp.StatusCode)
+	}
+	if score, _ := body["top_score"].(float64); score < 0.85 {
+		t.Errorf("top_score = %v, want >= 0.85 for identical text across projects", body["top_score"])
+	}
+
+	// The refusal must be confirmable, and the confirmation must be the escape
+	// hatch: "this is the same bug but it also affects you" is a legitimate filing.
+	resp, body = postJSON(t, ts, "/api/v1/projects/elsewhere/complaints",
+		`{"project_id":2,"title":"`+title+`","body":"a different context entirely","severity":4,`+
+			`"confirm_duplicate":true}`)
+	if resp.StatusCode != http.StatusCreated {
+		t.Fatalf("confirm_duplicate should let the filing through: %d %v", resp.StatusCode, body)
+	}
+}
+
 func TestCrossProjectSearchFindsTheSameProblemElsewhere(t *testing.T) {
 	// §6.1: duplicate detection "also searches other projects". A project-scoped
 	// search must not leak, and the instance-wide one must find it.
