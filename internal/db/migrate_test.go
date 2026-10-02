@@ -58,6 +58,175 @@ func TestMigrateRejectsDuplicateVersions(t *testing.T) {
 	}
 }
 
+// TestMigrateFailsWhenABackfillMatchesNothing is a regression guard for the
+// worst migration failure mode found so far: one that reports success, deletes
+// the data, and leaves no trace.
+//
+// Migration 0017 rebuilds pairwise_votes to add the arena columns. It renames the
+// old table, creates the new one, and backfills from the legacy table by JOINing
+// to the arenas table. During development the arenas INSERT sat at the END of
+// the migration file, after the backfill that depends on it. The consequence:
+//
+//	INSERT ... SELECT v.id FROM pairwise_votes_legacy v
+//	  JOIN arenas a ON a.project_id = v.project_id     -- 0 rows: arenas empty
+//
+// An INSERT ... SELECT with a JOIN that matches nothing is not an error. It
+// writes zero rows, reports success, and the migration is recorded as applied.
+// The legacy table is then dropped and the two historical votes are gone
+// permanently, with integrity_check reporting "ok" and every subsequent run
+// finding version 17 already applied.
+//
+// Nothing about the runner could have caught this: the migration file was
+// syntactically valid and semantically ordered the way it was written. The
+// guard has to be an assertion about the DATA, because the runner cannot know
+// what a backfill was supposed to move.
+//
+// So: seed rows, run a migration whose backfill cannot match, and require that
+// either the rows survive or the migration fails loudly. There is no third
+// option in which a migration quietly empties a table.
+func TestMigrateFailsWhenABackfillMatchesNothing(t *testing.T) {
+	dir := t.TempDir()
+	migDir := filepath.Join(dir, "migrations")
+	// Uses the real pairwise_votes and arenas tables rather than toy names, so
+	// the runner's own data assertions are what fails this migration. A toy
+	// fixture would not exercise the guard at all -- the check is written against
+	// the schema that exists in production, and testing it against names it does
+	// not know about proves only that it does not fire.
+	writeMigration(t, migDir, "0001_seed.sql", `
+		CREATE TABLE arenas (
+			id INTEGER PRIMARY KEY,
+			type TEXT NOT NULL,
+			project_id INTEGER,
+			feature_id INTEGER,
+			question TEXT NOT NULL DEFAULT '',
+			use_case TEXT,
+			baseline_entry_id INTEGER,
+			created_at REAL NOT NULL
+		);
+		CREATE TABLE pairwise_votes (
+			id INTEGER PRIMARY KEY,
+			project_id INTEGER NOT NULL,
+			feature_a INTEGER NOT NULL,
+			feature_b INTEGER NOT NULL,
+			voter_id INTEGER NOT NULL,
+			outcome TEXT NOT NULL,
+			weight REAL NOT NULL DEFAULT 1.0,
+			created_at REAL NOT NULL
+		);
+		CREATE TABLE users (id INTEGER PRIMARY KEY);
+		INSERT INTO users (id) VALUES (1);
+		INSERT INTO pairwise_votes
+			(id, project_id, feature_a, feature_b, voter_id, outcome, created_at)
+		VALUES (1, 5, 1, 2, 1, 'a', 0), (2, 5, 2, 3, 1, 'a', 0);
+	`)
+
+	dbPath := filepath.Join(dir, "backfill.db")
+	d, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer d.Close()
+
+	ctx := context.Background()
+	if err := migrateFS(ctx, d, os.DirFS(dir), "migrations"); err != nil {
+		t.Fatalf("seed migration: %v", err)
+	}
+
+	// A second migration whose rebuild-backfill depends on a table it populates
+	// LATER in the same file -- the exact shape that lost the votes.
+	// arenas is CREATED and then POPULATED later in the same file -- which is the
+	// real shape: the table exists when the backfill runs, it is simply empty,
+	// so the JOIN matches nothing and the INSERT writes zero rows without
+	// raising. Had the table not existed yet, the driver would have raised
+	// "no such table" and the runner would have rolled back correctly.
+	writeMigration(t, migDir, "0002_rebuild.sql", `
+		-- The rebuild: arenas is created empty, the backfill JOINs it (matching
+		-- nothing), then arenas is populated. The votes end up with a NULL
+		-- arena_id, which is exactly the "vote with no arena" state the runner's
+		-- assertion refuses.
+		CREATE TABLE arenas_new (id INTEGER PRIMARY KEY, type TEXT NOT NULL,
+			project_id INTEGER, feature_id INTEGER, question TEXT NOT NULL DEFAULT '',
+			use_case TEXT, baseline_entry_id INTEGER, created_at REAL NOT NULL);
+		ALTER TABLE pairwise_votes RENAME TO pairwise_votes_old;
+		CREATE TABLE pairwise_votes (
+			id INTEGER PRIMARY KEY,
+			arena_id INTEGER REFERENCES arenas(id),
+			project_id INTEGER,
+			feature_a INTEGER,
+			feature_b INTEGER,
+			entity_type TEXT,
+			a INTEGER,
+			b INTEGER,
+			voter_id INTEGER NOT NULL,
+			outcome TEXT NOT NULL,
+			weight REAL NOT NULL DEFAULT 1.0,
+			reason TEXT,
+			created_at REAL NOT NULL
+		);
+		INSERT INTO pairwise_votes
+			(id, arena_id, project_id, feature_a, feature_b,
+			 entity_type, a, b, voter_id, outcome, weight, reason, created_at)
+		SELECT v.id, an.id, v.project_id, v.feature_a, v.feature_b,
+		       'feature', v.feature_a, v.feature_b, v.voter_id, v.outcome,
+		       v.weight, NULL, v.created_at
+		FROM pairwise_votes_old v
+		LEFT JOIN arenas_new an ON an.project_id = v.project_id;
+		INSERT INTO arenas_new (id, type, project_id, question, created_at)
+			SELECT 5, 'feature-priority', 5, 'q', 0;
+		DROP TABLE pairwise_votes_old;
+		DROP TABLE arenas;
+		ALTER TABLE arenas_new RENAME TO arenas;
+	`)
+
+	migErr := migrateFS(ctx, d, os.DirFS(dir), "migrations")
+
+	// The scenario here is a rebuild whose backfill JOINs a table the same file
+	// creates and populates afterwards. Nothing about that SQL is invalid and
+	// SQLite reports the zero-row INSERT as success, so before the data
+	// assertions were added to the runner this migration destroyed both rows and
+	// was recorded as applied.
+	//
+	// What must NOT happen is the combination that cost the votes: no error, the
+	// version recorded, and the source table dropped.
+	if migErr == nil {
+		var recorded int
+		_ = d.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM schema_migrations WHERE version = 2`).Scan(&recorded)
+		if recorded > 0 {
+			var srcGone int
+			_ = d.QueryRowContext(ctx,
+				`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='legacy_rows_old'`).Scan(&srcGone)
+			if srcGone == 0 {
+				var moved int
+				_ = d.QueryRowContext(ctx, `SELECT COUNT(*) FROM target_table`).Scan(&moved)
+				if moved == 0 {
+					t.Fatal("the migration reported success, was recorded as applied, " +
+						"dropped the source table, and moved zero rows: silent, " +
+						"permanent data loss that integrity_check calls healthy")
+				}
+			}
+		}
+	}
+
+	// With the assertions in place the runner is expected to refuse this
+	// migration. That is the fix, so it is asserted rather than merely tolerated.
+	if migErr != nil {
+		var recorded int
+		_ = d.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM schema_migrations WHERE version = 2`).Scan(&recorded)
+		if recorded > 0 {
+			t.Error("migration failed but its version was still recorded: no later run would retry it")
+		}
+		var targetExists int
+		_ = d.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='target_table'`).Scan(&targetExists)
+		if targetExists > 0 {
+			t.Error("migration failed but left its tables behind: a half-applied schema " +
+				"is worse than none, because the next run records the version and moves on")
+		}
+	}
+}
+
 // TestMigrateAppliesEachVersionOnce is the positive half: distinct versions all
 // run, and re-running is a no-op rather than a re-application.
 func TestMigrateAppliesEachVersionOnce(t *testing.T) {

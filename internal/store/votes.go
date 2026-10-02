@@ -170,10 +170,29 @@ func (d *DB) RecordVote(ctx context.Context, projectID, voterID, featureA, featu
 		return PairwiseVote{}, fmt.Errorf("update feature B rating: %w", err)
 	}
 
-	// Record the vote
+	// Record the vote.
+	//
+	// Written through the project's feature-priority arena (§5) so both shapes
+	// are populated: the legacy feature_a/feature_b the priority query reads, and
+	// the generic columns plus arena_id the arena queries and
+	// RecomputeArenaRatings read. A row with only the legacy shape would be
+	// invisible to a recompute, which would then rebuild every feature rating at
+	// the prior and silently erase the ranking -- the failure §2.5 exists to
+	// prevent, reached through a half-populated row rather than a missing one.
+	//
+	// The arena is created on demand: this runs on the existing /vote endpoint,
+	// and a project created before 0017 has no arena until something needs one.
+	arena, err := d.EnsureArena(ctx, ArenaFeaturePriority, projectID, 0, "", "")
+	if err != nil {
+		return PairwiseVote{}, fmt.Errorf("feature-priority arena: %w", err)
+	}
 	res, err := d.ExecContext(ctx, `
-		INSERT OR REPLACE INTO pairwise_votes (project_id, voter_id, feature_a, feature_b, outcome, weight, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`, projectID, voterID, featureA, featureB, outcome, weight, now)
+		INSERT OR REPLACE INTO pairwise_votes
+			(arena_id, project_id, voter_id, feature_a, feature_b,
+			 entity_type, a, b, outcome, weight, created_at)
+		VALUES (?, ?, ?, ?, ?, 'feature', ?, ?, ?, ?, ?)`,
+		arena.ID, projectID, voterID, featureA, featureB,
+		featureA, featureB, outcome, weight, now)
 	if err != nil {
 		return PairwiseVote{}, err
 	}
