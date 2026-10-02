@@ -236,6 +236,8 @@ func (s *Server) Router() http.Handler {
 			// write-only: the handler returns the project, which carries no
 			// tags, so a client cannot confirm what it stored.
 			r.Get("/tags", s.handleGetProjectTags)
+			// §4.3 completeness meter for the under-tagged queue.
+			r.Get("/tags/completeness", s.handleTagCompleteness)
 			r.Put("/languages", s.handleProjectLanguages)
 			r.Put("/metrics", s.handleProjectMetrics)
 
@@ -328,6 +330,16 @@ func (s *Server) Router() http.Handler {
 	// purpose: the point is that everyone can watch what a steward did.
 	r.Route("/api/v1/admin-ledger", func(r chi.Router) {
 		r.Get("/", s.handleListAdminLedger)
+	})
+
+	// Global tag taxonomy (§4.3). Proposals are instance-scoped by default, so
+	// these sit outside the project router: a taxonomy change affects every
+	// project and cannot hang off one project's slug.
+	r.Route("/api/v1/taxonomy", func(r chi.Router) {
+		r.Get("/tags", s.handleListTags)
+		r.Get("/proposals", s.handleListTaxonomyProposals)
+		r.Post("/proposals", s.handleProposeTaxonomyChange)
+		r.Post("/proposals/{proposal_id}/consent", s.handleConsentTaxonomyProposal)
 	})
 
 	// Emergency holds are project-scoped for writes (the hold carries a project

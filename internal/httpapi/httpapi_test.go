@@ -104,6 +104,44 @@ func registerOn(t *testing.T, ts *httptest.Server, username string) string {
 	return tok
 }
 
+// newTestServerWithStore is newTestServer but also hands back the store, for
+// tests that need to assert on what was actually persisted (an attribution
+// column, a row that must not exist) rather than only on the HTTP response.
+//
+// Asserting on the response alone is how the tag-attribution bug hid: the API
+// returned 200 for a body-supplied applied_by, so a status-code test passed while
+// the stored user was whatever the caller typed.
+func newTestServerWithStore(t *testing.T) (*httptest.Server, *store.DB) {
+	t.Helper()
+	sqlDB, err := db.Open(t.TempDir() + "/test.db")
+	if err != nil {
+		t.Fatalf("open db: %v", err)
+	}
+	t.Cleanup(func() { sqlDB.Close() })
+	if err := db.Migrate(t.Context(), sqlDB); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
+	st := store.New(sqlDB)
+	u, err := st.CreateUser(t.Context(), "testuser", "Test User")
+	if err != nil {
+		t.Fatalf("create test user: %v", err)
+	}
+	srv, err := NewServer(st, "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := st.SetPassword(t.Context(), u.Username, "test-password-123"); err != nil {
+		t.Fatalf("set password: %v", err)
+	}
+	_, tok, err := st.Login(t.Context(), u.Username, "test-password-123")
+	if err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	ts := httptest.NewServer(authenticated(srv.Router(), tok))
+	t.Cleanup(ts.Close)
+	return ts, st
+}
+
 func newTestServerNoActor(t *testing.T) *httptest.Server {
 	t.Helper()
 	sqlDB, err := db.Open(t.TempDir() + "/test.db")
@@ -122,6 +160,40 @@ func newTestServerNoActor(t *testing.T) *httptest.Server {
 	ts := httptest.NewServer(srv.Router())
 	t.Cleanup(ts.Close)
 	return ts
+}
+
+// doJSONAnon is doJSON with the X-No-Auth sentinel set, so the request carries
+// no identity.
+//
+// The plain doJSON cannot express an anonymous caller: the authenticated wrapper
+// supplies a default bearer token for any request that arrives without an
+// Authorization header, so "no header" means "the test user", not "nobody".
+func doJSONAnon(t *testing.T, ts *httptest.Server, method, path string, body any) (*http.Response, map[string]any) {
+	t.Helper()
+	var rdr *bytes.Reader
+	if body != nil {
+		b, err := json.Marshal(body)
+		if err != nil {
+			t.Fatalf("marshal body: %v", err)
+		}
+		rdr = bytes.NewReader(b)
+	} else {
+		rdr = bytes.NewReader(nil)
+	}
+	req, err := http.NewRequest(method, ts.URL+path, rdr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-No-Auth", "1")
+	res, err := testClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	_ = json.NewDecoder(res.Body).Decode(&m)
+	res.Body.Close()
+	return res, m
 }
 
 func doJSON(t *testing.T, ts *httptest.Server, method, path string, body any) (*http.Response, map[string]any) {
@@ -172,6 +244,12 @@ func seedDiscoveryFixtures(t *testing.T, ts *httptest.Server) {
 		"slug": "rust-indexer", "name": "Rust Indexer",
 		"description": "fast full-text indexer", "license": "Apache-2.0",
 	})
+	// §4.3: tagging resolves an existing tag, so the vocabulary is ratified first.
+	// These fixtures are search fixtures, not taxonomy fixtures, so they use the
+	// product path rather than inserting rows.
+	for _, tag := range []string{"governance", "consensus", "search", "rust"} {
+		seedGlobalTag(t, ts, tag)
+	}
 	_, _ = doJSON(t, ts, "PUT", "/api/v1/projects/governance-lab/tags",
 		map[string]any{"tags": []string{"governance", "consensus", "search"}})
 	_, _ = doJSON(t, ts, "PUT", "/api/v1/projects/rust-indexer/tags",

@@ -3,6 +3,7 @@ package httpapi
 import (
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 
@@ -306,37 +307,66 @@ func (s *Server) handleRedeemInvite(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------- discovery
 
 type tagsRequest struct {
-	Tags      []string `json:"tags"`
-	AppliedBy string   `json:"applied_by"` // username; auth maps this later (PLAN M8)
+	Tags []string `json:"tags"`
 }
 
+// handleProjectTags attaches existing tags to a project.
+//
+// Three changes, all of them closing holes rather than adding features.
+//
+// It had NO authentication and NO role check at all: any caller could attach
+// tags to any project. §4.3 permits "any contributor applies tags", and the
+// permission boundary has to live somewhere.
+//
+// It read applied_by from the REQUEST BODY and looked the username up, so the
+// attribution was whatever the caller claimed. A tagged-by field is only
+// evidence if the server supplies it, so it now comes from the token.
+//
+// It auto-created tags that did not exist (ApplyProjectTag -> ensureTag), which
+// made the global taxonomy a side effect of editing one project. §4.3 requires
+// suggest-before-create and quorum-ratified taxonomy changes, so tagging now
+// resolves an existing tag or fails with the proposal route named.
 func (s *Server) handleProjectTags(w http.ResponseWriter, r *http.Request) {
-	var req tagsRequest
-	if !readJSON(w, r, &req) {
+	if _, ok := s.requireWriteActor(w, r); !ok {
 		return
 	}
 	slug := chi.URLParam(r, "slug")
-	var appliedBy int64
-	if req.AppliedBy != "" {
-		u, err := s.Store.GetUser(r.Context(), req.AppliedBy)
-		if err != nil {
-			mapError(w, err)
-			return
-		}
-		appliedBy = u.ID
-	}
-	for _, tag := range req.Tags {
-		if err := s.Store.ApplyProjectTag(r.Context(), slug, tag, appliedBy); err != nil {
-			mapError(w, err)
-			return
-		}
-	}
-	p, err := s.Store.GetProject(r.Context(), slug)
+	proj, err := s.Store.GetProject(r.Context(), slug)
 	if err != nil {
 		mapError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, p)
+	// Same visibility rule as requireProjectID, applied to a project resolved by
+	// slug rather than through it.
+	if !s.projectReadable(r, proj) {
+		mapError(w, store.ErrNotFound)
+		return
+	}
+	if err := s.requireRole(proj.ID, "contributor", r); err != nil {
+		mapError(w, err)
+		return
+	}
+	var req tagsRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	actor := getActorID(r)
+	for _, tag := range req.Tags {
+		if err := s.Store.ApplyExistingProjectTag(r.Context(), slug, tag, actor); err != nil {
+			mapError(w, err)
+			return
+		}
+	}
+	_ = s.Store.AddAudit(r.Context(), proj.ID, actor, "apply_tags", "project", proj.ID,
+		strings.Join(req.Tags, ","))
+	// The applied tags in the response, because a client that just applied tags
+	// should not have to make a second request to learn what stuck.
+	tags, err := s.Store.ProjectTags(r.Context(), slug)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"project": proj, "tags": tags})
 }
 
 // handleGetProjectTags returns the names of a project's tags.

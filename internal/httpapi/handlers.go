@@ -443,6 +443,130 @@ func (s *Server) handleListAdminLedger(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, entries)
 }
 
+// ---------------------------------------------------------------- taxonomy (§4.3)
+
+type taxonomyRequest struct {
+	Action    string `json:"action"`
+	TargetTag string `json:"target_tag"`
+	Value     string `json:"value"`
+	Rationale string `json:"rationale"`
+	// ProjectID scopes the change. 0 (or omitted) means instance-wide, which is
+	// the case §4.3 puts squarely under quorum: maintainers hold no unilateral
+	// taxonomy power.
+	ProjectID int64 `json:"project_id"`
+}
+
+// handleProposeTaxonomyChange opens a taxonomy proposal (§4.3).
+//
+// Anyone with contributor or above may propose. Who can ratify is decided inside
+// the store layer, so the gate lives in one place.
+func (s *Server) handleProposeTaxonomyChange(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireWriteActor(w, r); !ok {
+		return
+	}
+	var req taxonomyRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	actor := getActorID(r)
+	// A project-scoped proposal requires membership of that project. An
+	// instance-wide one requires contributor somewhere, since the change affects
+	// every project.
+	if req.ProjectID > 0 {
+		if err := s.requireRole(req.ProjectID, "contributor", r); err != nil {
+			mapError(w, err)
+			return
+		}
+	} else if !s.isContributorSomewhere(r, actor) {
+		mapError(w, store.ErrPerm)
+		return
+	}
+	p, err := s.Store.ProposeTaxonomyChange(r.Context(), req.ProjectID, actor,
+		req.Action, req.TargetTag, req.Value, req.Rationale)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"proposal": p,
+		"message":  "taxonomy changes are ratified by quorum; consent to this proposal to proceed",
+	})
+}
+
+// isContributorSomewhere reports whether an actor holds contributor or above in
+// any project.
+func (s *Server) isContributorSomewhere(r *http.Request, actorID int64) bool {
+	if actorID == 0 {
+		return false
+	}
+	role, err := s.Store.GetHighestRole(r.Context(), actorID)
+	if err != nil {
+		return false
+	}
+	rank, ok := roleHierarchy[role]
+	return ok && rank >= roleHierarchy["contributor"]
+}
+
+// handleConsentTaxonomyProposal consents to a pending taxonomy proposal.
+func (s *Server) handleConsentTaxonomyProposal(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireWriteActor(w, r); !ok {
+		return
+	}
+	proposalID, _ := strconv.ParseInt(chi.URLParam(r, "proposal_id"), 10, 64)
+	p, err := s.Store.RatifyTaxonomyProposal(r.Context(), proposalID, getActorID(r))
+	if err != nil {
+		if errors.Is(err, store.ErrConflict) || errors.Is(err, store.ErrPerm) {
+			// Below quorum, or the proposer trying to consent to their own
+			// proposal. Both are ordinary states of a consensus process, so the
+			// current state comes back with 202 rather than an error to retry.
+			writeJSON(w, http.StatusAccepted, map[string]any{"proposal": p, "message": err.Error()})
+			return
+		}
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"proposal": p, "status": "ratified"})
+}
+
+// handleListTaxonomyProposals lists proposals for a project, including the
+// instance-wide ones (project_id absent means all).
+func (s *Server) handleListTaxonomyProposals(w http.ResponseWriter, r *http.Request) {
+	var projectID int64
+	if v := r.URL.Query().Get("project_id"); v != "" {
+		projectID, _ = strconv.ParseInt(v, 10, 64)
+	}
+	props, err := s.Store.ListTaxonomyProposals(r.Context(), projectID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, props)
+}
+
+// handleListTags backs the suggest-before-create UI (§4.3) and the
+// cap:/tag: filter facets.
+func (s *Server) handleListTags(w http.ResponseWriter, r *http.Request) {
+	tags, err := s.Store.ListTags(r.Context(),
+		r.URL.Query().Get("namespace"),
+		r.URL.Query().Get("include_suggested") == "true")
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, tags)
+}
+
+// handleTagCompleteness returns the §4.3 completeness meter for a project.
+func (s *Server) handleTagCompleteness(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	out, err := s.Store.TagCompleteness(r.Context(), slug)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
 // handleListStrategicThemes returns the project's live (unexpired) themes (§6.2).
 func (s *Server) handleListStrategicThemes(w http.ResponseWriter, r *http.Request) {
 	projectID, ok := s.requireProjectID(w, r)

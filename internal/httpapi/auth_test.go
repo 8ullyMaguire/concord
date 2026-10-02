@@ -78,6 +78,29 @@ func newAuthServer(t *testing.T) *httptest.Server {
 	return ts
 }
 
+// putJSON is postJSON with the PUT method. Needed because PUT /projects/{slug}/tags
+// is a PUT and postJSON hardcodes POST -- calling it for that route returned 405
+// Method Not Allowed, which reads like a missing route rather than a wrong verb.
+func putJSON(t *testing.T, ts *httptest.Server, path, body string, hdr ...string) (*http.Response, map[string]any) {
+	t.Helper()
+	req, err := http.NewRequest(http.MethodPut, ts.URL+path, strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	for i := 0; i+1 < len(hdr); i += 2 {
+		req.Header.Set(hdr[i], hdr[i+1])
+	}
+	res, err := testClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	_ = json.NewDecoder(res.Body).Decode(&m)
+	res.Body.Close()
+	return res, m
+}
+
 func postJSON(t *testing.T, ts *httptest.Server, path, body string, hdr ...string) (*http.Response, map[string]any) {
 	t.Helper()
 	req, err := http.NewRequest(http.MethodPost, ts.URL+path, strings.NewReader(body))

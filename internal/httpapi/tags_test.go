@@ -22,6 +22,11 @@ func TestProjectTags_written_tags_are_readable(t *testing.T) {
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create project: status %d", resp.StatusCode)
 	}
+	// §4.3: tagging resolves an existing tag; creating one is a ratifiable
+	// taxonomy proposal. seedGlobalTag drives that path.
+	for _, tag := range []string{"rust", "storage", "media"} {
+		seedGlobalTag(t, ts, tag)
+	}
 
 	resp, _ = doJSON(t, ts, "PUT", "/api/v1/projects/taggable/tags", map[string]any{
 		"tags": []string{"rust", "storage", "media"},
@@ -64,6 +69,7 @@ func TestProjectTags_applying_a_tag_twice_does_not_duplicate_it(t *testing.T) {
 	ts := newTestServer(t)
 	postJSON(t, ts, "/api/v1/projects",
 		`{"slug":"dup","name":"Dup","description":"d"}`)
+	seedGlobalTag(t, ts, "idem")
 
 	for i := 0; i < 3; i++ {
 		doJSON(t, ts, "PUT", "/api/v1/projects/dup/tags",
@@ -114,6 +120,9 @@ func TestProjectTags_are_scoped_to_their_project(t *testing.T) {
 		`{"slug":"one","name":"One","description":"d"}`)
 	postJSON(t, ts, "/api/v1/projects",
 		`{"slug":"two","name":"Two","description":"d"}`)
+	for _, tag := range []string{"only-one", "other", "shared"} {
+		seedGlobalTag(t, ts, tag)
+	}
 
 	doJSON(t, ts, "PUT", "/api/v1/projects/one/tags", map[string]any{"tags": []string{"only-one"}})
 	doJSON(t, ts, "PUT", "/api/v1/projects/two/tags", map[string]any{"tags": []string{"other"}})
