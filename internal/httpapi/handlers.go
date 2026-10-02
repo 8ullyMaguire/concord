@@ -541,13 +541,14 @@ func (s *Server) checkDuplicates(w http.ResponseWriter, r *http.Request, kind, t
 	if len(sims) == 0 {
 		return nil, true
 	}
-	strong := embed.IsStrongDuplicate(sims[0].Score)
+	strongThr, _, _ := embed.ThresholdsFor(s.Store.EmbedderID())
+	strong := embed.IsStrongDuplicateFor(sims[0].Score, s.Store.EmbedderID())
 	if strong && !confirmed {
 		writeJSON(w, http.StatusConflict, map[string]any{
 			"error":         "an almost identical entry already exists",
 			"similar":       sims,
 			"top_score":     sims[0].Score,
-			"threshold":     embed.StrongDuplicateThreshold,
+			"threshold":     strongThr,
 			"resubmit_with": map[string]any{"confirm_duplicate": true},
 			"note":          "if this is a genuinely different problem, resubmit with confirm_duplicate=true; the existing entry stays untouched either way",
 		})
@@ -641,16 +642,22 @@ func (s *Server) handleFindSimilar(w http.ResponseWriter, r *http.Request) {
 	if sims == nil {
 		sims = []embed.Similarity{}
 	}
+
+	// Bands travel with the answer, and they are per model: nomic's paraphrase
+	// scores run 0.61-0.79 where the hashed embedder's reach 0.37, so a client
+	// that hardcodes one set of bands misreads the other.
+	thrStrong, thrLikely, thrWeak := embed.ThresholdsFor(s.Store.EmbedderID())
+
 	resp := map[string]any{
 		"available":     true,
 		"kind":          kind,
 		"model_id":      s.Store.EmbedderID(),
 		"similar":       sims,
-		"has_duplicate": len(sims) > 0 && embed.IsStrongDuplicate(sims[0].Score),
-		"thresholds": map[string]float64{
-			"strong": embed.StrongDuplicateThreshold,
-			"likely": embed.DuplicateThreshold,
-			"weak":   embed.WeakThreshold,
+		"has_duplicate": len(sims) > 0 && embed.IsStrongDuplicateFor(sims[0].Score, s.Store.EmbedderID()),
+		"thresholds": map[string]any{
+			"strong": thrStrong,
+			"likely": thrLikely,
+			"weak":   thrWeak,
 		},
 	}
 	// Coverage travels with the answer. A filer told "no duplicates" on a corpus

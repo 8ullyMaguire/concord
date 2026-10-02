@@ -57,14 +57,20 @@ func main() {
 
 	st := &store.DB{DB: sqlDB}
 
-	// Duplicate detection (§6.1). The local hashed embedder is the default
-	// because it needs no model server and no network -- §10.5 requires
-	// embeddings to be self-hostable, and making that contingent on a reachable
-	// inference server would not be. Logging the model id matters: vectors from
-	// two models are not comparable, so which one is live is operationally
-	// relevant.
-	st.SetEmbedder(embed.NewHashed())
-	log.Printf("duplicate detection: embedder %s (%d dims)", st.EmbedderID(), embed.DefaultDims)
+	// Duplicate detection (§6.1). With $CONCORD_EMBED_URL unset the local hashed
+	// embedder is used, so the default has no model server and no network
+	// dependency -- §10.5 requires embeddings to be self-hostable, and making
+	// that contingent on a reachable inference server would not be. Set it and a
+	// transformer is used instead, with the hashed one as a fallback if the
+	// server is down, so filing never depends on it.
+	emb, err := embed.FromEnv()
+	if err != nil {
+		log.Fatalf("embedder: %v", err)
+	}
+	st.SetEmbedder(emb)
+	// Logged because vectors from two models are not comparable: which one is
+	// live decides whether the existing index is usable or must be re-embedded.
+	log.Printf("duplicate detection: embedder %s (%d dims)", st.EmbedderID(), emb.Dims())
 
 	srv, err := httpapi.NewServer(st, version, cfg.WebhookSecret)
 	if err != nil {

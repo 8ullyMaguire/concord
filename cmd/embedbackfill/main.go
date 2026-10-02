@@ -57,7 +57,16 @@ func main() {
 	}
 
 	st := &store.DB{DB: sqlDB}
-	st.SetEmbedder(embed.NewHashed())
+
+	// Same embedder the server uses, or the backfill writes vectors the server
+	// will not read. $CONCORD_EMBED_URL must be set identically for both.
+	emb, err := embed.FromEnv()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "embedder: %v\n", err)
+		os.Exit(1)
+	}
+	st.SetEmbedder(emb)
+	fmt.Fprintf(os.Stderr, "embedder %s (%d dims)\n", st.EmbedderID(), emb.Dims())
 
 	kinds := []string{store.KindComplaint, store.KindFeature, store.KindRequest, store.KindProject}
 	if *kindFlag != "" {

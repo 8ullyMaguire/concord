@@ -283,7 +283,12 @@ func (d *DB) FindSimilarField(ctx context.Context, kind, text string, projectID 
 	}
 	scored := make([]embed.Similarity, 0, len(best))
 	for entityID, s := range best {
-		if s < embed.WeakThreshold {
+		// Prune with the CURRENT model's weak band, not the package constant:
+		// the hashed and nomic scales are not comparable, so a global constant
+		// would either flood the panel or empty it depending on which embedder is
+		// configured.
+		_, _, weak := embed.ThresholdsFor(d.embedder.ID())
+		if s < weak {
 			continue
 		}
 		scored = append(scored, embed.Similarity{Kind: kind, EntityID: entityID, Score: s})

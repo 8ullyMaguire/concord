@@ -19,17 +19,33 @@
 // complaint, which is the common case, because people describe the same bug in
 // slightly different words.
 //
-// Token overlap alone does not do this. "cannot resume upload after a network
-// drop" and "large uploads fail silently and restart from zero" share no tokens
-// beyond "upload". Character n-grams bridge that: "restart"/"resume",
-// "upload"/"uploads" share trigrams. TestSimilarCatchesParaphrase pins it.
+// Character n-grams do bridge morphological variants: "restart"/"resume" and
+// upload"/"uploads" share trigrams. The store-level test
+// TestFindSimilarCatchesTheSameComplaintFiledTwice pins that behaviour, and
+// TestStopWordOnlyTextDoesNotMatchRealComplaints pins the other half of it.
 //
-// # What this is not
+// # What this is not, measured rather than asserted
 //
-// It is not semantic. "auth is broken" and "login fails" are the same complaint
-// to a person and unrelated to this embedder. Swapping in a real model is a
-// one-line change (see Model) and nothing else in the system needs to move,
-// because similarity is computed over whatever vector comes back.
+// It is not semantic, and the gap is larger than the earlier version of this
+// comment claimed. Over 13 hand-built pairs where both members describe the same
+// underlying problem in different words, against pairs describing different
+// problems in the same domain:
+//
+//	pair set                      same-problem      different      separation
+//	hashed n-grams (2048 dims)     0.081 - 0.370     0.000 - 0.053   +0.028
+//	nomic-embed-text (768 dims)   0.613 - 0.787     0.371 - 0.473   +0.140
+//
+// The hashed embedder flagged 0 of 6 paraphrases, and its own advisory band
+// starts at 0.62 -- above the 0.370 paraphrase ceiling -- so paraphrases land in
+// a hole between the bands and are never shown to a filer at all. Every one of
+// those six pairs is the same bug described by two different people, and every
+// one of them was filed twice with no warning.
+//
+// So this embedder's real job is narrower than "near-duplicate detection": it
+// catches literal and morphological repeats, and nothing else. Use Ollama when
+// a model server is reachable; it is what makes the feature match its name. The
+// two are interchangeable behind the Embedder interface, and Ollama falls back to
+// this one, so there is no configuration in which the feature is absent.
 package embed
 
 import (
