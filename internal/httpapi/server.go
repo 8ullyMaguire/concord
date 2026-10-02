@@ -307,9 +307,21 @@ func (s *Server) Router() http.Handler {
 		r.Post("/", s.handleCreateFeature)
 		r.Route("/{id}", func(r chi.Router) {
 			r.Get("/", s.handleGetFeature)
+			// Proposes a strategic-weight change; it does not apply one
+			// directly (§6.2 -- weight is consensus-ratified, not a
+			// maintainer dial).
 			r.Put("/strategic-weight", s.handleSetStrategicWeight)
 			r.Put("/status", s.handleSetFeatureStatus)
 		})
+	})
+
+	// Strategic weight proposals and themes (spec revision 4 §6.2).
+	// Ratified by consensus rather than set by hand, which is what closes the
+	// steering loophole the single maintainer-only PUT used to leave open.
+	r.Route("/api/v1/projects/{project_id}/strategy", func(r chi.Router) {
+		r.Get("/weight-proposals", s.handleListStrategicWeightProposals)
+		r.Post("/weight-proposals/{proposal_id}/consent", s.handleConsentStrategicWeight)
+		r.Get("/themes", s.handleListStrategicThemes)
 	})
 
 	// Pairwise votes

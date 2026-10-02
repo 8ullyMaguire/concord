@@ -44,9 +44,16 @@ func (m GovernanceModel) Valid() bool {
 
 // Charter holds the project's decision thresholds (spec §5.5, §6.3, §8).
 type Charter struct {
-	QuorumRatio             float64 // share of eligible collaborators
-	QuorumMin               int     // ... but never fewer than this many
-	ConsentRatio            float64 // consent / (consent + stand_aside + block)
+	QuorumRatio float64 // share of eligible collaborators
+	QuorumMin   int     // ... but never fewer than this many
+	// Two thresholds that answer different questions (spec §6.6).
+	// SupportRatioMin is checked against SupportRatio -- consent over all
+	// substantive positions, so a room full of reservations can carry a
+	// proposal off a handful of supporters.
+	// ConsentRatio is the decisive bar -- consent over the positions that
+	// took a side, where a stand-aside is neutral rather than opposed.
+	SupportRatioMin         float64
+	ConsentRatio            float64 // decisive: consent / (consent + block)
 	OverrideRatio           float64 // supermajority overriding a block
 	VoteWindowDays          float64
 	MergeRequiresQuorum     bool
@@ -67,7 +74,11 @@ type Charter struct {
 func DefaultCharter(m GovernanceModel) Charter {
 	c := Charter{
 		QuorumRatio: 0.2, QuorumMin: 3,
-		ConsentRatio: 0.7, OverrideRatio: 0.8,
+		// §6.6: support >= 0.50 and decisive >= 0.70. The support floor
+		// is what a consent ratio alone could not express -- a call can
+		// clear 70% of the decisive positions while being carried by a
+		// handful of people against a room full of reservations.
+		ConsentRatio: 0.7, SupportRatioMin: 0.5, OverrideRatio: 0.8,
 		VoteWindowDays:      7,
 		MergeRequiresQuorum: true, MergeQuorumMin: 2, MergeQuorumRatio: 0.25,
 		RequireReviewerApproval: true,
@@ -124,6 +135,55 @@ func (cc ConsensusCounts) NonAbstain() int {
 	return cc.Consent + cc.StandAside + cc.Block
 }
 
+// Decisive returns the denominator of the decisive ratio: consent + block.
+//
+// A stand-aside is a reservation, not opposition -- §6.6 defines it as "I have
+// concerns, but I will not block". Counting it in the denominator of the
+// ratio that decides the outcome made a stand-aside vote *against* the
+// proposal, which is the opposite of what the position means, and it was a real
+// bug: a call with 4 consent, 3 stand-aside and 0 block scored 4/7 = 0.57 and
+// failed a 0.7 threshold, so the people who withheld consent because they had
+// reservations were the ones who sank it.
+//
+// Abstain is already excluded (it is neutral in both measures) and stand-aside
+// is now too. NonAbstain is kept because it is still the right denominator for
+// participation reporting, which counts reservations as participation.
+func (cc ConsensusCounts) Decisive() int {
+	return cc.Consent + cc.Block
+}
+
+// SupportRatio is consent / non-abstain: the share of substantive positions
+// that support the proposal. A stand-aside dilutes this, which is meaningful
+// -- it is the "how many people went along with reservations" number.
+func (cc ConsensusCounts) SupportRatio() float64 {
+	if n := cc.NonAbstain(); n > 0 {
+		return float64(cc.Consent) / float64(n)
+	}
+	return 0
+}
+
+// DecisiveRatio is consent / (consent + block): the share of positions that took
+// a side against each other. Stand-asides and abstentions are excluded, so a
+// proposal passes this on the strength of the people who actually decided it,
+// not on the size of the room.
+//
+// The two ratios differ, and reporting only one of them hides either the
+// reservations or the opposition. §6.6 requires both: support >= 0.50 and
+// decisive >= 0.70.
+func (cc ConsensusCounts) DecisiveRatio() float64 {
+	if n := cc.Decisive(); n > 0 {
+		return float64(cc.Consent) / float64(n)
+	}
+	return 0
+}
+
+// Reluctant reports whether the call carries more reservations than support.
+// Such a decision passes but is flagged for review, because a room that mostly
+// stands aside has not actually agreed.
+func (cc ConsensusCounts) Reluctant() bool {
+	return cc.StandAside > cc.Consent
+}
+
 // Result is the outcome of a consensus call.
 type Result string
 
@@ -135,29 +195,40 @@ const (
 	ResultInsufficientQuorum Result = "insufficient_quorum"
 )
 
-// EvaluateConsensus applies the spec's decision rule WITHOUT side effects:
+// EvaluateConsensus applies the spec's decision rule WITHOUT side effects.
 //
-//   - quorum counts every cast position (abstentions show up, silence does
-//     not decide — an unmet quorum extends the window);
-//   - the consent ratio is computed over non-abstain votes;
-//   - any open block forces either an ≥override-ratio supermajority
-//     (accepted_overridden) or a blocked result.
+// Two separate thresholds, because they answer different questions (§6.6):
+//
+//	support  = consent / (consent + stand_aside + block) >= SupportRatioMin
+//	decisive = consent / (consent + block)                    >= ConsentRatio
+//
+// Stand-asides are neutral in the decisive measure. They were not neutral
+// before, which meant a stand-aside counted as a vote against the proposal --
+// see ConsensusCounts.Decisive.
+//
+// Any open block forces either an >=override-ratio supermajority
+// (accepted_overridden) or a blocked result.
 func EvaluateConsensus(cc ConsensusCounts, c Charter) Result {
 	if cc.Participants < QuorumThreshold(cc.Eligible, c) {
 		return ResultInsufficientQuorum
 	}
-	nonAbstain := cc.NonAbstain()
-	ratio := 0.0
-	if nonAbstain > 0 {
-		ratio = float64(cc.Consent) / float64(nonAbstain)
-	}
+	support := cc.SupportRatio()
+	decisive := cc.DecisiveRatio()
+
 	if cc.OpenObjections > 0 {
-		if ratio >= c.OverrideRatio {
+		// The override supermajority is measured the same way as a passing
+		// call: over the people who took a side. Including stand-asides here
+		// would mean a reservation could block an override it never opposed.
+		if decisive >= c.OverrideRatio {
 			return ResultAcceptedOverridden
 		}
 		return ResultBlocked
 	}
-	if ratio >= c.ConsentRatio {
+
+	if support < c.SupportRatioMin {
+		return ResultRejected
+	}
+	if decisive >= c.ConsentRatio {
 		return ResultAccepted
 	}
 	return ResultRejected

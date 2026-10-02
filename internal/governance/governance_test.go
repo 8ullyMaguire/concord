@@ -58,17 +58,63 @@ func TestEvaluateConsensus(t *testing.T) {
 		}
 	})
 	t.Run("rejected below consent ratio", func(t *testing.T) {
-		cc := ConsensusCounts{Consent: 2, StandAside: 1, Block: 0, Participants: 4, Eligible: 10}
-		// ratio 2/3 ≈ 0.667 < 0.7, quorum met
+		// Decisive 2/5 = 0.40 < 0.7. Blocks, not stand-asides, are what count
+		// against consent here -- see the stand-aside cases below for why that
+		// distinction is the point.
+		cc := ConsensusCounts{Consent: 2, Block: 3, Participants: 5, Eligible: 10}
 		if got := EvaluateConsensus(cc, c); got != ResultRejected {
 			t.Fatalf("got %q, want rejected", got)
 		}
 	})
+	t.Run("stand-asides do not count against consent", func(t *testing.T) {
+		// 2 consent, 1 stand-aside, no block: decisive 2/2 = 1.0, support
+		// 2/3 = 0.67. Passes both thresholds.
+		//
+		// This case read 2/3 against the single 0.7 threshold and was REJECTED
+		// before revision 4, which meant the one person who withheld consent
+		// because they had reservations was the person who sank the proposal.
+		cc := ConsensusCounts{Consent: 2, StandAside: 1, Block: 0, Participants: 4, Eligible: 10}
+		if got := EvaluateConsensus(cc, c); got != ResultAccepted {
+			t.Fatalf("got %q, want accepted: a stand-aside is not a vote against", got)
+		}
+	})
+	t.Run("support floor catches a thin majority", func(t *testing.T) {
+		// Decisive passes (3/3 = 1.0) but support fails: 3 consent against 5
+		// reservations is 0.375 < 0.5. This is the case a single consent
+		// ratio cannot express, and the reason support_ratio_min exists.
+		cc := ConsensusCounts{Consent: 3, StandAside: 5, Participants: 8, Eligible: 10}
+		if got := EvaluateConsensus(cc, c); got != ResultRejected {
+			t.Fatalf("got %q, want rejected on the support floor", got)
+		}
+	})
+	t.Run("reluctant consensus is flagged", func(t *testing.T) {
+		cc := ConsensusCounts{Consent: 3, StandAside: 4, Participants: 7, Eligible: 10}
+		if !cc.Reluctant() {
+			t.Fatal("stand-asides outnumber consents, want Reluctant")
+		}
+		cc = ConsensusCounts{Consent: 4, StandAside: 3, Participants: 7, Eligible: 10}
+		if cc.Reluctant() {
+			t.Fatal("consents outnumber stand-asides, want not Reluctant")
+		}
+	})
 	t.Run("blocked by unresolved objection", func(t *testing.T) {
-		// 6/8 = 0.75 ≥ consent 0.7 but < override 0.8 with a block open
-		cc := ConsensusCounts{Consent: 6, StandAside: 2, Participants: 8, Eligible: 10, OpenObjections: 1}
+		// Decisive 6/8 = 0.75: clears consent 0.7 but is under override 0.8,
+		// and a block is open. Blocked.
+		cc := ConsensusCounts{Consent: 6, Block: 2, Participants: 8, Eligible: 10, OpenObjections: 1}
 		if got := EvaluateConsensus(cc, c); got != ResultBlocked {
-			t.Fatalf("got %q, want blocked (ratio %.3f)", got, 6.0/8.0)
+			t.Fatalf("got %q, want blocked (decisive ratio %.3f)", got, 6.0/8.0)
+		}
+	})
+	t.Run("stand-asides cannot block an override they did not oppose", func(t *testing.T) {
+		// 6 consent, 2 stand-aside, 1 block: decisive 6/7 = 0.857 >= override
+		// 0.8, so the override carries.
+		//
+		// Under the old single ratio this was 6/9 = 0.67, below override, and
+		// the result was blocked -- the two people who only wanted reservations
+		// recorded were enough to stop the community overriding a block.
+		cc := ConsensusCounts{Consent: 6, StandAside: 2, Block: 1, Participants: 9, Eligible: 10, OpenObjections: 1}
+		if got := EvaluateConsensus(cc, c); got != ResultAcceptedOverridden {
+			t.Fatalf("got %q, want accepted_overridden (decisive %.3f)", got, 6.0/7.0)
 		}
 	})
 	t.Run("supermajority overrides a block", func(t *testing.T) {

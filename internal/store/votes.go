@@ -118,6 +118,23 @@ func (d *DB) RecordVote(ctx context.Context, projectID, voterID, featureA, featu
 	if outcome == "" {
 		return PairwiseVote{}, fmt.Errorf("%w: outcome is required", ErrInvalid)
 	}
+	// §5.1: "no voting on your own items". Nothing enforced this, so an author
+	// could vote in their own feature's arena and move its rating directly.
+	// The check is on authorship rather than membership, so an author who is
+	// also a maintainer is still excluded.
+	var authorA, authorB int64
+	if err := d.QueryRowContext(ctx,
+		`SELECT author_id FROM features WHERE id = ?`, featureA).Scan(&authorA); err != nil {
+		return PairwiseVote{}, fmt.Errorf("fetch feature A author: %w", err)
+	}
+	if err := d.QueryRowContext(ctx,
+		`SELECT author_id FROM features WHERE id = ?`, featureB).Scan(&authorB); err != nil {
+		return PairwiseVote{}, fmt.Errorf("fetch feature B author: %w", err)
+	}
+	if voterID == authorA || voterID == authorB {
+		return PairwiseVote{}, fmt.Errorf("%w: you cannot vote on a feature you authored", ErrPerm)
+	}
+
 	now := float64(time.Now().Unix())
 
 	// Fetch current feature ratings so we can apply the vote

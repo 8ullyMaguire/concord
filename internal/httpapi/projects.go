@@ -296,10 +296,10 @@ func (s *Server) handleRedeemInvite(w http.ResponseWriter, r *http.Request) {
 	_ = s.Store.AddAudit(r.Context(), projectID, actorID, "redeem_invite", "invite",
 		proj.ID, proj.Slug)
 	writeJSON(w, http.StatusOK, map[string]string{
-		"project":  proj.Slug,
-		"slug":     proj.Slug,
-		"status":   "joined",
-		"role":     "contributor",
+		"project": proj.Slug,
+		"slug":    proj.Slug,
+		"status":  "joined",
+		"role":    "contributor",
 	})
 }
 

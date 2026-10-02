@@ -33,6 +33,29 @@ func setupWithUser(t *testing.T) (*DB, int64) {
 	return store, u.ID
 }
 
+// secondVoter returns an account distinct from the fixture's author, for tests
+// that cast a vote.
+//
+// A vote from the feature's own author is refused by RecordVote (§5.1: nobody
+// votes on their own items), so every voting test needs a voter who did not
+// write the features under comparison.
+func secondVoter(t *testing.T, store *DB) int64 {
+	t.Helper()
+	return newUserNamed(t, store, "secondtestuser")
+}
+
+// newUserNamed creates an account with a fresh username. Usernames are unique,
+// so a test that needs several distinct voters calls this repeatedly rather
+// than assuming one helper can be reused.
+func newUserNamed(t *testing.T, store *DB, name string) int64 {
+	t.Helper()
+	u, err := store.CreateUser(context.Background(), name, "Test "+name)
+	if err != nil {
+		t.Fatalf("CreateUser(%s): %v", name, err)
+	}
+	return u.ID
+}
+
 func setupWithProject(t *testing.T) (*DB, int64, int64) {
 	t.Helper()
 	store, uid := setupWithUser(t)
@@ -258,8 +281,9 @@ func TestRecordVoteRatingMovement(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateFeature B: %v", err)
 	}
+	voter := secondVoter(t, store)
 	charter := governance.DefaultCharter(governance.Collective)
-	vote, err := store.RecordVote(ctx, pid, uid, featA.ID, featB.ID, "a", 1.0, charter)
+	vote, err := store.RecordVote(ctx, pid, voter, featA.ID, featB.ID, "a", 1.0, charter)
 	if err != nil {
 		t.Fatalf("RecordVote: %v", err)
 	}
@@ -282,6 +306,7 @@ func TestRecordVoteRatingMovement(t *testing.T) {
 func TestRecordVoteWeightScaling(t *testing.T) {
 	store, uid, pid := setupWithProject(t)
 	ctx := context.Background()
+	voter := secondVoter(t, store)
 	charter := governance.DefaultCharter(governance.Collective)
 
 	comp, err := store.CreateComplaint(ctx, pid, uid, "WS complaint", "body", 1, 0.5, 1.0)
@@ -293,14 +318,14 @@ func TestRecordVoteWeightScaling(t *testing.T) {
 	}
 	featA, _ := store.CreateFeature(ctx, pid, uid, "WS A", "desc", "", nil, nil, []int64{comp.ID})
 	featB, _ := store.CreateFeature(ctx, pid, uid, "WS B", "desc", "", nil, nil, []int64{comp.ID})
-	if _, err := store.RecordVote(ctx, pid, uid, featA.ID, featB.ID, "a", 0.0, charter); err != nil {
+	if _, err := store.RecordVote(ctx, pid, voter, featA.ID, featB.ID, "a", 0.0, charter); err != nil {
 		t.Fatalf("RecordVote zero: %v", err)
 	}
 	gotLow, _ := store.GetFeature(ctx, featA.ID)
 
 	featC, _ := store.CreateFeature(ctx, pid, uid, "WS C", "desc", "", nil, nil, []int64{comp.ID})
 	featD, _ := store.CreateFeature(ctx, pid, uid, "WS D", "desc", "", nil, nil, []int64{comp.ID})
-	if _, err := store.RecordVote(ctx, pid, uid, featC.ID, featD.ID, "a", 10.0, charter); err != nil {
+	if _, err := store.RecordVote(ctx, pid, voter, featC.ID, featD.ID, "a", 10.0, charter); err != nil {
 		t.Fatalf("RecordVote high: %v", err)
 	}
 	gotHigh, _ := store.GetFeature(ctx, featC.ID)
@@ -356,12 +381,15 @@ func TestGetNextPairExhausted(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateFeature 2: %v", err)
 	}
+	voter := secondVoter(t, store)
 	charter := governance.DefaultCharter(governance.Collective)
-	if _, err := store.RecordVote(ctx, pid, uid, feat.ID, feat2.ID, "a", 1.0, charter); err != nil {
+	if _, err := store.RecordVote(ctx, pid, voter, feat.ID, feat2.ID, "a", 1.0, charter); err != nil {
 		t.Fatalf("RecordVote: %v", err)
 	}
-	_, _, err = store.GetNextPair(ctx, pid, uid)
-	if err == nil {
+	// Ask for the next pair as the voter who already cast the only pair.
+	// Asking as `uid` would correctly return a pair: GetNextPair filters by
+	// whose votes have been seen, and uid has not voted.
+	if _, _, err = store.GetNextPair(ctx, pid, voter); err == nil {
 		t.Error("expected error when all pairs voted, got nil")
 	}
 }
@@ -447,8 +475,9 @@ func TestGetFeatureVotes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateFeature 2: %v", err)
 	}
+	voter := secondVoter(t, store)
 	charter := governance.DefaultCharter(governance.Collective)
-	if _, err := store.RecordVote(ctx, pid, uid, feat.ID, feat2.ID, "a", 1.0, charter); err != nil {
+	if _, err := store.RecordVote(ctx, pid, voter, feat.ID, feat2.ID, "a", 1.0, charter); err != nil {
 		t.Fatalf("RecordVote: %v", err)
 	}
 	votes, err := store.GetFeatureVotes(ctx, feat.ID)

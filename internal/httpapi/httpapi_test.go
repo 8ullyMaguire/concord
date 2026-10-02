@@ -516,12 +516,109 @@ func TestPermissionDenial(t *testing.T) {
 		}
 		featID := int64(featBody["id"].(float64))
 
-		resp, body := doJSON(t, ts, "PUT", "/api/v1/projects/"+slugOf(t, ts, projID)+"/features/"+itoa(featID)+"/strategic-weight", map[string]any{
-			"weight": 5.0,
+		// Spec revision 4 §6.2: strategic weight is no longer a maintainer
+		// dial. The route now opens a proposal and the weight is applied only
+		// when eligible collaborators ratify it, because weight multiplies into
+		// the priority formula and a maintainer applying it directly is the
+		// steering lever §5.3 forbids.
+		slug := slugOf(t, ts, projID)
+
+		t.Run("weight change without a rationale is refused", func(t *testing.T) {
+			resp, body := doJSON(t, ts, "PUT", "/api/v1/projects/"+slug+"/features/"+itoa(featID)+"/strategic-weight", map[string]any{
+				"weight": 5.0,
+			})
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Fatalf("missing rationale: got %d body=%v, want 400", resp.StatusCode, body)
+			}
 		})
-		if resp.StatusCode != http.StatusOK {
-			t.Fatalf("maintainer should be able to set strategic weight, got %d body=%v", resp.StatusCode, body)
-		}
+
+		t.Run("out-of-range weight is refused", func(t *testing.T) {
+			// 5.0 exceeds the 3.0 ceiling. A weight that can dominate the
+			// priority formula reintroduces hand-steering.
+			resp, body := doJSON(t, ts, "PUT", "/api/v1/projects/"+slug+"/features/"+itoa(featID)+"/strategic-weight", map[string]any{
+				"weight": 5.0, "rationale": "security hardening",
+			})
+			if resp.StatusCode != http.StatusBadRequest {
+				t.Fatalf("weight 5.0: got %d body=%v, want 400", resp.StatusCode, body)
+			}
+		})
+
+		t.Run("a proposal is opened, not applied", func(t *testing.T) {
+			resp, body := doJSON(t, ts, "PUT", "/api/v1/projects/"+slug+"/features/"+itoa(featID)+"/strategic-weight", map[string]any{
+				"weight": 2.0, "rationale": "security hardening work",
+			})
+			if resp.StatusCode != http.StatusCreated {
+				t.Fatalf("propose: got %d body=%v, want 201", resp.StatusCode, body)
+			}
+			prop, ok := body["proposal"].(map[string]any)
+			if !ok {
+				t.Fatalf("no proposal object in %v", body)
+			}
+			if prop["status"] != "pending" {
+				t.Errorf("proposal status = %v, want pending", prop["status"])
+			}
+			// The weight must NOT have moved: that is the whole point.
+			resp, featBody := doJSON(t, ts, "GET", "/api/v1/projects/"+slug+"/features/"+itoa(featID), nil)
+			if resp.StatusCode != http.StatusOK {
+				t.Fatalf("get feature: %d", resp.StatusCode)
+			}
+			if w, _ := featBody["strategic_weight"].(float64); w != 1.0 {
+				t.Errorf("strategic_weight = %v, want 1.0 -- a proposal must not apply the change", w)
+			}
+			proposalID := int64(prop["id"].(float64))
+
+			t.Run("the proposer cannot consent to their own proposal", func(t *testing.T) {
+				// §5.1: no voting on your own items. Without this the proposal
+				// path is just a slower maintainer dial.
+				resp, body := doJSON(t, ts, "POST",
+					"/api/v1/projects/"+slug+"/strategy/weight-proposals/"+itoa(proposalID)+"/consent", nil)
+				if resp.StatusCode != http.StatusForbidden {
+					t.Fatalf("self-consent: got %d body=%v, want 403", resp.StatusCode, body)
+				}
+			})
+
+			t.Run("another collaborator consents without reaching quorum", func(t *testing.T) {
+				// A different account, so the self-vote rule is satisfied. The
+				// project has one eligible collaborator plus this new account,
+				// so quorum is 2 and one consent is not enough to ratify: 202.
+				_, reg := postJSON(t, ts, "/api/v1/auth/register",
+					`{"username":"consenter","password":"correct horse battery"}`)
+				tok, _ := reg["token"].(string)
+				if tok == "" {
+					t.Fatalf("register returned no token: %v", reg)
+				}
+
+				// A fresh registration is a guest, and consent requires
+				// contributor. Joining is the documented path, and it is also
+				// what makes the user an eligible collaborator (§8.2).
+				postJSON(t, ts, "/api/v1/projects/"+slug+"/join", "{}",
+					"Authorization", "Bearer "+tok)
+				resp, body := postJSON(t, ts,
+					"/api/v1/projects/"+slug+"/strategy/weight-proposals/"+itoa(proposalID)+"/consent",
+					"{}", "Authorization", "Bearer "+tok)
+				if resp.StatusCode != http.StatusAccepted {
+					t.Fatalf("consent below quorum: got %d body=%v, want 202", resp.StatusCode, body)
+				}
+
+				// Still unapplied.
+				_, featBody := doJSON(t, ts, "GET", "/api/v1/projects/"+slug+"/features/"+itoa(featID), nil)
+				if w, _ := featBody["strategic_weight"].(float64); w != 1.0 {
+					t.Errorf("strategic_weight = %v after one consent, want 1.0", w)
+				}
+			})
+
+			t.Run("proposals are listed", func(t *testing.T) {
+				resp, body := doJSON(t, ts, "GET", "/api/v1/projects/"+slug+"/strategy/weight-proposals", nil)
+				if resp.StatusCode != http.StatusOK {
+					t.Fatalf("list proposals: %d", resp.StatusCode)
+				}
+				// doJSON wraps a bare JSON array under "items".
+				items, ok := body["items"].([]any)
+				if !ok || len(items) == 0 {
+					t.Fatalf("expected a non-empty array of proposals, got %v", body)
+				}
+			})
+		})
 	})
 }
 

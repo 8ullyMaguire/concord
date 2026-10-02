@@ -66,7 +66,6 @@ func (d *DB) SearchProjects(ctx context.Context, q string, f SearchFilters, sort
 	var joins, wheres []string
 	var args []any
 
-
 	if q != "" {
 		joins = append(joins, `JOIN projects_fts fts ON fts.slug = p.slug`)
 		wheres = append(wheres, `projects_fts MATCH ?`)

@@ -445,7 +445,9 @@ func TestRedeemRequiresASession(t *testing.T) {
 	if code != http.StatusCreated {
 		t.Fatalf("create invite: %d (%s)", code, body)
 	}
-	var inv struct{ Token string `json:"token"` }
+	var inv struct {
+		Token string `json:"token"`
+	}
 	json.Unmarshal(body, &inv)
 
 	code, _ = authJSON(t, ts, http.MethodPost, "/api/v1/auth/redeem-invite", "",
@@ -465,6 +467,7 @@ func createTestProjectWithAuth(t *testing.T, ts *httptest.Server, auth, slug str
 		t.Fatalf("create project %s: status %d body %s", slug, code, body)
 	}
 }
+
 // projectVisibility parses visibility out of a project JSON body. A substring
 // check is wrong here: responses are indented, so `"visibility":"private"`
 // never matches and the assertion would need to be written against the

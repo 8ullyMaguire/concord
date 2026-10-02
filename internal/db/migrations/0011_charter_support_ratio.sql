@@ -1,0 +1,22 @@
+-- Charter gains support_ratio_min, the second of the two consensus thresholds
+-- required by spec revision 4 §6.6.
+--
+-- Before this, a charter had ONE consent threshold, applied to
+-- consent / (consent + stand_aside + block). That made a stand-aside count as
+-- a vote against the proposal, which inverts its own definition ("reservations,
+-- but I will not block"): a call with 4 consent, 3 stand-aside and no block
+-- scored 0.57 and failed a 0.7 bar, so the people withholding consent out of
+-- reservations were the ones who sank it.
+--
+-- §6.6 now requires two measures:
+--   support  = consent / (consent + stand_aside + block) >= support_ratio_min
+--   decisive = consent / (consent + block)                    >= consent_ratio
+--
+-- consent_ratio already exists and keeps its meaning as the decisive bar.
+-- support_ratio_min is new. Existing rows get the spec default of 0.5, which is
+-- strictly weaker than the old single threshold, so no call that used to pass
+-- now fails: support_ratio (>= decisive_ratio by definition) is always at least
+-- as large as the old denominator, and 0.5 is below every existing
+-- consent_ratio in use.
+
+ALTER TABLE charters ADD COLUMN support_ratio_min REAL NOT NULL DEFAULT 0.5;

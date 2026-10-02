@@ -85,13 +85,15 @@ func (d *DB) GetUser(ctx context.Context, username string) (User, error) {
 func (d *DB) GetCharterForProject(ctx context.Context, projectID int64) (governance.Charter, error) {
 	var c governance.Charter
 	err := d.QueryRowContext(ctx, `
-		SELECT quorum_ratio, quorum_min, consent_ratio, override_ratio,
+		SELECT quorum_ratio, quorum_min, consent_ratio, support_ratio_min,
+		       override_ratio,
 		       vote_window_days, merge_requires_quorum, merge_quorum_min,
 		       merge_quorum_ratio, require_reviewer_approval, wip_in_progress,
 		       wip_review, lam, mu, pain_halflife_days, rep_halflife_days,
 		       glicko_tau, vote_weight_cap
 		FROM charters WHERE project_id = ?`, projectID).Scan(
-		&c.QuorumRatio, &c.QuorumMin, &c.ConsentRatio, &c.OverrideRatio,
+		&c.QuorumRatio, &c.QuorumMin, &c.ConsentRatio, &c.SupportRatioMin,
+		&c.OverrideRatio,
 		&c.VoteWindowDays, &c.MergeRequiresQuorum, &c.MergeQuorumMin,
 		&c.MergeQuorumRatio, &c.RequireReviewerApproval, &c.WIPInProgress,
 		&c.WIPReview, &c.Lam, &c.Mu, &c.PainHalflifeDays, &c.RepHalflifeDays,
@@ -109,13 +111,15 @@ func (d *DB) GetCharterForProject(ctx context.Context, projectID int64) (governa
 func (d *DB) UpdateCharter(ctx context.Context, projectID int64, charter governance.Charter) error {
 	_, err := d.ExecContext(ctx, `
 		UPDATE charters SET
-			quorum_ratio = ?, quorum_min = ?, consent_ratio = ?, override_ratio = ?,
+			quorum_ratio = ?, quorum_min = ?, consent_ratio = ?,
+			support_ratio_min = ?, override_ratio = ?,
 			vote_window_days = ?, merge_requires_quorum = ?, merge_quorum_min = ?,
 			merge_quorum_ratio = ?, require_reviewer_approval = ?, wip_in_progress = ?,
 			wip_review = ?, lam = ?, mu = ?, pain_halflife_days = ?, rep_halflife_days = ?,
 			glicko_tau = ?, vote_weight_cap = ?
 		WHERE project_id = ?`,
-		charter.QuorumRatio, charter.QuorumMin, charter.ConsentRatio, charter.OverrideRatio,
+		charter.QuorumRatio, charter.QuorumMin, charter.ConsentRatio,
+		charter.SupportRatioMin, charter.OverrideRatio,
 		charter.VoteWindowDays, charter.MergeRequiresQuorum, charter.MergeQuorumMin,
 		charter.MergeQuorumRatio, charter.RequireReviewerApproval, charter.WIPInProgress,
 		charter.WIPReview, charter.Lam, charter.Mu, charter.PainHalflifeDays, charter.RepHalflifeDays,
@@ -186,19 +190,19 @@ func (d *DB) GetMember(ctx context.Context, projectID, userID int64) (Member, er
 // ---------------------------------------------------------------- projects
 
 type Project struct {
-	ID              int64    `json:"id"`
-	Slug            string   `json:"slug"`
-	Name            string   `json:"name"`
-	Description     string   `json:"description"`
-	GovernanceModel string   `json:"governance_model"`
-	License         string   `json:"license,omitempty"`
+	ID              int64  `json:"id"`
+	Slug            string `json:"slug"`
+	Name            string `json:"name"`
+	Description     string `json:"description"`
+	GovernanceModel string `json:"governance_model"`
+	License         string `json:"license,omitempty"`
 	// Visibility is one of VisibilityPrivate, VisibilityUnlisted,
 	// VisibilityProtected, VisibilityPublic. It is always set: the column is
 	// NOT NULL with a CHECK, so "unset" is a state the database refuses.
-	Visibility   string   `json:"visibility"`
-	CreatedAt    float64  `json:"created_at"`
-	UpdatedAt    float64  `json:"updated_at"`
-	HealthScore  *float64 `json:"health_score,omitempty"` // nil until metrics exist
+	Visibility  string   `json:"visibility"`
+	CreatedAt   float64  `json:"created_at"`
+	UpdatedAt   float64  `json:"updated_at"`
+	HealthScore *float64 `json:"health_score,omitempty"` // nil until metrics exist
 }
 
 // The four visibility levels. See migration 0009 for what each one means and,
@@ -288,7 +292,8 @@ func (d *DB) CreateProject(ctx context.Context, userID int64, slug, name, descri
 	}
 
 	charterCols := []string{
-		"quorum_ratio", "quorum_min", "consent_ratio", "override_ratio",
+		"quorum_ratio", "quorum_min", "consent_ratio", "support_ratio_min",
+		"override_ratio",
 		"vote_window_days", "merge_requires_quorum", "merge_quorum_min",
 		"merge_quorum_ratio", "require_reviewer_approval", "wip_in_progress",
 		"wip_review", "lam", "mu", "pain_halflife_days", "rep_halflife_days",
@@ -296,7 +301,7 @@ func (d *DB) CreateProject(ctx context.Context, userID int64, slug, name, descri
 	}
 	charterVals := []any{
 		charter.QuorumRatio, charter.QuorumMin, charter.ConsentRatio,
-		charter.OverrideRatio, charter.VoteWindowDays,
+		charter.SupportRatioMin, charter.OverrideRatio, charter.VoteWindowDays,
 		boolInt(charter.MergeRequiresQuorum), charter.MergeQuorumMin,
 		charter.MergeQuorumRatio, boolInt(charter.RequireReviewerApproval),
 		charter.WIPInProgress, charter.WIPReview,

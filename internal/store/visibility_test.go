@@ -86,10 +86,10 @@ func TestPrivateRefusesNonMember(t *testing.T) {
 	}
 
 	cases := []struct {
-		name   string
-		actor  int64
-		proj   Project
-		allow  bool
+		name  string
+		actor int64
+		proj  Project
+		allow bool
 	}{
 		{"anonymous", 0, Project{ID: proj.ID, Visibility: VisibilityPrivate}, false},
 		{"non-member", 999, Project{ID: proj.ID, Visibility: VisibilityPrivate}, false},
@@ -326,9 +326,9 @@ func TestRedeemInviteRejectsExpiredRevokedExhausted(t *testing.T) {
 	}
 
 	for name, tok := range map[string]string{
-		"expired":   expiredTok,
-		"revoked":   revoked.Token,
-		"exhausted": exhausted.Token,
+		"expired":     expiredTok,
+		"revoked":     revoked.Token,
+		"exhausted":   exhausted.Token,
 		"nonexistent": "no-such-token-at-all",
 	} {
 		t.Run(name, func(t *testing.T) {

@@ -1,9 +1,11 @@
 package httpapi
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/go-chi/chi/v5"
@@ -205,28 +207,124 @@ func (s *Server) handleGetFeature(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, f)
 }
 
+// handleSetStrategicWeight now opens a PROPOSAL rather than applying the change
+// (spec revision 4 §6.2).
+//
+// It used to require the maintainer role and write the weight immediately.
+// strategic_weight multiplies into the priority formula via Mu, so that was a
+// steering lever: a maintainer could pin a feature to the top of the roadmap by
+// hand, which §5.3 forbids outright ("no role can steer by hand in collective
+// mode"). The route is kept at the same path so callers get a proposal rather
+// than a silent no-op, and the response says which proposal to consent to.
+//
+// Any member with contributor or above may propose. Eligibility for ratifying
+// is separate and is counted inside RatifyStrategicWeightProposal, so the gate
+// lives in one place rather than being restated here.
 func (s *Server) handleSetStrategicWeight(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireWriteActor(w, r); !ok {
+		return
+	}
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	projectID, ok := s.requireProjectID(w, r)
 	if !ok {
 		return
 	}
-	if err := s.requireRole(projectID, "maintainer", r); err != nil {
+	if err := s.requireRole(projectID, "contributor", r); err != nil {
 		mapError(w, err)
 		return
 	}
 	var req struct {
-		Weight float64 `json:"weight"`
+		Weight    float64 `json:"weight"`
+		Rationale string  `json:"rationale"`
 	}
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if err := s.Store.SetStrategicWeight(r.Context(), id, req.Weight); err != nil {
+	// The store layer requires a rationale; this message names the field rather
+	// than letting a bare "invalid" be the whole answer.
+	if strings.TrimSpace(req.Rationale) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "a rationale is required: a weight change is a steering decision, so it must say why",
+		})
+		return
+	}
+	p, err := s.Store.ProposeStrategicWeight(r.Context(), projectID, id, getActorID(r), req.Weight, req.Rationale)
+	if err != nil {
 		mapError(w, err)
 		return
 	}
-	_ = s.Store.AddAudit(r.Context(), projectID, getActorID(r), "set_strategic_weight", "feature", id, fmt.Sprintf("weight=%g", req.Weight))
-	writeJSON(w, http.StatusOK, map[string]string{"status": "weight updated"})
+	_ = s.Store.AddAudit(r.Context(), projectID, getActorID(r), "propose_strategic_weight", "feature", id,
+		fmt.Sprintf("proposal %d: weight=%g", p.ID, req.Weight))
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"proposal": p,
+		"message":  "strategic weight changes are ratified by consensus; consent to proposal " + strconv.FormatInt(p.ID, 10),
+	})
+}
+
+// handleConsentStrategicWeight casts a consent on a pending weight proposal.
+// Ratification happens inside the store once the charter thresholds are met, so
+// a partial consent is a normal 200 rather than an error.
+func (s *Server) handleConsentStrategicWeight(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireWriteActor(w, r); !ok {
+		return
+	}
+	proposalID, _ := strconv.ParseInt(chi.URLParam(r, "proposal_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
+	// Contributors and above are the eligible population (§8.2); ratifying
+	// needs no higher role than proposing, because a proposal is a proposal.
+	if err := s.requireRole(projectID, "contributor", r); err != nil {
+		mapError(w, err)
+		return
+	}
+	p, err := s.Store.RatifyStrategicWeightProposal(r.Context(), proposalID, getActorID(r))
+	if err != nil {
+		if errors.Is(err, store.ErrDuplicate) || errors.Is(err, store.ErrProposalStale) {
+			// Not enough consents yet, or the target moved. Both are ordinary
+			// intermediate states of a consensus process, so the current state
+			// is returned with 202 rather than an error the client retries.
+			writeJSON(w, http.StatusAccepted, map[string]any{
+				"proposal": p,
+				"message":  err.Error(),
+			})
+			return
+		}
+		mapError(w, err)
+		return
+	}
+	_ = s.Store.AddAudit(r.Context(), projectID, getActorID(r), "ratify_strategic_weight", "feature", p.FeatureID,
+		fmt.Sprintf("proposal %d ratified", proposalID))
+	writeJSON(w, http.StatusOK, map[string]any{"proposal": p, "status": "ratified"})
+}
+
+// handleListStrategicWeightProposals returns the project's weight proposals.
+func (s *Server) handleListStrategicWeightProposals(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
+	props, err := s.Store.ListStrategicWeightProposals(r.Context(), projectID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, props)
+}
+
+// handleListStrategicThemes returns the project's live (unexpired) themes (§6.2).
+func (s *Server) handleListStrategicThemes(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
+	themes, err := s.Store.ListStrategicThemes(r.Context(), projectID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, themes)
 }
 
 type castVoteRequest struct {

@@ -25,16 +25,16 @@ import (
 
 // Invite is a minted access link for one project.
 type Invite struct {
-	ID         int64   `json:"id"`
-	ProjectID  int64   `json:"project_id"`
-	Project    string  `json:"project"` // slug, for display in a UI
-	Token      string  `json:"token"`
-	CreatedBy  int64   `json:"created_by"`
-	CreatedAt  float64 `json:"created_at"`
-	ExpiresAt  *float64 `json:"expires_at,omitempty"`
-	MaxUses    *int     `json:"max_uses,omitempty"`
-	Uses       int      `json:"uses"`
-	RevokedAt  *float64 `json:"revoked_at,omitempty"`
+	ID        int64    `json:"id"`
+	ProjectID int64    `json:"project_id"`
+	Project   string   `json:"project"` // slug, for display in a UI
+	Token     string   `json:"token"`
+	CreatedBy int64    `json:"created_by"`
+	CreatedAt float64  `json:"created_at"`
+	ExpiresAt *float64 `json:"expires_at,omitempty"`
+	MaxUses   *int     `json:"max_uses,omitempty"`
+	Uses      int      `json:"uses"`
+	RevokedAt *float64 `json:"revoked_at,omitempty"`
 }
 
 // TokenLength is the number of random bytes behind an invite token. base64 of 32
