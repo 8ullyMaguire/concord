@@ -149,7 +149,7 @@ func TestCreateAndGetFeature(t *testing.T) {
 	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
 		t.Fatalf("ValidateComplaint: %v", err)
 	}
-	f, err := store.CreateFeature(ctx, pid, uid, "Test feature", "desc", []int64{comp.ID})
+	f, err := store.CreateFeature(ctx, pid, uid, "Test feature", "desc", "", nil, nil, []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature: %v", err)
 	}
@@ -227,7 +227,7 @@ func TestCreateAndGetConsensusCall(t *testing.T) {
 	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
 		t.Fatalf("ValidateComplaint: %v", err)
 	}
-	feat, err := store.CreateFeature(ctx, pid, uid, "CC feature", "desc", []int64{comp.ID})
+	feat, err := store.CreateFeature(ctx, pid, uid, "CC feature", "desc", "", nil, nil, []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature: %v", err)
 	}
@@ -250,11 +250,11 @@ func TestRecordVoteRatingMovement(t *testing.T) {
 	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
 		t.Fatalf("ValidateComplaint: %v", err)
 	}
-	featA, err := store.CreateFeature(ctx, pid, uid, "Feature A", "desc", []int64{comp.ID})
+	featA, err := store.CreateFeature(ctx, pid, uid, "Feature A", "desc", "", nil, nil, []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature A: %v", err)
 	}
-	featB, err := store.CreateFeature(ctx, pid, uid, "Feature B", "desc", []int64{comp.ID})
+	featB, err := store.CreateFeature(ctx, pid, uid, "Feature B", "desc", "", nil, nil, []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature B: %v", err)
 	}
@@ -291,15 +291,15 @@ func TestRecordVoteWeightScaling(t *testing.T) {
 	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
 		t.Fatalf("ValidateComplaint: %v", err)
 	}
-	featA, _ := store.CreateFeature(ctx, pid, uid, "WS A", "desc", []int64{comp.ID})
-	featB, _ := store.CreateFeature(ctx, pid, uid, "WS B", "desc", []int64{comp.ID})
+	featA, _ := store.CreateFeature(ctx, pid, uid, "WS A", "desc", "", nil, nil, []int64{comp.ID})
+	featB, _ := store.CreateFeature(ctx, pid, uid, "WS B", "desc", "", nil, nil, []int64{comp.ID})
 	if _, err := store.RecordVote(ctx, pid, uid, featA.ID, featB.ID, "a", 0.0, charter); err != nil {
 		t.Fatalf("RecordVote zero: %v", err)
 	}
 	gotLow, _ := store.GetFeature(ctx, featA.ID)
 
-	featC, _ := store.CreateFeature(ctx, pid, uid, "WS C", "desc", []int64{comp.ID})
-	featD, _ := store.CreateFeature(ctx, pid, uid, "WS D", "desc", []int64{comp.ID})
+	featC, _ := store.CreateFeature(ctx, pid, uid, "WS C", "desc", "", nil, nil, []int64{comp.ID})
+	featD, _ := store.CreateFeature(ctx, pid, uid, "WS D", "desc", "", nil, nil, []int64{comp.ID})
 	if _, err := store.RecordVote(ctx, pid, uid, featC.ID, featD.ID, "a", 10.0, charter); err != nil {
 		t.Fatalf("RecordVote high: %v", err)
 	}
@@ -320,11 +320,11 @@ func TestGetNextPair(t *testing.T) {
 	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
 		t.Fatalf("ValidateComplaint: %v", err)
 	}
-	feat, err := store.CreateFeature(ctx, pid, uid, "NP feature", "desc", []int64{comp.ID})
+	feat, err := store.CreateFeature(ctx, pid, uid, "NP feature", "desc", "", nil, nil, []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature: %v", err)
 	}
-	feat2, err := store.CreateFeature(ctx, pid, uid, "NP feature 2", "desc", []int64{comp.ID})
+	feat2, err := store.CreateFeature(ctx, pid, uid, "NP feature 2", "desc", "", nil, nil, []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature 2: %v", err)
 	}
@@ -348,11 +348,11 @@ func TestGetNextPairExhausted(t *testing.T) {
 	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
 		t.Fatalf("ValidateComplaint: %v", err)
 	}
-	feat, err := store.CreateFeature(ctx, pid, uid, "Ex feature", "desc", []int64{comp.ID})
+	feat, err := store.CreateFeature(ctx, pid, uid, "Ex feature", "desc", "", nil, nil, []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature: %v", err)
 	}
-	feat2, err := store.CreateFeature(ctx, pid, uid, "Ex feature 2", "desc", []int64{comp.ID})
+	feat2, err := store.CreateFeature(ctx, pid, uid, "Ex feature 2", "desc", "", nil, nil, []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature 2: %v", err)
 	}
@@ -376,7 +376,7 @@ func TestCreateAndGetMergeRequest(t *testing.T) {
 	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
 		t.Fatalf("ValidateComplaint: %v", err)
 	}
-	feat, err := store.CreateFeature(ctx, pid, uid, "MR feature", "desc", []int64{comp.ID})
+	feat, err := store.CreateFeature(ctx, pid, uid, "MR feature", "desc", "", nil, nil, []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature: %v", err)
 	}
@@ -439,11 +439,11 @@ func TestGetFeatureVotes(t *testing.T) {
 	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
 		t.Fatalf("ValidateComplaint: %v", err)
 	}
-	feat, err := store.CreateFeature(ctx, pid, uid, "FV feature", "desc", []int64{comp.ID})
+	feat, err := store.CreateFeature(ctx, pid, uid, "FV feature", "desc", "", nil, nil, []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature: %v", err)
 	}
-	feat2, err := store.CreateFeature(ctx, pid, uid, "FV feature 2", "desc", []int64{comp.ID})
+	feat2, err := store.CreateFeature(ctx, pid, uid, "FV feature 2", "desc", "", nil, nil, []int64{comp.ID})
 	if err != nil {
 		t.Fatalf("CreateFeature 2: %v", err)
 	}

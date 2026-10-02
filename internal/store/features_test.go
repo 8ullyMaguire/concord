@@ -34,7 +34,7 @@ func TestGetFeaturePrioritiesDoesNotDeadlock(t *testing.T) {
 	// Two features, each linked to the same complaint, so the loop has work to
 	// do and more than one row to read.
 	for _, title := range []string{"Feature A", "Feature B"} {
-		if _, err := store.CreateFeature(ctx, pid, uid, title, "body", []int64{comp.ID}); err != nil {
+		if _, err := store.CreateFeature(ctx, pid, uid, title, "body", "", nil, nil, []int64{comp.ID}); err != nil {
 			t.Fatalf("CreateFeature %q: %v", title, err)
 		}
 	}
@@ -87,7 +87,7 @@ func TestGetFeaturePrioritiesOrdersByPriorityDesc(t *testing.T) {
 	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
 		t.Fatalf("ValidateComplaint: %v", err)
 	}
-	if _, err := store.CreateFeature(ctx, pid, uid, "Only", "body", []int64{comp.ID}); err != nil {
+	if _, err := store.CreateFeature(ctx, pid, uid, "Only", "body", "", nil, nil, []int64{comp.ID}); err != nil {
 		t.Fatalf("CreateFeature: %v", err)
 	}
 

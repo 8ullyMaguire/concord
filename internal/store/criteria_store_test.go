@@ -39,7 +39,7 @@ func secondFixture(t *testing.T, d *DB, uid int64) (*DB, int64, int64, []int64) 
 	ids := make([]int64, 0, 3)
 	for i := 0; i < 3; i++ {
 		f, err := d.CreateFeature(ctx, pid, uid,
-			fmt.Sprintf("other feat %d", i), "body", []int64{comp.ID})
+			fmt.Sprintf("other feat %d", i), "body", "", nil, nil, []int64{comp.ID})
 		if err != nil {
 			t.Fatalf("CreateFeature: %v", err)
 		}
@@ -69,7 +69,7 @@ func criteriaFixture(t *testing.T) (*DB, int64, int64, []int64) {
 	ids := make([]int64, 0, 3)
 	for i := 0; i < 3; i++ {
 		f, err := d.CreateFeature(ctx, pid, uid,
-			[]string{"feat a", "feat b", "feat c"}[i], "body", []int64{comp.ID})
+			[]string{"feat a", "feat b", "feat c"}[i], "body", "", nil, nil, []int64{comp.ID})
 		if err != nil {
 			t.Fatalf("CreateFeature %d: %v", i, err)
 		}

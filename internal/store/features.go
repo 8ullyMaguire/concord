@@ -14,21 +14,28 @@ import (
 	"git.polarisocial.xyz/concord/concord/internal/ranking"
 )
 
+// validEffortSizes is the t-shirt scale from spec §117. Kept as an explicit
+// set rather than a range check so "XL" is spelled the same way everywhere.
+var validEffortSizes = map[string]bool{"S": true, "M": true, "L": true, "XL": true}
+
 // Feature represents a proposed solution linked to complaints.
 type Feature struct {
-	ID              int64   `json:"id"`
-	ProjectID       int64   `json:"project_id"`
-	AuthorID        int64   `json:"author_id"`
-	Title           string  `json:"title"`
-	Body            string  `json:"body"`
-	Effort          string  `json:"effort"`
-	Status          string  `json:"status"`
-	EloR            float64 `json:"elo_r"`
-	EloRD           float64 `json:"elo_rd"`
-	EloVol          float64 `json:"elo_vol"`
-	StrategicWeight float64 `json:"strategic_weight"`
-	CreatedAt       float64 `json:"created_at"`
-	UpdatedAt       float64 `json:"updated_at"`
+	ID              int64    `json:"id"`
+	ProjectID       int64    `json:"project_id"`
+	AuthorID        int64    `json:"author_id"`
+	Title           string   `json:"title"`
+	Body            string   `json:"body"`
+	Effort          string   `json:"effort"`
+	Impact          *int     `json:"impact"`
+	EffortScore     *int     `json:"effort_score"`
+	ImpactRatio     *float64 `json:"impact_ratio"`
+	Status          string   `json:"status"`
+	EloR            float64  `json:"elo_r"`
+	EloRD           float64  `json:"elo_rd"`
+	EloVol          float64  `json:"elo_vol"`
+	StrategicWeight float64  `json:"strategic_weight"`
+	CreatedAt       float64  `json:"created_at"`
+	UpdatedAt       float64  `json:"updated_at"`
 }
 
 // FeaturePriority carries a feature's priority score for the leaderboard.
@@ -51,9 +58,29 @@ type FeatureComplaintLink struct {
 
 // CreateFeature inserts a new feature proposal (M2).
 // Must be linked to at least one validated complaint.
-func (d *DB) CreateFeature(ctx context.Context, projectID, authorID int64, title, body string, linkedComplaints []int64) (Feature, error) {
+// CreateFeature records a proposed feature. effort is the t-shirt size
+// (spec §117); impact and effortScore are the optional 1-10 judgements that
+// produce impact_ratio. Both are validated here rather than trusted from the
+// caller: effort is constrained by the schema too, but a clear error at the
+// boundary beats a constraint violation surfacing as a 500.
+//
+// effortScore is accepted separately from effort because they are different
+// claims: 'S' is how big the change is, 1-10 is how many points it costs.
+// Collapsing them into one field is what made the original column unreadable.
+func (d *DB) CreateFeature(ctx context.Context, projectID, authorID int64, title, body, effort string, impact, effortScore *int, linkedComplaints []int64) (Feature, error) {
 	if projectID == 0 || authorID == 0 || len(linkedComplaints) == 0 {
 		return Feature{}, fmt.Errorf("%w: project_id, author_id, and at least one validated complaint are required", ErrInvalid)
+	}
+	if effort == "" {
+		effort = "M"
+	}
+	if !validEffortSizes[effort] {
+		return Feature{}, fmt.Errorf("%w: effort must be one of S, M, L, XL", ErrInvalid)
+	}
+	for label, v := range map[string]*int{"impact": impact, "effort_score": effortScore} {
+		if v != nil && (*v < 1 || *v > 10) {
+			return Feature{}, fmt.Errorf("%w: %s must be between 1 and 10", ErrInvalid, label)
+		}
 	}
 	now := float64(time.Now().Unix())
 	// Verify complaints are validated before starting transaction
@@ -69,9 +96,9 @@ func (d *DB) CreateFeature(ctx context.Context, projectID, authorID int64, title
 	}
 	defer tx.Rollback()
 	res, err := tx.ExecContext(ctx, `
-		INSERT INTO features (project_id, author_id, title, body, effort, status, elo_r, elo_rd, elo_vol, strategic_weight, created_at, updated_at)
-		VALUES (?, ?, ?, ?, 'M', 'draft', 1500, 350, 0.06, 1.0, ?, ?)`,
-		projectID, authorID, title, body, now, now)
+		INSERT INTO features (project_id, author_id, title, body, effort, status, elo_r, elo_rd, elo_vol, strategic_weight, impact, effort_score, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, 'draft', 1500, 350, 0.06, 1.0, ?, ?, ?, ?)`,
+		projectID, authorID, title, body, effort, impact, effortScore, now, now)
 	if err != nil {
 		return Feature{}, err
 	}
@@ -93,10 +120,12 @@ func (d *DB) CreateFeature(ctx context.Context, projectID, authorID int64, title
 func (d *DB) GetFeature(ctx context.Context, id int64) (Feature, error) {
 	var f Feature
 	err := d.QueryRowContext(ctx, `
-		SELECT id, project_id, author_id, title, body, effort, status,
-			elo_r, elo_rd, elo_vol, strategic_weight, created_at, updated_at
+		SELECT id, project_id, author_id, title, body, effort, impact, effort_score,
+			impact_ratio, status, elo_r, elo_rd, elo_vol, strategic_weight,
+			created_at, updated_at
 		FROM features WHERE id=?`, id).Scan(
 		&f.ID, &f.ProjectID, &f.AuthorID, &f.Title, &f.Body, &f.Effort,
+		&f.Impact, &f.EffortScore, &f.ImpactRatio,
 		&f.Status, &f.EloR, &f.EloRD, &f.EloVol, &f.StrategicWeight,
 		&f.CreatedAt, &f.UpdatedAt)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -107,8 +136,9 @@ func (d *DB) GetFeature(ctx context.Context, id int64) (Feature, error) {
 
 // ListFeatures returns features for a project, filtered by status.
 func (d *DB) ListFeatures(ctx context.Context, projectID int64, status string) ([]Feature, error) {
-	query := `SELECT id, project_id, author_id, title, body, effort, status,
-		elo_r, elo_rd, elo_vol, strategic_weight, created_at, updated_at
+	query := `SELECT id, project_id, author_id, title, body, effort, impact, effort_score,
+		impact_ratio, status, elo_r, elo_rd, elo_vol, strategic_weight,
+		created_at, updated_at
 		FROM features WHERE project_id=?`
 	var args []any = []any{projectID}
 	if status != "" {
@@ -125,7 +155,8 @@ func (d *DB) ListFeatures(ctx context.Context, projectID int64, status string) (
 	for rows.Next() {
 		var f Feature
 		if err := rows.Scan(&f.ID, &f.ProjectID, &f.AuthorID, &f.Title, &f.Body,
-			&f.Effort, &f.Status, &f.EloR, &f.EloRD, &f.EloVol, &f.StrategicWeight,
+			&f.Effort, &f.Impact, &f.EffortScore, &f.ImpactRatio,
+			&f.Status, &f.EloR, &f.EloRD, &f.EloVol, &f.StrategicWeight,
 			&f.CreatedAt, &f.UpdatedAt); err != nil {
 			return nil, err
 		}

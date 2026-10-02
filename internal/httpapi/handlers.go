@@ -126,6 +126,8 @@ type createFeatureRequest struct {
 	Title            string  `json:"title"`
 	Body             string  `json:"body"`
 	Effort           string  `json:"effort"`
+	Impact           *int    `json:"impact"`
+	EffortScore      *int    `json:"effort_score"`
 	LinkedComplaints []int64 `json:"linked_complaints"`
 }
 
@@ -138,7 +140,8 @@ func (s *Server) handleCreateFeature(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	f, err := s.Store.CreateFeature(r.Context(), req.ProjectID, getActorID(r), req.Title, req.Body, req.LinkedComplaints)
+	f, err := s.Store.CreateFeature(r.Context(), req.ProjectID, getActorID(r),
+		req.Title, req.Body, req.Effort, req.Impact, req.EffortScore, req.LinkedComplaints)
 	if err != nil {
 		mapError(w, err)
 		return
