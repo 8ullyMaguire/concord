@@ -313,6 +313,136 @@ func (s *Server) handleListStrategicWeightProposals(w http.ResponseWriter, r *ht
 	writeJSON(w, http.StatusOK, props)
 }
 
+// handlePlaceEmergencyHold suspends a consensus call (spec revision 4 §6.6).
+//
+// This is the emergency hold, NOT the veto the older spec described as an
+// override for blocks. It cannot cancel a block, force an outcome, or close a
+// call -- it refuses to let a call resolve, expires on its own, and triggers a
+// confirmation vote. A maintainer reaching for this to win an argument finds
+// that it does nothing except make the argument public.
+func (s *Server) handlePlaceEmergencyHold(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireWriteActor(w, r); !ok {
+		return
+	}
+	callID, _ := strconv.ParseInt(chi.URLParam(r, "call_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
+	// §8.1 limits the maintainer role to "run security embargo, emergency hold",
+	// so this is the only content-level power a maintainer keeps.
+	if err := s.requireRole(projectID, "maintainer", r); err != nil {
+		mapError(w, err)
+		return
+	}
+	var req struct {
+		Grounds string `json:"grounds"`
+		Reason  string `json:"reason"`
+		Days    int    `json:"days"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if req.Grounds != "security" && req.Grounds != "legal" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "grounds must be \"security\" or \"legal\": the emergency power is not for ordinary disagreement",
+		})
+		return
+	}
+	if strings.TrimSpace(req.Reason) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "a written reason is required: a hold nobody can review is not accountable",
+		})
+		return
+	}
+	call, err := s.Store.GetConsensusCall(r.Context(), callID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	hold, err := s.Store.PlaceEmergencyHold(r.Context(), call.ProjectID, callID,
+		getActorID(r), req.Grounds, req.Reason, req.Days)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"hold": hold,
+		"note": "this suspends the call only; it cannot override a block, force a result, or close the call. It expires, and expiry opens a confirmation vote.",
+	})
+}
+
+// handleReleaseEmergencyHold lifts a hold early, recording why.
+func (s *Server) handleReleaseEmergencyHold(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireWriteActor(w, r); !ok {
+		return
+	}
+	holdID, _ := strconv.ParseInt(chi.URLParam(r, "hold_id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
+	if err := s.requireRole(projectID, "maintainer", r); err != nil {
+		mapError(w, err)
+		return
+	}
+	var req struct {
+		Reason string `json:"reason"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if err := s.Store.ReleaseEmergencyHold(r.Context(), holdID, getActorID(r), req.Reason); err != nil {
+		mapError(w, err)
+		return
+	}
+	hold, err := s.Store.GetEmergencyHold(r.Context(), holdID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"hold": hold, "status": "released"})
+}
+
+// handleGetCallHold returns the hold on a call, if any, so a client can show
+// why a call is not resolving.
+func (s *Server) handleGetCallHold(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireProjectID(w, r); !ok {
+		return
+	}
+	callID, _ := strconv.ParseInt(chi.URLParam(r, "call_id"), 10, 64)
+	hold, err := s.Store.ActiveHoldForCall(r.Context(), callID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if hold == nil {
+		writeJSON(w, http.StatusOK, map[string]any{"hold": nil})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"hold": hold})
+}
+
+// handleListAdminLedger serves the public admin-action ledger (§9.3).
+//
+// No project filter and no role gate, on purpose: §9.3 makes admin actions
+// publicly visible because an admin with no content authority is only a real
+// constraint when anyone can watch them.
+func (s *Server) handleListAdminLedger(w http.ResponseWriter, r *http.Request) {
+	limit := 100
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			limit = n
+		}
+	}
+	entries, err := s.Store.ListAdminLedger(r.Context(), limit)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, entries)
+}
+
 // handleListStrategicThemes returns the project's live (unexpired) themes (§6.2).
 func (s *Server) handleListStrategicThemes(w http.ResponseWriter, r *http.Request) {
 	projectID, ok := s.requireProjectID(w, r)
@@ -543,7 +673,9 @@ func (s *Server) handleCreateConsensus(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
-	call, err := s.Store.CreateConsensusCall(r.Context(), projectID, req.FeatureID, req.Title, req.Description)
+	// openedBy is the authenticated caller. It used to be hardcoded to 1, so
+	// every consensus call in the database claimed user 1 opened it.
+	call, err := s.Store.CreateConsensusCall(r.Context(), projectID, req.FeatureID, getActorID(r), req.Title, req.Description)
 	if err != nil {
 		mapError(w, err)
 		return

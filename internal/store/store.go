@@ -23,6 +23,12 @@ var (
 	ErrInvalid   = errors.New("invalid")
 	ErrAuth      = errors.New("authentication required")
 	ErrPerm      = errors.New("permission denied")
+	// ErrConflict is a valid request that the current state refuses: a
+	// consensus call suspended by an emergency hold, a stale proposal whose
+	// target already moved. 409 rather than 400 -- nothing about the request is
+	// malformed, and a client that retries unchanged should expect the same
+	// answer until the state changes.
+	ErrConflict = errors.New("conflicts with current state")
 )
 
 // DB wraps the pool. All queries take ctx for cancellation.

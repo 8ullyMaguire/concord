@@ -324,6 +324,19 @@ func (s *Server) Router() http.Handler {
 		r.Get("/themes", s.handleListStrategicThemes)
 	})
 
+	// §9.3 public admin-action ledger. Instance-wide, unauthenticated on
+	// purpose: the point is that everyone can watch what a steward did.
+	r.Route("/api/v1/admin-ledger", func(r chi.Router) {
+		r.Get("/", s.handleListAdminLedger)
+	})
+
+	// Emergency holds are project-scoped for writes (the hold carries a project
+	// id) but the release route sits here so a client can find holds by id
+	// without knowing the project first.
+	r.Route("/api/v1/emergency-holds/{hold_id}", func(r chi.Router) {
+		r.Post("/release", s.handleReleaseEmergencyHold)
+	})
+
 	// Pairwise votes
 	r.Get("/api/v1/projects/{project_id}/votes/next", s.handleGetNextPair)
 	r.Post("/api/v1/projects/{project_id}/join", s.handleJoinProject)
@@ -340,6 +353,9 @@ func (s *Server) Router() http.Handler {
 			r.Post("/position", s.handleCastConsensusPosition)
 			r.Post("/objection", s.handleCreateObjection)
 			r.Post("/close", s.handleCloseConsensus)
+			// Emergency hold (§6.6): suspends a call, overrides nothing.
+			r.Get("/hold", s.handleGetCallHold)
+			r.Post("/hold", s.handlePlaceEmergencyHold)
 		})
 		r.Route("/objections/{id}", func(r chi.Router) {
 			r.Put("/resolve", s.handleResolveObjection)
@@ -441,7 +457,7 @@ func mapError(w http.ResponseWriter, err error) {
 	switch {
 	case errors.Is(err, store.ErrNotFound):
 		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
-	case errors.Is(err, store.ErrDuplicate):
+	case errors.Is(err, store.ErrDuplicate), errors.Is(err, store.ErrConflict):
 		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
 	case errors.Is(err, store.ErrInvalid):
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})

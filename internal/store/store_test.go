@@ -254,7 +254,7 @@ func TestCreateAndGetConsensusCall(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateFeature: %v", err)
 	}
-	call, err := store.CreateConsensusCall(ctx, pid, feat.ID, "Test Consensus", "Test Desc")
+	call, err := store.CreateConsensusCall(ctx, pid, feat.ID, uid, "Test Consensus", "Test Desc")
 	if err != nil {
 		t.Fatalf("CreateConsensusCall: %v", err)
 	}
