@@ -293,7 +293,9 @@
     var kind = currentKind();
     var wanted = new URLSearchParams(window.location.search).get('doc');
 
-    box.innerHTML = '<div class="loading-spinner" role="status" aria-label="Loading documents"></div>';
+    box.setAttribute('aria-busy', 'true');
+    box.innerHTML = (window.ConcordSkeleton ? window.ConcordSkeleton.rows(5)
+      : '<div class="loading-spinner" role="status" aria-label="Loading documents"></div>');
 
     // Documents are public: a read of the list returns 200 without a token.
     fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/documents')
@@ -339,6 +341,7 @@
           '</div></div>';
 
         renderMarkdownNodes(box);
+        if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
         wire(box, slug, doc || { body: '' });
       })
       .catch(function () {

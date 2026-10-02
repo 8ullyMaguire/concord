@@ -262,7 +262,9 @@
         return r.ok ? r.json() : Promise.reject({ status: r.status });
       })
       .then(function (p) {
-        box.innerHTML = '<div class="loading-spinner"></div>';
+        box.innerHTML = (window.ConcordSkeleton
+          ? window.ConcordSkeleton.title() + window.ConcordSkeleton.text(3)
+          : '<div class="loading-spinner" role="status" aria-label="Loading project"></div>');
         // By slug, not by p.id. The project-scoped routes take a slug: the
         // sibling route is /api/v1/projects/{slug} and the server resolves it
         // with GetProject, which matches on p.slug. Passing p.id here made every
@@ -298,6 +300,7 @@
             // time, so it is stashed rather than threaded through the markup.
             window.__complaints = complaints || [];
             box.innerHTML = render(p, features, complaints, documents);
+            if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
             wire(box, slug, p.id);
           });
       })

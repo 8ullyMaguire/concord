@@ -3,6 +3,11 @@
   <h1 class="page-title">Projects</h1>
   <p class="page-subtitle">Every project on the forge, with maintenance-health scores.</p>
 </div>
-<div id="projects-grid"><div class="loading-spinner" role="status" aria-label="Loading projects"></div></div>
+<div id="projects-grid" aria-busy="true"></div>
+<script src="{{ asset "/assets/js/skeleton.js" }}"></script>
+<script>
+(function(){var b=document.getElementById("projects-grid");
+if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(6);}})();
+</script>
 <script src="{{ asset "/assets/js/projects.js" }}"></script>
 {{end}}

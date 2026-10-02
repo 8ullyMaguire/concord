@@ -1037,3 +1037,89 @@ a.card { display: block; color: inherit; }
   .doc-kind-blurb { display: none; }
   .doc-toc { position: static; max-height: none; }
 }
+
+
+/* ================================================================= focus-visible */
+/* Adopted 2026-10-02 from an external frontend spec; see
+   docs/specs/frontend-spec.md §0.2 for why the rest of that document was
+   rejected and this part was not.
+
+   Measured before writing it: five :focus rules existed and every one of them
+   was on an input. Buttons, links, the site nav, doc rail items, kanban cards,
+   badges used as buttons and the vote controls had NO focus indicator at all --
+   a keyboard user tabbing through a page got nothing.
+
+   The three `outline: none` sites above are all inputs and all replace the
+   outline with a box-shadow ring, so they are already handled. This rule adds
+   the elements that had nothing.
+
+   `:focus-visible` rather than `:focus` so a mouse click does not leave a ring
+   behind. Where a rule needs to work in both, the selector is listed twice. */
+a:focus-visible,
+button:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible,
+summary:focus-visible,
+.site-nav a:focus-visible,
+.btn:focus-visible,
+.btn-quiet:focus-visible,
+.doc-kind:focus-visible,
+.doc-item:focus-visible,
+.doc-toc-link:focus-visible,
+.badge:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: 2px solid var(--indigo);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+/* Elements that sit on a coloured or already-ringed surface need the offset
+   pulled in, or the ring lands under the border and looks like a mistake. */
+.site-nav a:focus-visible,
+.doc-kind:focus-visible { outline-offset: -2px; }
+
+/* ================================================================= reduced motion */
+/* Adopted 2026-10-02 from the same source. Measured: @media was used for layout
+   only, and .loading-spinner animates indefinitely regardless of the user's
+   preference. An indefinitely spinning element is the classic vestibular
+   trigger; this is a baseline requirement, not a refinement. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+  html { scroll-behavior: auto !important; }
+  /* The spinner is the one element that must not simply vanish: it carries
+     role="status" and aria-label="Loading", so removing its animation while
+     keeping it visible gives a static "still loading" cue with no motion. */
+  .loading-spinner { animation: none !important; border-top-color: var(--slate-400); }
+}
+
+/* ==================================================================== skeletons */
+/* Adopted 2026-10-02 from the same source. Measured: every page used
+   .loading-spinner, a centred 24px spinner that blocks the content area.
+
+   A skeleton matches the shape of what is arriving, so the layout does not jump
+   when the data lands (CLS 0). It is also honest about size: a page with 12
+   documents should show roughly 12 rows of placeholder, not one dot.
+
+   Deliberately not animated by default. A shimmer on a list of 40 placeholders
+   is more distracting than a static block, and this repository's pages are
+   small enough that the skeleton is on screen for under 200ms. */
+.skeleton {
+  background: var(--slate-200);
+  border-radius: 4px;
+}
+.skeleton-text { height: 0.75rem; margin-bottom: 0.5rem; }
+.skeleton-title { height: 1.1rem; width: 60%; margin-bottom: 0.75rem; }
+.skeleton-card { background: #fff; border: 1px solid var(--slate-200); border-radius: 8px; padding: 1rem; }
+.skeleton-row { display: flex; gap: 0.75rem; align-items: flex-start; }
+.skeleton-row + .skeleton-row { margin-top: 0.75rem; }
+.skeleton-col { flex: 1; }
+.skeleton-lines { display: flex; flex-direction: column; gap: 0.375rem; }
+/* Varying widths read as text; uniform bars read as a loading graphic. */
+.skeleton-lines > span:nth-child(2) { width: 92%; }
+.skeleton-lines > span:nth-child(3) { width: 78%; }
+.skeleton-lines > span:nth-child(4) { width: 85%; }

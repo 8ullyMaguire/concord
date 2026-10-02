@@ -3,7 +3,12 @@
   <h1 class="page-title">Documents <span class="muted" style="color:var(--slate-500);font-weight:400;">&middot; {{.Slug}}</span></h1>
   <p class="page-subtitle">What this project is, what it must do, how it is being built, and why.</p>
 </div>
-<div id="project-documents"><div class="loading-spinner" role="status" aria-label="Loading documents"></div></div>
+<div id="project-documents" aria-busy="true"></div>
+<script src="{{ asset "/assets/js/skeleton.js" }}"></script>
+<script>
+(function(){var b=document.getElementById("project-documents");
+if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(5);}})();
+</script>
 <script src="{{ asset "/assets/js/markdown.js" }}"></script>
 <script src="{{ asset "/assets/js/documents.js" }}"></script>
 {{end}}

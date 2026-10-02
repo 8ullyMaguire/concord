@@ -10,7 +10,13 @@
   <a class="btn" href="/projects/{{.Slug}}/ranking">See the ranking</a>
 </div>
 
-<div id="rank-root">
+<div id="rank-root" aria-busy="true">
+<script src="{{ asset "/assets/js/skeleton.js" }}"></script>
+<script>
+(function(){var b=document.getElementById("rank-root");
+if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(1);}})();
+</script>
+
   <div class="empty-state">
     <p class="empty-state-title">Loading a comparison…</p>
   </div>

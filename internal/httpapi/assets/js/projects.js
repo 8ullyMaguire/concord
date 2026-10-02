@@ -46,6 +46,7 @@
           return;
         }
         grid.innerHTML = '<div class="grid-responsive-2">' + list.map(card).join('') + '</div>';
+        if (window.ConcordSkeleton) window.ConcordSkeleton.done(grid);
       })
       .catch(function () {
         grid.innerHTML = '<div class="empty-state"><div class="empty-state-icon">\u26A0\uFE0F</div>' +

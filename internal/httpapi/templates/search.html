@@ -11,7 +11,12 @@
 
 <div class="search-filters" id="tag-chips"></div>
 
-<div id="search-results">
+<div id="search-results" aria-busy="{{if .Query}}true{{else}}false{{end}}">
+<script src="{{ asset "/assets/js/skeleton.js" }}"></script>
+<script>
+(function(){var b=document.getElementById("search-results");
+if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(5);}})();
+</script>
   {{if not .Query}}
   <div class="empty-state">
     <div class="empty-state-icon">&#128269;</div>

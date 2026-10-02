@@ -38,6 +38,7 @@
       container.innerHTML = emptyState('\u{1F50D}', 'No matches', 'Nothing matched that query. Try fewer or different words.');
       return;
     }
+    if (window.ConcordSkeleton) window.ConcordSkeleton.done(container);
     container.innerHTML = '<p class="meta-item mb-4">' + results.length + ' of ' + (data.total || results.length) + ' projects</p>' +
       '<div class="grid-responsive-2">' + results.map(resultCard).join('') + '</div>';
   }
@@ -68,7 +69,9 @@
 
     if (!q && !activeTags.length) return; // server-rendered empty state stays
 
-    container.innerHTML = '<div class="loading-spinner" role="status" aria-label="Searching"></div>';
+    container.setAttribute('aria-busy', 'true');
+    container.innerHTML = (window.ConcordSkeleton ? window.ConcordSkeleton.rows(4)
+      : '<div class="loading-spinner" role="status" aria-label="Searching"></div>');
 
     var qs = new URLSearchParams();
     if (q) qs.set('q', q);

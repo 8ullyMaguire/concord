@@ -1,4 +1,9 @@
 {{define "content"}}
-<div id="project-detail"><div class="loading-spinner" role="status" aria-label="Loading project"></div></div>
+<div id="project-detail" aria-busy="true"></div>
+<script src="{{ asset "/assets/js/skeleton.js" }}"></script>
+<script>
+(function(){var b=document.getElementById("project-detail");
+if(b&&window.ConcordSkeleton){b.innerHTML='<div class="card mb-6">'+window.ConcordSkeleton.title()+window.ConcordSkeleton.text(3)+'</div>'+window.ConcordSkeleton.rows(4);}})();
+</script>
 <script src="{{ asset "/assets/js/project.js" }}"></script>
 {{end}}

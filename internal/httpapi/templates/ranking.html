@@ -10,7 +10,13 @@
   <a class="btn btn-primary" href="/projects/{{.Slug}}/rank">Cast more votes</a>
 </div>
 
-<div id="ranking-root">
+<div id="ranking-root" aria-busy="true">
+<script src="{{ asset "/assets/js/skeleton.js" }}"></script>
+<script>
+(function(){var b=document.getElementById("ranking-root");
+if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(6);}})();
+</script>
+
   <div class="empty-state">
     <p class="empty-state-title">Loading the ranking…</p>
   </div>

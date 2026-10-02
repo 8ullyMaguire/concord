@@ -110,6 +110,78 @@ Two consequences worth stating plainly:
 - The subset's coverage is unverified at scale. When the corpus is restored,
   re-run `corpus-coverage.js` before trusting §0's list.
 
+## 0.2 A competing frontend spec was evaluated and rejected in full
+
+A 15-section frontend specification was offered for adoption on 2026-10-02:
+SvelteKit + GraphQL + Tailwind, 30 implementation phases, ~140 named
+components, and a design system with density toggles and dark themes.
+
+**It was rejected as a whole, and the reasons are recorded here because "we
+looked at a big spec and said no" is not a decision anyone can audit later.**
+
+It is a competent document. It is not a description of this system, and the
+distances are not subtle:
+
+| It assumes | This repository |
+|---|---|
+| `/:owner/:project` URLs, `owner { login, avatarUrl }` | `/projects/{slug}`. **There is no owner.** `projects` has `id, slug, name, description, governance_model, license, created_at, updated_at, visibility` and no `owner_id`, `tier` or `archived` column |
+| `users.login`, `users.avatarUrl` | `users.username`, `display_name`. No avatar |
+| GraphQL for every page | REST. `PLAN-r4.md` lists GraphQL as a **deliberate non-goal**: "the API surface is still moving; a generated schema now would be rewritten" |
+| `solution_complaint_claims`, `capabilities`, `capability_confirmations`, `field_reports`, `scout_reports`, `decision_records`, `boards` | none of these tables exist. `boards` is `board_columns` + `board_cards` |
+| Service worker, web push, notification table, saved searches | **no notification or subscription table exists at all.** No service worker |
+| SvelteKit or Next.js | no `package.json`, no `node_modules`, no build step. 13 JS files, 2,136 lines, embedded in the Go binary |
+
+Three divergences are the kind that matter, because re-adopting them is a
+regression rather than an upgrade:
+
+1. **The framework.** §1.2 chose option (b) deliberately, with the reasoning
+   written down: no build step, no supply chain, every existing page keeps
+   working, and the API is not finished enough for a component framework to be
+   written against. That document opens by assuming the opposite.
+2. **GraphQL.** Its §13 is six hand-written queries that do not compile against
+   any schema we have or intend. Adopting it would mean inventing the schema it
+   implies.
+3. **Its admin model contradicts a governance decision.** §4.18 says "No content
+   controls on admin pages. Content moderation happens through moderation
+   juries and quorum." r4 §6.6 and §11 built the opposite on purpose: an
+   **emergency hold** with mandatory written justification, automatic community
+   confirmation, and expiry, plus a **public admin ledger**. Weakening that to
+   match is a decision, not a UI change.
+
+It also names tables we would have to build to render its own screens — R5's
+`field_reports`, `capabilities` and R6's `scout_reports` are all absent, and its
+Opportunity Radar has no data source in this system at all.
+
+**Kept, because they are real gaps in *this* frontend and were verified as
+absent rather than assumed:** §0.3.
+
+## 0.3 What was taken from it
+
+Four items, all small, all additive, none requiring the architecture it came
+from. Verified absent in the tree before being written:
+
+- **`:focus-visible` on every interactive element.** Measured: five `:focus`
+  rules exist and all five are on inputs. Buttons, links, rail items and kanban
+  cards have no focus indicator at all.
+- **Skeleton loaders instead of a centred spinner.** Measured: `.loading-spinner`
+  is used on every page and is a blocking centred spinner.
+- **`prefers-reduced-motion`.** Measured: `@media` is used for layout only;
+  there is no `prefers-reduced-motion` block, and `.loading-spinner` animates
+  indefinitely regardless.
+- **A single documented loading pattern**, so the next page does not invent one.
+
+Deliberately **not** taken, having been considered: dark theme, density toggle,
+command palette, notification panel, service worker/PWA, i18n catalogs, GraphQL
+contracts. Each is either a large surface with no current demand (dark theme on a
+site that is currently light-only), or depends on the architecture just rejected.
+
+Two things are deferred rather than refused, and recorded so they are not lost:
+
+- **Live-region announcements for vote/consensus results** (§5 of our spec, and
+  this document agrees): needs the consensus page, which does not exist.
+- **A "why this rank?" breakdown popover**: the data exists — `ranking` already
+  exposes per-criterion scores — but it wants the arena page.
+
 Two things are deliberately *not* built yet, and both are named in §9.
 
 ## 1. The state of the frontend, measured

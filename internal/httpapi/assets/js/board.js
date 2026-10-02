@@ -20,7 +20,9 @@
       return;
     }
 
-    box.innerHTML = '<div class="loading-spinner" role="status" aria-label="Loading board"></div>';
+    box.setAttribute('aria-busy', 'true');
+    box.innerHTML = (window.ConcordSkeleton ? window.ConcordSkeleton.board(4, 2)
+      : '<div class="loading-spinner" role="status" aria-label="Loading board"></div>');
 
     // The board API is keyed by numeric project id; resolve the slug first.
     fetch('/api/v1/projects/' + encodeURIComponent(slug))
@@ -47,6 +49,7 @@
           box.innerHTML = '<div class="empty-state"><div class="empty-state-icon">\u{1F4C5}</div>' +
             '<p class="empty-state-title">No board yet</p>' +
             '<p class="empty-state-description">This project has not set up its phase-gated kanban columns.</p></div>';
+          if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
           return;
         }
 
@@ -65,8 +68,13 @@
         });
         html += '</div>';
         box.innerHTML = html;
+        if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
       })
       .catch(function (err) {
+        // Cleared here too: the error and empty paths are the ones that most
+        // often skip it, and a region left aria-busy suppresses its own live
+        // region updates, so the error message would be silent.
+        if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
         box.innerHTML = err && err.notFound
           ? '<div class="empty-state"><div class="empty-state-icon">\u{1F50E}</div>' +
             '<p class="empty-state-title">Project not found</p>' +

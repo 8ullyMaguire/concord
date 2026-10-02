@@ -62,7 +62,7 @@
 
 <section class="section">
   <div class="stats-strip">
-    <div class="stats-grid" id="stats-grid">
+    <div class="stats-grid" id="stats-grid" aria-busy="true">
       <div><p class="stat-value" id="stat-projects">–</p><p class="stat-label">Projects</p></div>
       <div><p class="stat-value" id="stat-tags">–</p><p class="stat-label">Tags in use</p></div>
       <div><p class="stat-value" id="stat-languages">–</p><p class="stat-label">Languages in use</p></div>
@@ -124,5 +124,10 @@
   <p class="small">It is not raw vote-based democracy either: it is consent-based, blocks require remedies, and silence never decides anything.</p>
 </section>
 
+<script src="{{ asset "/assets/js/skeleton.js" }}"></script>
+<script>
+(function(){var b=document.getElementById("stats-grid");
+if(b&&window.ConcordSkeleton){b.setAttribute("aria-busy","true");}})();
+</script>
 <script src="{{ asset "/assets/js/index.js" }}"></script>
 {{end}}
