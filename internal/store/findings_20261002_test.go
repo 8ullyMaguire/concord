@@ -93,8 +93,9 @@ func TestBoardDerivesCardsFromFeatureStatus(t *testing.T) {
 		if c.Title == "" {
 			t.Errorf("card for feature %d has no title", c.FeatureID)
 		}
-		// A derived card has no row, so it must not look movable: a non-zero ID
-		// would make MoveCard target a row that is not there.
+		// A derived card has no row, so ID must stay 0 -- a non-zero ID would be a
+		// handle that resolves to nothing. It is addressed by FeatureID instead,
+		// which is what MoveCard's feature_id path takes; see board_move_test.go.
 		if c.ID != 0 {
 			t.Errorf("derived card has ID %d; a derived card has no row", c.ID)
 		}

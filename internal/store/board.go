@@ -2,6 +2,10 @@ package store
 
 import (
 	"context"
+	"database/sql"
+	"errors"
+	"fmt"
+	"time"
 )
 
 type BoardColumn struct {
@@ -21,9 +25,13 @@ type BoardCard struct {
 
 	// Derived marks a card that has no row in board_cards and was synthesised
 	// from a feature's own workflow status at read time. It exists so the board
-	// shows the work a project actually has. Such a card has no row: ID and
-	// ColumnID are zero and it cannot be moved. Moving it is what creates the
-	// row, at which point the card stops being derived. See GetBoard.
+	// shows the work a project actually has.
+	//
+	// A derived card has no row, so ID and ColumnID are zero and it is addressed
+	// by FeatureID instead. Moving it is what creates the row -- the placement is
+	// the decision that replaces the guess this flag marks -- after which the
+	// card is served from the row and stops being derived. See GetBoard and
+	// MoveCard.
 	Derived   bool `json:"derived,omitempty"`
 }
 
@@ -47,6 +55,12 @@ type BoardCard struct {
 // guess visible as a guess: a derived card carries Derived=true and no row, so
 // the first time somebody moves it, that movement is recorded as the decision it
 // actually is.
+//
+// Which required the move to work, and it did not: MoveCard was an
+// UPDATE ... WHERE id=0, which matched no rows and returned no error, so the
+// move was discarded while the caller was told 200. It now takes a feature_id for
+// a derived card and inserts the row. Without that, "derived" would have been a
+// dead end -- a card that looks movable and is not.
 //
 // A feature whose status matches no phase is omitted rather than forced into a
 // column. Guessing a phase would be the same fabrication one level down.
@@ -176,11 +190,121 @@ func (d *DB) GetBoardCards(ctx context.Context, projectID int64) ([]BoardCard, e
 	return cards, rows.Err()
 }
 
-func (d *DB) MoveCard(ctx context.Context, cardID int64, newColumn string, projectID int64) error {
-	_, err := d.ExecContext(ctx, `
-		UPDATE board_cards SET column_id=(SELECT id FROM board_columns WHERE project_id=? AND phase=?) WHERE id=?`,
-		projectID, newColumn, cardID)
-	return err
+// MoveCard places a card in a phase.
+//
+// cardID identifies a board_cards row. featureID, when non-zero, instead names
+// the feature to place, which is how a derived card is moved: a derived card is
+// a feature the project has but nobody has placed, and it has no row and no id,
+// because inventing an id for something that is not stored produces a handle
+// that resolves to nothing.
+//
+// The first move of a derived card is the moment it becomes real. That is what
+// the Derived flag is FOR: it marks the card as a guess derived from the
+// feature's status, and moving it is the decision that replaces the guess with a
+// placement somebody actually made.
+//
+// The feature has to be named rather than inferred. An earlier version picked the
+// lowest-id status-bearing feature in the project, which is only correct when a
+// project has exactly one -- and silently moves the wrong card as soon as it has
+// two. The caller already knows which card it rendered, so it says.
+//
+// Two failure modes this closes, both silent before:
+//
+//   - UPDATE ... WHERE id=0 matched no rows and reported no error, so a move of
+//     a derived card answered 200 and discarded the move. A caller could not tell
+//     a successful move from a lost one.
+//   - There was no way to create the first board_cards row at all, which was the
+//     finding: the table held zero rows across all 70 projects because no code
+//     path inserted one, so MoveCard and GetBoardCard both operated on rows that
+//     could not exist.
+//
+// Exactly one of cardID and featureID may be given.
+func (d *DB) MoveCard(ctx context.Context, cardID, featureID int64, newColumn string, projectID int64) error {
+	switch {
+	case cardID > 0 && featureID > 0:
+		return fmt.Errorf("%w: name a card by id or by feature, not both", ErrInvalid)
+	case featureID > 0:
+		return d.placeFeature(ctx, featureID, newColumn, projectID)
+	default:
+		return d.moveRow(ctx, cardID, newColumn, projectID)
+	}
+}
+
+// moveRow moves an existing board_cards row.
+func (d *DB) moveRow(ctx context.Context, cardID int64, newColumn string, projectID int64) error {
+	if cardID <= 0 {
+		return fmt.Errorf("%w: no card identified", ErrInvalid)
+	}
+	colID, err := d.boardColumnID(ctx, projectID, newColumn)
+	if err != nil {
+		return err
+	}
+	// RowsAffected separates "moved" from "no such card". Without it a bogus id
+	// is reported as success.
+	res, err := d.ExecContext(ctx, `UPDATE board_cards SET column_id=? WHERE id=? AND project_id=?`,
+		colID, cardID, projectID)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("%w: board card %d", ErrNotFound, cardID)
+	}
+	return nil
+}
+
+// placeFeature records the placement of a feature, creating the board_cards row
+// the first time. The unique index on (project_id, feature_id) is what makes this
+// idempotent: a second move of the same feature updates the row the first one
+// created instead of accumulating duplicates.
+func (d *DB) placeFeature(ctx context.Context, featureID int64, newColumn string, projectID int64) error {
+	colID, err := d.boardColumnID(ctx, projectID, newColumn)
+	if err != nil {
+		return err
+	}
+	// The feature must belong to the project. Without this a caller could place
+	// any feature into any project's board.
+	var owned int64
+	err = d.QueryRowContext(ctx, `SELECT id FROM features WHERE id=? AND project_id=?`,
+		featureID, projectID).Scan(&owned)
+	if errors.Is(err, sql.ErrNoRows) {
+		return fmt.Errorf("%w: feature %d in project %d", ErrNotFound, featureID, projectID)
+	}
+	if err != nil {
+		return err
+	}
+	res, err := d.ExecContext(ctx, `
+		INSERT INTO board_cards (project_id, kind, feature_id, column_id, entered_at)
+		VALUES (?, 'feature', ?, ?, ?)
+		ON CONFLICT (project_id, feature_id) DO UPDATE SET column_id=excluded.column_id`,
+		projectID, featureID, colID, float64(time.Now().Unix()))
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return fmt.Errorf("%w: feature %d", ErrNotFound, featureID)
+	}
+	return nil
+}
+
+// boardColumnID resolves a phase name to its column, or reports that the phase
+// does not exist. An unknown phase used to write column_id=NULL and fail the
+// NOT NULL constraint, surfacing as a 500 from a client mistake.
+func (d *DB) boardColumnID(ctx context.Context, projectID int64, phase string) (int64, error) {
+	var id int64
+	err := d.QueryRowContext(ctx,
+		`SELECT id FROM board_columns WHERE project_id=? AND phase=?`, projectID, phase).Scan(&id)
+	if errors.Is(err, sql.ErrNoRows) {
+		return 0, fmt.Errorf("%w: phase %q in project %d", ErrNotFound, phase, projectID)
+	}
+	return id, err
 }
 
 func (d *DB) GetBoardCard(ctx context.Context, cardID int64) (BoardCard, error) {

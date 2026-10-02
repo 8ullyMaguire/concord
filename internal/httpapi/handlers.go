@@ -1182,18 +1182,44 @@ func (s *Server) handleGetBoard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"columns": columns, "cards": cards})
 }
 
+// handleMoveCard places a card in a phase.
+//
+// The card is named two ways, because a card has two kinds. A placed card is a
+// board_cards row and is addressed by {card_id}. A DERIVED card -- a feature the
+// project has but nobody has placed -- has no row and therefore no id, so it is
+// addressed by ?feature_id=. That distinction is the whole point: before this,
+// moving a derived card sent id=0, the update matched nothing, and the handler
+// still answered 200, so the move was silently discarded.
+//
+// A phase that does not exist is a 404, not a 500: the NOT NULL constraint on
+// column_id used to turn a typo in ?to= into a server fault.
 func (s *Server) handleMoveCard(w http.ResponseWriter, r *http.Request) {
 	cardID, _ := strconv.ParseInt(chi.URLParam(r, "card_id"), 10, 64)
+	// feature_id arrives as a query parameter. Parsed rather than ignored because
+	// a malformed value has to be rejected, not silently treated as absent.
+	var featureID int64
+	if raw := r.URL.Query().Get("feature_id"); raw != "" {
+		v, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil {
+			mapError(w, fmt.Errorf("%w: feature_id must be a number", store.ErrInvalid))
+			return
+		}
+		featureID = v
+	}
 	projectID, ok := s.requireProjectID(w, r)
 	if !ok {
 		return
 	}
 	newColumn := r.URL.Query().Get("to")
+	if newColumn == "" {
+		mapError(w, fmt.Errorf("%w: to is required", store.ErrInvalid))
+		return
+	}
 	if getActorID(r) == 0 {
 		mapError(w, fmt.Errorf("authentication required"))
 		return
 	}
-	if err := s.Store.MoveCard(r.Context(), cardID, newColumn, projectID); err != nil {
+	if err := s.Store.MoveCard(r.Context(), cardID, featureID, newColumn, projectID); err != nil {
 		mapError(w, err)
 		return
 	}
