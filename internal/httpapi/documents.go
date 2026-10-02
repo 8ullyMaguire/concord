@@ -57,6 +57,14 @@ func (s *Server) handlePutDocument(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	// Visibility, before anything is read or written. A private projects
+	// specs and plans are exactly the content that must not leak, and these
+	// handlers resolve the project by slug rather than through
+	// requireProjectID, so they need the check explicitly.
+	if !s.projectReadable(r, project) {
+		mapError(w, store.ErrNotFound)
+		return
+	}
 	if err := s.requireRole(project.ID, "contributor", r); err != nil {
 		mapError(w, err)
 		return
@@ -85,6 +93,14 @@ func (s *Server) handleListDocuments(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	// Visibility, before anything is read or written. A private projects
+	// specs and plans are exactly the content that must not leak, and these
+	// handlers resolve the project by slug rather than through
+	// requireProjectID, so they need the check explicitly.
+	if !s.projectReadable(r, project) {
+		mapError(w, store.ErrNotFound)
+		return
+	}
 	docs, err := s.Store.ListDocuments(r.Context(), project.ID, r.URL.Query().Get("kind"))
 	if err != nil {
 		mapError(w, err)
@@ -99,6 +115,14 @@ func (s *Server) handleGetDocument(w http.ResponseWriter, r *http.Request) {
 	project, err := s.Store.GetProject(r.Context(), slug)
 	if err != nil {
 		mapError(w, err)
+		return
+	}
+	// Visibility, before anything is read or written. A private projects
+	// specs and plans are exactly the content that must not leak, and these
+	// handlers resolve the project by slug rather than through
+	// requireProjectID, so they need the check explicitly.
+	if !s.projectReadable(r, project) {
+		mapError(w, store.ErrNotFound)
 		return
 	}
 	docID, err := strconv.ParseInt(chi.URLParam(r, "doc_id"), 10, 64)
@@ -121,6 +145,14 @@ func (s *Server) handleDeleteDocument(w http.ResponseWriter, r *http.Request) {
 	project, err := s.Store.GetProject(r.Context(), slug)
 	if err != nil {
 		mapError(w, err)
+		return
+	}
+	// Visibility, before anything is read or written. A private projects
+	// specs and plans are exactly the content that must not leak, and these
+	// handlers resolve the project by slug rather than through
+	// requireProjectID, so they need the check explicitly.
+	if !s.projectReadable(r, project) {
+		mapError(w, store.ErrNotFound)
 		return
 	}
 	if err := s.requireRole(project.ID, "maintainer", r); err != nil {
@@ -149,6 +181,14 @@ func (s *Server) handleSearchDocuments(w http.ResponseWriter, r *http.Request) {
 	project, err := s.Store.GetProject(r.Context(), slug)
 	if err != nil {
 		mapError(w, err)
+		return
+	}
+	// Visibility, before anything is read or written. A private projects
+	// specs and plans are exactly the content that must not leak, and these
+	// handlers resolve the project by slug rather than through
+	// requireProjectID, so they need the check explicitly.
+	if !s.projectReadable(r, project) {
+		mapError(w, store.ErrNotFound)
 		return
 	}
 	q := r.URL.Query().Get("q")

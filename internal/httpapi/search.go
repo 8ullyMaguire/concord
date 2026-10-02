@@ -54,7 +54,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	res, err := s.Store.SearchProjects(r.Context(), strings.TrimSpace(r.URL.Query().Get("q")), filters, sortBy)
+	res, err := s.Store.SearchProjects(r.Context(), strings.TrimSpace(r.URL.Query().Get("q")), filters, sortBy, getActorID(r))
 	if err != nil {
 		mapError(w, err)
 		return

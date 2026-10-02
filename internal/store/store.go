@@ -192,20 +192,58 @@ type Project struct {
 	Description     string   `json:"description"`
 	GovernanceModel string   `json:"governance_model"`
 	License         string   `json:"license,omitempty"`
-	CreatedAt       float64  `json:"created_at"`
-	UpdatedAt       float64  `json:"updated_at"`
-	HealthScore     *float64 `json:"health_score,omitempty"` // nil until metrics exist
+	// Visibility is one of VisibilityPrivate, VisibilityUnlisted,
+	// VisibilityProtected, VisibilityPublic. It is always set: the column is
+	// NOT NULL with a CHECK, so "unset" is a state the database refuses.
+	Visibility   string   `json:"visibility"`
+	CreatedAt    float64  `json:"created_at"`
+	UpdatedAt    float64  `json:"updated_at"`
+	HealthScore  *float64 `json:"health_score,omitempty"` // nil until metrics exist
 }
 
+// The four visibility levels. See migration 0009 for what each one means and,
+// more importantly, for why a non-member refusal is a 404 rather than a 403.
+const (
+	// VisibilityPublic is listed in every project listing and readable by
+	// anyone, including an anonymous caller.
+	VisibilityPublic = "public"
+	// VisibilityUnlisted is listed nowhere but readable by direct link with no
+	// session at all. Obscurity, not access control: the URL is the capability.
+	VisibilityUnlisted = "unlisted"
+	// VisibilityProtected is listed nowhere and readable only by a signed-in
+	// user with a grant -- a members row or a redeemed invite.
+	VisibilityProtected = "protected"
+	// VisibilityPrivate is listed nowhere and readable only by a member.
+	VisibilityPrivate = "private"
+)
+
+// ValidVisibility reports whether v is one of the four levels. Used at the API
+// boundary so an unknown level is a 400 rather than a stored value no read path
+// knows how to interpret.
+func ValidVisibility(v string) bool {
+	switch v {
+	case VisibilityPublic, VisibilityUnlisted, VisibilityProtected, VisibilityPrivate:
+		return true
+	}
+	return false
+}
+
+// IsListed reports whether a project at this visibility appears in listings and
+// search results. Public is the only level that is listed; the other three are
+// reachable by direct link alone.
+func (p Project) IsListed() bool { return p.Visibility == VisibilityPublic }
+
 const projectColumns = `p.id, p.slug, p.name, COALESCE(p.description,''),
-	p.governance_model, COALESCE(p.license,''), p.created_at, p.updated_at,
+	p.governance_model, COALESCE(p.license,''), COALESCE(p.visibility,'public'),
+	p.created_at, p.updated_at,
 	m.health_score`
 
 func scanProject(row interface{ Scan(...any) error }) (Project, error) {
 	var p Project
 	var health sql.NullFloat64
 	if err := row.Scan(&p.ID, &p.Slug, &p.Name, &p.Description,
-		&p.GovernanceModel, &p.License, &p.CreatedAt, &p.UpdatedAt, &health); err != nil {
+		&p.GovernanceModel, &p.License, &p.Visibility,
+		&p.CreatedAt, &p.UpdatedAt, &health); err != nil {
 		return p, err
 	}
 	if health.Valid {
@@ -322,7 +360,8 @@ func (d *DB) GetProjectByID(ctx context.Context, projectID int64) (Project, erro
 		LEFT JOIN project_metrics m ON m.project_id = p.id
 		WHERE p.id = ?`, projectID).Scan(
 		&p.ID, &p.Slug, &p.Name, &p.Description,
-		&p.GovernanceModel, &p.License, &p.CreatedAt, &p.UpdatedAt, &p.HealthScore)
+		&p.GovernanceModel, &p.License, &p.Visibility,
+		&p.CreatedAt, &p.UpdatedAt, &p.HealthScore)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Project{}, fmt.Errorf("%w: project %d", ErrNotFound, projectID)
 	}
@@ -331,11 +370,127 @@ func (d *DB) GetProjectByID(ctx context.Context, projectID int64) (Project, erro
 
 // ---------------------------------------------------------------- projects
 
+// ListProjects returns only projects that appear in listings: the public ones.
+// Every other level is reachable by direct link and must not be enumerable, so
+// the filter lives here rather than in each caller -- a handler that forgot it
+// would leak the whole list.
 func (d *DB) ListProjects(ctx context.Context) ([]Project, error) {
 	rows, err := d.QueryContext(ctx, `
 		SELECT `+projectColumns+` FROM projects p
 		LEFT JOIN project_metrics m ON m.project_id = p.id
+		WHERE p.visibility = 'public'
 		ORDER BY p.created_at`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []Project
+	for rows.Next() {
+		p, err := scanProject(rows)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// CanAccessProject decides whether actor may read project p, and is the single
+// place that answers that question.
+//
+// actorID is 0 for an anonymous caller. The four levels behave as follows:
+//
+//	public     everyone, including anonymous.
+//	unlisted   everyone, including anonymous -- the URL is the capability, and
+//	           pretending otherwise would be a claim the level does not make.
+//	protected  a member, or a signed-in user who redeemed an invite.
+//	private    a member only.
+//
+// A member is a row in `members`, which is what a join, an invite redemption or
+// a hand-added maintainer all produce. Reading the table rather than trusting
+// the caller keeps "is this person a member" in one query.
+func (d *DB) CanAccessProject(ctx context.Context, p Project, actorID int64) (bool, error) {
+	switch p.Visibility {
+	case VisibilityPublic, VisibilityUnlisted:
+		return true, nil
+	case VisibilityPrivate, VisibilityProtected:
+		if actorID == 0 {
+			return false, nil
+		}
+	default:
+		// An unknown level must not fall through to "allow". Migration 0009's
+		// CHECK makes this unreachable from the database, but the store is also
+		// reachable from tests and future code, and fail-open is the wrong
+		// direction for an access check.
+		return false, fmt.Errorf("%w: project %d has unknown visibility %q",
+			ErrInvalid, p.ID, p.Visibility)
+	}
+
+	var n int
+	err := d.QueryRowContext(ctx,
+		`SELECT count(*) FROM members WHERE project_id = ? AND user_id = ?`,
+		p.ID, actorID).Scan(&n)
+	if err != nil {
+		return false, err
+	}
+	if n > 0 {
+		return true, nil
+	}
+
+	if p.Visibility == VisibilityProtected {
+		// A redeemed invite is what makes a protected project reachable by
+		// someone who is not yet a member.
+		var r int
+		if err := d.QueryRowContext(ctx, `
+			SELECT count(*) FROM invite_redemptions ir
+			JOIN project_invites i ON i.id = ir.invite_id
+			WHERE i.project_id = ? AND ir.user_id = ?`, p.ID, actorID).Scan(&r); err != nil {
+			return false, err
+		}
+		return r > 0, nil
+	}
+	return false, nil
+}
+
+// SetProjectVisibility changes a project's level. Rejects an unknown value
+// rather than storing it, so a typo cannot produce a project that no read path
+// can classify.
+func (d *DB) SetProjectVisibility(ctx context.Context, slug, visibility string) (Project, error) {
+	if !ValidVisibility(visibility) {
+		return Project{}, fmt.Errorf("%w: unknown visibility %q; valid: public, unlisted, protected, private",
+			ErrInvalid, visibility)
+	}
+	res, err := d.ExecContext(ctx,
+		`UPDATE projects SET visibility = ?, updated_at = ? WHERE slug = ?`,
+		visibility, float64(time.Now().Unix()), slug)
+	if err != nil {
+		return Project{}, err
+	}
+	if n, _ := res.RowsAffected(); n == 0 {
+		return Project{}, fmt.Errorf("%w: project %q", ErrNotFound, slug)
+	}
+	return d.GetProject(ctx, slug)
+}
+
+// ListProjectsVisibleTo returns every project actor may see: the listed public
+// ones plus anything at another level that actor is entitled to. This is what a
+// signed-in user's own view of the index should show, so that a private project
+// does not vanish from its owner's screen.
+func (d *DB) ListProjectsVisibleTo(ctx context.Context, actorID int64) ([]Project, error) {
+	rows, err := d.QueryContext(ctx, `
+		SELECT `+projectColumns+` FROM projects p
+		LEFT JOIN project_metrics m ON m.project_id = p.id
+		WHERE p.visibility = 'public'
+		   OR (p.visibility IN ('unlisted','private') AND EXISTS (
+		         SELECT 1 FROM members mm WHERE mm.project_id = p.id AND mm.user_id = ?
+		   ))
+		   OR (p.visibility = 'protected' AND (
+		         EXISTS (SELECT 1 FROM members mm2 WHERE mm2.project_id = p.id AND mm2.user_id = ?)
+		      OR EXISTS (SELECT 1 FROM invite_redemptions ir
+		                 JOIN project_invites i ON i.id = ir.invite_id
+		                 WHERE i.project_id = p.id AND ir.user_id = ?)
+		   ))
+		ORDER BY p.created_at`, actorID, actorID, actorID)
 	if err != nil {
 		return nil, err
 	}

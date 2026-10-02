@@ -221,6 +221,10 @@ func (s *Server) Router() http.Handler {
 	r.Post("/api/v1/auth/login", s.handleLogin)
 	r.Post("/api/v1/auth/logout", s.handleLogout)
 	r.Get("/api/v1/auth/me", s.handleMe)
+	// Redeeming an invite is an auth-flow action, not a project action: the
+	// caller has no project context yet, which is why the token identifies the
+	// project rather than the other way round.
+	r.Post("/api/v1/auth/redeem-invite", s.handleRedeemInvite)
 
 	r.Route("/api/v1/projects", func(r chi.Router) {
 		r.Get("/", s.handleListProjects)
@@ -234,6 +238,17 @@ func (s *Server) Router() http.Handler {
 			r.Get("/tags", s.handleGetProjectTags)
 			r.Put("/languages", s.handleProjectLanguages)
 			r.Put("/metrics", s.handleProjectMetrics)
+
+			// Visibility (2026-10-02). Member-only to change; see the handler
+			// for why the gate is membership rather than trust level.
+			r.Put("/visibility", s.handleSetProjectVisibility)
+
+			// Invites: the grant a 'protected' project hands out. Minting and
+			// revoking are member-only, and a member can only touch an invite
+			// belonging to their own project.
+			r.Post("/invites", s.handleCreateProjectInvite)
+			r.Get("/invites", s.handleListProjectInvites)
+			r.Post("/invites/{invite_id}/revoke", s.handleRevokeProjectInvite)
 
 			// Project documents (2026-09-30): a project's README, spec, plan
 			// and wiki. These are the documents that explain a project; until

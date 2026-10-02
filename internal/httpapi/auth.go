@@ -110,6 +110,16 @@ func (s *Server) requireWriteActor(w http.ResponseWriter, r *http.Request) (int6
 	return uid, true
 }
 
+// requireProjectID resolves {project_id} to a numeric id AND enforces the
+// project's visibility. Every project-scoped API route funnels through here, so
+// the check sits here rather than in each handler: a handler that forgot it
+// would serve a private project's complaints, votes or documents to anyone.
+//
+// A visibility refusal is reported as ErrNotFound, never ErrForbidden. A 403
+// would confirm the slug exists, and an instance whose private projects answer
+// 403 is enumerable -- the same leak requireWriteActor above refuses to create
+// for anonymous callers. The audit row records what actually happened, so the
+// attempt is still visible to an operator.
 func (s *Server) requireProjectID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	slug := chi.URLParam(r, "project_id")
 	proj, err := s.Store.GetProject(r.Context(), slug)
@@ -117,5 +127,44 @@ func (s *Server) requireProjectID(w http.ResponseWriter, r *http.Request) (int64
 		mapError(w, err)
 		return 0, false
 	}
+	if !s.projectReadable(r, proj) {
+		mapError(w, store.ErrNotFound)
+		return 0, false
+	}
 	return proj.ID, true
+}
+
+// projectReadable is the visibility decision for a loaded project. Split out so
+// the handlers that resolve a project by slug themselves -- rather than through
+// requireProjectID -- apply exactly the same rule.
+//
+// unlisted is readable by anyone, including an anonymous caller: the URL is the
+// capability. Only private and protected require a session.
+// isProjectMember reports whether a role string from GetRoleForProject counts as
+// membership.
+//
+// This check is not optional. GetRoleForProject returns the literal string
+// "guest" for a user with no members row -- not "", and not an error. A gate
+// written as `role == ""` therefore never fires, which silently grants every
+// caller the member-only actions: any signed-in account could set a project's
+// visibility or revoke its invites. Caught by testing against a real stranger
+// account rather than the harness default identity.
+func (s *Server) isProjectMember(role string) bool {
+	switch role {
+	case "", "guest":
+		return false
+	default:
+		return true
+	}
+}
+
+func (s *Server) projectReadable(r *http.Request, proj store.Project) bool {
+	ok, err := s.Store.CanAccessProject(r.Context(), proj, getActorID(r))
+	if err != nil {
+		// An unknown visibility value must fail closed. Logging is deliberately
+		// absent here: this runs before writeJSON and an error path that panics
+		// or double-writes is worse than a 404.
+		return false
+	}
+	return ok
 }

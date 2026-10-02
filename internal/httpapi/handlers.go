@@ -686,6 +686,19 @@ func (s *Server) handleSearchPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleProjectPage(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	// The page itself is a template shell, but it still must not render for a
+	// project the caller cannot see: a 200 for a private project confirms the
+	// slug exists, and the title alone is enough to enumerate. The data behind
+	// it is fetched from the API, which enforces visibility independently.
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		mapError(w, store.ErrNotFound)
+		return
+	}
 	s.render(w, http.StatusOK, "project", struct {
 		pageData
 		Slug string
@@ -694,6 +707,19 @@ func (s *Server) handleProjectPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleBoardPage(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	// The page itself is a template shell, but it still must not render for a
+	// project the caller cannot see: a 200 for a private project confirms the
+	// slug exists, and the title alone is enough to enumerate. The data behind
+	// it is fetched from the API, which enforces visibility independently.
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		mapError(w, store.ErrNotFound)
+		return
+	}
 	s.render(w, http.StatusOK, "board", struct {
 		pageData
 		Slug string
@@ -705,6 +731,19 @@ func (s *Server) handleBoardPage(w http.ResponseWriter, r *http.Request) {
 // deliberately nothing else — the pair and the order are different questions.
 func (s *Server) handleRankPage(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	// The page itself is a template shell, but it still must not render for a
+	// project the caller cannot see: a 200 for a private project confirms the
+	// slug exists, and the title alone is enough to enumerate. The data behind
+	// it is fetched from the API, which enforces visibility independently.
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		mapError(w, store.ErrNotFound)
+		return
+	}
 	s.render(w, http.StatusOK, "rank", struct {
 		pageData
 		Slug string
@@ -713,6 +752,19 @@ func (s *Server) handleRankPage(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleRankingPage(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
+	// The page itself is a template shell, but it still must not render for a
+	// project the caller cannot see: a 200 for a private project confirms the
+	// slug exists, and the title alone is enough to enumerate. The data behind
+	// it is fetched from the API, which enforces visibility independently.
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		mapError(w, store.ErrNotFound)
+		return
+	}
 	s.render(w, http.StatusOK, "ranking", struct {
 		pageData
 		Slug string

@@ -49,11 +49,23 @@ type SearchResult struct {
 
 // Sort options: ""/"relevance" (FTS rank, or updated when q is empty),
 // "updated", "health", "newest".
-func (d *DB) SearchProjects(ctx context.Context, q string, f SearchFilters, sort string) (SearchResult, error) {
+// SearchProjects runs discovery over projects.
+//
+// Visibility is applied here as well as in ListProjects, because this is a
+// second, independent path to the same data: a private project that is filtered
+// out of the list would still be findable by name through search, which is the
+// leak that matters most since a private project is usually private precisely
+// because of what its name advertises.
+//
+// actorID 0 means anonymous, which sees only public projects. A signed-in
+// caller additionally sees what they are a member of, so search stays a
+// superset of the list rather than a second, different answer.
+func (d *DB) SearchProjects(ctx context.Context, q string, f SearchFilters, sort string, actorID int64) (SearchResult, error) {
 	res := SearchResult{Query: q, Filters: f, Sort: sort, Results: []ProjectHit{}}
 
 	var joins, wheres []string
 	var args []any
+
 
 	if q != "" {
 		joins = append(joins, `JOIN projects_fts fts ON fts.slug = p.slug`)
@@ -82,6 +94,27 @@ func (d *DB) SearchProjects(ctx context.Context, q string, f SearchFilters, sort
 		wheres = append(wheres, `p.license = ?`)
 		args = append(args, f.License)
 	}
+
+	// Visibility goes LAST, and that ordering is load-bearing rather than
+	// cosmetic: the WHERE clauses are concatenated in insertion order and the
+	// placeholders are bound positionally, so appending this predicate first
+	// would bind the actor ids to the FTS MATCH placeholder instead. Every
+	// other filter above must therefore append before this point.
+	//
+	// The predicate is the same as ListProjectsVisibleTo's, so the list and the
+	// search cannot disagree about who sees what.
+	wheres = append(wheres, `(
+		p.visibility = 'public'
+		OR (p.visibility IN ('unlisted','private') AND EXISTS (
+		      SELECT 1 FROM members mv WHERE mv.project_id = p.id AND mv.user_id = ?))
+		OR (p.visibility = 'protected' AND (
+		      EXISTS (SELECT 1 FROM members mv2 WHERE mv2.project_id = p.id AND mv2.user_id = ?)
+		   OR EXISTS (SELECT 1 FROM invite_redemptions ir
+		                  JOIN project_invites iv ON iv.id = ir.invite_id
+		                  WHERE iv.project_id = p.id AND ir.user_id = ?)
+		))
+	)`)
+	args = append(args, actorID, actorID, actorID)
 
 	sqlStr := `SELECT ` + projectColumns
 	if q != "" {
@@ -122,8 +155,13 @@ func (d *DB) SearchProjects(ctx context.Context, q string, f SearchFilters, sort
 		var hit ProjectHit
 		var health sql.NullFloat64
 		var rank float64
+		// The destination list must track projectColumns field for field.
+		// ProjectHit embeds Project, so Visibility is part of the hit; leaving
+		// it out of this Scan is what produced "expected 11 destination
+		// arguments, not 10" once the column was added.
 		if err := rows.Scan(&hit.ID, &hit.Slug, &hit.Name, &hit.Description,
-			&hit.GovernanceModel, &hit.License, &hit.CreatedAt, &hit.UpdatedAt,
+			&hit.GovernanceModel, &hit.License, &hit.Visibility,
+			&hit.CreatedAt, &hit.UpdatedAt,
 			&health, &rank); err != nil {
 			rows.Close()
 			return res, err
