@@ -144,6 +144,14 @@ type createSolutionRequest struct {
 	Affiliation string `json:"affiliation"`
 	// ParentSolutionID forks this solution: §6.3's "same, but with X".
 	ParentSolutionID int64 `json:"parent_solution_id"`
+	// §6.4's expertise_tags. A comma-separated list naming what kind of judgement
+	// this design needs, and the input to the vote weighting.
+	//
+	// It was accepted by the store and never by the API, so the column was always
+	// empty in practice and §6.4's weighting had nothing to read. The field is
+	// optional: an author who names no expertise gets equal-weight votes, which
+	// is the honest default rather than a fallback.
+	ExpertiseTags string `json:"expertise_tags"`
 }
 
 // handleCreateSolution files a solution against a feature.
@@ -175,6 +183,7 @@ func (s *Server) handleCreateSolution(w http.ResponseWriter, r *http.Request) {
 		ExternalRef:      req.ExternalRef,
 		Affiliation:      req.Affiliation,
 		ParentSolutionID: req.ParentSolutionID,
+		ExpertiseTags:    req.ExpertiseTags,
 	})
 	if err != nil {
 		s.mapSolutionError(w, err)
@@ -295,11 +304,19 @@ func (s *Server) handleContestCoverage(w http.ResponseWriter, r *http.Request) {
 }
 
 type voteSolutionRequest struct {
-	SolutionA int64   `json:"solution_a"`
-	SolutionB int64   `json:"solution_b"`
-	Outcome   string  `json:"outcome"`
-	Reason    string  `json:"reason"`
-	Weight    float64 `json:"weight"`
+	SolutionA int64  `json:"solution_a"`
+	SolutionB int64  `json:"solution_b"`
+	Outcome   string `json:"outcome"`
+	Reason    string `json:"reason"`
+	// Weight is accepted and ignored.
+	//
+	// It used to be honoured, which was a straight weight-purchase bug: §8.3 says
+	// "money cannot buy weight" and the feature-vote handler has always computed
+	// the weight server-side for that reason. A client could POST weight: 3.0 and
+	// have it recorded verbatim, and nothing bounded it. The field stays in the
+	// struct so an old client sending it gets a 201 rather than a decode failure
+	// over a parameter that is now simply meaningless.
+	Weight float64 `json:"weight"`
 }
 
 // handleVoteSolutions casts a pairwise vote in a feature's solution arena.
@@ -353,9 +370,18 @@ func (s *Server) handleVoteSolutions(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
-	weight := req.Weight
-	if weight <= 0 {
-		weight = 1.0
+	// Weight is computed here, never taken from the body, for the same reason the
+	// feature vote does it: a client-supplied weight is a client-supplied
+	// influence. §8.3's formula, in the order the spec writes it.
+	charter, err := s.Store.GetCharterForProject(r.Context(), projectID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	weight, err := s.solutionVoteWeight(r.Context(), projectID, actorID, charter, a, b)
+	if err != nil {
+		mapError(w, err)
+		return
 	}
 	vote, err := s.Store.CastArenaVote(r.Context(), arena.ID, actorID,
 		store.EntitySolution, a.ID, store.EntitySolution, b.ID,
