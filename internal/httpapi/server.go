@@ -6,7 +6,6 @@ package httpapi
 import (
 	"embed"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"html/template"
 	"log"
@@ -489,23 +488,6 @@ func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 }
 
 // mapError maps store domain errors to HTTP status codes.
-func mapError(w http.ResponseWriter, err error) {
-	switch {
-	case errors.Is(err, store.ErrNotFound):
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": err.Error()})
-	case errors.Is(err, store.ErrDuplicate), errors.Is(err, store.ErrConflict):
-		writeJSON(w, http.StatusConflict, map[string]string{"error": err.Error()})
-	case errors.Is(err, store.ErrInvalid):
-		writeJSON(w, http.StatusBadRequest, map[string]string{"error": err.Error()})
-	case errors.Is(err, store.ErrAuth):
-		writeJSON(w, http.StatusUnauthorized, map[string]string{"error": err.Error()})
-	case errors.Is(err, store.ErrPerm):
-		writeJSON(w, http.StatusForbidden, map[string]string{"error": err.Error()})
-	default:
-		writeJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-	}
-}
-
 // pageData wraps template data with common fields.
 type pageData struct {
 	Title   string

@@ -98,8 +98,10 @@ func TestWebhookEndpoints(t *testing.T) {
 		if err != nil {
 			t.Fatalf("request: %v", err)
 		}
-		if resp.StatusCode != http.StatusInternalServerError {
-			t.Fatalf("missing signature should be rejected, got %d", resp.StatusCode)
+		// 400, not 500: a request with no signature is the caller's mistake, and
+		// a 500 sends them looking for a server fault that does not exist.
+		if resp.StatusCode != http.StatusBadRequest {
+			t.Fatalf("missing signature should be rejected with 400, got %d", resp.StatusCode)
 		}
 	})
 }
