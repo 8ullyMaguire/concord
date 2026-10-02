@@ -170,6 +170,70 @@ from. Verified absent in the tree before being written:
   indefinitely regardless.
 - **A single documented loading pattern**, so the next page does not invent one.
 
+Three of these shipped, and two of them were wrong on the first pass in ways
+that no amount of source inspection would have caught. Both are recorded because
+the failure mode generalises: **a stylesheet test proves a declaration exists, not
+that a human can see the result.**
+
+1. `aria-busy` is set by the *template*, and the pages that clear it are the
+   pages whose scripts never set it. Checking `getElementById` and the count of
+   `done()` calls in a script passes on a page that leaks in every path. The
+   check that works runs the scripts in Node against a stubbed fetch and reads
+   the attribute off the mount afterwards, seeded from the real rendered
+   template. See §0.4.
+2. The focus ring on `.btn-primary` was `2px solid` indigo on an indigo
+   background. Present, valid, correctly targeted, computed correctly, and
+   invisible. Asserting contrast needs a layout engine, so the requirement is
+   written down instead: filled buttons carry a two-tone ring, a white inner ring
+   against the fill and the indigo outer ring against the page.
+
+## 0.4 The loading contract, and why it is tested by running the code
+
+Every page that fetches marks its mount point `aria-busy="true"` and clears it
+when content lands. **Clearing it is the whole contract**, because `aria-busy`
+suppresses live-region updates inside the region it marks: a region left busy is
+a region whose contents are never announced. The error and empty paths are where
+it leaks, and they are exactly the paths that are least likely to be exercised.
+
+Five separate leaks were found and fixed, all of the same shape:
+
+| Page | How it leaked |
+|---|---|
+| `project.js` | the catch has three outcomes — notFound, auth, plain failure — and the clear sat inside only the last branch |
+| `search.js` | its non-OK response resolves as a *success* with zero results, so a 404 or 401 reached the success path, which did not clear |
+| `projects.js` | the error path never cleared |
+| `rank.js`, `ranking.js` | `innerHTML` is assigned in nine places; the empty and error states were two of the ones skipped |
+| `documents.js` | found by hand, with the API blocked in a browser |
+
+`rank.js` and `ranking.js` now clear at the single point where the first load
+terminates, whichever way it terminates, rather than at nine assignment sites.
+
+**Why the test runs the code.** Four attempts at a static check, and all four
+were wrong:
+
+1. Counting clears per file. Too coarse — `documents.js` had three, so deleting
+   the one in the error path left three and the count passed.
+2. Walking `.catch` blocks by brace balance. Flagged `rank.js`'s
+   vote-submission catch, which runs after the load and has nothing to clear.
+3. Identifying the initial load positionally, via the entry block and the loader
+   named on it. Flagged the same catch again.
+4. Seeding the mount as unset. `aria-busy` comes from the template, so the test
+   could not see a leak at all: deleting every clear in `project.js` changed
+   nothing and the test passed.
+
+Three attempts to infer control flow from source text, three wrong answers; then
+one attempt to observe it, which works. `TestPageScriptsClearAriaBusyWhenThe-
+FetchFails` executes each page script in Node against a stubbed `fetch` and reads
+`aria-busy` off the mount afterwards, across three failure modes (network
+rejection, 404, 401) because those drive different branches and that distinction
+is what caught the `project.js` bug.
+
+Two harness faults presented as page bugs before that: `DOMContentLoaded` was
+never fired, so five of seven scripts never ran; and `skeleton.js` was not
+loaded, so every `window.ConcordSkeleton` guard short-circuited. Worth stating
+plainly, because a green harness that never executed the code under test looks
+exactly like a passing test.
+
 Deliberately **not** taken, having been considered: dark theme, density toggle,
 command palette, notification panel, service worker/PWA, i18n catalogs, GraphQL
 contracts. Each is either a large surface with no current demand (dark theme on a
@@ -181,6 +245,12 @@ Two things are deferred rather than refused, and recorded so they are not lost:
   this document agrees): needs the consensus page, which does not exist.
 - **A "why this rank?" breakdown popover**: the data exists — `ranking` already
   exposes per-criterion scores — but it wants the arena page.
+
+Shipped 2026-10-02 as commits `e33068e`, `1c69bdb`, `77ec32b`: the focus
+indicators, the reduced-motion block, skeletons on all eight fetching pages, the
+`aria-busy` contract and its test, and the two-tone button ring. Verified in a
+browser against the deployed build, including the failure path with the API
+blocked — which is how the `documents.js` leak was found.
 
 Two things are deliberately *not* built yet, and both are named in §9.
 
