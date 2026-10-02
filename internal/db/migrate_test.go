@@ -84,6 +84,134 @@ func TestMigrateRejectsDuplicateVersions(t *testing.T) {
 // So: seed rows, run a migration whose backfill cannot match, and require that
 // either the rows survive or the migration fails loudly. There is no third
 // option in which a migration quietly empties a table.
+// TestMigrateAddsNotNullColumnWithoutLosingData records a real defect in this
+// toolchain and the limit of what an in-process test can see about it.
+//
+// `ALTER TABLE t ADD COLUMN b REAL NOT NULL DEFAULT 0.5` does not write a value
+// into the rows that already exist. They read back the default -- `SELECT sum(b)`
+// is right and `WHERE b IS NULL` matches nothing -- so no query in the product
+// can notice. But the sqlite3 CLI's `PRAGMA integrity_check` reports
+// "NULL value in t.b" once per row, and the production database carried 70 such
+// reports for charters.support_ratio_min against 0 actual NULLs.
+//
+// The driver Concord actually uses, modernc.org/sqlite, reports "ok" for the
+// identical file. Both were verified on the same database: the CLI says 70
+// problems, the driver says ok. So this test cannot assert on the report, and a
+// test that tried would pass against the broken migration -- which is exactly
+// what the first two attempts at this test did.
+//
+// Two wrong conclusions were reached on the way, both recorded because both look
+// reasonable:
+//
+//   - "the migration lost data, so backfill it" -- a repair writing 0.5 over 0.5.
+//   - "the records are stale, so VACUUM after migrating" -- VACUUM does not clear
+//     the report. It looked like it did, because a copy of the database made
+//     without its -wal file loses the migration entirely and reports "ok" for an
+//     unrelated reason: the column is absent, not healthy.
+//
+// What is asserted here is the part that matters and is checkable in-process:
+// after the migration every row has the value, and pre-existing values survive.
+// The integrity_check discrepancy is documented in docs/KNOWN-ISSUES.md instead,
+// because a test that cannot fail is worse than no test.
+func TestMigrateAddsNotNullColumnWithoutLosingData(t *testing.T) {
+	dir := t.TempDir()
+	migDir := filepath.Join(dir, "migrations")
+	writeMigration(t, migDir, "0001_seed.sql", `
+		CREATE TABLE charters (project_id INTEGER PRIMARY KEY, consent_ratio REAL NOT NULL DEFAULT 0.7);
+		INSERT INTO charters (project_id, consent_ratio) VALUES (1,0.7),(2,0.8),(3,0.9);
+	`)
+	writeMigration(t, migDir, "0002_add.sql", `
+		ALTER TABLE charters ADD COLUMN support_ratio_min REAL NOT NULL DEFAULT 0.5;
+	`)
+
+	d, err := Open(filepath.Join(dir, "addcol.db"))
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer d.Close()
+	ctx := context.Background()
+	if err := migrateFS(ctx, d, os.DirFS(dir), "migrations"); err != nil {
+		t.Fatalf("migrateFS: %v", err)
+	}
+
+	// The default must be readable on rows that predate the column -- this is
+	// what §6.6's two-threshold rule reads.
+	rows, err := d.QueryContext(ctx,
+		`SELECT project_id, consent_ratio, support_ratio_min FROM charters ORDER BY project_id`)
+	if err != nil {
+		t.Fatalf("select: %v", err)
+	}
+	defer rows.Close()
+	want := []struct {
+		id            int64
+		consent, supp float64
+	}{{1, 0.7, 0.5}, {2, 0.8, 0.5}, {3, 0.9, 0.5}}
+	i := 0
+	for rows.Next() {
+		var id int64
+		var consent, supp float64
+		if err := rows.Scan(&id, &consent, &supp); err != nil {
+			t.Fatalf("scan row %d: %v", i, err)
+		}
+		if i >= len(want) {
+			t.Fatalf("more rows than the 3 inserted")
+		}
+		if id != want[i].id || consent != want[i].consent || supp != want[i].supp {
+			t.Errorf("row = (%d, %v, %v), want (%d, %v, %v): a column added to a "+
+				"populated table must not disturb the columns already there",
+				id, consent, supp, want[i].id, want[i].consent, want[i].supp)
+		}
+		i++
+	}
+	if err := rows.Err(); err != nil {
+		t.Fatalf("rows: %v", err)
+	}
+	if i != len(want) {
+		t.Errorf("read %d rows, want %d", i, len(want))
+	}
+}
+
+// TestMigrateIsIdempotentOnRerun is the property the whole revision depends on:
+// running the migrations against an already-migrated database changes nothing.
+func TestMigrateIsIdempotentOnRerun(t *testing.T) {
+	dir := t.TempDir()
+	migDir := filepath.Join(dir, "migrations")
+	writeMigration(t, migDir, "0001_seed.sql", `
+		CREATE TABLE t (id INTEGER PRIMARY KEY, v TEXT);
+		INSERT INTO t (id, v) VALUES (1, 'a'), (2, 'b');
+	`)
+	writeMigration(t, migDir, "0002_alter.sql", `
+		ALTER TABLE t ADD COLUMN n REAL NOT NULL DEFAULT 7;
+	`)
+
+	dbPath := filepath.Join(dir, "rerun.db")
+	d, err := Open(dbPath)
+	if err != nil {
+		t.Fatalf("open: %v", err)
+	}
+	defer d.Close()
+	ctx := context.Background()
+	for i := range 2 {
+		if err := migrateFS(ctx, d, os.DirFS(dir), "migrations"); err != nil {
+			t.Fatalf("migrateFS pass %d: %v", i+1, err)
+		}
+	}
+	var count int
+	if err := d.QueryRowContext(ctx, `SELECT COUNT(*) FROM t`).Scan(&count); err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if count != 2 {
+		t.Errorf("after two passes the table has %d rows, want 2", count)
+	}
+	var versions int
+	if err := d.QueryRowContext(ctx, `SELECT COUNT(*) FROM schema_migrations`).Scan(&versions); err != nil {
+		t.Fatalf("count versions: %v", err)
+	}
+	if versions != 2 {
+		t.Errorf("schema_migrations has %d rows after two passes, want 2", versions)
+	}
+}
+
 func TestMigrateFailsWhenABackfillMatchesNothing(t *testing.T) {
 	dir := t.TempDir()
 	migDir := filepath.Join(dir, "migrations")

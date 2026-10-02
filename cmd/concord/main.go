@@ -23,9 +23,11 @@ var version = "dev"
 
 func main() {
 	var (
-		flagDB     = flag.String("db", "", "database path (overrides $CONCORD_DB)")
-		flagListen = flag.String("listen", "", "listen address (overrides $CONCORD_LISTEN)")
-		showVer    = flag.Bool("version", false, "print version and exit")
+		flagDB      = flag.String("db", "", "database path (overrides $CONCORD_DB)")
+		flagListen  = flag.String("listen", "", "listen address (overrides $CONCORD_LISTEN)")
+		showVer     = flag.Bool("version", false, "print version and exit")
+		migrateOnly = flag.Bool("migrate-only", false,
+			"apply migrations, report integrity, and exit without serving")
 	)
 	flag.Parse()
 
@@ -53,6 +55,27 @@ func main() {
 
 	if err := db.Migrate(ctx, sqlDB); err != nil {
 		log.Fatalf("migrate: %v", err)
+	}
+
+	// -migrate-only exists so a deploy can apply and verify the schema without
+	// starting a server. Migrating by starting the server means the schema is
+	// only correct if the server also came up, so a failed bind leaves the
+	// database half-migrated with nothing to distinguish that from a healthy
+	// start. It also makes "apply migrations to a copy and diff the result" --
+	// the only way to find out what a migration really does before running it on
+	// production -- impossible, since the process would keep the port.
+	if *migrateOnly {
+		var report string
+		if err := sqlDB.QueryRowContext(ctx, `PRAGMA integrity_check`).Scan(&report); err != nil {
+			log.Fatalf("integrity_check: %v", err)
+		}
+		var version int
+		if err := sqlDB.QueryRowContext(ctx,
+			`SELECT COALESCE(MAX(version), 0) FROM schema_migrations`).Scan(&version); err != nil {
+			log.Fatalf("read schema version: %v", err)
+		}
+		fmt.Printf("schema version %d, integrity_check: %s\n", version, report)
+		return
 	}
 
 	st := &store.DB{DB: sqlDB}

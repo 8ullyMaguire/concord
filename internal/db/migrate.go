@@ -151,6 +151,7 @@ func migrateFS(ctx context.Context, d *sql.DB, fsys fs.FS, dir string) error {
 			return applyErr
 		}
 	}
+
 	return nil
 }
 
