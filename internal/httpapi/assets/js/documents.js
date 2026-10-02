@@ -72,17 +72,44 @@
   // into sections, and load sections on demand.
   var BIG_DOC_BYTES = 200 * 1024;
 
-  // splitSections breaks a body at level-2 headings so a huge document can be
-  // rendered piecewise. Returns [{title, markdown}].
+  // splitSections breaks a body into sections at its top-level headings.
+  // Returns [{title, markdown, level}].
+  //
+  // It splits at H1 *or* H2. Matching H2 alone looked harmless and was not: a
+  // document whose sections are H1 came back as ONE section, so a 229 KB body
+  // was assigned to innerHTML in a single go -- the exact tab lock this branch
+  // exists to prevent. It was worse than that, because the single section was
+  // then the only child of the .doc-large grid, landing it in the grid's 200px
+  // first column: the whole document rendered 200px wide.
+  //
+  // H1 is the deeper split when both appear in one document, because a document
+  // that opens with an H1 title and then uses H2s for its sections should not
+  // become one section per part of a sentence. In practice the two do not mix:
+  // the corpus has documents that are all-H1 (a plan with 8, a handoff readme
+  // with 4) and documents that are all-H2.
   function splitSections(body) {
     var lines = String(body || '').split('\n');
-    var sections = [];
-    var cur = { title: '', lines: [] };
+
+    // Pick the level to split on: whichever of H1/H2 appears most, H1 winning a
+    // tie only if it is also the first heading. Falling back to H2 keeps the
+    // previous behaviour for a document with neither.
+    var h1 = 0, h2 = 0, firstIsH1 = false, seen = false;
     lines.forEach(function (line) {
-      var m = line.match(/^##\s+(.*)$/);
+      var a = line.match(/^#\s+(.*)$/);
+      var b = line.match(/^##\s+(.*)$/);
+      if (a) { h1++; if (!seen) { firstIsH1 = true; seen = true; } }
+      else if (b) { h2++; seen = true; }
+    });
+    var level = (h1 > h2 || (h1 === h2 && h1 > 0 && firstIsH1)) ? 1 : 2;
+    var re = level === 1 ? /^#\s+(.*)$/ : /^##\s+(.*)$/;
+
+    var sections = [];
+    var cur = { title: '', level: level, lines: [] };
+    lines.forEach(function (line) {
+      var m = line.match(re);
       if (m) {
         if (cur.lines.join('\n').trim() || cur.title) sections.push(cur);
-        cur = { title: m[1], lines: [line] };
+        cur = { title: m[1], level: level, lines: [line] };
       } else {
         cur.lines.push(line);
       }
@@ -170,15 +197,24 @@
       // with links to #doc-s-8..13 that point at nothing, and duplicate ids for
       // every heading after the first block. Reading the ids back is the only
       // construction that cannot drift from the markup it links to.
+      // data-split-level is the level this document's H2s sit at. Declared
+      // rather than left to default so buildTOCFromDOM and the renderer read the
+      // same number instead of each applying a fallback.
       return head +
-        '<div class="doc-large"><nav class="doc-toc" aria-label="Sections" hidden></nav>' +
-        '<article class="markdown-body" data-markdown>' +
-        escapeTextForAttr(body) + '</article></div>';
+        '<div class="doc-large" data-split-level="2">' +
+        '<nav class="doc-toc" aria-label="Sections" hidden></nav>' +
+        // Same wrapper as the large-document path, so the article is the second
+        // grid cell in both cases rather than the first.
+        '<div class="doc-sections"><article class="markdown-body" data-markdown>' +
+        escapeTextForAttr(body) + '</article></div></div>';
     }
 
     // Large document: render section by section on demand, so the first paint
     // does not depend on the size of the file.
     var sections = splitSections(body);
+    // Declared before the markup that states it and before the observer closure
+    // reads it, so neither has to recompute the level independently.
+    var splitLevel = sections.length ? sections[0].level : 2;
     var toc = sections.map(function (s, n) {
       return '<li><a class="doc-toc-link" href="#" data-section="' + n + '">' +
         esc(s.title || 'Introduction') + '</a></li>';
@@ -210,13 +246,31 @@
         '<article class="markdown-body" data-markdown>' +
         escapeTextForAttr(s.lines.join('\n')) + '</article></div>';
     }).join('');
+    // data-split-level is read back by the renderer so it puts ids on the same
+    // heading level this function split on. Stating it in the markup rather than
+    // recomputing it is what keeps the two from drifting.
     return head +
-      '<div class="doc-large">' +
+      '<div class="doc-large" data-split-level="' + splitLevel + '">' +
       (sections.length > 1
         ? '<nav class="doc-toc" aria-label="Sections"><h2 class="doc-toc-title">Contents</h2>' +
           '<ol>' + toc + '</ol></nav>'
         : '') +
-      first + placeholder + '</div>';
+      // The sections are wrapped in their own element so they form ONE grid
+      // cell and stack down the page.
+      //
+      // Without the wrapper they are siblings of the nav inside the 2-column
+      // grid, so the browser placed them into successive grid cells: measured on
+      // a 229 KB document, section 1 was 33314px tall in the 200px nav column
+      // and section 2 sat beside it in the 408px article column at the same
+      // scroll offset. Every placeholder shared a top with its neighbour, so
+      // clicking a contents entry scrolled to a position 2115px above the
+      // section it named, and half the sections were invisible.
+      //
+      // This was never visible before because splitSections matched H2 only and
+      // no document in the corpus exceeded the 200 KB lazy threshold, so the
+      // branch had never rendered.
+      '<div class="doc-sections">' + first + placeholder + '</div>' +
+      '</div>';
   }
 
   // The renderer reads text from the DOM rather than from a JS string, so the
@@ -253,7 +307,14 @@
       // doc-s-0 and the contents list can only ever reach the first one.
       var holder = el.closest('[data-section-body]');
       var idStart = holder ? Number(holder.getAttribute('data-section-body')) : 0;
-      el.innerHTML = window.ConcordMarkdown.render(text, { idStart: idStart });
+      // Read from the .doc-large wrapper, not from root: root is the page
+      // container, which has no data-split-level, so reading it there silently
+      // fell back to 2 and put no ids on an all-H1 document.
+      var large = root.querySelector('.doc-large');
+      el.innerHTML = window.ConcordMarkdown.render(text, {
+        idStart: idStart,
+        idLevel: Number(large && large.getAttribute('data-split-level')) || 2
+      });
       el.removeAttribute('data-markdown');
     });
     // After rendering, not before: the TOC is built from ids that only exist
@@ -269,8 +330,12 @@
   function buildTOCFromDOM(root) {
     var nav = root.querySelector('nav.doc-toc[hidden]');
     if (!nav) return;
+    // Which level carries ids depends on what the document was split on, so it
+    // is read from the markup rather than assumed to be h2.
+    var level = Number(root.querySelector('.doc-large') &&
+      root.querySelector('.doc-large').getAttribute('data-split-level')) || 2;
     var headings = Array.prototype.slice.call(
-      root.querySelectorAll('.markdown-body h2[id^="doc-s-"]'));
+      root.querySelectorAll('.markdown-body h' + level + '[id^="doc-s-"]'));
     if (headings.length < 2) {
       nav.parentNode && nav.parentNode.removeChild(nav);
       return;
@@ -281,6 +346,23 @@
           esc(h.textContent || 'Introduction') + '</a></li>';
       }).join('') + '</ol>';
     nav.removeAttribute('hidden');
+  }
+
+  // renderPendingSection fills a placeholder now, rather than waiting for the
+  // IntersectionObserver to reach it. Scrolling a still-empty placeholder shows
+  // the reader a blank band and reads as a broken link.
+  function renderPendingSection(wrap, box) {
+    var el = wrap.querySelector('[data-markdown]');
+    if (!el || !el.hasAttribute('data-markdown')) return false;
+    var large = box.querySelector('.doc-large');
+    el.innerHTML = window.ConcordMarkdown.render(el.textContent || '', {
+      idStart: Number(wrap.getAttribute('data-section-body')) || 0,
+      idLevel: Number(large && large.getAttribute('data-split-level')) || 2
+    });
+    el.removeAttribute('data-markdown');
+    wrap.classList.remove('is-pending');
+    wrap.removeAttribute('style');   // drop the reserved height; content sets it
+    return true;
   }
 
   function wire(box, slug, doc) {
@@ -320,17 +402,11 @@
       var observer = new IntersectionObserver(function (entries) {
         entries.forEach(function (e) {
           if (!e.isIntersecting) return;
-          var el = e.target.querySelector('[data-markdown]');
-          if (el && el.hasAttribute('data-markdown')) {
-            // Same idStart the eager path passes -- otherwise a section rendered
-            // here numbers its headings from 0 and the contents list cannot
-            // reach it.
-            var idx = Number(e.target.getAttribute('data-section-body')) || 0;
-            el.innerHTML = window.ConcordMarkdown.render(el.textContent || '',
-              { idStart: idx });
-            el.removeAttribute('data-markdown');
-            e.target.classList.remove('is-pending');
-          }
+          // The same helper the contents list uses, so a section rendered by
+          // scrolling and one rendered by clicking are identical. Two copies of
+          // this is how they drift: the click path had its own and lost the
+          // idStart offset.
+          renderPendingSection(e.target, box);
           observer.unobserve(e.target);
         });
       }, { rootMargin: '400px' });
@@ -350,14 +426,69 @@
           var id = (a.getAttribute('href') || '').replace(/^#/, '');
           target = id ? box.querySelector('#' + CSS.escape(id)) : null;
         } else {
-          // A lazily-rendered section: the heading may not exist yet, because the
-          // section that contains it is still a placeholder. Fall back to the
-          // wrapper, which occupies space and is therefore scrollable.
-          target = n === '0'
-            ? box.querySelector('.doc-large > .markdown-body')
-            : box.querySelector('[data-section-body="' + n + '"]');
+          // data-section is the index into the ORIGINAL section list, so entry
+          // n names section n. Section 0 is the eagerly-rendered first article;
+          // the rest are the placeholders, which are numbered 1..n-1 in the same
+          // order. So entry n is placeholder n -- not n+1.
+          //
+          // The n+1 form was an off-by-one that put every entry one section too
+          // far: measured on a 229 KB document, clicking the entry labelled
+          // "Heading 2" scrolled to "Heading 3", and the final entry landed on
+          // the document header because it asked for a placeholder that does not
+          // exist. Both are wrong in opposite directions, which is why neither
+          // showed up as an obvious "off by one" -- one was invisible and one
+          // looked like a scroll glitch.
+          //
+          // The section may still be an unrendered placeholder, so it is filled
+          // on demand: scrolling to an empty band reads as a broken link.
+          var idx = Number(n);
+          if (idx === 0) {
+            target = box.querySelector('.doc-sections > .markdown-body');
+          } else {
+            // Render every section from the top of the document down to the
+            // target, not just the target.
+            //
+            // A placeholder is shorter than the section it stands for -- it
+            // reserves min-height, while the rendered content is ~14200px against
+            // a 4000px reservation. So a section's position on the page is not
+            // final until everything above it has rendered, and the target's
+            // position moves every time one of them does.
+            //
+            // Scrolling to an unrendered target therefore lands wherever the
+            // target was, and the observer then grows the sections above it and
+            // pushes the target down: measured 1743px short after rendering the
+            // two sections above it. Re-scrolling in response to those renders
+            // was tried and does not work, because the observers fire whenever
+            // they fire and a loop that waits for them is guessing at a deadline.
+            // Rendering the path to the target makes its position final, and one
+            // scroll is then correct.
+            //
+            // Sections below the target are left pending, so jumping into a long
+            // document still does not render all of it.
+            box.querySelectorAll('[data-section-body]').forEach(function (w) {
+              if (Number(w.getAttribute('data-section-body')) <= idx) {
+                renderPendingSection(w, box);
+              }
+            });
+            target = box.querySelector('[data-section-body="' + idx + '"]');
+          }
         }
-        if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        if (!target) return;
+
+        // One scroll, and it is correct.
+        //
+        // The loop that used to be here re-checked the position after each
+        // render and re-scrolled until it stopped moving. It never settled
+        // reliably, because the renders it was waiting for come from
+        // IntersectionObservers that fire whenever they fire, and every bound on
+        // the loop was a guess: a frame budget expired first and left the reader
+        // 871px-4357px short -- always an exact multiple of one section's growth.
+        //
+        // Rendering the path to the target above removed the race instead of
+        // winning it. Nothing above the target is still a placeholder, so the
+        // target's position is final by the time this runs, and the sections
+        // below it stay pending so the document is still lazy.
+        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
       });
     });
   }

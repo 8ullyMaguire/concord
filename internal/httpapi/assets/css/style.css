@@ -1021,6 +1021,9 @@ a.card { display: block; color: inherit; }
 .doc-head .page-subtitle { margin-top: 0.25rem; font-size: 0.8125rem; color: var(--slate-500); }
 
 .doc-large { display: grid; grid-template-columns: 200px 1fr; gap: 1.5rem; align-items: start; }
+/* The sections occupy the second grid cell as one block and stack inside it.
+   min-width:0 stops a wide code span from stretching the cell. */
+.doc-sections { min-width: 0; }
 
 /* A pending section is not yet rendered. It keeps its reserved min-height (set
    inline, proportional to the source length) and shows a faint shimmer so the

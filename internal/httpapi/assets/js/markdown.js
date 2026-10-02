@@ -176,6 +176,10 @@
   // CommonMark implementation because the alternative — a parser that handles
   // every construct — means trusting a much larger attack surface on content we
   // do not control.
+  // render(source, opts)
+  //   opts.idStart  offset for heading numbering, so a section rendered on its
+  //                 own continues the document's numbering
+  //   opts.idLevel  the single heading level that receives an id (default 2)
   function render(source, opts) {
     opts = opts || {};
     // A per-call allocator, not a module-level counter reset. The documents page
@@ -221,11 +225,19 @@
       var h = line.match(/^(#{1,6})\s+(.*?)\s*#*\s*$/);
       if (h) {
         var level = h[1].length;
-        // Only H2 gets an id. Without one a table of contents is a list of text
-        // that goes nowhere: the documents viewer links to #doc-s-N, which only
-        // works if this renderer numbers the same way. See nextHeadingId for why
-        // H2 specifically is the level that numbering is defined against.
-        var hid = level === 2 ? nextId() : '';
+        // An id goes on exactly one heading level -- the one the documents
+        // viewer split this document on. Without ids a table of contents is a
+        // list of text that goes nowhere.
+        //
+        // The level is passed in rather than hardcoded, because splitSections
+        // picks between H1 and H2 by what the document actually uses. Pinning it
+        // to 2 here would have left an all-H1 document with a contents list
+        // whose links point at nothing.
+        //
+        // Default 2 when unspecified, so a caller that does not know the
+        // document's structure still numbers the sections.
+        var splitLevel = opts.idLevel || 2;
+        var hid = level === splitLevel ? nextId() : '';
         out.push('<h' + level + (hid ? ' id="' + hid + '"' : '') +
           ' class="md-h' + level + '">' + renderInline(h[2]) + '</h' + level + '>');
         i++;
