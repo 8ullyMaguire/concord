@@ -253,30 +253,47 @@ func TestThresholdsDifferPerModel(t *testing.T) {
 	// and silently wrong for the other model afterwards.
 	strongHashed, likelyHashed, weakHashed := ThresholdsFor("hashed-v1")
 	strongNomic, likelyNomic, weakNomic := ThresholdsFor("nomic:nomic-embed-text:latest")
-	_ = weakHashed
 	_ = likelyNomic
 	_ = weakNomic
+	_ = weakHashed
 
 	if strongHashed == strongNomic {
 		t.Error("strong threshold is shared between models: the hashed 0.85 gate " +
 			"would refuse almost nothing under nomic, whose paraphrases peak at 0.79")
 	}
-	if !(strongNomic < strongHashed) {
-		t.Errorf("nomic strong %.2f should be below hashed %.2f: nomic scores "+
-			"related text higher, so the same band catches less",
-			strongNomic, strongHashed)
-	}
+	// No ordering is asserted between the two refusal bands, because the correct
+	// values are not ordered by model "sharpness" but by each one's own measured
+	// false-refusal risk. A previous version asserted nomic < hashed on the theory
+	// that a semantic model scores related text higher and so needs a lower band;
+	// that was true when nomic's band was 0.60, and it stopped being true when the
+	// live measurement ruled that band out. The reasoning generalises badly, so
+	// the assertion is not carried forward -- each band is justified by its own
+	// measurement above instead.
 
-	// Whatever the numbers, each model's strong band must sit inside the gap its
-	// own measurement found: above the worst different-problem pair, below the
-	// worst same-problem pair.
-	if strongNomic <= 0.473 {
-		t.Errorf("nomic strong band %.2f is at or below the measured "+
-			"different-problem maximum 0.473, so it would refuse distinct complaints", strongNomic)
+	// The nomic REFUSAL band is deliberately NOT inside the paraphrase range, and
+	// the reason is the stronger of the two measurements. Against the live
+	// 531-complaint index:
+	//
+	//	paraphrase of a stored complaint   0.730 - 0.862
+	//	genuinely new, same topic          0.680 - 0.800
+	//	separation                          -0.070  (populations overlap)
+	//
+	// Since no threshold separates them, the refusal band is set where refusal
+	// is safe -- above every paraphrase -- rather than where detection is best.
+	// An earlier, easier benchmark (13 hand-built pairs) showed 0.14 of
+	// separation and suggested 0.60; acting on it would have refused a genuine
+	// new complaint that outscored a true paraphrase. That is the error this
+	// assertion exists to prevent.
+	if strongNomic <= 0.862 {
+		t.Errorf("nomic strong band %.2f is inside the measured paraphrase range "+
+			"(0.730-0.862), and the populations overlap, so it would refuse "+
+			"genuinely new complaints", strongNomic)
 	}
-	if strongNomic >= 0.613 {
-		t.Errorf("nomic strong band %.2f is at or above the measured "+
-			"same-problem minimum 0.613, so it would miss real paraphrases", strongNomic)
+	// It must still catch the case it is for: identical text scores 1.000 and
+	// near-identical restatements 0.93 in the same live measurement.
+	if strongNomic > 0.930 {
+		t.Errorf("nomic strong band %.2f is above the near-identical score 0.93, "+
+			"so it would fail to refuse an actual repeat filing", strongNomic)
 	}
 	// The hashed strong band is NOT inside the paraphrase range, and that is
 	// deliberate rather than an oversight: 0.85 is the 409 REFUSAL, and a

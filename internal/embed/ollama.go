@@ -54,17 +54,46 @@ import (
 const (
 	// OllamaStrongThreshold gates the 409 refusal.
 	//
-	// 0.60, not the hashed 0.85. In the measured set every same-problem pair
-	// cleared 0.613 and every different-problem pair topped out at 0.473, so 0.60
-	// sits inside the empty band between the two classes. The hashed embedder's
-	// 0.85 was chosen against a scale where paraphrases reached 0.37; the same
-	// number here would make this embedder refuse almost nothing.
-	OllamaStrongThreshold = 0.60
+	// 0.92, and the reasoning is a correction of an earlier measurement rather
+	// than a refinement of it.
+	//
+	// A first pass over 13 hand-built pairs put same-problem paraphrases at
+	// 0.613-0.787 and different-problem pairs at 0.371-0.473, which looked like
+	// 0.14 of clean separation and suggested a 0.60 gate. Measured again against
+	// the LIVE 531-complaint index, with paraphrases of real stored complaints on
+	// one side and genuinely new complaints on the same topics on the other:
+	//
+	//	paraphrase of a stored complaint   0.730 - 0.862  (mean 0.810)
+	//	genuinely new, same topic          0.680 - 0.800  (mean 0.733)
+	//	separation                          -0.070
+	//
+	// The populations OVERLAP. A real new complaint scored 0.800 while a true
+	// paraphrase scored 0.730, so no threshold separates them and a gate at 0.60
+	// would have refused a filing a maintainer would have wanted.
+	//
+	// Those 13 hand-built pairs were too easy: both members were written to be
+	// obviously about the same thing, and a benchmark built that way measures the
+	// benchmark. Real complaints share vocabulary they have no reason to share,
+	// which is exactly what separates a paraphrase from a new bug.
+	//
+	// 0.92 is therefore set where refusal is safe rather than where detection is
+	// best. Identical titles score 1.000 and near-identical restatements 0.93, so
+	// the band still refuses the case it exists for -- the same words twice --
+	// while every measured paraphrase falls below it and is surfaced as a hint
+	// instead. This is the asymmetry §6.1 is built around: a duplicate in the
+	// queue costs a maintainer a minute, a lost complaint costs the report.
+	OllamaStrongThreshold = 0.92
 
 	// OllamaDuplicateThreshold is the advisory "you may already have this" line.
-	// Below the strong gate so a filer sees the possibility before it becomes a
-	// refusal, and above the 0.473 different-problem ceiling.
-	OllamaDuplicateThreshold = 0.50
+	//
+	// 0.60, and deliberately permissive: the same measurement that ruled out a
+	// 0.60 REFUSAL is what justifies a 0.60 HINT. Because the two populations
+	// overlap, precision is impossible here, and the right response to an
+	// imprecise signal is a cheap one. A filer who sees four related complaints
+	// and recognises their own costs a second; a filer whose report is silently
+	// dropped because the checker was certain costs the entire report. The panel
+	// is where imprecision belongs.
+	OllamaDuplicateThreshold = 0.60
 
 	// OllamaWeakThreshold is the "loosely related" lead, the bottom of the panel.
 	// 0.40, just under the observed different-problem maximum, so related-but-
