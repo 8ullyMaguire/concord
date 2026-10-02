@@ -31,6 +31,20 @@ clean:
 	rm -rf bin
 
 deploy: build
+	@# Refuse to deploy a tree with uncommitted changes. VERSION carries --dirty, so
+	@# the running service would advertise a build nobody can name, and every
+	@# verification pinned to a version string would be pinned to a commit that does
+	@# not exist. Commit first, or pass ALLOW_DIRTY=1 if that is genuinely intended.
+	@if git diff --quiet && git diff --cached --quiet && test -z "$$(git ls-files --others --exclude-standard)"; then \
+		:; \
+	elif [ "$$ALLOW_DIRTY" = "1" ]; then \
+		echo "WARNING: deploying with uncommitted changes (ALLOW_DIRTY=1)"; \
+	else \
+		echo "ERROR: uncommitted changes in the working tree."; \
+		echo "       Commit them, or re-run with ALLOW_DIRTY=1 to deploy anyway."; \
+		git status --short; \
+		exit 1; \
+	fi
 	@echo "Deploying $(BINARY) to $(DEPLOY_DIR)..."
 	systemctl --user stop concord || true
 	cp bin/$(BINARY) $(DEPLOY_DIR)/$(BINARY)
