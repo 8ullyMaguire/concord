@@ -105,14 +105,18 @@ func (d *DB) GetCharterForProject(ctx context.Context, projectID int64) (governa
 		       vote_window_days, merge_requires_quorum, merge_quorum_min,
 		       merge_quorum_ratio, require_reviewer_approval, wip_in_progress,
 		       wip_review, lam, mu, pain_halflife_days, rep_halflife_days,
-		       glicko_tau, vote_weight_cap
+		       glicko_tau, vote_weight_cap,
+		       solution_call_min_voters, solution_call_confidence,
+		       solution_stable_hours
 		FROM charters WHERE project_id = ?`, projectID).Scan(
 		&c.QuorumRatio, &c.QuorumMin, &c.ConsentRatio, &c.SupportRatioMin,
 		&c.OverrideRatio,
 		&c.VoteWindowDays, &c.MergeRequiresQuorum, &c.MergeQuorumMin,
 		&c.MergeQuorumRatio, &c.RequireReviewerApproval, &c.WIPInProgress,
 		&c.WIPReview, &c.Lam, &c.Mu, &c.PainHalflifeDays, &c.RepHalflifeDays,
-		&c.GlickoTau, &c.VoteWeightCap)
+		&c.GlickoTau, &c.VoteWeightCap,
+		&c.SolutionCallMinVoters, &c.SolutionCallConfidence,
+		&c.SolutionStableHours)
 	if errors.Is(err, sql.ErrNoRows) {
 		return governance.DefaultCharter(governance.GovernanceModel("collective")), nil
 	}
@@ -124,6 +128,27 @@ func (d *DB) GetCharterForProject(ctx context.Context, projectID int64) (governa
 
 // UpdateCharter updates a project's charter values (M5).
 func (d *DB) UpdateCharter(ctx context.Context, projectID int64, charter governance.Charter) error {
+	// §6.5's three conditions are checked here rather than by SQL CHECKs,
+	// because a CHECK on an ALTERed column needs a table rebuild and rebuilding
+	// charters is how 0008's cascade migration went wrong.
+	//
+	// The bounds are not cosmetic. A confidence above 1.0 can never be met, and a
+	// stable window of zero means the leader has to have held the lead for no time
+	// at all. Either one silently disables §6.5 for the whole project: calls would
+	// never open on merit and nothing would say why.
+	if charter.SolutionCallConfidence <= 0 || charter.SolutionCallConfidence >= 1 {
+		return fmt.Errorf("%w: solution_call_confidence must be between 0 and 1 exclusive, got %v",
+			ErrInvalid, charter.SolutionCallConfidence)
+	}
+	if charter.SolutionCallMinVoters < 1 {
+		return fmt.Errorf("%w: solution_call_min_voters must be at least 1, got %d",
+			ErrInvalid, charter.SolutionCallMinVoters)
+	}
+	if charter.SolutionStableHours <= 0 {
+		return fmt.Errorf("%w: solution_stable_hours must be positive, got %v",
+			ErrInvalid, charter.SolutionStableHours)
+	}
+
 	_, err := d.ExecContext(ctx, `
 		UPDATE charters SET
 			quorum_ratio = ?, quorum_min = ?, consent_ratio = ?,
@@ -131,14 +156,18 @@ func (d *DB) UpdateCharter(ctx context.Context, projectID int64, charter governa
 			vote_window_days = ?, merge_requires_quorum = ?, merge_quorum_min = ?,
 			merge_quorum_ratio = ?, require_reviewer_approval = ?, wip_in_progress = ?,
 			wip_review = ?, lam = ?, mu = ?, pain_halflife_days = ?, rep_halflife_days = ?,
-			glicko_tau = ?, vote_weight_cap = ?
+			glicko_tau = ?, vote_weight_cap = ?,
+			solution_call_min_voters = ?, solution_call_confidence = ?,
+			solution_stable_hours = ?
 		WHERE project_id = ?`,
 		charter.QuorumRatio, charter.QuorumMin, charter.ConsentRatio,
 		charter.SupportRatioMin, charter.OverrideRatio,
 		charter.VoteWindowDays, charter.MergeRequiresQuorum, charter.MergeQuorumMin,
 		charter.MergeQuorumRatio, charter.RequireReviewerApproval, charter.WIPInProgress,
 		charter.WIPReview, charter.Lam, charter.Mu, charter.PainHalflifeDays, charter.RepHalflifeDays,
-		charter.GlickoTau, charter.VoteWeightCap, projectID)
+		charter.GlickoTau, charter.VoteWeightCap,
+		charter.SolutionCallMinVoters, charter.SolutionCallConfidence,
+		charter.SolutionStableHours, projectID)
 	return err
 }
 
@@ -313,6 +342,7 @@ func (d *DB) CreateProject(ctx context.Context, userID int64, slug, name, descri
 		"merge_quorum_ratio", "require_reviewer_approval", "wip_in_progress",
 		"wip_review", "lam", "mu", "pain_halflife_days", "rep_halflife_days",
 		"glicko_tau", "vote_weight_cap",
+		"solution_call_min_voters", "solution_call_confidence", "solution_stable_hours",
 	}
 	charterVals := []any{
 		charter.QuorumRatio, charter.QuorumMin, charter.ConsentRatio,
@@ -322,6 +352,8 @@ func (d *DB) CreateProject(ctx context.Context, userID int64, slug, name, descri
 		charter.WIPInProgress, charter.WIPReview,
 		charter.Lam, charter.Mu, charter.PainHalflifeDays,
 		charter.RepHalflifeDays, charter.GlickoTau, charter.VoteWeightCap,
+		charter.SolutionCallMinVoters, charter.SolutionCallConfidence,
+		charter.SolutionStableHours,
 	}
 	query := "INSERT INTO charters (project_id, " + strings.Join(charterCols, ", ") +
 		") VALUES (?, " + strings.Repeat("?, ", len(charterCols)-1) + "?)"

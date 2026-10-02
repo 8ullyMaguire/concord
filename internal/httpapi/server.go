@@ -381,6 +381,16 @@ func (s *Server) Router() http.Handler {
 	r.Post("/api/v1/projects/{project_id}/features/{feature_id}/vote", s.handleCastVote)
 
 	// Consensus
+	// §6.5: the agenda. Opening a call is gated on three conditions, so it hangs
+	// off a feature (whose solution arena is what is being judged) rather than
+	// off the project.
+	r.Route("/api/v1/projects/{project_id}/features/{id}/consensus", func(r chi.Router) {
+		// Readiness is a GET and unauthenticated: it is the same public "why has
+		// no call opened yet" view as §6.1's duplicate panel.
+		r.Get("/", s.handleSolutionCallReadiness)
+		r.Post("/", s.handleOpenSolutionCall)
+	})
+
 	r.Route("/api/v1/projects/{project_id}/consensus", func(r chi.Router) {
 		r.Post("/", s.handleCreateConsensus)
 		r.Route("/{call_id}", func(r chi.Router) {
@@ -388,6 +398,10 @@ func (s *Server) Router() http.Handler {
 			r.Post("/position", s.handleCastConsensusPosition)
 			r.Post("/objection", s.handleCreateObjection)
 			r.Post("/close", s.handleCloseConsensus)
+			// §6.5's five outcomes, plus the fallback chain a stalled call
+			// would follow.
+			r.Post("/outcome", s.handleRecordCallOutcome)
+			r.Get("/fallback", s.handleCallFallback)
 			// Emergency hold (§6.6): suspends a call, overrides nothing.
 			r.Get("/hold", s.handleGetCallHold)
 			r.Post("/hold", s.handlePlaceEmergencyHold)

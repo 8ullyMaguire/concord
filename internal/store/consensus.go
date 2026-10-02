@@ -33,6 +33,26 @@ type ConsensusCall struct {
 	// and discarded, so every historical call has NULL here; see migration 0014.
 	Question    *string `json:"question,omitempty"`
 	Description *string `json:"description,omitempty"`
+
+	// SolutionID is §6.5's subject: the solution a call opens on. NULL for a
+	// §6.6 process decision (an emergency-hold confirmation, a charter
+	// amendment) and NULL for every call opened before solutions existed, which
+	// is why it is nullable rather than defaulted.
+	SolutionID *int64 `json:"solution_id,omitempty"`
+
+	// OpenedEarly is §6.5's "Early calls are flagged as such". A pointer rather
+	// than a bool so a call that predates the column reads as "not flagged"
+	// instead of claiming it was considered and found unnecessary.
+	OpenedEarly *bool `json:"opened_early,omitempty"`
+	// EarlyReason is why the conditions were waived. Set only when OpenedEarly.
+	EarlyReason *string `json:"early_reason,omitempty"`
+
+	// Outcome is §6.5's decision about the solution, distinct from Result,
+	// which is §6.6's verdict on the call. A call can pass and still fall back
+	// to #2, so conflating them would make the fallback chain unrepresentable.
+	Outcome *string `json:"outcome,omitempty"`
+	// FallbackToSolutionID is the solution that took over on fall-back.
+	FallbackToSolutionID *int64 `json:"fallback_to_solution_id,omitempty"`
 }
 
 type Position struct {
@@ -119,6 +139,28 @@ func nullString(s sql.NullString) *string {
 	return &v
 }
 
+// nullInt64Ptr turns a nullable id into a *int64, so JSON emits null rather than
+// 0 for "no solution" -- 0 is a real id in these tables and would be a false link.
+func nullInt64Ptr(n sql.NullInt64) *int64 {
+	if !n.Valid {
+		return nil
+	}
+	v := n.Int64
+	return &v
+}
+
+// nullBool turns a nullable integer flag into a *bool.
+//
+// NULL becomes false rather than nil: opened_early is nullable only because
+// migration 0019 added it that way to avoid the integrity_check false positive
+// the NOT NULL form triggers (see docs/KNOWN-ISSUES.md). A call with NULL there
+// is not flagged, and reporting that as absent would make every pre-0019 call
+// look like a flag whose reason was lost.
+func nullBool(n sql.NullInt64) *bool {
+	v := n.Valid && n.Int64 != 0
+	return &v
+}
+
 func nullIfEmpty(s string) any {
 	if strings.TrimSpace(s) == "" {
 		return nil
@@ -134,15 +176,22 @@ func (d *DB) GetConsensusCall(ctx context.Context, id int64) (ConsensusCall, err
 	// "not stated" rather than an empty string.
 	var fid, opener sql.NullInt64
 	var closedAt sql.NullFloat64
-	var question, description sql.NullString
+	var question, description, earlyReason, outcome sql.NullString
+	var solID, fbTo, early sql.NullInt64
 	err := d.QueryRowContext(ctx, `
 		SELECT id, project_id, feature_id, opened_by, opens_at, closes_at,
-		       status, result, summary, closed_at, question, description
+		       status, result, summary, closed_at, question, description,
+		       solution_id, opened_early, early_reason, outcome,
+		       fallback_to_solution_id
 		FROM consensus_calls WHERE id=?`, id).Scan(
 		&c.ID, &c.ProjectID, &fid, &opener, &c.OpensAt, &c.ClosesAt, &c.Status,
-		&c.Result, &c.Summary, &closedAt, &question, &description)
+		&c.Result, &c.Summary, &closedAt, &question, &description,
+		&solID, &early, &earlyReason, &outcome, &fbTo)
 	c.FeatureID, c.OpenedBy = fid.Int64, opener.Int64
 	c.Question, c.Description = nullString(question), nullString(description)
+	c.SolutionID = nullInt64Ptr(solID)
+	c.FallbackToSolutionID = nullInt64Ptr(fbTo)
+	c.OpenedEarly, c.EarlyReason, c.Outcome = nullBool(early), nullString(earlyReason), nullString(outcome)
 	if closedAt.Valid {
 		t := closedAt.Float64
 		c.ClosedAt = &t

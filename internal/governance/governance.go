@@ -67,6 +67,14 @@ type Charter struct {
 	RepHalflifeDays         float64
 	GlickoTau               float64
 	VoteWeightCap           float64
+
+	// §6.5's three conditions for opening a call on the leading solution. All
+	// three are charter-configurable because all three encode a judgement about
+	// how large this project is and how fast it moves, and neither belongs in
+	// the spec's text.
+	SolutionCallMinVoters  int     // "enough distinct voters", scaled to project size
+	SolutionCallConfidence float64 // Glicko-2 win probability over runner-up AND baseline
+	SolutionStableHours    float64 // how long the leading position has held
 }
 
 // DefaultCharter returns the spec defaults, adjusted per governance model:
@@ -81,6 +89,10 @@ func DefaultCharter(m GovernanceModel) Charter {
 		ConsentRatio: 0.7, SupportRatioMin: 0.5, OverrideRatio: 0.8,
 		VoteWindowDays:      7,
 		MergeRequiresQuorum: true, MergeQuorumMin: 2, MergeQuorumRatio: 0.25,
+		// §6.5: 3 distinct voters, 80% confidence, stable 72 hours. The
+		// confidence is the spec's own number; the other two are the
+		// spec's stated defaults.
+		SolutionCallMinVoters: 3, SolutionCallConfidence: 0.80, SolutionStableHours: 72,
 		RequireReviewerApproval: true,
 		WIPInProgress:           3, WIPReview: 4,
 		Lam: 20.0, Mu: 100.0,
