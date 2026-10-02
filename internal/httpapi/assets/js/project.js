@@ -62,8 +62,13 @@
         '<a href="/login?next=' + encodeURIComponent(window.location.pathname) + '">Sign in</a> ' +
         'or <a href="/register">register</a>.</p></div>';
     }
+    // method="post" on every form here matters: without an explicit method a
+    // form defaults to GET, so if this script fails to load, is blocked, or errors
+    // before it attaches a submit handler, the browser submits natively and puts
+    // the field values -- including a password on the auth pages -- into the URL,
+    // where they land in browser history and server access logs.
     return '<div class="form-grid">' +
-      '<form class="card" id="complaint-form">' +
+      '<form class="card" id="complaint-form" method="post" action="#">' +
         '<h3 class="form-title">File a complaint</h3>' +
         '<p class="form-note">A specific problem, with the harm it causes. ' +
         'Vague complaints cannot be validated and therefore cannot be solved.</p>' +
@@ -81,7 +86,7 @@
         '<p class="form-status" data-status hidden></p>' +
       '</form>' +
 
-      '<form class="card" id="feature-form">' +
+      '<form class="card" id="feature-form" method="post" action="#">' +
         '<h3 class="form-title">Propose a feature</h3>' +
         '<p class="form-note">A solution to one of the complaints above. Pick which ' +
         'it answers — an unlinked feature has no pain score and never ranks.</p>' +
