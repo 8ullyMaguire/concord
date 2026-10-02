@@ -145,6 +145,38 @@ func TestMarkdownRendererIsSelfContainedAndOffline(t *testing.T) {
 	}
 }
 
+// TestLargeDocumentsAreNotRenderedEagerly guards the lazy path.
+//
+// A large document is split into sections so only the visible ones are rendered.
+// The bug this catches: renderMarkdownNodes selected EVERY [data-markdown] node,
+// which rendered all sections at once and made the observer, the placeholder
+// heights and the TOC decorative. It looked correct -- the content appeared --
+// while paying the exact cost the split exists to avoid, on every load.
+//
+// The assertion is on the source because the behaviour needs a JS engine and a
+// scrolling viewport, neither of which the Go suite has. What it protects is the
+// scoping decision, which is the part that can silently regress.
+func TestLargeDocumentsAreNotRenderedEagerly(t *testing.T) {
+	ts := newTestServer(t)
+	js := assetBody(t, ts, "/assets/js/documents.js")
+
+	if !strings.Contains(js, "el.closest('.doc-section.is-pending')") {
+		t.Error("renderMarkdownNodes does not skip pending sections, so a large " +
+			"document is rendered in full on every load and the sectioned path is dead code")
+	}
+	// And the observer must be what renders them, guarded on the pending class.
+	if !strings.Contains(js, "is-pending") {
+		t.Error("nothing clears the is-pending class; sections would render but " +
+			"never be marked as done")
+	}
+	// The reserved height must exist, or pending sections collapse to zero and
+	// can never intersect the viewport -- the original deadlock.
+	if !strings.Contains(js, "min-height:") {
+		t.Error("pending sections reserve no height; they collapse to 0px, never " +
+			"reach the viewport, and the observer never fires")
+	}
+}
+
 // TestProjectPageLinksToTheDocuments: discoverability. The viewer is only worth
 // having if the project page leads to it.
 func TestProjectPageLinksToTheDocuments(t *testing.T) {

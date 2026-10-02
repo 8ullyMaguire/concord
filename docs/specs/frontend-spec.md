@@ -19,7 +19,17 @@ record rather than a wish list.
     /projects/{slug}/documents    the viewer: kind rail, list, reader
     assets/js/markdown.js        the renderer; escapes raw HTML, inerts images
     assets/js/documents.js       the page
+    assets/js/corpus-coverage.js measures which constructs the subset drops
+    seed/concord_register_docs.js registers this repo's docs as project documents
+
     80 assertions                test-markdown.js, run with node
+    8 Go tests                   documents_page_test.go
+
+Twelve of this repository's own documents are registered on the `concord`
+project (README, the r4 spec, both plans, the handoff, architecture, premise,
+known issues, three specs/ and one plans/ file — 168 KB across 4 kinds), so the
+site is the place to read them. `seed/concord_register_docs.js` is idempotent and
+re-running it increments each document's revision rather than duplicating.
 
 Three decisions were taken:
 
@@ -40,12 +50,30 @@ the author can answer. `javascript:`, `data:` and `vbscript:` are refused by an
 allowlist of schemes, not a blocklist — a blocklist is defeated by tab, newline,
 entity and case tricks that the browser resolves before the URL is parsed.
 
-**Documents over 200 KB render by section.** The import script's comments cite
-real files it encountered — a 1.1 MB document, a 1.7 MB `CHANGELOG.md` — so the
-threshold is sized for what the portfolio held, not for what is currently
-stored (see §0.1). One `innerHTML` assignment for a megabyte of markdown locks
-the tab. The body is split at level-2 headings and each section is rendered by an
-`IntersectionObserver` as it approaches the viewport, with a table of contents.
+**Documents over 200 KB render by section.** One `innerHTML` assignment for a
+megabyte of markdown locks the tab. The body is split at level-2 headings, each
+section reserves height proportional to its source length, and each is rendered
+by an `IntersectionObserver` as it approaches the viewport, with a table of
+contents.
+
+That last path took three attempts and each failure was silent, which is worth
+recording because all three looked like working software:
+
+1. Sections were marked `hidden` until they intersected. A hidden element has
+   zero height, so it never intersects, so it stays hidden. A 337 KB document
+   rendered 5,028px tall — its first section — and there was no scroll left to
+   trigger anything. **Reserve height, do not remove the element.**
+2. `renderMarkdownNodes` selected every `[data-markdown]` node, so all 40
+   sections rendered eagerly and the observer, the heights and the TOC were
+   decorative. It looked correct because the content appeared, while paying the
+   exact cost the split exists to avoid on every load.
+3. Fixed, it renders 1 section at load and 27 after scrolling to 120 KB, with 13
+   ahead still pending — which is the behaviour the split was for.
+
+Measured in a browser against a 337 KB, 40-section document. The Go tests assert
+the source-level invariants (the `closest('.doc-section.is-pending')` guard, the
+`is-pending` class, the reserved `min-height`) because the behaviour needs a JS
+engine and a scrolling viewport.
 
 ### 0.1 The corpus is 6 documents, not 1,087
 
@@ -73,9 +101,12 @@ instances, which is 6 documents' worth of evidence and no more.
 
 Two consequences worth stating plainly:
 
-- The section-rendering path (the `IntersectionObserver`, the TOC) has **never
-  run against real data**, because no stored document exceeds 200 KB. It is
-  tested structurally, not behaviourally.
+- No stored document exceeds 200 KB, so the sectioned path is not exercised by
+  production data. It was verified against a synthetic 337 KB, 40-section
+  document with tables and code fences, then deleted; the bugs it found are
+  listed in §0. The threshold itself is sized for what the portfolio held (a
+  1.1 MB document, a 1.7 MB `CHANGELOG.md`, per the importer's comments), not
+  for anything currently stored.
 - The subset's coverage is unverified at scale. When the corpus is restored,
   re-run `corpus-coverage.js` before trusting §0's list.
 

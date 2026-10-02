@@ -157,9 +157,29 @@
     }).join('');
     var first = '<article class="markdown-body" data-markdown>' +
       escapeTextForAttr(sections[0].lines.join('\n')) + '</article>';
+    // The wrappers get a placeholder height so they OCCUPIY SPACE before they
+    // are rendered.
+    //
+    // The first version marked each section `hidden`. That deadlocks: a hidden
+    // element has zero height, so it never intersects the viewport, so the
+    // observer never fires, so it stays hidden. The document renders its first
+    // section and then nothing else, and the page is only 5,886px tall for a
+    // 337 KB document -- there is no scroll left to trigger anything.
+    //
+    // The fix is to reserve height with CSS rather than remove it with an
+    // attribute. The placeholder height is a guess; when the section renders,
+    // the real content replaces it and the layout shifts once, below the fold.
+    // The reserved height is proportional to the section's source length, so the
+    // scrollbar approximates the finished document rather than collapsing to the
+    // first section. A flat constant is worse than useless here: it puts every
+    // pending section at the same height regardless of size, and the last one can
+    // sit past the end of a scrollbar that does not yet extend far enough to
+    // reach it.
     var placeholder = sections.slice(1).map(function (s, n) {
-      return '<div class="doc-section" data-section-body="' + (n + 1) + '">' +
-        '<article class="markdown-body" data-markdown hidden>' +
+      var px = Math.max(200, Math.min(4000, Math.round(s.lines.join('\n').length * 0.30)));
+      return '<div class="doc-section is-pending" data-section-body="' + (n + 1) +
+        '" style="min-height:' + px + 'px">' +
+        '<article class="markdown-body" data-markdown>' +
         escapeTextForAttr(s.lines.join('\n')) + '</article></div>';
     }).join('');
     return head +
@@ -180,9 +200,21 @@
       .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
   }
 
+  // renderMarkdownNodes renders the markdown that is DUE to be rendered.
+  //
+  // It deliberately skips anything inside a .doc-section.is-pending wrapper --
+  // those are the large-document path's job, handled by the observer in wire().
+  //
+  // The first version selected every [data-markdown] node, which rendered all
+  // 40 sections of a 337 KB document eagerly and defeated the lazy path
+  // entirely: the placeholder heights existed, the observer existed, and neither
+  // was needed because everything was already rendered. It looked like it worked
+  // because the content appeared -- and the cost it was avoiding was paid on
+  // every load of every large document.
   function renderMarkdownNodes(root) {
     var els = root.querySelectorAll('[data-markdown]');
     Array.prototype.forEach.call(els, function (el) {
+      if (el.closest('.doc-section.is-pending')) return;
       var text = el.textContent || '';
       // markdown.js escapes authored HTML itself, so its output is the only
       // innerHTML assignment on this page.
@@ -223,8 +255,8 @@
 
     // Sections in a large document render on first view.
     Array.prototype.forEach.call(box.querySelectorAll('[data-section-body]'), function (wrap) {
-      var inner = wrap.querySelector('[data-markdown]');
-      if (inner && inner.hasAttribute('data-markdown')) return;
+      // Already rendered (or never needed rendering): nothing to observe.
+      if (!wrap.classList.contains('is-pending')) return;
       var observer = new IntersectionObserver(function (entries) {
         entries.forEach(function (e) {
           if (!e.isIntersecting) return;
@@ -232,7 +264,7 @@
           if (el && el.hasAttribute('data-markdown')) {
             el.innerHTML = window.ConcordMarkdown.render(el.textContent || '');
             el.removeAttribute('data-markdown');
-            el.removeAttribute('hidden');
+            e.target.classList.remove('is-pending');
           }
           observer.unobserve(e.target);
         });
@@ -283,10 +315,19 @@
           doc = docs.filter(function (d) { return String(d.id) === String(wanted); })[0] || null;
         }
         if (!doc) {
-          // Default to the README when there is one, because that is the
-          // document a reader almost always wants first.
-          var preferred = ofKind.filter(function (d) { return d.kind === 'readme'; })[0];
-          doc = preferred || ofKind[0] || docs[0] || null;
+          // Prefer the document whose slug is the kind itself -- 'readme'/'readme',
+          // 'spec'/'spec'. Within a kind, that is the canonical document: for a
+          // readme kind it is the actual README, not the handoff note or the
+          // premise, which are also readmes.
+          //
+          // The first version of this filtered on d.kind === 'readme', which is a
+          // no-op: ofKind is ALREADY filtered to the active kind. It therefore
+          // took whichever document the API happened to list first, so opening a
+          // project landed on the handoff note instead of its README. API order is
+          // by id, which is registration order, which is whatever the import
+          // happened to do.
+          var canonical = ofKind.filter(function (d) { return d.slug === kind; })[0];
+          doc = canonical || ofKind[0] || docs[0] || null;
         }
 
         box.innerHTML =

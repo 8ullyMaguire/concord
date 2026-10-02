@@ -961,6 +961,22 @@ a.card { display: block; color: inherit; }
 .doc-head .page-subtitle { margin-top: 0.25rem; font-size: 0.8125rem; color: var(--slate-500); }
 
 .doc-large { display: grid; grid-template-columns: 200px 1fr; gap: 1.5rem; align-items: start; }
+
+/* A pending section is not yet rendered. It keeps its reserved min-height (set
+   inline, proportional to the source length) and shows a faint shimmer so the
+   reader can see there is more. It is NOT display:none -- that collapses it to
+   zero height, it never reaches the viewport, and the observer never fires. */
+.doc-section.is-pending {
+  border-top: 1px dashed var(--slate-200);
+  padding-top: 1rem;
+  position: relative;
+}
+.doc-section.is-pending::after {
+  content: "";
+  position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, var(--slate-50), transparent);
+  pointer-events: none;
+}
 .doc-toc { position: sticky; top: 1rem; font-size: 0.8125rem; max-height: 80vh; overflow-y: auto; }
 .doc-toc-title { font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--slate-400); margin-bottom: 0.5rem; }
 .doc-toc ol { margin: 0; padding-left: 1.125rem; display: flex; flex-direction: column; gap: 0.25rem; }
