@@ -317,6 +317,23 @@ func (s *Server) Router() http.Handler {
 		})
 	})
 
+	// Solutions (§6.3-6.4). Nested under a feature because a solution has no
+	// meaning without the outcome it is a way of delivering: "which approach
+	// should we build?" is a question about a specific feature.
+	//
+	// Reads are unauthenticated on purpose, matching §6.1's duplicate panel and
+	// §2.5's vote log. A ranking nobody can read is not a ranking anybody trusts.
+	r.Route("/api/v1/projects/{project_id}/features/{id}/solutions", func(r chi.Router) {
+		r.Get("/", s.handleListSolutions)
+		r.Post("/", s.handleCreateSolution)
+		r.Post("/vote", s.handleVoteSolutions)
+		r.Route("/{solution_id}", func(r chi.Router) {
+			r.Get("/", s.handleGetSolution)
+			r.Post("/coverage", s.handleClaimCoverage)
+			r.Post("/coverage/{complaint_id}/contest", s.handleContestCoverage)
+		})
+	})
+
 	// Strategic weight proposals and themes (spec revision 4 §6.2).
 	// Ratified by consensus rather than set by hand, which is what closes the
 	// steering loophole the single maintainer-only PUT used to leave open.

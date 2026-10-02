@@ -64,23 +64,23 @@ const DefaultSolutionKappa = 200.0
 
 // Solution is one proposed way to deliver a feature's outcome.
 type Solution struct {
-	ID        int64
-	FeatureID int64
-	AuthorID  int64
+	ID        int64 `json:"id"`
+	FeatureID int64 `json:"feature_id"`
+	AuthorID  int64 `json:"author_id"`
 
-	Title       string
-	Body        string
-	Type        string
-	ExternalRef sql.NullString
-	Affiliation sql.NullString
+	Title       string         `json:"title"`
+	Body        string         `json:"body"`
+	Type        string         `json:"type"`
+	ExternalRef sql.NullString `json:"external_ref"`
+	Affiliation sql.NullString `json:"affiliation"`
 	// Relationship is exclusive or complementary (§6.3).
-	Relationship string
+	Relationship string `json:"relationship"`
 
 	// ParentSolutionID is set for a forked solution (§6.3: "same, but with X").
-	ParentSolutionID sql.NullInt64
+	ParentSolutionID sql.NullInt64 `json:"parent_solution_id"`
 
-	Status        string
-	ExpertiseTags string
+	Status        string `json:"status"`
+	ExpertiseTags string `json:"expertise_tags"`
 
 	// Rating is the arena entry for this solution, joined in for display. Zero
 	// when the solution has not been added to an arena yet.
@@ -101,16 +101,16 @@ func (s *Solution) IsBaseline() bool {
 // SolutionCoverage is one §6.3 coverage claim: this solution resolves, or
 // explicitly leaves unresolved, this complaint.
 type SolutionCoverage struct {
-	SolutionID  int64
-	ComplaintID int64
-	Claim       string
+	SolutionID  int64  `json:"solution_id"`
+	ComplaintID int64  `json:"complaint_id"`
+	Claim       string `json:"claim"`
 
-	Contested     bool
-	ContestedBy   sql.NullInt64
-	ContestedAt   sql.NullFloat64
-	ContestReason sql.NullString
+	Contested     bool            `json:"contested"`
+	ContestedBy   sql.NullInt64   `json:"contested_by"`
+	ContestedAt   sql.NullFloat64 `json:"contested_at"`
+	ContestReason sql.NullString  `json:"contest_reason"`
 
-	CreatedAt float64
+	CreatedAt float64 `json:"created_at"`
 }
 
 // Counts reports whether this claim contributes to coverage.
@@ -134,37 +134,47 @@ func (c *SolutionCoverage) Counts() bool {
 // ranking.
 type CoverageScore struct {
 	// Coverage is 0..1.
-	Coverage float64
+	Coverage float64 `json:"coverage"`
 	// ResolvedPain, TotalPain and ClaimedPain are the raw pain sums, kept so a
 	// caller can show "resolves 340 of 510 pain" rather than only a percentage.
-	ResolvedPain float64
-	TotalPain    float64
-	ClaimedPain  float64
+	ResolvedPain float64 `json:"resolved_pain"`
+	TotalPain    float64 `json:"total_pain"`
+	ClaimedPain  float64 `json:"claimed_pain"`
 	// Contested is how many claims are currently contested, so the UI can say so
 	// rather than quietly using a smaller denominator.
-	Contested int
+	Contested int `json:"contested"`
 }
 
 // SolutionScore is §6.4's score and its parts.
+//
+// JSON tags are explicit because this type is served directly as the board's
+// rows. Without them Go's default marshalling emits "Score", "IsBaseline" and
+// so on, and the frontend would have to know that -- inconsistent with every
+// other response in this API, where fields are snake_case.
+//
+// StableHours is §6.5's third condition for opening a call (the position has been
+// stable for N hours). It is reported as 0 until the stability tracker exists;
+// the consensus-opening flow is not written yet, and reporting 0 says "not
+// measured" rather than claiming stability nobody has checked.
 type SolutionScore struct {
-	SolutionID int64
+	SolutionID int64 `json:"solution_id"`
 	// Rating is the conservative Glicko score, r - 2*RD, that §5.1 displays.
-	Rating float64
+	Rating float64 `json:"rating"`
 	// Coverage is 0..1.
-	Coverage float64
+	Coverage float64 `json:"coverage"`
 	// Kappa is the charter-configurable weight from §6.4.
-	Kappa float64
+	Kappa float64 `json:"kappa"`
 	// Score = Rating + Kappa*Coverage.
-	Score float64
+	Score float64 `json:"score"`
 	// IsBaseline marks the "do nothing" competitor, which is ranked but never
 	// selectable.
-	IsBaseline bool
+	IsBaseline bool `json:"is_baseline"`
 	// DistinctVoters is how many different people judged it, which §6.5 requires
 	// before a call may open on it.
-	DistinctVoters int
+	DistinctVoters int `json:"distinct_voters"`
 	// StableHours is how long the solution has held its position, §6.5's third
 	// condition for opening a call.
-	StableHours float64
+	StableHours float64 `json:"stable_hours"`
 }
 
 // CreateSolutionInput is the write side of §6.3.
@@ -492,6 +502,7 @@ func (d *DB) ClaimCoverage(ctx context.Context, solutionID, complaintID int64, c
 	if linked == 0 {
 		return fmt.Errorf("%w: complaint %d is not linked to the solution's feature", ErrInvalid, complaintID)
 	}
+
 	_, err := d.ExecContext(ctx, `
 		INSERT INTO solution_coverage
 			(solution_id, complaint_id, claim, created_at)
@@ -586,6 +597,30 @@ func (d *DB) SolutionCoverageScore(ctx context.Context, featureID, solutionID in
 	}
 	out.Coverage = cov
 	return out, nil
+}
+
+// LinkedComplaints returns the complaints linked to a feature.
+//
+// §6.2 requires a feature to trace back to at least one validated complaint, so
+// an empty result is a data problem rather than a normal state, and callers that
+// depend on the guarantee can say so.
+func (d *DB) LinkedComplaints(ctx context.Context, featureID int64) ([]int64, error) {
+	rows, err := d.QueryContext(ctx,
+		`SELECT complaint_id FROM feature_complaints WHERE feature_id = ? ORDER BY complaint_id`,
+		featureID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []int64
+	for rows.Next() {
+		var id int64
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }
 
 // featurePainMap is pain per linked complaint, read through the project's own
