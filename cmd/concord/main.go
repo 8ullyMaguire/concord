@@ -13,6 +13,7 @@ import (
 
 	"git.polarisocial.xyz/concord/concord/internal/config"
 	"git.polarisocial.xyz/concord/concord/internal/db"
+	"git.polarisocial.xyz/concord/concord/internal/embed"
 	"git.polarisocial.xyz/concord/concord/internal/httpapi"
 	"git.polarisocial.xyz/concord/concord/internal/store"
 )
@@ -54,7 +55,18 @@ func main() {
 		log.Fatalf("migrate: %v", err)
 	}
 
-	srv, err := httpapi.NewServer(&store.DB{DB: sqlDB}, version, cfg.WebhookSecret)
+	st := &store.DB{DB: sqlDB}
+
+	// Duplicate detection (§6.1). The local hashed embedder is the default
+	// because it needs no model server and no network -- §10.5 requires
+	// embeddings to be self-hostable, and making that contingent on a reachable
+	// inference server would not be. Logging the model id matters: vectors from
+	// two models are not comparable, so which one is live is operationally
+	// relevant.
+	st.SetEmbedder(embed.NewHashed())
+	log.Printf("duplicate detection: embedder %s (%d dims)", st.EmbedderID(), embed.DefaultDims)
+
+	srv, err := httpapi.NewServer(st, version, cfg.WebhookSecret)
 	if err != nil {
 		log.Fatalf("create server: %v", err)
 	}

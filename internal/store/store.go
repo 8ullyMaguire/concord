@@ -34,6 +34,15 @@ var (
 // DB wraps the pool. All queries take ctx for cancellation.
 type DB struct {
 	*sql.DB
+
+	// embedder produces the vectors used for duplicate detection. Optional: with
+	// none configured, the similar-endpoints report that they are unavailable
+	// rather than pretending to have no duplicates. See internal/embed for why
+	// the default is a local embedder rather than a model server.
+	//
+	// Set once via SetEmbedder and never per-request: an embedder that changed
+	// between writing and reading would make the stored model_id meaningless.
+	embedder Embedder
 }
 
 func New(d *sql.DB) *DB { return &DB{DB: d} }

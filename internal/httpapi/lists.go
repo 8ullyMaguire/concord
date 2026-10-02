@@ -97,14 +97,27 @@ func (s *Server) handleCreateRequest(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Title string `json:"title"`
 		Body  string `json:"body"`
+		// As on complaints and features: proceed past a near-identical request.
+		ConfirmDuplicate bool `json:"confirm_duplicate"`
 	}
 	if !readJSON(w, r, &req) {
+		return
+	}
+	// A request is a "what fits my need?" question, so a near-duplicate is
+	// especially costly: it fragments the answers instead of pooling them.
+	_, proceed := s.checkDuplicates(w, r, store.KindRequest,
+		req.Title, req.Body, projectID, req.ConfirmDuplicate)
+	if !proceed {
 		return
 	}
 	request, err := s.Store.CreateRequest(r.Context(), projectID, getActorID(r), req.Title, req.Body)
 	if err != nil {
 		mapError(w, err)
 		return
+	}
+	if err := s.Store.UpsertEntityText(r.Context(), store.KindRequest, request.ID, projectID,
+		req.Title, req.Body); err != nil {
+		_ = s.Store.AddAudit(r.Context(), projectID, getActorID(r), "embed_failed", "request", request.ID, err.Error())
 	}
 	_ = s.Store.AddAudit(r.Context(), projectID, getActorID(r), "create_request", "request", request.ID, req.Title)
 	writeJSON(w, http.StatusCreated, request)

@@ -335,6 +335,13 @@ func (s *Server) Router() http.Handler {
 	// Global tag taxonomy (§4.3). Proposals are instance-scoped by default, so
 	// these sit outside the project router: a taxonomy change affects every
 	// project and cannot hang off one project's slug.
+	// §6.1 duplicate detection at filing time. Read-only and unauthenticated on
+	// purpose: the point is to show a filer what exists BEFORE they submit, and
+	// a panel that needs a token is a panel nobody sees.
+	r.Route("/api/v1/similar/{kind}", func(r chi.Router) {
+		r.Get("/", s.handleFindSimilar)
+	})
+
 	r.Route("/api/v1/taxonomy", func(r chi.Router) {
 		r.Get("/tags", s.handleListTags)
 		r.Get("/proposals", s.handleListTaxonomyProposals)

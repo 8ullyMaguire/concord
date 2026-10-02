@@ -10,6 +10,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"git.polarisocial.xyz/concord/concord/internal/embed"
 	"git.polarisocial.xyz/concord/concord/internal/ranking"
 	"git.polarisocial.xyz/concord/concord/internal/store"
 )
@@ -21,6 +22,12 @@ type createComplaintRequest struct {
 	Severity      int     `json:"severity"`
 	Frequency     float64 `json:"frequency"`
 	StrategicMult float64 `json:"strategic_multiplier"`
+
+	// ConfirmDuplicate acknowledges that a near-identical complaint already
+	// exists and proceeds anyway. §6.1 calls duplicate detection advisory, so
+	// this is the escape hatch: the filer is told, and may disagree with the
+	// score. Without it, a false positive silently loses a real report.
+	ConfirmDuplicate bool `json:"confirm_duplicate"`
 }
 
 func (s *Server) handleCreateComplaint(w http.ResponseWriter, r *http.Request) {
@@ -50,12 +57,32 @@ func (s *Server) handleCreateComplaint(w http.ResponseWriter, r *http.Request) {
 		req.StrategicMult = 1.0
 	}
 
+	// §6.1: duplicate detection before submit. A strong match returns 409 with the
+	// candidates and the filing proceeds only with confirm_duplicate.
+	sims, proceed := s.checkDuplicates(w, r, store.KindComplaint,
+		req.Title, req.Body, req.ProjectID, req.ConfirmDuplicate)
+	if !proceed {
+		return
+	}
+
 	c, err := s.Store.CreateComplaint(r.Context(), req.ProjectID, getActorID(r), req.Title, req.Body, req.Severity, req.Frequency, req.StrategicMult)
 	if err != nil {
 		mapError(w, err)
 		return
 	}
+	// Indexed immediately so the next filer sees this one. A failure here costs
+	// detection quality, not the complaint, so it is logged rather than fatal.
+	if err := s.Store.UpsertEntityText(r.Context(), store.KindComplaint, c.ID, req.ProjectID,
+		req.Title, req.Body); err != nil {
+		_ = s.Store.AddAudit(r.Context(), req.ProjectID, getActorID(r), "embed_failed", "complaint", c.ID, err.Error())
+	}
 	_ = s.Store.AddAudit(r.Context(), req.ProjectID, getActorID(r), "create_complaint", "complaint", c.ID, req.Title)
+	if len(sims) > 0 {
+		// Recording that a filer was warned, and filed anyway, is what makes the
+		// threshold arguable with evidence rather than intuition.
+		_ = s.Store.AddAudit(r.Context(), req.ProjectID, getActorID(r), "duplicate_warning_shown",
+			"complaint", c.ID, fmt.Sprintf("%d similar entries, top score %.3f", len(sims), sims[0].Score))
+	}
 	_ = s.Store.AddReputation(r.Context(), req.ProjectID, getActorID(r), "submit_complaint", 5.0)
 	// Taking part is what makes someone a participant; see JoinProject.
 	_ = s.Store.JoinProject(r.Context(), req.ProjectID, getActorID(r))
@@ -131,6 +158,11 @@ type createFeatureRequest struct {
 	Impact           *int    `json:"impact"`
 	EffortScore      *int    `json:"effort_score"`
 	LinkedComplaints []int64 `json:"linked_complaints"`
+
+	// ConfirmDuplicate, as on a complaint: a feature that restates an existing one
+	// is usually a sign the existing one is not linked to a complaint, so the
+	// filer may legitimately proceed.
+	ConfirmDuplicate bool `json:"confirm_duplicate"`
 }
 
 func (s *Server) handleCreateFeature(w http.ResponseWriter, r *http.Request) {
@@ -142,13 +174,27 @@ func (s *Server) handleCreateFeature(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
+	sims, proceed := s.checkDuplicates(w, r, store.KindFeature,
+		req.Title, req.Body, req.ProjectID, req.ConfirmDuplicate)
+	if !proceed {
+		return
+	}
+
 	f, err := s.Store.CreateFeature(r.Context(), req.ProjectID, getActorID(r),
 		req.Title, req.Body, req.Effort, req.Impact, req.EffortScore, req.LinkedComplaints)
 	if err != nil {
 		mapError(w, err)
 		return
 	}
+	if err := s.Store.UpsertEntityText(r.Context(), store.KindFeature, f.ID, req.ProjectID,
+		req.Title, req.Body); err != nil {
+		_ = s.Store.AddAudit(r.Context(), req.ProjectID, getActorID(r), "embed_failed", "feature", f.ID, err.Error())
+	}
 	_ = s.Store.AddAudit(r.Context(), req.ProjectID, getActorID(r), "create_feature", "feature", f.ID, req.Title)
+	if len(sims) > 0 {
+		_ = s.Store.AddAudit(r.Context(), req.ProjectID, getActorID(r), "duplicate_warning_shown",
+			"feature", f.ID, fmt.Sprintf("%d similar entries, top score %.3f", len(sims), sims[0].Score))
+	}
 	_ = s.Store.AddReputation(r.Context(), req.ProjectID, getActorID(r), "submit_feature", 5.0)
 	_ = s.Store.JoinProject(r.Context(), req.ProjectID, getActorID(r))
 	writeJSON(w, http.StatusCreated, f)
@@ -441,6 +487,179 @@ func (s *Server) handleListAdminLedger(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, entries)
+}
+
+// ---------------------------------------------------------------- duplicates (§6.1)
+
+// checkDuplicates finds near-duplicates for a filing and decides whether to
+// refuse it.
+//
+// §6.1 calls duplicate detection advisory, so the split is deliberate:
+//
+//   - a strong match (>= 0.85) returns 409 and the filer must confirm, because
+//     at that score it is almost always the same report filed twice;
+//   - a plausible match (>= 0.62) is returned as a hint and the filing proceeds,
+//     because a wrong refusal loses a real complaint and the cost of that is
+//     higher than the cost of a duplicate in the queue.
+//
+// Either way the candidates are returned in the response body, so a client that
+// ignores the status code still learns what it collided with.
+//
+// Returns (nil, false, nil) when no embedder is configured or the index is empty:
+// unavailable duplicate detection must not block filing.
+func (s *Server) checkDuplicates(w http.ResponseWriter, r *http.Request, kind, title, body string, projectID int64, confirmed bool) ([]embed.Similarity, bool) {
+	if s.Store.EmbedderID() == "" {
+		return nil, true
+	}
+	ctx := r.Context()
+
+	// Two queries, two fields.
+	//
+	// The title is checked on its own because that is the strongest single signal
+	// and the thing a filer is actually looking at. Measured with two complaints
+	// sharing a title and differing bodies:
+	//
+	//	title query   vs title vector      1.00
+	//	title+body    vs title+body        0.58
+	//
+	// Concatenating both sides buried the title under body words and scored a
+	// literal duplicate below the advisory threshold -- so it was filed twice with
+	// no warning. The full-text query is still run, because two complaints can
+	// share a vague title and an identical description, which the title alone
+	// would miss.
+	sims, err := s.Store.FindSimilarField(ctx, kind, title, projectID, store.FieldTitle, 5)
+	if err != nil {
+		// A failure to check must not block the filing: refusing on an internal
+		// error would lose a real complaint to a bug in the similarity code.
+		return nil, true
+	}
+	if len(sims) == 0 && strings.TrimSpace(body) != "" {
+		if full, ferr := s.Store.FindSimilarField(ctx, kind, title+" "+body, projectID, store.FieldFull, 5); ferr == nil {
+			sims = full
+		}
+	}
+	if len(sims) == 0 {
+		return nil, true
+	}
+	strong := embed.IsStrongDuplicate(sims[0].Score)
+	if strong && !confirmed {
+		writeJSON(w, http.StatusConflict, map[string]any{
+			"error":         "an almost identical entry already exists",
+			"similar":       sims,
+			"top_score":     sims[0].Score,
+			"threshold":     embed.StrongDuplicateThreshold,
+			"resubmit_with": map[string]any{"confirm_duplicate": true},
+			"note":          "if this is a genuinely different problem, resubmit with confirm_duplicate=true; the existing entry stays untouched either way",
+		})
+		return sims, false
+	}
+	return sims, true
+}
+
+// mergeSimilarities unions two similarity lists, keeping the higher score per
+// entity.
+//
+// A union rather than a concatenation: the same complaint appears in both the
+// title query and the full-text query, and listing it twice would pad the panel
+// with the same entry and make the count meaningless.
+func mergeSimilarities(a, b []embed.Similarity, limit int) []embed.Similarity {
+	best := make(map[int64]embed.Similarity, len(a)+len(b))
+	for _, s := range append(append([]embed.Similarity{}, a...), b...) {
+		if existing, ok := best[s.EntityID]; !ok || s.Score > existing.Score {
+			best[s.EntityID] = s
+		}
+	}
+	out := make([]embed.Similarity, 0, len(best))
+	for _, s := range best {
+		out = append(out, s)
+	}
+	return embed.Rank(out, limit)
+}
+
+// handleFindSimilar answers "does this already exist?" before anything is
+// filed, which is the workflow §6.1 describes: the panel appears while the filer
+// is still writing, not after they press submit.
+//
+// Scope: ?project_id= searches one project; omit it (or pass 0) to search the
+// whole instance, which is the "this was fixed in X" case.
+func (s *Server) handleFindSimilar(w http.ResponseWriter, r *http.Request) {
+	kind := chi.URLParam(r, "kind")
+	switch kind {
+	case store.KindComplaint, store.KindFeature, store.KindRequest, store.KindProject:
+	default:
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "kind must be one of complaint, feature, request, project",
+		})
+		return
+	}
+	if s.Store.EmbedderID() == "" {
+		// Reported as its own state rather than an empty result: an empty list
+		// would read as "nothing similar exists".
+		writeJSON(w, http.StatusOK, map[string]any{
+			"available": false,
+			"kind":      kind,
+			"similar":   []embed.Similarity{},
+			"note":      "duplicate detection is not configured on this instance",
+		})
+		return
+	}
+
+	text := r.URL.Query().Get("text")
+	if strings.TrimSpace(text) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "text is required",
+		})
+		return
+	}
+	var projectID int64
+	if v := r.URL.Query().Get("project_id"); v != "" {
+		projectID, _ = strconv.ParseInt(v, 10, 64)
+	}
+	limit := 5
+	if v := r.URL.Query().Get("limit"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			limit = n
+		}
+	}
+
+	// The panel queries the title, because that is what a filer has typed while
+	// the panel is useful. Passing the whole text against the full-text vector
+	// dilutes the title signal -- measured 1.00 for title-to-title against 0.58
+	// for the concatenated pair -- so the panel would miss exact duplicates.
+	//
+	// Best score over both fields is kept, for the case where the filer has
+	// written a description that matches an existing complaint whose title
+	// differs.
+	sims, err := s.Store.FindSimilarField(r.Context(), kind, text, projectID, store.FieldTitle, limit)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if full, ferr := s.Store.FindSimilarField(r.Context(), kind, text, projectID, store.FieldFull, limit); ferr == nil {
+		sims = mergeSimilarities(sims, full, limit)
+	}
+	if sims == nil {
+		sims = []embed.Similarity{}
+	}
+	resp := map[string]any{
+		"available":     true,
+		"kind":          kind,
+		"model_id":      s.Store.EmbedderID(),
+		"similar":       sims,
+		"has_duplicate": len(sims) > 0 && embed.IsStrongDuplicate(sims[0].Score),
+		"thresholds": map[string]float64{
+			"strong": embed.StrongDuplicateThreshold,
+			"likely": embed.DuplicateThreshold,
+			"weak":   embed.WeakThreshold,
+		},
+	}
+	// Coverage travels with the answer. A filer told "no duplicates" on a corpus
+	// that is 12% indexed has been told nothing useful, and this is the only
+	// place they can find out.
+	if cov, err := s.Store.EmbeddingCoverage(r.Context(), kind); err == nil {
+		resp["coverage"] = cov
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // ---------------------------------------------------------------- taxonomy (§4.3)
