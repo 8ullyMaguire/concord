@@ -1078,6 +1078,28 @@ textarea:focus-visible {
 .site-nav a:focus-visible,
 .doc-kind:focus-visible { outline-offset: -2px; }
 
+/* A filled button is the one case where an indigo ring is invisible: .btn-primary
+   is itself indigo, so the ring is drawn exactly on top of the background at the
+   same colour and reads as no ring at all. Confirmed in a browser -- the computed
+   outline was `2px solid rgb(99,102,241)` on a `rgb(99,102,241)` background, and
+   a static check cannot see that because the declaration is present and valid.
+
+   Fixed with a two-tone ring: a white inner ring against the button fill, then
+   the indigo outer ring against the page. Works on any fill colour, so it does
+   not need a per-variant rule. */
+.btn:focus-visible,
+.btn-primary:focus-visible,
+.btn-secondary:focus-visible,
+.btn-danger:focus-visible,
+.btn-outline:focus-visible {
+  outline: 2px solid var(--indigo);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 2px #fff;
+}
+/* The quiet button is borderless on the page background, so the white inner ring
+   would be invisible against it and only add a gap. */
+.btn-quiet:focus-visible { box-shadow: none; }
+
 /* ================================================================= reduced motion */
 /* Adopted 2026-10-02 from the same source. Measured: @media was used for layout
    only, and .loading-spinner animates indefinitely regardless of the user's

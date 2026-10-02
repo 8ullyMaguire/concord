@@ -192,6 +192,49 @@ func TestEveryPageShowsASkeletonNotABlockingSpinner(t *testing.T) {
 	}
 
 	css := assetBody(t, ts, "/assets/css/style.css")
+	// A filled button must carry a two-tone ring. TestStylesheetGivesEvery-
+	// InteractiveElementAFocusIndicator passes with a plain indigo outline on
+	// .btn-primary, because the declaration exists and is valid -- but .btn-primary
+	// is itself indigo, so the ring lands on the background in the same colour and
+	// is invisible. Found by tabbing through the deployed page: the computed
+	// outline was 2px solid rgb(99,102,241) on an rgb(99,102,241) background.
+	//
+	// Asserted as: the primary button's focus rule must set a box-shadow, which is
+	// the inner contrasting ring. A test cannot compute contrast without a layout
+	// engine, so it asserts the mechanism that makes contrast possible.
+	if !strings.Contains(css, ".btn:focus-visible") {
+		t.Error("no .btn:focus-visible rule")
+	}
+	// Anchor on the dedicated rule, not the combined selector list that also
+	// contains .btn:focus-visible and has no box-shadow. Searching for the bare
+	// string finds the earlier occurrence first.
+	// Anchor on .btn-primary:focus-visible, which appears only in the dedicated
+	// rule. Two earlier anchors were wrong: the bare string and "\n.btn:..."
+	// both match the general selector list higher up, which legitimately has no
+	// box-shadow, so the check failed against correct CSS.
+	at := strings.Index(css, ".btn-primary:focus-visible")
+	if at < 0 {
+		t.Error("no dedicated .btn focus rule naming the filled variants")
+		return
+	}
+	// Window is 400 chars from the rule's opening brace: the selector list alone
+	// is ~150 of them, so a tighter window stops before the declarations and the
+	// check fails against correct CSS.
+	brace := strings.Index(css[at:], "{")
+	if brace < 0 {
+		t.Error("the dedicated .btn:focus-visible rule has no body")
+		return
+	}
+	btnBlock := css[at+brace:]
+	if end := strings.Index(btnBlock, "}"); end > 0 {
+		btnBlock = btnBlock[:end]
+	}
+	if !strings.Contains(btnBlock, "box-shadow") {
+		t.Error(".btn:focus-visible sets no box-shadow. .btn-primary is indigo and " +
+			"an indigo outline on an indigo fill is invisible: the declaration is " +
+			"valid, so every static check passes while a keyboard user sees nothing.")
+	}
+
 	for _, required := range []string{".skeleton", ".skeleton-card", ".skeleton-lines", ".skeleton-row"} {
 		if !strings.Contains(css, required) {
 			t.Errorf("the stylesheet has no %s rule", required)
