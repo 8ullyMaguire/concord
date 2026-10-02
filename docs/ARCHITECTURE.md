@@ -26,19 +26,41 @@ a hardening milestone; stick to SQLite-portable SQL until then.
 ## Package map
 
 ```
-cmd/concord/          entrypoint: flags → config → db open → migrate → serve
-internal/config/      env + flags (CONCORD_DB, CONCORD_LISTEN, CONCORD_FORGEJO_SECRET)
+cmd/concord/          entrypoint: flags -> config -> db open -> migrate -> serve
+cmd/embedbackfill/    build/extend the embedding index; -status reports per-kind coverage
+cmd/granttrust/       one-off trust-level bootstrap
+internal/config/      env + flags (CONCORD_DB, CONCORD_LISTEN, CONCORD_FORGEJO_SECRET,
+                      CONCORD_EMBED_* for the embedding backend)
 internal/db/          open (WAL, FK, busy_timeout, MaxOpenConns=1) + migrations
 internal/ranking/     pure math: Glicko-2 (Illinois solver), pain, priority, vote weight
 internal/governance/  pure rules: roles, charters, quorum, consensus evaluation, merge gate
 internal/discovery/   pure rules: transparent maintenance-health score
+internal/embed/       embedding backends behind one interface: hashed (feature hashing,
+                      no service, used by tests) and ollama (transformer); per-model
+                      similarity thresholds live in config.go
 internal/store/       SQL data layer; internal/store/projects.go + search.go are the exemplar
-internal/httpapi/     chi router + JSON API v1; handler → store → JSON, mapError for domain errors
-docs/                 spec (verbatim copy), premise, this file, PLAN.md, HANDOFF.md
+internal/httpapi/     chi router + JSON API v1; handler -> store -> JSON, mapError for domain errors
+docs/                 spec, premise, this file, PLAN.md, PLAN-r4.md, HANDOFF.md, KNOWN-ISSUES.md
 ```
 
 Rule of layering: HTTP handlers never contain governance or ranking math;
 pure packages never import SQL; the store translates between them.
+
+### Arenas are the substrate, not a feature
+
+Since revision 4, ranking is keyed on `(arena, entity_type, entity_id)` rather
+than on features directly. An arena is a ranking context; its entries are things
+that compete. A feature-priority arena and a solution arena run the same Glicko-2
+solver over the same `pairwise_votes` rows, which is why adding a new kind of
+contest does not require a new ranking engine.
+
+Every feature's arena permanently contains a `do-nothing` baseline entry, so the
+null option is scored rather than assumed. `internal/store/arenas.go` refuses to
+remove it; the `CHECK` constraint that would make that durable does not exist yet
+(see `docs/KNOWN-ISSUES.md`).
+
+`internal/store/eligibility.go` sits beside it because §8.2 decides *who counts*
+as a collaborator, and quorum is computed from that count — not from member rows.
 
 ## Schema overview (migration 0001)
 

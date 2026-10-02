@@ -6,23 +6,30 @@ complete. This plan covers what revision 4 adds.
 
 ## Where r4 stands against the code
 
-Measured by reading the live schema (69 tables) and the ranking package, not by
-inferring from the spec's table list — several r4 names are renames of tables that
-already exist under other names (`threads`→`comments`, `roles`→`members`,
-`boards`/`columns`/`cards`→`board_*`, `reputations`→`reputation_events`).
+> The rows below were surveyed before any milestone was built. Cells have been
+> corrected against the running instance where the state has since changed; the
+> survey's *reasoning* (that several r4 names are renames of existing tables) still
+> holds and is worth keeping.
+
+Measured by reading the live schema and the ranking package, not by inferring
+from the spec's table list — several r4 names are renames of tables that already
+exist under other names (`threads`→`comments`, `roles`→`members`,
+`boards`/`columns`/`cards`→`board_*`, `reputations`→`reputation_events`). The
+survey below was taken when the schema had 69 tables; it is now 73, and the table
+count in the Status section is the current one.
 
 | r4 requirement | state | note |
 |---|---|---|
 | Glicko-2 engine | **exists** | `internal/ranking/glicko2.go`, but feature-hardcoded |
 | Multi-criteria ranking | **exists** | `criterion_ratings` keyed on `feature_id` |
-| Vote log append-only | **partial** | `pairwise_votes` has no `arena` column; no `reason` |
-| **Arenas (§5)** | **missing** | the spec's central abstraction; no table |
-| **Solutions (§6.3–6.5)** | **missing** | r4's headline feature |
-| Solution arena + baseline | **missing** | §6.3 "do nothing" baseline |
-| Coverage + challengeable claims | **missing** | §6.4 `κ·coverage` |
-| Derived/forked solutions | **missing** | §6.3 |
-| Ranking→consensus gating | **missing** | §6.5 80% confidence gate |
-| Decision records (ADR) | **missing** | §6.5 |
+| Vote log append-only | **partial** | `pairwise_votes` now has `arena_id` + `reason` (0017); still no DB trigger forbidding UPDATE/DELETE |
+| **Arenas (§5)** | **shipped** | `arenas`, `arena_entries`; 70 live. Was the spec's central abstraction |
+| **Solutions (§6.3–6.5)** | **shipped** | all six types, forks, claims |
+| Solution arena + baseline | **shipped** | permanent per feature; see KNOWN-ISSUES on `is_baseline` |
+| Coverage + challengeable claims | **shipped** | κ=200; contested claims stop counting until upheld |
+| Derived/forked solutions | **shipped** | `parent_id`, rating inherited with inflated RD |
+| Ranking->consensus gating | **partial** | gate + agenda live; no `decision_records` |
+| Decision records (ADR) | **missing** | §6.5 — the one remaining gap in this pillar |
 | Complaints | exists | + duplicate detection (this session) |
 | Features | exists | r4 wants `outcome`/`criteria` fields |
 | Consensus | exists | + hold, tiers, stand-aside fixed |
@@ -112,14 +119,33 @@ be rewritten. Federation and MCP are listed in the plan for later.
 
 ## Status
 
+Measured against the running instance (schema 19, 73 tables, 443 tests,
+`v0.4.0-voting-36-gb964f75`), not against the plan's own history. "Shipped"
+means there is code, a migration and a test -- not that the surface is complete.
+
 | Milestone | Status | Notes |
 |---|---|---|
-| r4 spec recovered to `docs/concord-spec-r4.md` | done | 55,517 chars, was only ever in the transcript |
-| r4 gap survey | done | this table |
-| R1 arenas | pending | |
-| R2 solutions | pending | |
-| R3 solution ranking | pending | |
-| R4 ranking→consensus + ADR | pending | |
-| R5 field reports + capabilities | pending | |
-| R6 Scout | pending | |
-| R7 docs sync | pending | |
+| r4 spec recovered to `docs/concord-spec-r4.md` | done | 55,987 chars, was only ever in the transcript |
+| r4 gap survey | done | the table above |
+| R1 arenas | **shipped** | `0017_arenas.sql`; 70 arenas live. Generalized ranking is the substrate; `pairwise_votes` gained `arena_id` + `reason` |
+| R2 solutions | **shipped** | `0018_solutions.sql`; all six types, `exclusive`/`complementary`, forks with inflated RD, claim challenge/uphold |
+| R3 solution ranking + coverage | **shipped** | kappa=200; leaderboard carries rank/score/confidence/coverage/effort/risk. Known issue: `is_baseline` has no DB-level guarantee |
+| R4 ranking->consensus gating | **partial** | `0019_solution_consensus_calls.sql`, agenda and eligibility gate live. **`decision_records` does not exist** -- the ADR on close is the missing half |
+| R5 field reports + capabilities | **not started** | no `field_reports`, `capabilities` or `capability_confirmations` table |
+| R6 Scout | **not started** | no `scout_reports` table |
+| R7 docs sync | **in progress** | this file, README, KNOWN-ISSUES and HANDOFF updated 2026-10-02. `docs/concord-spec.md` is still two revisions stale -- it remains a verbatim copy of the master that the r4 rewrite replaced |
+
+### What is deliberately left
+
+Section 8.2's eligible collaborator has two clauses with no representation, and
+both are stated in `internal/store/eligibility.go` rather than approximated:
+"seated by charter consensus" (no charter amendment or seat table exists to
+count) and "agents are excluded" (`users` has no agent flag).
+
+### Where the next milestone should go
+
+R4's `decision_records`. A call can now open and decide, and the *fallback chain*
+that section 6.5 requires to be pre-agreed has nowhere to live, so the part of the
+outcome a reader most needs later -- why we did this instead of the runner-up --
+is recorded nowhere. It is a small migration and a small write path, and it closes
+the last gap in the consensus pillar.

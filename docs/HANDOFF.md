@@ -1,52 +1,55 @@
 # Concord — handoff
 
 For the implementing agent taking over from here. Read this, then
-`docs/PLAN.md`, then `docs/concord-spec.md` (§2, §4, §5, §15, §16, §17),
-then `docs/ARCHITECTURE.md`.
+`docs/PLAN-r4.md`, then `docs/concord-spec-r4.md` (§2, §4, §5, §6, §8, §15–§17),
+then `docs/ARCHITECTURE.md`. `docs/PLAN.md` covers the pre-r4 milestones (all
+complete) and `docs/concord-spec.md` is superseded — do not plan from either.
 
-## What exists right now (verified)
+## What exists right now (verified 2026-10-02, `v0.4.0-voting-36-gb964f75`)
 
-- **Full platform, building and tested.** `make verify` is green: gofmt,
-  vet, all 62 tests (29 store + 33 httpapi), CGO-free build of
-  `bin/concord` (~21MB). `make verify` must pass before every commit.
-- **Schema** (`internal/db/migrations/0001_init.sql` + `0002_request_board.sql`):
-  the full spec data model — identity, charters, complaints, features,
-  votes, consensus, objections, board, merge layer, reputation, audit,
-  discovery (project_tags/languages/metrics + `projects_fts` FTS5),
-  lists (`lists`, `list_entries`, `list_entry_votes`), and the request
-  board (`requests`, `request_answers`, `request_answer_votes`),
-  comments/threads (`comments`, `comment_votes`).
-- **Pure engines, tested:** `internal/ranking` (Glicko-2 with the
-  Illinois solver — validated against Glickman's published worked
-  example r'=1464.06, RD'=151.52, σ'=0.05999; pain scores; priority;
-  vote weight), `internal/governance` (role levels, charter defaults,
-  quorum math, the five consensus outcomes, merge gate),
-  `internal/discovery` (transparent health score).
-- **Exemplar vertical:** project CRUD + first-class search
-  (`/api/v1/search` with FTS, tag/language/health/model/license filters,
-  facets, sorts). Copy this pattern for every new domain.
-- **Store layer** (12 files): `board.go`, `comments.go`, `complaints.go`,
-  `consensus.go`, `features.go`, `lists.go`, `merge.go`, `requests.go`,
-  `search.go`, `store.go`, `votes.go`. Each exposes CRUD + domain-error
-  mapping following the `projects.go`/`search.go` exemplar pattern.
-- **HTTP API** (8 files): `charter.go`, `comments.go`, `handlers.go`,
-  `lists.go`, `projects.go`, `search.go`, `server.go`, `webhook.go`,
-  plus test harness (`httpapi_test.go`, `middleware_test.go`,
-  `page_test.go`, `webhook_test.go`).
-- **Web UI** — server-rendered with `html/template`, embedded via
-  `//go:embed`. Templates (6 files), CSS (`style.css`), JS
-  (`search.js`, `project.js`, `board.js`). Security headers + rate
-  limiting middleware on all routes.
-- **Docs:** spec (verbatim copy — the vault is the master), premise
-  (shareable), architecture, this file, plan.
+Measured, not remembered: `make verify` green, 443 tests, schema 19, 73 tables,
+19 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
+the tree wins and this file is the bug.
+
+- **Revision 4 is partly built.** `docs/concord-spec-r4.md` is the current spec;
+  `docs/concord-spec.md` is two revisions stale. Milestone state is in
+  `docs/PLAN-r4.md` — read that before planning anything.
+- **Arenas (R1) shipped.** `0017_arenas.sql`; `internal/store/arenas.go`.
+  Ranking is generalized over `(arena, entity_type, entity_id)`, so the same vote
+  log now scores both feature pairs and solution pairs. 70 arenas live.
+- **Solutions (R2/R3) shipped.** `0018_solutions.sql`; `internal/store/solutions.go`
+  and `consensus_solutions.go`. Six types, forks, coverage claims with challenge
+  and uphold, κ=200.
+- **Consensus gating (R4) is partial.** `0019_solution_consensus_calls.sql`. The
+  gate and the agenda exist; **`decision_records` does not**, so the ADR §6.5
+  requires on close is unimplemented. This is the next milestone.
+- **Embeddings shipped but need a manual backfill.** `0016_embeddings.sql`,
+  `internal/embed/` (hashed + ollama backends), `internal/store/embeddings.go`,
+  `internal/httpapi/duplicates_test.go`. Duplicate detection searches the whole
+  instance, not one project (§6.1). `cmd/embedbackfill -status` — if it says 0.0%
+  the index is empty and every semantic feature is silently inert. This bit us
+  for a full milestone: the code was correct and the index had never been built.
+- **Eligible collaborators (§8.2) shipped** in `internal/store/eligibility.go`:
+  five qualifying routes plus a role floor, inside a 365-day window. Two clauses
+  are unimplementable against the current schema and are stated as such in the
+  source ("seated by charter consensus"; "agents are excluded").
+- **Not started:** R5 field reports / capabilities, R6 Scout. No tables exist.
+- **Untouched by r4:** `internal/store/lists.go` and `requests.go` still use
+  their own vote tables rather than arenas. Ranks fine; it just means those two
+  surfaces are not comparable with features or solutions in one leaderboard.
 
 ## Structure
 
 See `docs/ARCHITECTURE.md` "Package map" — that is the single source
-of truth for the layout. Additions since the skeleton: `internal/store/`
-now has one file per domain (including `comments.go`), `internal/httpapi/`
-has `charter.go`, `comments.go`, `lists.go`, `webhook.go` for newer
-domains.
+of truth for the layout. `internal/store/` now has one file per domain
+(26 files, 15 with tests) and
+`internal/httpapi/` has 18 files with 20 test files. Newer domains:
+`internal/embed/` (two backends behind one interface) and
+`internal/store/arenas.go`, `solutions.go`, `embeddings.go`, `eligibility.go`,
+`expertise.go`, `strategy.go`, `holds.go`, `taxonomy.go`.
+
+If you add a domain, add its test file too — the store has consistently paired
+them since arenas landed.
 
 ## Environment facts
 
@@ -68,7 +71,8 @@ make verify    # vet + test + build — REQUIRED green before every commit
 make test      # go test -timeout 300s ./...
 make run       # go run ./cmd/concord (respects CONCORD_DB / CONCORD_LISTEN)
 make build     # bin/concord
-make deploy    # build → stop → copy → start → healthz verify
+make deploy    # build -> stop -> copy -> start -> healthz verify
+go run ./cmd/embedbackfill -status   # embedding index coverage per kind
 ```
 
 Quick API tour:
@@ -109,6 +113,13 @@ Quick web tour:
 5. **vet parses `%` in test failure strings** — write "50 pct", not "50%".
 6. **Rate limiter is global in-memory.** Tests must reset `limiter.visitors`
    or use `origLimiter := limiter; defer func(){ limiter = origLimiter }()`.
+7. **An unbuilt embedding index looks exactly like working code.** Nothing warns
+   you that the index is empty, and duplicate detection still returns a
+   well-formed `{"similar": []}`. Assert on the row count, not on the shape of
+   the response.
+8. **Do not trust a doc comment as evidence the caller uses it.** The store's
+   `FindSimilar` documented instance-wide search and the filing path passed a
+   project id anyway, for a full milestone. Read the call site.
 
 ## How the reviewer (Hermes) will check your work
 

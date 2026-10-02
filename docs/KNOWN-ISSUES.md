@@ -65,6 +65,44 @@ replay. Naming the columns instead of `SELECT *` removes the coupling. Recorded
 rather than fixed: the deployed database is past both, and rewriting a
 historical migration changes what a fresh install does.
 
+## An unbuilt embedding index is indistinguishable from working duplicate detection
+
+Not a bug in the code — every semantic feature was implemented and correct. The
+index had simply never been built: `embedbackfill -status` reported 0.0% on all
+four kinds, 0 vectors for 959 entities.
+
+The failure mode is quiet. Filing returned 201 for a verbatim copy of a
+complaint that existed in the same project, with a well-formed
+`{"similar": []}` body and no error. Nothing logs, nothing warns, and
+`/api/v1/similar` answers 200 with an empty result — which is the correct answer
+to "what matches this?" when you believe the index is populated.
+
+Diagnosing it means asking a question the response shape cannot answer: `select
+count(*) from embeddings`. There are now 1918 rows for 959 entities (two fields
+per entity: title and full text), one `model_id`, 768 dims throughout.
+
+Writes are unaffected — a row created after the embedder is configured is
+embedded on write. Only pre-existing rows need the backfill, which is why this
+survived so long in a repo that was being actively developed: new work always
+looked fine.
+
+## `docs/concord-spec.md` is two revisions stale
+
+It is a verbatim copy of the master, and revision 4 replaced the master. Nothing
+enforces that the copy tracks it, so the file that most readers open first is
+the one that is most wrong. `docs/concord-spec-r4.md` is current.
+
+## `docs/HANDOFF.md` and `docs/PLAN-r4.md` counted work instead of measuring it
+
+`HANDOFF.md` claimed 62 tests, 12 store files, and listed arenas and solutions as
+unbuilt — 15 milestones after it was written. `PLAN-r4.md` marked R1–R4 "pending"
+with the state table still saying arenas were "missing, the spec's central
+abstraction". Both were updated 2026-10-02 against the running instance.
+
+The failure is structural: a status table written once and never reconciled goes
+stale silently, and nothing in `make verify` reads docs. Milestone rows now name
+the migration that proves them.
+
 ## Arena `is_baseline` has no column-level guarantee
 
 The "do nothing" baseline is identified by `arena_entries.is_baseline`, enforced

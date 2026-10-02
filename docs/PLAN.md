@@ -214,18 +214,25 @@ SSH git transport, mobile apps. Revisit after M11.
 | M12 sync + hardening | done | security headers, per-visitor rate limiting, audit wiring, make deploy healthz-verified; live on 127.0.0.1:8006 and PUBLIC at concord.polarisocial.xyz (icecast2 removed per owner, ingress already pointed at 8006) |
 
 
-## Current State (2026-09-16)
+## Current State (updated 2026-10-02)
 
 - **Live on thinkcentre** at 127.0.0.1:8006
-- Healthz verified: `{"status":"ok"}`
-- Binary: `/home/alvaro/concord-deploy/concord` (~21MB embedded templates)
+- Deployed build: `v0.4.0-voting-36-gb964f75`
+- Binary: `/home/alvaro/concord-deploy/concord` (15MB, CGO-free, embedded templates)
 - Service: `systemctl --user concord` (active, auto-restart)
-- Database: `/home/alvaro/.local/share/concord/concord.db` (SQLite)
-- Templates/assets embedded via `//go:embed` — site renders correctly
-- Static assets at `/assets/css/*.css`, `/assets/js/*.js`
-- Cloudflare: still on 8006 (icecast) — needs re-pointing
-- All code passes `make verify` (gofmt, vet, CGO-free build)
-- 21 AC tests passing in internal/store/store_test.go, covering M0-M11 store methods
-- Key features working: vote contract, voter reputation, priority endpoint,
-  complaints charter pain, 401 auth checks, role enforcement on vote,
-  embedded templates, static assets
+- Database: `/home/alvaro/.local/share/concord/concord.db` — schema 19, 73 tables,
+  19 migrations, integrity `ok`
+- `make verify` green; 443 tests
+- M0–M12 (below) are complete and were completed before 2026-09-29.
+- **Revision 4 is tracked in `docs/PLAN-r4.md`** — arenas (R1), solutions
+  (R2/R3) and consensus gating (R4, partial) have since landed, along with
+  embeddings, §8.2 eligibility and §6.4 expertise weighting. Read that file, not
+  this one, to plan further work.
+- Known issues, with reproductions: `docs/KNOWN-ISSUES.md`
+
+### Data in the production instance
+
+70 projects, 772 features, 117 complaints, 70 charters, 70 arenas, 1918
+embeddings (959 entities x 2 fields), one model (`nomic-embed-text`, 768 dims).
+No consensus calls, no solutions — those surfaces are built and reachable but no
+production project has driven one.
