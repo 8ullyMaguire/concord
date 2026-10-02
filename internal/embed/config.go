@@ -24,6 +24,25 @@ const (
 	EnvOllamaTimeoutMS = "CONCORD_EMBED_TIMEOUT_MS"
 )
 
+// Operating note for the model server this was calibrated against.
+//
+// ollama 0.35.0 on this host serves /api/embed with NO extra flag. There is no
+// --embeddings option; passing one makes the binary exit 1 with "unknown flag" and
+// systemd then restart-loops it. The "This server does not support embeddings"
+// message seen while developing this belongs to other ollama builds, not this one.
+//
+// Two things about the host's setup, both discovered the hard way:
+//
+//   - The systemd unit is disabled and cannot own the port. It runs as
+//     User=ollama, which cannot traverse /home/alvaro (mode 0700), so it starts
+//     against an empty model directory and /api/embed answers "model not found".
+//     The 23GB model store is under the user's home, so the working arrangement is
+//     ollama run as the user, which is how it has always run here. It does not
+//     survive a reboot, and did not before this either.
+//   - So there is no boot-time ordering requirement to honour: if ollama is not
+//     running, Ollama.Embed falls back to the hashed embedder and filing continues
+//     with weaker duplicate detection. Nothing needs to wait for it.
+//
 // DefaultOllamaModel is the model used when none is named.
 //
 // nomic-embed-text: 768 dims, 274 MB, and the separation between same-problem
