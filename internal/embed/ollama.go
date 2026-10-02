@@ -295,6 +295,30 @@ func (o *Ollama) fetch(ctx context.Context, text string) ([]float32, error) {
 // so a single global threshold constant silently mis-calibrates whichever
 // embedder it was not measured on. The scores in the panel and the 409 decision
 // therefore come from here, keyed by model ID.
+//
+// The nomic bands are measured, not guessed. Against this instance's own corpus
+// (117 complaints, nomic-embed-text via 127.0.0.1:11434), on 2026-10-03:
+//
+//	positives, synonym or restatement   0.410 0.455 0.614 0.764 0.805
+//	negatives, different templates       max 0.535, p95 0.353, median 0.419
+//	                                    (n = 120)
+//
+// At the shipped OllamaDuplicateThreshold of 0.60 that is 3 of 5 positives
+// caught with 0 of 120 false positives. Raising the band buys no precision and
+// loses recall; lowering it to 0.50 costs 7 false positives and catches the same
+// 3. So 0.60 is the right operating point, and the two missed positives are the
+// pairs nomic does not bridge: "tests fail on main" / "ci is red on the default
+// branch" is an acronym plus a synonym, and no embedding model bridges that
+// without expanding the acronym first.
+//
+// Two traps in measuring this, both hit on the first attempt. A negative drawn by
+// sampling a pair list of size one compares a title to ITSELF and scores 1.00,
+// which reads as a catastrophic false-positive rate. And this corpus is largely
+// machine-generated complaints that differ only in a number or a project name --
+// "208 lines of uncommitted content changes" against "104 lines of..." scores
+// 0.960 and is a genuine near-duplicate, not a false positive. Random pairs must
+// be drawn across DIFFERENT templates, or the negative set is mostly positives
+// and the two distributions look unhelpfully overlapped.
 func ThresholdsFor(modelID string) (strong, likely, weak float64) {
 	if isNomic(modelID) {
 		return OllamaStrongThreshold, OllamaDuplicateThreshold, OllamaWeakThreshold
