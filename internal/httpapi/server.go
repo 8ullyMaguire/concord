@@ -388,6 +388,18 @@ func (s *Server) Router() http.Handler {
 	// A weight vector belongs in a body, so composite ranking is a POST. It is
 	// the one query in the API that is not a plain GET.
 	r.Post("/api/v1/projects/{project_id}/rank/composite", s.handleCompositeRank)
+
+	// §4.10's Capabilities and Field reports panels (phase3-spec §4). Both
+	// stores shipped with their data model and AC tests; neither had a read path
+	// at all, so a project's capability claims and field reports were reachable
+	// from the Finder's server-side calls and from nothing else.
+	//
+	// Top-level {project_id}, NOT nested inside the /{slug} route above. Nested,
+	// chi binds the parameter as `slug`, `requireProjectID` reads `project_id`,
+	// gets "", and every call 404s with `project ""` -- a failure whose message
+	// points at the data rather than at the route.
+	r.Get("/api/v1/projects/{project_id}/capabilities", s.handleListProjectCapabilities)
+	r.Get("/api/v1/projects/{project_id}/field-reports", s.handleListProjectFieldReports)
 	r.Route("/api/v1/projects/{project_id}/criteria-profiles", func(r chi.Router) {
 		r.Get("/", s.handleListCriteriaProfiles)
 		r.Post("/", s.handleSaveCriteriaProfile)

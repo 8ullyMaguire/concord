@@ -178,10 +178,10 @@ func TestContentsClickRendersTheTargetItScrollsTo(t *testing.T) {
 		body = body[:j]
 	}
 	for _, want := range []string{
-		"ConcordMarkdown.render",            // fills it
-		"removeAttribute('data-markdown')",  // the observer will not do it twice
-		"classList.remove('is-pending')",     // and it stops counting as pending
-		"removeAttribute('style')",          // drops the reserved height
+		"ConcordMarkdown.render",           // fills it
+		"removeAttribute('data-markdown')", // the observer will not do it twice
+		"classList.remove('is-pending')",   // and it stops counting as pending
+		"removeAttribute('style')",         // drops the reserved height
 	} {
 		if !strings.Contains(body, want) {
 			t.Errorf("renderPendingSection does not %s", want)

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strings"
 
@@ -120,15 +121,41 @@ func (s *Server) requireWriteActor(w http.ResponseWriter, r *http.Request) (int6
 // 403 is enumerable -- the same leak requireWriteActor above refuses to create
 // for anonymous callers. The audit row records what actually happened, so the
 // attempt is still visible to an operator.
+//
+// The BODY is the same too, and that part was missing until the panels'
+// anti-enumeration test caught it. mapError writes err.Error(), so the two cases
+// answered:
+//
+//	missing:  {"error": "not found: project \"governance-lab\""}
+//	forbidden:{"error": "not found"}
+//
+// Identical status codes, different bodies -- which is an existence oracle in
+// exactly the way the 403 would have been, and one that a status-code test
+// cannot see. Both branches now answer a bare `not found`, with no slug in it.
+// Fixing it here rather than in mapError: mapError's per-sentinel detail is
+// useful on the routes where the caller is already known to be allowed to ask,
+// and stripping it globally would lose real debugging information (which id,
+// which constraint) for every error in the API. The single line is deliberate.
+//
+// It is NOT the wrapped sentinel -- store.ErrNotFound has no slug in it, and
+// GetProject's wrap does. Writing the literal here is what keeps the two
+// answers identical.
 func (s *Server) requireProjectID(w http.ResponseWriter, r *http.Request) (int64, bool) {
 	slug := chi.URLParam(r, "project_id")
 	proj, err := s.Store.GetProject(r.Context(), slug)
 	if err != nil {
+		// An unreadable project and a nonexistent one must be indistinguishable,
+		// so this does not distinguish "no rows" from any other store failure
+		// either: a 500 names nothing about whether the slug exists.
+		if errors.Is(err, store.ErrNotFound) {
+			writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+			return 0, false
+		}
 		mapError(w, err)
 		return 0, false
 	}
 	if !s.projectReadable(r, proj) {
-		mapError(w, store.ErrNotFound)
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return 0, false
 	}
 	return proj.ID, true

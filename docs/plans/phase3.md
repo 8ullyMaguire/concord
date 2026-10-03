@@ -80,8 +80,13 @@ GET /api/v1/projects/{project_id}/capabilities
 GET /api/v1/projects/{project_id}/field-reports
 ```
 
-Handler shape, copying `internal/httpapi/finder.go`'s visibility handling
-because that is the anti-enumeration precedent:
+Handler shape. Both use the existing `requireProjectID(w, r)`, which resolves
+`{project_id}` **by slug** to a numeric id and enforces visibility — it is what
+21 handlers already funnel through, and it returns `ErrNotFound` (never 403) on
+a visibility refusal, which is the anti-enumeration rule Finder also uses. Do
+not `strconv.ParseInt` this parameter: `auth.go:87` records twenty-one handlers
+that did, parsed a slug to 0, and then queried project 0, and the tests missed
+it because "no rows for project 0" is still a 200.
 
 ```go
 // (new) handleListProjectCapabilities
