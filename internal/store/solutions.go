@@ -158,6 +158,12 @@ type CoverageScore struct {
 // measured" rather than claiming stability nobody has checked.
 type SolutionScore struct {
 	SolutionID int64 `json:"solution_id"`
+	// Title is the proposal's own text. Added 2026-10-03 for the project page's
+	// standings panel: without it the panel renders a column of scores with no
+	// way to tell which proposal is which, which is not a ranking a reader can
+	// use. §6.5's conditions are all numbers, so nothing that already depended on
+	// this struct needed it, which is why it can be added without a gate entry.
+	Title string `json:"title"`
 	// Rating is the conservative Glicko score, r - 2*RD, that §5.1 displays.
 	Rating float64 `json:"rating"`
 	// Coverage is 0..1.
@@ -420,6 +426,13 @@ func (d *DB) ListSolutions(ctx context.Context, featureID int64, limit int) ([]S
 			IsBaseline:     e.IsBaseline,
 			DistinctVoters: voters,
 		}
+		// The title, for the same reason the row's existence check above exists:
+		// a list of scores with no names attached is a ranking nobody can act on.
+		// One indexed lookup per entry, on a page read.
+		if err := d.QueryRowContext(ctx,
+			`SELECT title FROM solutions WHERE id = ?`, e.EntityID).Scan(&score.Title); err != nil {
+			return nil, err
+		}
 		score.Score = score.Rating + kappa*cov.Coverage
 		out = append(out, score)
 	}
@@ -450,6 +463,33 @@ func sortSolutionScores(scores []SolutionScore) {
 			scores[j-1], scores[j] = scores[j], scores[j-1]
 		}
 	}
+}
+
+// CountSolutions returns how many solutions a feature has.
+//
+// It exists because the project page's standings panel must say how many it
+// did not show, and the obvious way to learn that -- call ListSolutions with
+// limit+1 and look for one extra row -- does not work:
+//
+//   - ArenaLeaderboard clamps any limit above 200 to 50, so a limit of 6 is fine
+//     but the boundary is not a contract.
+//   - It applies LIMIT in SQL and ListSolutions then SKIPS arena entries whose
+//     solution row is gone, so the number of rows returned can be smaller than
+//     the limit for reasons that have nothing to do with how many solutions
+//     there are. "One more row" is therefore not a reliable witness of "there is
+//     one more solution", and a panel that trusts it reports a wrong omitted
+//     count.
+//
+// Counting the solutions directly is unambiguous. It is a second query rather
+// than a trick, and the panel is a page read rather than a hot loop.
+func (d *DB) CountSolutions(ctx context.Context, featureID int64) (int, error) {
+	var n int
+	err := d.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM solutions WHERE feature_id = ?`, featureID).Scan(&n)
+	if err != nil {
+		return 0, err
+	}
+	return n, nil
 }
 
 // distinctSolutionVoters counts how many distinct people have judged a solution

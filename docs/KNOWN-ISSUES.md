@@ -112,3 +112,27 @@ clear it, and there is no `CHECK` or trigger behind it. The
 by nothing yet; it was the reason the `neither` outcome silently scored as a
 draw before 2026-10-02. One representation should be authoritative and
 constrained, not two with one unwritten.
+
+## `test_escape_goes_back` is flaky — roughly 1 run in 3
+
+Found 2026-10-03 while verifying the §4.10 project panels. Pre-existing: the file
+is untouched since `51f829a` and the failure reproduces with none of the panel
+work in the tree.
+
+```bash
+for i in 1 2 3; do python3 -m pytest tests/e2e/finder_e2e.py -q; done
+# 1 failed, 37 passed / 38 passed / 38 passed
+```
+
+The cause is in the test, not the finder. It reads
+`#finder-shortlist-summary`'s text immediately after `start(page)`, and `start`
+waits only for `#finder-flow` to be visible — the seed view is `show()`n before
+the short list is populated, which is the same defect class as the `show()`
+without `render()` bug this suite already documents. Pressing `1` then filters,
+and the two reads disagree because the first one caught the short list mid-render.
+
+The fix is a wait on the summary being populated before reading it, not a
+`sleep`. Not applied here because it is the finder suite's own file and fixing it
+belongs with the finder work rather than inside a commit about project panels —
+and a test that only sometimes catches a defect should be fixed by the person who
+owns the flow, not quietly patched by whoever trips over it.

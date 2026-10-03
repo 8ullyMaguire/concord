@@ -216,6 +216,70 @@ def seed(db):
             (pid, author, version, "small teams", env_name, outcome,
              caveats, "fine while it stays small", now))
 
+    # --- panels-standings: two features, one with proposals, one without ------
+    # A feature needs a validated complaint behind it (§6.2), and a solution
+    # cannot be authored by the feature's author (§5.2). Both constraints are
+    # real and both produce a confusing error when violated, so the fixture
+    # satisfies them rather than working around them.
+    pid = project("panels-standings")
+    complaint = None
+    for i, title in enumerate(["Export drops the last row",
+                               "Filters need composing"]):
+        # Column list from migration 0008's complaints_new, which replaced 0001's
+        # table: there is no `impact` column, and adding one is a sqlite error
+        # naming a column this schema does not have.
+        cur.execute(
+            "INSERT INTO complaints (project_id, author_id, title, body, severity,"
+            " frequency, status, created_at, updated_at)"
+            " VALUES (?,?,?,?,?,?,'validated',?,?)",
+            (pid, owner_id, title, "reproducible", 4, 2.0, now, now))
+        cid = cur.lastrowid
+        cur.execute(
+            "INSERT INTO features (project_id, author_id, title, body, effort,"
+            " status, created_at, updated_at)"
+            " VALUES (?,?,?,'a body','M','discussion',?,?)",
+            (pid, owner_id, title, now, now))
+        fid = cur.lastrowid
+        cur.execute(
+            "INSERT INTO feature_complaints (feature_id, complaint_id)"
+            " VALUES (?,?)", (fid, cid))
+        if i == 0:
+            complaint, featured = cid, fid
+
+    # Three proposals on the first feature, authored by somebody else. A second
+    # "do nothing" baseline entry too, so the panel has to mark it.
+    # ONE arena per feature, not per solution: `arenas.feature_id` is UNIQUE and a
+    # solution arena belongs to a feature. The first draft created the arena
+    # inside the loop and the second solution hit
+    # "UNIQUE constraint failed: arenas.feature_id".
+    cur.execute(
+        "INSERT INTO arenas (type, project_id, feature_id, question, created_at)"
+        " VALUES ('solution',?,?,'Which approach should we build?',?)",
+        (pid, featured, now))
+    arena = cur.lastrowid
+
+    sol_author = user("solution-author")
+    for title, stype in [("Stream the export", "build-new"),
+                         ("Chunk and verify", "extend-existing"),
+                         ("Keep exporting manually", "do-nothing")]:
+        # updated_at is NOT NULL on solutions; the first draft listed created_at
+        # alone and every test in the suite errored in the fixture with a
+        # constraint failure naming a column this insert simply omitted.
+        cur.execute(
+            "INSERT INTO solutions (feature_id, author_id, title, body, type,"
+            " relationship, created_at, updated_at)"
+            " VALUES (?,?,?,'a body',?,'exclusive',?,?)",
+            (featured, sol_author, title, stype, now, now))
+        sid = cur.lastrowid
+        # An arena entry per solution, or ListSolutions finds no arena and the
+        # panel shows nothing. The shape is read from the store's own
+        # CreateSolution: EnsureArena(ArenaSolution, ...) + UpsertArenaEntry.
+        cur.execute(
+            "INSERT INTO arena_entries (arena_id, entity_type, entity_id, r, rd,"
+            " sigma, games, is_baseline, updated_at)"
+            " VALUES (?,'solution',?,1500,350,0.06,0,?,?)",
+            (arena, sid, 1 if stype == "do-nothing" else 0, now))
+
     con.commit()
     con.close()
 
@@ -235,6 +299,7 @@ def open_project(page, slug):
     # appear rather than the panel that should have.
     expect(page.locator(".panel-capabilities")).to_be_visible(timeout=10000)
     expect(page.locator(".panel-field-reports")).to_be_visible(timeout=10000)
+    expect(page.locator(".panel-solutions")).to_be_visible(timeout=10000)
 
 
 # ---------------------------------------------------------------------------
@@ -380,6 +445,82 @@ def test_the_per_environment_split_is_shown(page):
 
 
 # ---------------------------------------------------------------------------
+# Solution standings — the third §4.10 panel
+# ---------------------------------------------------------------------------
+
+def test_standings_are_grouped_under_their_feature_not_merged_into_one_ranking(page):
+    """The structural rule of solutions-panel-spec.md, in the rendered DOM.
+
+    Two features, three proposals on one and none on the other. A merged
+    project-wide leaderboard would render one list; grouped standings render two
+    blocks, and the rank restarts at 1 in each -- which is the visual form of
+    "these scores were computed against different opponents".
+    """
+    open_project(page, "panels-standings")
+
+    expect(page.locator(".sol-group")).to_have_count(2)
+
+    ranked = page.locator(".sol-group", has_text="Export drops the last row")
+    expect(ranked.locator(".sol-row")).to_have_count(3)
+
+    # Ranks are rendered, and they run 1..3 within the feature.
+    expect(ranked.locator(".sol-rank").nth(0)).to_have_text("1")
+    expect(ranked.locator(".sol-rank").nth(2)).to_have_text("3")
+
+    # The feature with no proposals is still a block, not absent.
+    quiet = page.locator(".sol-group", has_text="Filters need composing")
+    expect(quiet).to_be_visible()
+    expect(quiet).to_contain_text("No proposals yet")
+    expect(quiet.locator(".sol-row")).to_have_count(0)
+
+    # And the panel says in words that the scores do not compare across features.
+    expect(page.locator(".panel-solutions")).to_contain_text("not comparable")
+
+
+def test_the_panel_leads_with_how_many_features_are_awaiting_proposals(page):
+    """One of two features has proposals. That sentence is the panel's headline.
+
+    A panel that renders only the answered feature reads as though the project
+    has one feature and nothing outstanding, which is the opposite of what a
+    reader needs to know.
+    """
+    open_project(page, "panels-standings")
+    tally = page.locator(".panel-solutions .fr-summary")
+    expect(tally).to_contain_text("1")
+    expect(tally).to_contain_text("of 2 features")
+    expect(tally).to_contain_text("1 has none")
+
+
+def test_the_do_nothing_baseline_is_marked_not_rendered_as_a_proposal(page):
+    """§6.3's baseline is ranked but never selectable.
+
+    A row that looks like a proposal invites a reader to treat "keep doing what
+    you are doing" as the project's answer.
+    """
+    open_project(page, "panels-standings")
+    row = page.locator(".sol-baseline")
+    expect(row).to_have_count(1)
+    expect(row).to_contain_text("do nothing")
+    expect(row).to_contain_text("Keep exporting manually")
+
+
+def test_a_project_with_no_features_says_it_has_no_roadmap(page):
+    """Distinct from "the roadmap has no proposals".
+
+    `panels-empty` has features and no reports; it has no FEATURES either, so it
+    exercises this state. Asserting the exact wording is deliberate: the two
+    states must not render the same empty state, and "no roadmap yet" is the
+    statement that is true here.
+    """
+    open_project(page, "panels-empty")
+    expect(page.locator("text=No roadmap yet")).to_be_visible()
+    expect(page.locator(".sol-group")).to_have_count(0)
+    # Not the per-feature empty state, which would say a feature is unanswered
+    # when in fact there is no feature.
+    expect(page.locator("text=No proposals yet")).to_have_count(0)
+
+
+# ---------------------------------------------------------------------------
 # Refusals. A panel that leaks is worse than one that is missing.
 # ---------------------------------------------------------------------------
 
@@ -444,6 +585,6 @@ def test_no_console_errors_on_any_panelled_page(page):
     has none. Checked across every panel shape so a TypeError in one branch
     cannot hide behind the happy path."""
     for slug in ["panels-confirmed", "panels-disputed", "panels-unasserted",
-                 "panels-empty", "panels-reports"]:
+                 "panels-empty", "panels-reports", "panels-standings"]:
         open_project(page, slug)
     assert not page.errors, f"console/page errors: {page.errors}"

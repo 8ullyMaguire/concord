@@ -40,11 +40,28 @@ def run_gate(src, test_pkg, test_file, mutants, label, repo=None):
     # Derive the suite from the test file. A hand-written -run list is how the
     # first gate reported two mutants SURVIVED that its own suite could never
     # have caught: the pattern matched 5 of 12 tests.
-    suite = subprocess.run(
-        f"grep -o '^func Test[A-Za-z0-9_]*' {test_file} | sed 's/func //' | paste -sd'|' -",
-        shell=True, cwd=repo, capture_output=True, text=True).stdout.strip()
-    declared = int(subprocess.run(f"grep -c '^func Test' {test_file}",
-                                  shell=True, cwd=repo, capture_output=True, text=True).stdout.strip() or 0)
+    #
+    # MULTIPLE test files, comma-separated. `test_file` used to be a single path
+    # and that was a wiring trap: adding a store method in a new
+    # `<domain>_count_test.go` and pointing the gate at `<domain>_test.go` armed
+    # 24 tests, none of which called the new method, and every mutant for it
+    # SURVIVED. That output is indistinguishable from missing coverage, so it
+    # reads as a test problem and sends you to write a redundant test. It was a
+    # harness problem. Gate on the files that hold the tests for the code.
+    files = [f.strip() for f in test_file.split(",") if f.strip()]
+    names, declared = [], 0
+    for f in files:
+        names.append(subprocess.run(
+            f"grep -o '^func Test[A-Za-z0-9_]*' {f} | sed 's/func //'",
+            shell=True, cwd=repo, capture_output=True, text=True).stdout)
+        declared += int(subprocess.run(f"grep -c '^func Test' {f}",
+                                       shell=True, cwd=repo,
+                                       capture_output=True, text=True).stdout.strip() or 0)
+    suite = "|".join(n for n in "".join(names).split() if n)
+    if not suite:
+        print(f"[{label}] NO TESTS DERIVED from {files}; the gate would report "
+              f"every mutant SURVIVED without having run anything.")
+        return 1
 
     v = subprocess.run(f"go test {test_pkg} -run '{suite}' -count=1 -v",
                        shell=True, cwd=repo, capture_output=True, text=True)

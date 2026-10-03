@@ -1,0 +1,17 @@
+[
+ {
+  "name": "count scoped to the wrong feature",
+  "old": "\t\t`SELECT COUNT(*) FROM solutions WHERE feature_id = ?`, featureID).Scan(&n)",
+  "new": "\t\t`SELECT COUNT(*) FROM solutions`, featureID).Scan(&n)"
+ },
+ {
+  "name": "count counts the arena instead of the solutions",
+  "old": "\t\t`SELECT COUNT(*) FROM solutions WHERE feature_id = ?`, featureID).Scan(&n)",
+  "new": "\t\t`SELECT COUNT(*) FROM arena_entries WHERE entity_type='solution'`, featureID).Scan(&n)"
+ },
+ {
+  "name": "count returns one instead of the count",
+  "old": "\tvar n int\n\terr := d.QueryRowContext(ctx,\n\t\t`SELECT COUNT(*) FROM solutions WHERE feature_id = ?`, featureID).Scan(&n)",
+  "new": "\tn := 1\n\terr := error(nil)\n\t_ = ctx\n\t_ = featureID"
+ }
+]

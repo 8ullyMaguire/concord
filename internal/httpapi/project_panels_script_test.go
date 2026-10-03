@@ -239,39 +239,125 @@ func TestThePanelStylesAreDefined(t *testing.T) {
 	}
 }
 
-// Every state a panel can be in carries its root element.
+// The third §4.10 panel, asserted the same way as the other two.
 //
-// This exists because marking both the section-head and its wrapper made
-// `.panel-capabilities` match two elements, and Playwright's strict mode then
-// failed all eleven browser tests with an ambiguity error whose message named
-// the panels as if they were missing.
-//
-// Asserted per STATE, by requiring the root to be on the `return` line that
-// produces that state. Three earlier versions of this test were all wrong:
-// counting class occurrences ("3 vs 1" is just what a three-outcome function
-// looks like), counting `return` statements ("13 paths" swept up the returns
-// inside each `.map()` callback), and searching for a class inside the state
-// ("fr-card" lives in a callback, forty lines from its own return, so the
-// window never found the root). Keying on the return line is the one that
-// matches the rule: every exit path must open the root it promises.
+// The failure this file exists to catch has happened once already: the
+// capabilities panel marked both its section-head and its wrapper with the panel
+// class, so `.panel-capabilities` matched two elements and all eleven browser
+// tests failed on Playwright strict-mode ambiguity. So every panel root is
+// checked for exactly one, per exit path, keyed on the return line.
+
+func TestTheScriptFetchesAndRendersTheSolutionsPanel(t *testing.T) {
+	ts := newTestServer(t)
+	js := assetBody(t, ts, "/assets/js/project.js")
+
+	if !strings.Contains(js, "'/solutions'") {
+		t.Error("project.js never fetches the solutions panel, so it renders empty")
+	}
+	if !strings.Contains(js, "solutions: res[5]") {
+		t.Error("the solutions fetch is not threaded into render(); it will arrive " +
+			"after the page has painted")
+	}
+	if !strings.Contains(js, "solutionsPanel(panels.solutions)") {
+		t.Error("render() does not call the solutions panel builder")
+	}
+}
+
+// Grouped, never merged. The structural rule of solutions-panel-spec.md, asserted
+// on the script: the panel iterates features and renders each one's own list,
+// and it never builds a single ranked list from the lot.
+func TestTheScriptRendersStandingsPerFeatureAndDoesNotMergeThem(t *testing.T) {
+	ts := newTestServer(t)
+	js := assetBody(t, ts, "/assets/js/project.js")
+
+	start := strings.Index(js, "function solutionsPanel")
+	end := strings.Index(js, "function panelEmpty")
+	if start < 0 || end < 0 || end < start {
+		t.Fatal("cannot locate the solutions panel section")
+	}
+	section := js[start:end]
+
+	// It must iterate the features...
+	if !strings.Contains(section, "groups.map") {
+		t.Error("the panel does not iterate features; a merged leaderboard would " +
+			"not, and merged scores are not comparable across features")
+	}
+	// ...and it must say so in words, because a reader scanning the page cannot
+	// infer "these are separate contests" from layout.
+	if !strings.Contains(section, "not comparable") {
+		t.Error("the panel does not tell the reader the scores are not comparable " +
+			"across features")
+	}
+	// And the rank is rendered rather than implied by list order.
+	if !strings.Contains(section, "sol-rank") {
+		t.Error("the rank is not rendered; list order alone reads as a global ranking")
+	}
+	// So is the proposal's title. `SolutionScore` had no Title field until this
+	// panel needed one, and the omission was invisible until a browser test
+	// asserted on the rendered row: the list showed "1 0% 800.00" and nothing
+	// else, which is a ranking nobody can act on.
+	if !strings.Contains(section, "sol.title") {
+		t.Error("the panel renders no proposal title; a standings list of bare " +
+			"scores is not something a reader can act on")
+	}
+}
+
+// The three states, and the counts that separate them.
+func TestTheScriptDistinguishesNoFeaturesFromNoProposals(t *testing.T) {
+	ts := newTestServer(t)
+	js := assetBody(t, ts, "/assets/js/project.js")
+
+	if !strings.Contains(js, "No roadmap yet") {
+		t.Error("a project with no features renders the same thing as one whose " +
+			"features nobody has proposed for")
+	}
+	if !strings.Contains(js, "features_without") {
+		t.Error("the panel never reads features_without, so it cannot say how many " +
+			"features are awaiting proposals")
+	}
+	if !strings.Contains(js, "features_with_solutions") {
+		t.Error("the panel never reads features_with_solutions")
+	}
+	if !strings.Contains(js, "No proposals yet") {
+		t.Error("a feature with no proposals has no rendered state of its own")
+	}
+	// The feature title is authored text.
+	if !strings.Contains(js, "esc(g.feature_title)") {
+		t.Error("the feature title is not escaped; it is user-written")
+	}
+}
+
+// "Do nothing" is ranked but never selectable (§6.3), so it must be marked. A row
+// that renders like a proposal invites a reader to treat it as the answer.
+func TestTheScriptMarksTheDoNothingBaseline(t *testing.T) {
+	ts := newTestServer(t)
+	js := assetBody(t, ts, "/assets/js/project.js")
+	if !strings.Contains(js, "sol.is_baseline") {
+		t.Error("the panel never reads is_baseline, so the do-nothing entry is " +
+			"rendered as if it were a proposal")
+	}
+	if !strings.Contains(js, "do nothing") {
+		t.Error("the baseline row carries no label saying what it is")
+	}
+}
+
+// Every panel root, counted per exit path. Third panel; same rule as the two
+// above it, and the reason this test exists rather than a general one is that the
+// ambiguity failure mode is silent until a browser runs.
 func TestEachPanelStateCarriesItsRootElement(t *testing.T) {
 	ts := newTestServer(t)
 	js := assetBody(t, ts, "/assets/js/project.js")
 
-	// One entry per exit path that must carry a root, keyed on a fragment of the
-	// `return` line itself. The populated capability path is
-	// `return '<div class="panel-capabilities">' + head +` and its table is on
-	// the next line, so the marker is the head expression rather than the table
-	// tag -- the table string lives in a different line entirely.
 	states := []struct{ marker, cls string }{
 		{"No capability matrix yet", "panel-capabilities"},
 		{`'<div class="panel-capabilities">' + head +`, "panel-capabilities"},
 		{"No field reports yet", "panel-field-reports"},
 		{"summary + env + omitted", "panel-field-reports"},
+		{"No roadmap yet", "panel-solutions"},
+		{"head + tally +", "panel-solutions"},
 	}
 
 	for _, st := range states {
-		// Find the return line carrying this state's marker.
 		var root bool
 		seen := false
 		for _, line := range strings.Split(js, "\n") {
@@ -292,14 +378,52 @@ func TestEachPanelStateCarriesItsRootElement(t *testing.T) {
 		}
 	}
 
-	// The failed state gets its root from panelError, so panelError must name
-	// which panel failed -- otherwise a failure in both is indistinguishable in
-	// the DOM and a test can only assert "something broke".
+	// The class must appear on EXACTLY one line as an opening tag, plus at most
+	// once inside panelError. Two elements carrying the same class is what breaks
+	// Playwright strict mode, and it is invisible to every other test here.
+	//
+	// COMMENT LINES ARE EXCLUDED. project.js documents the wrapper in prose
+	// (`the root is the wrapper <div class="panel-capabilities">`), and the first
+	// version counted that sentence as a second element -- a test that fails on
+	// the act of explaining the rule it enforces.
+	for _, cls := range []string{"panel-capabilities", "panel-field-reports", "panel-solutions"} {
+		n := 0
+		for _, line := range strings.Split(js, "\n") {
+			tl := strings.TrimSpace(line)
+			if strings.HasPrefix(tl, "//") || strings.HasPrefix(tl, "*") {
+				continue
+			}
+			if strings.Contains(line, `class="`+cls+`"`) ||
+				strings.Contains(line, "'"+cls+"'") {
+				n++
+			}
+		}
+		// Two panel states plus panelError's mapping is three; the head and
+		// populated return are two of them and the empty state the third.
+		if n > 3 {
+			t.Errorf("%s appears in markup on %d lines; a panel with more than two "+
+				"state returns plus panelError's mapping has a duplicate root", cls, n)
+		}
+	}
+
 	errFn := js[strings.Index(js, "function panelError"):]
-	for _, cls := range []string{"panel-capabilities", "panel-field-reports"} {
+	for _, cls := range []string{"panel-capabilities", "panel-field-reports", "panel-solutions"} {
 		if !strings.Contains(errFn, cls) {
 			t.Errorf("panelError does not emit %s, so a failed fetch of that panel "+
 				"has no root element", cls)
+		}
+	}
+
+	// And panelError must map every panel by NAME, not by a two-way ternary. The
+	// first version was
+	//   what === 'Capabilities' ? 'panel-capabilities' : 'panel-field-reports'
+	// which silently filed the solutions panel's failures under
+	// panel-field-reports when the third panel was added. A fourth panel added to
+	// a ternary chain hits the same trap; a lookup keyed on the title does not.
+	for _, title := range []string{"Capabilities", "Field reports", "Solutions"} {
+		if !strings.Contains(errFn, "'"+title+"'") {
+			t.Errorf("panelError has no mapping for the %q panel; a two-way ternary "+
+				"silently files an unmapped panel under the wrong root", title)
 		}
 	}
 }

@@ -400,6 +400,14 @@ func (s *Server) Router() http.Handler {
 	// points at the data rather than at the route.
 	r.Get("/api/v1/projects/{project_id}/capabilities", s.handleListProjectCapabilities)
 	r.Get("/api/v1/projects/{project_id}/field-reports", s.handleListProjectFieldReports)
+
+	// The third §4.10 panel: solution standings, grouped per feature. Grouped
+	// rather than merged into one project-wide leaderboard because a solution's
+	// score is computed against the entries competing with it, so ranking across
+	// features compares numbers that were never comparable — and a project's
+	// "do nothing" baseline for one feature could outrank a real proposal for
+	// another. See docs/specs/solutions-panel-spec.md.
+	r.Get("/api/v1/projects/{project_id}/solutions", s.handleListProjectSolutions)
 	r.Route("/api/v1/projects/{project_id}/criteria-profiles", func(r chi.Router) {
 		r.Get("/", s.handleListCriteriaProfiles)
 		r.Post("/", s.handleSaveCriteriaProfile)

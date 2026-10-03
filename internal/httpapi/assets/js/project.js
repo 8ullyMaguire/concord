@@ -170,7 +170,80 @@
         '<div class="grid-responsive-2" style="margin-top:1rem;">' + cards + '</div></div>';
     }
 
-    function panelEmpty(title, description) {
+    function solutionsPanel(data) {
+      if (!data) {
+        return panelError('Solutions', 'Solution standings could not be loaded.');
+      }
+      var groups = data.features || [];
+      // No panel class on the head: the wrapper opened by the return below is the
+      // root. The capabilities panel had the class on both and every strict-mode
+      // browser locator then failed on ambiguity rather than on a real defect.
+      var head = '<div class="section-head" style="margin-top:2rem;">' +
+        '<h2 class="section-title" style="font-size:1.25rem;">Solution standings</h2>' +
+        '<p class="section-sub">Ranked proposals per feature. Scores are computed ' +
+        'against the other proposals for that feature, so they are not comparable ' +
+        'across features.</p></div>';
+
+      // Three states, and the counts are what separate them. A project with no
+      // features has no roadmap; a project with features nobody has answered has
+      // a roadmap with nothing on it. Rendering both as "no solutions" states
+      // something untrue about one of them.
+      if (!groups.length) {
+        return '<div class="panel-solutions">' + head + panelEmpty('No roadmap yet',
+          'This project has no features, so there is nothing for solutions to ' +
+          'address. Features come from validated complaints.') + '</div>';
+      }
+
+      var withSol = data.features_with_solutions || 0;
+      var without = data.features_without || 0;
+      var tally = '<div class="fr-summary" style="border-left-color: var(--slate-400);">' +
+        '<strong>' + esc(withSol) + '</strong> of ' + esc(groups.length) +
+        ' feature' + (groups.length === 1 ? '' : 's') + ' ' +
+        (withSol === 1 ? 'has' : 'have') + ' proposals' +
+        (without > 0 ? '; ' + esc(without) + ' ' + (without === 1 ? 'has' : 'have') +
+          ' none.' : '.') + '</div>';
+
+      var blocks = groups.map(function (g) {
+        var sols = g.solutions || [];
+        if (!sols.length) {
+          return '<div class="sol-group sol-empty">' +
+            '<div class="sol-feature">' + esc(g.feature_title) + '</div>' +
+            '<p class="card-text">No proposals yet. ' +
+            (g.feature_id ? 'Feature ' + esc(g.feature_id) + ' is open for one.' : '') +
+            '</p></div>';
+        }
+        var rows = sols.map(function (sol, i) {
+          // The rank is rendered, not implied by list order alone: a reader
+          // comparing two features needs to see that these are separate
+          // contests, not positions in one.
+          var rank = '<span class="sol-rank">' + (i + 1) + '</span>';
+          var cls = sol.is_baseline ? 'sol-row sol-baseline' : 'sol-row';
+          // The title is the point of the row. A standings list showing scores
+          // with no names is a ranking nobody can act on, and the API omitted the
+          // title until `SolutionScore.Title` was added for exactly this panel.
+          return '<li class="' + cls + '">' + rank +
+            '<span class="sol-title">' +
+            esc(sol.title || 'proposal ' + esc(sol.solution_id)) + '</span>' +
+            '<span class="sol-coverage" title="Coverage against this feature\'s ' +
+            'criteria">' + Math.round((sol.coverage || 0) * 100) + '%</span>' +
+            esc(sol.rating != null ? sol.rating.toFixed(2) : '—') +
+            (sol.is_baseline ? ' <span class="badge badge-slate">do nothing</span>' : '') +
+            '</li>';
+        }).join('');
+        var omitted = g.omitted > 0
+          ? '<p class="section-sub">' + esc(g.omitted) + ' more proposal' +
+            (g.omitted === 1 ? '' : 's') + ' not shown.</p>'
+          : '';
+        return '<div class="sol-group"><div class="sol-feature">' +
+          esc(g.feature_title) + '</div>' +
+          '<ul class="sol-list">' + rows + '</ul>' + omitted + '</div>';
+      }).join('');
+
+      return '<div class="panel-solutions">' + head + tally +
+        '<div class="sol-groups">' + blocks + '</div></div>';
+    }
+
+  function panelEmpty(title, description) {
       return '<div class="empty-state"><p class="empty-state-title">' + esc(title) + '</p>' +
         '<p class="empty-state-description">' + esc(description) + '</p></div>';
     }
@@ -178,9 +251,25 @@
     // A failed fetch renders differently from an empty one, on purpose. Both being
     // "nothing here" is how a broken endpoint passes for a project with no data.
     function panelError(what, message) {
-      return '<div class="empty-state panel-error ' +
-        (what === 'Capabilities' ? 'panel-capabilities' : 'panel-field-reports') +
-        '"><p class="empty-state-title">' +
+      // `what` is the panel's title, mapped to its root class -- a lookup, not a
+      // ternary chain. The first version was
+      // `what === 'Capabilities' ? 'panel-capabilities' : 'panel-field-reports'`,
+      // which silently filed the SOLUTIONS panel's failures under
+      // panel-field-reports when the third panel was added. An unmapped title
+      // yields no root class, so a future panel is visibly unclassed rather than
+      // invisibly misfiled.
+      //
+      // Declared INSIDE the function: the first version put the map just above
+      // the declaration, and a test that slices the source from
+      // `function panelError` onward therefore read an empty tail and reported
+      // all three panels as unmapped.
+      var roots = {
+        'Capabilities': 'panel-capabilities',
+        'Field reports': 'panel-field-reports',
+        'Solutions': 'panel-solutions'
+      };
+      return '<div class="empty-state panel-error ' + (roots[what] || '') + '">' +
+        '<p class="empty-state-title">' +
         esc(what) + ' unavailable</p>' +
         '<p class="empty-state-description">' + esc(message) + '</p></div>';
     }
@@ -437,6 +526,8 @@
       // says what the project IS and complaints are what it is trying to fix.
       capabilitiesPanel(panels.capabilities) +
       fieldReportsPanel(panels.fieldReports) +
+      // §4.10's order puts standings in the roadmap, after field reports.
+      solutionsPanel(panels.solutions) +
       forms(p);
   }
 
@@ -492,6 +583,12 @@
             .catch(function () { return null; }),
           fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/field-reports')
             .then(function (r) { return r.ok ? r.json() : null; })
+            .catch(function () { return null; }),
+          // The third §4.10 panel. Same rule as the other two: swallow its own
+          // failure and resolve to null, which panelError renders differently
+          // from an empty result.
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/solutions')
+            .then(function (r) { return r.ok ? r.json() : null; })
             .catch(function () { return null; })
         ])
           .then(function (res) {
@@ -501,7 +598,8 @@
             window.__complaints = complaints || [];
             box.innerHTML = render(p, features, complaints, documents, {
               capabilities: res[3],
-              fieldReports: res[4]
+              fieldReports: res[4],
+              solutions: res[5]
             });
             if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
             wire(box, slug, p.id);

@@ -1335,3 +1335,44 @@ textarea:focus-visible {
   border-left: 3px solid var(--slate-400);
   border-radius: 6px;
 }
+
+/* Solution standings (2026-10-03): the third §4.10 panel. Appended only. */
+
+/* Each feature is its own contest. The border and the gap are what stop the
+   reader scanning one list down the page and reading it as a single ranking --
+   which is the misreading `solutions-panel-spec.md` exists to prevent, since
+   scores are computed against different opponents. */
+.sol-groups { display: flex; flex-direction: column; gap: 1rem; margin-top: 1rem; }
+.sol-group {
+  border: 1px solid var(--slate-200); border-radius: 6px;
+  padding: 0.875rem 1rem; background: #fff;
+}
+.sol-feature { font-weight: 600; font-size: 0.9375rem; margin-bottom: 0.5rem; }
+.sol-list { list-style: none; margin: 0; padding: 0; }
+.sol-row {
+  display: flex; align-items: center; gap: 0.625rem;
+  padding: 0.3125rem 0; font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+.sol-row + .sol-row { border-top: 1px solid var(--slate-100); }
+
+/* The rank is rendered as a number, not left to list order, so a reader can see
+   these are positions within one feature rather than a global ordering. */
+.sol-rank {
+  min-width: 1.25rem; text-align: right; color: var(--slate-400);
+  font-size: 0.75rem;
+}
+/* The proposal's own text. Flexes to take the space so the coverage and rating
+   stay right-aligned in a column, which is what makes a list of them scannable
+   as a ranking rather than a paragraph. */
+.sol-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sol-coverage { color: var(--slate-500); font-size: 0.75rem; min-width: 3rem; }
+
+/* §6.3's "do nothing" baseline. Ranked but never selectable, so it is marked
+   rather than styled like a proposal -- a reader must be able to see at a glance
+   that this row is the absence of a plan. */
+.sol-baseline { color: var(--slate-500); font-style: italic; }
+
+/* A feature nobody has proposed for is still shown, in a quieter key. */
+.sol-empty { border-style: dashed; background: var(--slate-50); }
+.sol-empty .card-text { color: var(--slate-500); margin: 0; font-size: 0.875rem; }
