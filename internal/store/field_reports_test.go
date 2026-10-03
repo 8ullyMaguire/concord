@@ -430,3 +430,119 @@ func firstReportID(t *testing.T, store *DB, projectID int64) int64 {
 	}
 	return reports[0].ID
 }
+
+// An owner's response is a published statement and cannot be edited or deleted
+// -- not even by its author. A bystander's reply can be both, because it is
+// only their own account.
+//
+// §4.3 AC 2 requires the "cannot be edited or deleted by its author
+// afterwards" half, and neither the method nor the test existed: RespondToField-
+// Report was the only way to touch the row, so the rule was unwritten rather
+// than merely untested.
+//
+// Why the badge makes it immutable: an owner response is quoted as the
+// project's own account of a problem. If it could be rewritten after the fact,
+// a project could publish a bland "known issue" reply and then quietly revise it
+// into a promise. Retraction happens by posting another response.
+func TestAnOwnersResponseCannotBeEditedOrDeletedEvenByItsAuthor(t *testing.T) {
+	store, uid, _ := reportFixture(t)
+	ctx := context.Background()
+	pid := mustProjectID(t, store, "test-project")
+
+	reports, err := store.ListFieldReports(ctx, pid, false)
+	if err != nil || len(reports) == 0 {
+		t.Fatalf("ListFieldReports: %v (%d)", err, len(reports))
+	}
+	// uid created the project, so this response carries the owner badge.
+	owner, err := store.RespondToFieldReport(ctx, reports[0].ID, uid, "yes, this happens on arm64")
+	if err != nil {
+		t.Fatalf("RespondToFieldReport: %v", err)
+	}
+	if !owner.IsOwner {
+		t.Fatal("fixture did not produce an owner response; the rest of this test is vacuous")
+	}
+
+	if _, err := store.EditFieldOwnerResponse(ctx, owner.ID, uid, "no longer true"); !errors.Is(err, ErrPerm) {
+		t.Errorf("the author editing their own owner response = %v, want ErrPerm", err)
+	}
+	if err := store.DeleteFieldOwnerResponse(ctx, owner.ID, uid); !errors.Is(err, ErrPerm) {
+		t.Errorf("the author deleting their own owner response = %v, want ErrPerm", err)
+	}
+	// Unchanged, and still there.
+	after, err := store.getFieldReportResponse(ctx, owner.ID)
+	if err != nil {
+		t.Fatalf("the owner response is gone: %v", err)
+	}
+	if after.Body != owner.Body {
+		t.Errorf("body = %q, want the original %q", after.Body, owner.Body)
+	}
+
+	// A bystander's reply is theirs to correct.
+	stranger := newUserNamed(t, store, "bystander")
+	plain, err := store.RespondToFieldReport(ctx, reports[0].ID, stranger, "I had this on my machine")
+	if err != nil {
+		t.Fatalf("RespondToFieldReport: %v", err)
+	}
+	if plain.IsOwner {
+		t.Fatal("a non-member's response was marked as the owner's")
+	}
+
+	edited, err := store.EditFieldOwnerResponse(ctx, plain.ID, stranger, "I had this on arm64 only")
+	if err != nil {
+		t.Errorf("a bystander could not edit their own reply: %v", err)
+	} else if edited.Body != "I had this on arm64 only" {
+		t.Errorf("edited body = %q", edited.Body)
+	}
+	// And another account cannot edit or delete even a non-owner reply.
+	thief := newUserNamed(t, store, "thief")
+	if _, err := store.EditFieldOwnerResponse(ctx, plain.ID, thief, "mine now"); !errors.Is(err, ErrPerm) {
+		t.Errorf("a third party editing someone else's reply = %v, want ErrPerm", err)
+	}
+	if err := store.DeleteFieldOwnerResponse(ctx, plain.ID, thief); !errors.Is(err, ErrPerm) {
+		t.Errorf("a third party deleting someone else's reply = %v, want ErrPerm", err)
+	}
+	if err := store.DeleteFieldOwnerResponse(ctx, plain.ID, stranger); err != nil {
+		t.Errorf("the author could not delete their own non-owner reply: %v", err)
+	}
+}
+
+// Deleting a project deletes its field reports, and their responses with them.
+//
+// §4.3 AC 5. The CASCADE is in the schema, so this is the test that would catch
+// it being dropped in a future migration -- the same shape as the capability
+// cascade test.
+func TestDeletingAProjectRowCascadesToItsFieldReports(t *testing.T) {
+	store, uid, _ := reportFixture(t)
+	ctx := context.Background()
+	pid := mustProjectID(t, store, "test-project")
+
+	reports, err := store.ListFieldReports(ctx, pid, false)
+	if err != nil || len(reports) == 0 {
+		t.Fatalf("ListFieldReports: %v (%d)", err, len(reports))
+	}
+	if _, err := store.RespondToFieldReport(ctx, reports[0].ID, uid, "acknowledged"); err != nil {
+		t.Fatalf("RespondToFieldReport: %v", err)
+	}
+	rid := reports[0].ID
+
+	if _, err := d0(store).ExecContext(ctx, `DELETE FROM projects WHERE id = ?`, pid); err != nil {
+		t.Fatalf("delete project: %v", err)
+	}
+
+	var reportsLeft, responsesLeft int
+	if err := d0(store).QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM field_reports WHERE project_id = ?`, pid).Scan(&reportsLeft); err != nil {
+		t.Fatalf("count field_reports: %v", err)
+	}
+	if reportsLeft != 0 {
+		t.Errorf("%d field reports survived the project delete, want 0", reportsLeft)
+	}
+	// The responses CASCADE from the reports, which is the second hop.
+	if err := d0(store).QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM field_report_responses WHERE report_id = ?`, rid).Scan(&responsesLeft); err != nil {
+		t.Fatalf("count responses: %v", err)
+	}
+	if responsesLeft != 0 {
+		t.Errorf("%d owner responses survived the project delete, want 0", responsesLeft)
+	}
+}

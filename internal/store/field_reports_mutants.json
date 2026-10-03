@@ -58,5 +58,25 @@
   "name": "report with no author accepted",
   "old": "\tif r.UserID == 0 {",
   "new": "\tif false {"
+ },
+ {
+  "name": "owner responses become editable",
+  "old": "\tif resp.IsOwner {\n\t\treturn FieldOwnerResponse{}, fmt.Errorf(\n\t\t\t\"%w: an owner's response is a published statement and cannot be edited\", ErrPerm)\n\t}",
+  "new": "\tif false {\n\t\treturn FieldOwnerResponse{}, fmt.Errorf(\"%w\", ErrPerm)\n\t}"
+ },
+ {
+  "name": "owner responses become deletable",
+  "old": "\tif resp.IsOwner {\n\t\treturn fmt.Errorf(\"%w: an owner's response is a published statement and cannot be deleted\", ErrPerm)\n\t}",
+  "new": "\tif false {\n\t\treturn fmt.Errorf(\"%w\", ErrPerm)\n\t}"
+ },
+ {
+  "name": "anyone may edit any response",
+  "old": "\tif resp.UserID != userID {\n\t\treturn FieldOwnerResponse{}, fmt.Errorf(\n\t\t\t\"%w: only the author can edit their response\", ErrPerm)\n\t}",
+  "new": "\t_ = userID"
+ },
+ {
+  "name": "anyone may delete any response",
+  "old": "\tif resp.UserID != userID {\n\t\treturn fmt.Errorf(\"%w: only the author can delete their response\", ErrPerm)\n\t}",
+  "new": "\t_ = userID"
  }
 ]

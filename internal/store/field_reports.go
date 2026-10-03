@@ -460,3 +460,61 @@ func (d *DB) FieldReportOutcomeRateByEnvironment(ctx context.Context, projectID 
 	}
 	return out, nil
 }
+
+// EditFieldOwnerResponse edits a response's body.
+//
+// ONLY THE AUTHOR may edit, and only while they hold no owner badge. An owner
+// response is the project's public statement of fact -- "yes, this happens on
+// arm64 and we are tracking it" -- and it is quoted by the outcome rate and the
+// Finder's warnings. Once published it must not be quietly rewritten: a project
+// could post a bland reply, then revise it into a promise nobody agreed to.
+//
+// A non-owner response (a bystander saying "I had this too") is the author's
+// own account, so they may correct it; the rule is about the badge carrying
+// authority, not about authorship alone.
+//
+// Returns ErrPerm for an owner response, whoever asks -- including the author.
+func (d *DB) EditFieldOwnerResponse(ctx context.Context, responseID, userID int64, body string) (FieldOwnerResponse, error) {
+	if strings.TrimSpace(body) == "" {
+		return FieldOwnerResponse{}, fmt.Errorf("%w: a response needs a body", ErrInvalid)
+	}
+	resp, err := d.getFieldReportResponse(ctx, responseID)
+	if err != nil {
+		return FieldOwnerResponse{}, err
+	}
+	if resp.UserID != userID {
+		return FieldOwnerResponse{}, fmt.Errorf(
+			"%w: only the author can edit their response", ErrPerm)
+	}
+	if resp.IsOwner {
+		return FieldOwnerResponse{}, fmt.Errorf(
+			"%w: an owner's response is a published statement and cannot be edited", ErrPerm)
+	}
+	if _, err := d.ExecContext(ctx,
+		`UPDATE field_report_responses SET body = ? WHERE id = ?`, body, responseID); err != nil {
+		return FieldOwnerResponse{}, fmt.Errorf("edit field report response: %w", err)
+	}
+	return d.getFieldReportResponse(ctx, responseID)
+}
+
+// DeleteFieldOwnerResponse removes a response, under the same rule as
+// EditFieldOwnerResponse: the author may delete their own non-owner reply, and
+// nobody may delete an owner's response. A published owner statement that turns
+// out to be wrong is retracted in public with a new response, not erased.
+func (d *DB) DeleteFieldOwnerResponse(ctx context.Context, responseID, userID int64) error {
+	resp, err := d.getFieldReportResponse(ctx, responseID)
+	if err != nil {
+		return err
+	}
+	if resp.UserID != userID {
+		return fmt.Errorf("%w: only the author can delete their response", ErrPerm)
+	}
+	if resp.IsOwner {
+		return fmt.Errorf("%w: an owner's response is a published statement and cannot be deleted", ErrPerm)
+	}
+	if _, err := d.ExecContext(ctx,
+		`DELETE FROM field_report_responses WHERE id = ?`, responseID); err != nil {
+		return fmt.Errorf("delete field report response: %w", err)
+	}
+	return nil
+}
