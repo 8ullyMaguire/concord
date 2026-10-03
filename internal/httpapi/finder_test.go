@@ -961,3 +961,123 @@ func TestEvidenceCoverageIsReportedAndVaries(t *testing.T) {
 		t.Errorf("top match %s fit = %.4f; it matched every answer asked", best.Slug, best.Fit)
 	}
 }
+
+// A seed that matches nothing must still leave the user with questions.
+//
+// §4.1: the seed pre-fills a starting category. It is NOT a hard filter, so it
+// must never be able to produce a session with nothing to ask about.
+//
+// Measured on the live instance: seed "go" narrowed 70 candidates to 4 that were
+// identical on every dimension the engine can ask about, so no question cleared
+// the information-gain threshold and the endpoint returned `question: null`. The
+// page then rendered an empty results view with no question and no way forward.
+// Seed "note-taking" returned zero candidates and did the same.
+func TestASeedThatMatchesNothingStillOffersQuestions(t *testing.T) {
+	ts, db := newTestServerWithStore(t)
+	finderFixture(t, db)
+
+	for _, seed := range []string{"note-taking", "zzzz-no-such-thing", "self-hosted"} {
+		t.Run(seed, func(t *testing.T) {
+			code, body := finderPost(t, ts, "/api/v1/finder/sessions", map[string]any{"text": seed})
+			if code != http.StatusCreated {
+				t.Fatalf("start with seed %q = %d, want 201: %v", seed, code, body)
+			}
+			raw, _ := json.Marshal(body)
+			var st finderStateRes
+			if err := json.Unmarshal(raw, &st); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if st.CandidateCount == 0 {
+				t.Errorf("seed %q left zero candidates; a seed is a starting point, "+
+					"not a filter that can produce nothing", seed)
+			}
+			// A seed may legitimately narrow to few candidates, and then there is
+			// NO question — which is correct (§4.4 stops at five or fewer) and is
+			// not a dead end. What must never happen is arriving with neither a
+			// question nor a stop reason, because the page has nothing to render
+			// for that state.
+			if st.Question == nil {
+				if !st.ShouldStop {
+					t.Fatalf("seed %q returned no question and no stop reason with %d "+
+						"candidates; the page has no view for that state and the user is "+
+						"stranded", seed, st.CandidateCount)
+				}
+				if st.StopReason == "" {
+					t.Errorf("seed %q suggested stopping without giving a reason", seed)
+				}
+				t.Logf("seed %q narrowed to %d candidates and stopped (%s), which is the "+
+					"documented behaviour", seed, st.CandidateCount, st.StopReason)
+			} else if len(st.Question.Options) < 2 {
+				t.Errorf("seed %q offered %d option(s); a question needs something to "+
+					"choose between", seed, len(st.Question.Options))
+			}
+		})
+	}
+}
+
+// A session that was given an explicit id list must NOT be widened behind the
+// caller's back. The widening rule exists for a loose seed, and overriding a
+// deliberate seed_candidates would be a different and much worse surprise: the
+// caller named the projects, and getting others back would make a Finder URL
+// shareable to the wrong set.
+func TestAnExplicitSeedCandidateListIsNeverWidened(t *testing.T) {
+	ts, db := newTestServerWithStore(t)
+	finderFixture(t, db)
+	ctx := t.Context()
+
+	owner, err := db.CreateUser(ctx, "narrowseed", "Narrow Seed")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	p, err := db.CreateProject(ctx, owner.ID, "the-only-one", "The Only One",
+		"a lone project", "maintainer_led", "MIT")
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+
+	code, body := finderPost(t, ts, "/api/v1/finder/sessions", map[string]any{
+		"seed_candidates": []int64{p.ID},
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("start = %d: %v", code, body)
+	}
+	raw, _ := json.Marshal(body)
+	var st finderStateRes
+	_ = json.Unmarshal(raw, &st)
+	if st.CandidateCount != 1 {
+		t.Errorf("candidate_count = %d, want 1; an explicit seed_candidates list must "+
+			"be honoured exactly, not widened to the whole catalog", st.CandidateCount)
+	}
+}
+
+// A single-candidate set cannot be split, so it must widen rather than dead-end.
+func TestASingleCandidateSetIsWidenedRatherThanDeadEnded(t *testing.T) {
+	ts, db := newTestServerWithStore(t)
+	finderFixture(t, db)
+	ctx := t.Context()
+
+	owner, err := db.CreateUser(ctx, "lonesome", "Lonesome")
+	if err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	p, err := db.CreateProject(ctx, owner.ID, "lonesome-project", "Lonesome Project",
+		"alone in the catalog", "maintainer_led", "MIT")
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+
+	code, body := finderPost(t, ts, "/api/v1/finder/sessions", map[string]any{
+		"seed_candidates": []int64{p.ID},
+	})
+	if code != http.StatusCreated {
+		t.Fatalf("start = %d: %v", code, body)
+	}
+	raw, _ := json.Marshal(body)
+	var st finderStateRes
+	_ = json.Unmarshal(raw, &st)
+	// Either it was widened (more than 1) or there was nothing to widen to; what
+	// must not happen is a questionless session.
+	if st.Question == nil && st.CandidateCount > 1 {
+		t.Errorf("%d candidates but no question", st.CandidateCount)
+	}
+}

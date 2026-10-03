@@ -207,6 +207,28 @@ func (s *Server) handleStartFinderSession(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// A seed that matches NOTHING is widened to the whole catalog.
+	//
+	// §4.1: the seed pre-fills a starting category rather than hard-filtering,
+	// so a hint that matched nothing must not leave the user with an empty
+	// session. "note-taking" matched zero of the live catalog's 70 projects and
+	// the endpoint returned an empty results page with no question and no way
+	// forward.
+	//
+	// Only the zero case is widened. A seed that matches FEW projects is not a
+	// dead end: ShouldStop reports SATURATED at five or fewer candidates, which
+	// is §4.4 working exactly as specified, and the page shows the stop prompt.
+	// Widening a legitimately narrow seed would quietly override the user's own
+	// filter and hand back projects they excluded.
+	//
+	// Never for an explicit seed_candidates list -- the caller named those
+	// projects, which is what makes a Finder URL shareable to a chosen set.
+	if len(cands) == 0 && len(req.SeedCandidates) == 0 && (seed.Text != "" || seed.Category != "") {
+		if wide, err := s.finderCandidatesWithIDs(r, finderSeed{}, nil); err == nil && len(wide) > 0 {
+			cands = wide
+		}
+	}
+
 	sess := &finderSession{
 		ID:         newFinderSessionID(),
 		Seed:       seed,

@@ -118,6 +118,13 @@
     bar.setAttribute('aria-valuenow', String(pct));
     bar.style.width = pct + '%';
 
+    // Set before any early return. The "no question" branch below returns before
+    // it used to reach this line, so exhausting the questions left Back disabled
+    // even though there was an answer to go back from — §2.6 reversibility lost
+    // exactly when the user most wants it. Only an e2e test clicking Back caught
+    // this; no Go test looks at the view.
+    el('finder-back').disabled = !(s.questions_asked > 0);
+
     if (!q) {
       // Out of questions, not out of candidates. The stop prompt explains why,
       // which is §4.4's "the next question would only slightly change this".
@@ -126,6 +133,14 @@
       el('finder-why').hidden = true;
       state.view = 'stop';
       el('finder-stop-prompt').hidden = false;
+      // "Keep narrowing anyway" is only honest when there IS a next question.
+      // The stop prompt appears for two different reasons — SATURATED (too few
+      // candidates) and LOW_GAIN (nothing left worth asking) — and only the
+      // second has anything to continue into. Shown with no question behind it,
+      // the button re-renders the same dead end and the user clicks it forever.
+      // §4.4 offers it for the low-gain case; for a saturated set the honest
+      // offer is to relax a filter, which the results page already provides.
+      el('finder-stop-keep').hidden = !s.question;
       el('finder-stop-reason').textContent = stopReasonText(s.stop_reason);
       el('finder-stop-top').innerHTML = (s.top_candidates || []).slice(0, 3).map(function (c) {
         return '<li><strong>' + esc(c.name || c.slug) + '</strong> ' +
@@ -155,11 +170,10 @@
       '<button type="button" class="finder-option finder-option-any" data-option="any">' +
       "Doesn't matter</button>";
 
-    el('finder-back').disabled = asked === 0;
-
     var stopping = state.view === 'stop' || s.should_suggest_stop;
     el('finder-stop-prompt').hidden = !stopping;
     if (stopping) {
+      el('finder-stop-keep').hidden = !s.question;
       el('finder-stop-reason').textContent = stopReasonText(s.stop_reason);
       el('finder-stop-top').innerHTML = (s.top_candidates || []).slice(0, 3).map(function (c) {
         return '<li><strong>' + esc(c.name || c.slug) + '</strong> ' +
@@ -176,6 +190,12 @@
   function fitLabel(c) {
     var pct = Math.round((c.fit_score || 0) * 100);
     var cov = typeof c.evidence_coverage === 'number' ? c.evidence_coverage : null;
+    // Nothing has been asked yet, so there is nothing to be a percentage OF.
+    // Printing "0% fit" here reads as "these are bad matches", which is the same
+    // misreading as the "15% fit for a perfect match" bug: a number that is
+    // arithmetically correct and completely misleading. The rank is still
+    // meaningful because it falls back to the evidence terms.
+    if (!state.session || !(state.session.questions_asked > 0)) return '';
     if (cov === null || cov >= 0.99) return pct + '% fit';
     return pct + '% fit <span class="finder-thin" title="only ' +
       Math.round(cov * 100) + '% of the scoring signals had evidence behind them">' +
@@ -278,9 +298,19 @@
       state.session = s;
       state.question = s.question;
       state.selected = null;
+      // No question, but candidates remain: the engine stopped on purpose
+      // (§4.4 — SATURATED at five or fewer, or LOW_GAIN). That is the STOP
+      // PROMPT, not a results page. Navigating to results here is what made a
+      // deep link like /finder?seed=go land on an unexplained empty page when it
+      // had already narrowed 70 projects to 4.
+      if (!s.question && (s.candidate_count || 0) > 0) {
+        show('stop');
+        render();
+        return;
+      }
+      // Nothing at all: §6.4's nothing-matches fallback, which is the only case
+      // where results is the right destination on arrival.
       if (!s.question) {
-        // No question to offer and nothing to narrow: show results rather than
-        // an empty question pane.
         showResults();
         return;
       }

@@ -275,6 +275,15 @@ a.card { display: block; color: inherit; }
 
 /* Buttons ------------------------------------------------------------------- */
 
+/* `hidden` must win over any component display rule.
+   `.btn { display: inline-flex }` has a higher specificity than the UA's
+   `[hidden] { display: none }`, so every element with class="btn" and the
+   hidden attribute stayed VISIBLE. That is site-wide, not Finder-specific: it
+   is why #finder-stop-keep read as present in the DOM, hidden per the
+   attribute, and still on screen to Playwright's visibility check and to a
+   user. Silent until something relied on hiding a styled element. */
+[hidden] { display: none !important; }
+
 .btn {
   display: inline-flex;
   align-items: center;
