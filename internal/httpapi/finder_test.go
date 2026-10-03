@@ -19,6 +19,7 @@ import (
 	"strings"
 	"testing"
 
+	"git.polarisocial.xyz/concord/concord/internal/finder"
 	"git.polarisocial.xyz/concord/concord/internal/store"
 )
 
@@ -755,5 +756,208 @@ func TestNoFinderTestAssertsAboutCandidatesWithoutAFixture(t *testing.T) {
 				"against an empty catalog; add the fixture, or add it to the allow-list in "+
 				"this test with a reason", name)
 		}
+	}
+}
+
+// The "why this question?" text must describe the SPLIT, not the single most
+// destructive option.
+//
+// The first version reported the option removing the most candidates and
+// stated it absolutely, which on the live instance read "choosing \"nim\" would
+// narrow 69 of 70" — true of all nine language options, because most-removed is
+// the rarest value rather than the most informative one. §4.2 shows both ends of
+// the split side by side.
+func TestWhyThisQuestionDescribesTheSplitNotOneOption(t *testing.T) {
+	sharp := &finder.Dimension{
+		Key: "cap:self-hosted",
+		Options: []finder.Option{
+			{ID: "yes", Label: "Self-hosted (I run it)", Impact: 142},
+			{ID: "no", Label: "Managed / SaaS", Impact: 38},
+			{ID: finder.ModeAny, Label: "Doesn't matter", Impact: 0},
+		},
+	}
+	got := finderWhyAsked(sharp, 0.9, 180)
+	for _, want := range []string{"142", "38", "Self-hosted (I run it)", "Managed / SaaS"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("why-text %q does not mention %q; both ends of the split must appear", got, want)
+		}
+	}
+
+	// A flat dimension must say so rather than claim it is the best split left.
+	flat := &finder.Dimension{
+		Key: "language",
+		Options: []finder.Option{
+			{ID: "nim", Label: "nim", Impact: 69},
+			{ID: "go", Label: "go", Impact: 53},
+			{ID: "js", Label: "js", Impact: 55},
+		},
+	}
+	gotFlat := finderWhyAsked(flat, 2.7, 70)
+	// Survivors, not removals. 69 and 53 both sound decisive; "leaves only 1 to
+	// 17 of 70" is what actually tells the user the question is not worth much.
+	//
+	// The FRAMING is asserted, not just the numbers: the two framings print the
+	// same digits (70-69=1, 70-53=17), so a test checking only for "17" and "70"
+	// passes either way. That is the whole defect, so it has to be the thing
+	// under test.
+	if !strings.Contains(gotFlat, "leaves") {
+		t.Errorf("flat-dimension why-text %q must report how many candidates SURVIVE "+
+			"each answer, not how many it removes; the removal framing sounds decisive "+
+			"when the surviving set is essentially the same size either way", gotFlat)
+	}
+	if strings.Contains(gotFlat, "rule out") || strings.Contains(gotFlat, "rules out") {
+		t.Errorf("flat-dimension why-text %q still frames the split as removals", gotFlat)
+	}
+	if !strings.Contains(gotFlat, "17") || !strings.Contains(gotFlat, "70") {
+		t.Errorf("flat-dimension why-text %q must give the surviving range", gotFlat)
+	}
+	if strings.Contains(gotFlat, "biggest split left") {
+		t.Errorf("flat-dimension why-text %q calls a near-useless question the biggest split left", gotFlat)
+	}
+
+	// And a dimension where every option removes the same number is not a split
+	// at all.
+	uniform := &finder.Dimension{
+		Key:     "license",
+		Options: []finder.Option{{ID: "MIT", Label: "MIT", Impact: 20}, {ID: "AGPL-3.0", Label: "AGPL-3.0", Impact: 20}},
+	}
+	gotUniform := finderWhyAsked(uniform, 0.37, 70)
+	if strings.Contains(gotUniform, "biggest split left") {
+		t.Errorf("uniform why-text %q claims a split where there is none", gotUniform)
+	}
+}
+
+// An omitted mode must mean REQUIRED, not "no filtering".
+//
+// The handler's validation switch lists the modes it accepts. Widening it with
+// "" does not make anything filter -- it makes an empty mode a VALID distinct
+// mode instead of falling through to the required default, and the engine
+// treats "" as a skip. So a client that posts {question_key, option_id} with no
+// mode gets its answer silently recorded and ignored.
+//
+// That is the dangerous direction: the answer looks recorded in the tray, the
+// candidate set does not change, and nothing errors.
+func TestAnOmittedModeMeansRequired(t *testing.T) {
+	ts, db := newTestServerWithStore(t)
+	finderFixture(t, db)
+
+	_, body := finderPost(t, ts, "/api/v1/finder/sessions", map[string]any{"text": ""})
+	raw, _ := json.Marshal(body)
+	var st finderStateRes
+	_ = json.Unmarshal(raw, &st)
+	if st.Question == nil {
+		t.Skip("no question offered")
+	}
+	pick := ""
+	for _, o := range st.Question.Options {
+		if o.ID != "any" {
+			pick = o.ID
+			break
+		}
+	}
+
+	// No "mode" key at all.
+	code, body := finderPost(t, ts, "/api/v1/finder/sessions/"+st.SessionID+"/answers",
+		map[string]any{"question_key": st.Question.Key, "option_id": pick})
+	if code != http.StatusOK {
+		t.Fatalf("answer with no mode = %d: %v", code, body)
+	}
+	raw, _ = json.Marshal(body)
+	var after finderStateRes
+	_ = json.Unmarshal(raw, &after)
+
+	if after.QuestionsAsked != 1 {
+		t.Errorf("questions_asked = %d after an answer with no mode, want 1; "+
+			"an omitted mode must be treated as required", after.QuestionsAsked)
+	}
+	if after.CandidateCount >= st.CandidateCount {
+		t.Errorf("candidate count %d did not drop from %d; the answer was accepted "+
+			"but did not filter", after.CandidateCount, st.CandidateCount)
+	}
+	recorded := struct {
+		Answers []struct {
+			QuestionKey string `json:"question_key"`
+			OptionID    string `json:"option_id"`
+			Mode        string `json:"mode"`
+		} `json:"answers"`
+	}{}
+	if err := json.Unmarshal(raw, &recorded); err != nil {
+		t.Fatalf("decode answers: %v", err)
+	}
+	if len(recorded.Answers) != 1 {
+		t.Fatalf("recorded %d answers, want 1", len(recorded.Answers))
+	}
+	if recorded.Answers[0].Mode != finder.ModeRequired {
+		t.Errorf("recorded mode = %q, want %q; an omitted mode must be stored as "+
+			"required so the engine treats it as a filter",
+			recorded.Answers[0].Mode, finder.ModeRequired)
+	}
+	if recorded.Answers[0].OptionID != pick {
+		t.Errorf("recorded option_id = %q, want %q", recorded.Answers[0].OptionID, pick)
+	}
+}
+
+// Evidence coverage must reach the client, and must not be a constant.
+//
+// The live page prints "99% fit (15% evidence)", which is the difference between
+// a well-evidenced match and a lucky one. A hardcoded 1 would print "99% fit"
+// and look fine -- the coverage is only load-bearing because it VARIES.
+func TestEvidenceCoverageIsReportedAndVaries(t *testing.T) {
+	ts, db := newTestServerWithStore(t)
+	finderFixture(t, db)
+
+	code, body := finderPost(t, ts, "/api/v1/finder/sessions", map[string]any{"text": ""})
+	if code != http.StatusCreated {
+		t.Fatalf("start = %d: %v", code, body)
+	}
+	raw, _ := json.Marshal(body)
+	var st finderStateRes
+	_ = json.Unmarshal(raw, &st)
+	if st.Question == nil {
+		t.Skip("no question offered")
+	}
+	pick := ""
+	for _, o := range st.Question.Options {
+		if o.ID != "any" {
+			pick = o.ID
+			break
+		}
+	}
+	_, body = finderPost(t, ts, "/api/v1/finder/sessions/"+st.SessionID+"/answers",
+		map[string]any{"question_key": st.Question.Key, "option_id": pick, "mode": "required"})
+	sid, _ := body["session_id"].(string)
+
+	code, body = finderGet(t, ts, "/api/v1/finder/sessions/"+sid+"/results")
+	if code != http.StatusOK {
+		t.Fatalf("results = %d", code)
+	}
+	raw, _ = json.Marshal(body)
+	var res struct {
+		Candidates []struct {
+			Slug     string  `json:"slug"`
+			Fit      float64 `json:"fit_score"`
+			Coverage float64 `json:"evidence_coverage"`
+		} `json:"candidates"`
+	}
+	if err := json.Unmarshal(raw, &res); err != nil {
+		t.Fatalf("decode results: %v", err)
+	}
+	if len(res.Candidates) == 0 {
+		t.Fatal("no candidates in results")
+	}
+	// The fixture has no field reports and no arena standing, so nothing is
+	// fully evidenced and every candidate must report a coverage below 1.
+	for _, c := range res.Candidates {
+		if c.Coverage >= 1 {
+			t.Errorf("%s reports evidence_coverage %.4f; the fixture has no field "+
+				"reports and no arena, so nothing is fully evidenced -- a constant 1 "+
+				"here is what makes the fit number a lie", c.Slug, c.Coverage)
+		}
+	}
+	// And a candidate that matches every answer must not be dragged below one
+	// that does not.
+	best := res.Candidates[0]
+	if best.Fit < 0.9 {
+		t.Errorf("top match %s fit = %.4f; it matched every answer asked", best.Slug, best.Fit)
 	}
 }

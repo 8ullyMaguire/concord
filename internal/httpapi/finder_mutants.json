@@ -1,0 +1,42 @@
+[
+ {
+  "name": "why-text reports only the most destructive option",
+  "old": "\treturn fmt.Sprintf(\"%q would rule out %d of %d candidates; %q only %d \u2014 the biggest split left.\",",
+  "new": "\treturn fmt.Sprintf(\"%q would rule out %d of %d candidates.\","
+ },
+ {
+  "name": "a flat dimension is called the biggest split left",
+  "old": "\tif total > 0 && (least >= total*9/10 || surviveBest <= total/10 || spread*10 <= total) {",
+  "new": "\tif false {"
+ },
+ {
+  "name": "why-text frames survivors as removals",
+  "old": "\"Every answer here leaves only %d to %d of %d candidates, so this question \"+",
+  "new": "\"Every answer here rules out %d to %d of %d candidates, so this question \"+"
+ },
+ {
+  "name": "the 'any' option is counted as a real option",
+  "old": "\t\tif o.ID == finder.ModeAny {\n\t\t\tcontinue\n\t\t}\n\t\tif !seen {",
+  "new": "\t\tif false {\n\t\t\tcontinue\n\t\t}\n\t\tif !seen {"
+ },
+ {
+  "name": "a non-filtering answer consumes the question budget",
+  "old": "\tif mode == finder.ModeRequired {\n\t\tsess.Depth++\n\t}",
+  "new": "\tsess.Depth++"
+ },
+ {
+  "name": "visibility check on seeded projects removed",
+  "old": "\t\t\tif !s.projectReadable(r, p) {",
+  "new": "\t\t\tif false {"
+ },
+ {
+  "name": "results omit evidence coverage",
+  "old": "\t\t\tCoverage:    r.Explanation[\"evidence_coverage\"],",
+  "new": "\t\t\tCoverage:    1,"
+ },
+ {
+  "name": "sessions claimed as persisted",
+  "old": "\t\tPersisted:         false,",
+  "new": "\t\tPersisted:         true,"
+ }
+]

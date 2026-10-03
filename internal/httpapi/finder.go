@@ -462,21 +462,79 @@ func finderQuestionText(dim *finder.Dimension) string {
 	return dim.Label
 }
 
+// finderWhyAsked explains the question in terms the user can act on.
+//
+// The first version picked the option that removes the MOST candidates and
+// stated it absolutely: "choosing \"nim\" would narrow 69 of 70". On the live
+// instance that is true of every option of the language dimension (nine values,
+// 53-69 removed each), because "most removed" is the rarest option rather than
+// the most informative one. §4.2 shows the intended shape instead — both ends
+// of the split, side by side — so the text now reports the best and worst
+// option together.
+//
+// It also says so when the split is flat. A dimension that removes nearly
+// everything for every answer is not a useful question, and a page that calls
+// it "the biggest split left" is telling the user the opposite.
 func finderWhyAsked(dim *finder.Dimension, gain float64, total int) string {
-	best, bestImpact := "", 0
+	// Track the most and least destructive real option. `any` is excluded: it is
+	// the non-filtering mode, and counting it would make every dimension look
+	// like it has an option that removes nothing.
+	leastLabel, mostLabel := "", ""
+	least, most := 0, 0
+	seen := false
 	for _, o := range dim.Options {
 		if o.ID == finder.ModeAny {
 			continue
 		}
-		if o.Impact > bestImpact {
-			best, bestImpact = o.Label, o.Impact
+		if !seen {
+			least, most = o.Impact, o.Impact
+			leastLabel, mostLabel = o.Label, o.Label
+			seen = true
+			continue
+		}
+		if o.Impact > most {
+			most, mostLabel = o.Impact, o.Label
+		}
+		if o.Impact < least {
+			least, leastLabel = o.Impact, o.Label
 		}
 	}
-	if best == "" {
+	if !seen {
 		return ""
 	}
-	return fmt.Sprintf("This is the biggest split left: choosing %q would narrow %d of %d candidates.",
-		best, bestImpact, total)
+
+	// Flat: every answer rules out nearly everything, so the dimension cannot
+	// distinguish candidates however it is answered. The first version of this
+	// function called such a dimension "the biggest split left", which is the
+	// opposite of true and is what the live instance showed: nine language
+	// options, each ruling out 53-69 of 70 candidates.
+	// Flat means the answer barely matters. The measure is how many candidates
+	// SURVIVE the best answer: on the live instance the language dimension's
+	// friendliest option still leaves 17 of 70, and the difference between its
+	// best and worst option is only 16 candidates -- so answering it tells the
+	// user very little about which project is right, whatever the raw numbers
+	// look like.
+	//
+	// Comparing the removed counts is the wrong test. 69 versus 53 is a 16-point
+	// gap that sounds decisive and is not: both eliminate the overwhelming
+	// majority of the field, so both leave a short-list of essentially the same
+	// size. An earlier version keyed on "every option removes >= 90%", which
+	// missed this case because 53/70 is 76%.
+	surviveBest := total - most
+	surviveWorst := total - least
+	spread := surviveWorst - surviveBest
+	if total > 0 && (least >= total*9/10 || surviveBest <= total/10 || spread*10 <= total) {
+		return fmt.Sprintf(
+			"Every answer here leaves only %d to %d of %d candidates, so this question "+
+				"tells us little about which project is right.",
+			surviveBest, surviveWorst, total)
+	}
+	if least == most {
+		return "Every answer here rules out the same number of candidates, which " +
+			"usually means the catalog holds one value for this and cannot narrow further."
+	}
+	return fmt.Sprintf("%q would rule out %d of %d candidates; %q only %d — the biggest split left.",
+		mostLabel, most, total, leastLabel, least)
 }
 
 // ---------------------------------------------------------------- helpers

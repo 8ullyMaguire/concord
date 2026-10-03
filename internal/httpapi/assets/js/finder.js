@@ -119,10 +119,19 @@
     bar.style.width = pct + '%';
 
     if (!q) {
-      el('finder-question-text').textContent = 'Nothing left to narrow down.';
+      // Out of questions, not out of candidates. The stop prompt explains why,
+      // which is §4.4's "the next question would only slightly change this".
+      el('finder-question-text').textContent = 'Nothing left worth asking.';
       el('finder-options').innerHTML = '';
       el('finder-why').hidden = true;
-      showResults();
+      state.view = 'stop';
+      el('finder-stop-prompt').hidden = false;
+      el('finder-stop-reason').textContent = stopReasonText(s.stop_reason);
+      el('finder-stop-top').innerHTML = (s.top_candidates || []).slice(0, 3).map(function (c) {
+        return '<li><strong>' + esc(c.name || c.slug) + '</strong> ' +
+          Math.round((c.fit_score || 0) * 100) + '% fit</li>';
+      }).join('');
+      renderShortList(s);
       return;
     }
 
@@ -269,8 +278,13 @@
       state.session = s;
       state.question = s.question;
       state.selected = null;
-      show(s.question ? 'question' : 'results');
-      if (!s.question) showResults();
+      if (!s.question) {
+        // No question to offer and nothing to narrow: show results rather than
+        // an empty question pane.
+        showResults();
+        return;
+      }
+      show('question');
       render();
     }).catch(fail);
   }
@@ -305,10 +319,18 @@
       list.classList.add('finder-changed');
     }
 
-    if (next.candidate_count === 0) showResults();
-    else show(next.question ? 'question' : 'results');
+    // An exhausted candidate set has no results worth showing, so go there.
+    // Running out of QUESTIONS is not the same thing: §4.4 says the user stays
+    // on the flow and is offered the stop prompt. The first version did both,
+    // which meant one answer on this instance silently navigated away from the
+    // flow the user had just started.
+    if (next.candidate_count === 0) {
+      showResults();
+      return;
+    }
+    state.view = next.question ? 'question' : 'stop';
+    show(state.view);
     render();
-    if (!next.question) showResults();
   }
 
   function goBack() {
