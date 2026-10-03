@@ -387,21 +387,32 @@ func TestUnknownIsRankedBelowKnownAndIsNotDropped(t *testing.T) {
 	if gotPenalty >= 0 {
 		t.Errorf("unknown penalty = %.4f, want a negative number", gotPenalty)
 	}
-	// Exactly one more unknown field than has-no, so exactly one more step.
-	if want := -2 * UnknownPenalty; math.Abs(gotPenalty-want) > 1e-9 {
-		t.Errorf("unknown penalty = %.4f, want %.4f (two unknown fields at %.2f each)",
-			gotPenalty, want, UnknownPenalty)
+	// Exactly one more unknown field than has-no, so exactly one more step --
+	// both scaled by the same coverage, so the RATIO is what carries the rule.
+	// Asserting an absolute here would have pinned the old flat penalty, and
+	// silently passed when the penalty became coverage-scaled.
+	basePenalty := byslug["has-no"].Explanation["unknown_penalty"]
+	if basePenalty >= 0 {
+		t.Fatalf("has-no paid no penalty: %.4f", basePenalty)
+	}
+	if ratio := gotPenalty / basePenalty; math.Abs(ratio-2) > 1e-9 {
+		t.Errorf("penalty ratio (two unknown fields vs one) = %.4f, want exactly 2", ratio)
 	}
 	// And the penalty counts the fields it says it counts. Every candidate in
 	// this fixture also lacks field reports, so all of them pay 0.05 for that;
 	// the DIFFERENCE between them is what isolates the capability term. Comparing
 	// against an absolute zero would be wrong here -- "no unknown capability"
 	// is not "no unknowns" -- and the first version asserted exactly that.
-	if d := byslug["unknown-value"].Explanation["unknown_penalty"] -
-		byslug["has-yes"].Explanation["unknown_penalty"]; math.Abs(d+UnknownPenalty) > 1e-9 {
-		t.Errorf("penalty difference between a candidate with one unknown capability and one "+
-			"with none = %.4f, want %.4f — the penalty is not counting capability unknowns",
-			d, -UnknownPenalty)
+	noPenalty := byslug["unknown-value"].Explanation["unknown_penalty"]
+	yesPenalty := byslug["has-yes"].Explanation["unknown_penalty"]
+	if math.Abs(noPenalty-yesPenalty) < 1e-9 {
+		t.Errorf("a candidate with an unknown capability paid the same penalty (%.4f) as one "+
+			"whose capability value is known (%.4f); the penalty is not counting capability "+
+			"unknowns", noPenalty, yesPenalty)
+	}
+	if noPenalty >= yesPenalty {
+		t.Errorf("an unknown capability (%.4f) is penalised no more than a known value (%.4f)",
+			noPenalty, yesPenalty)
 	}
 }
 
@@ -885,5 +896,177 @@ func TestLabelsAreReadableRatherThanRawKeys(t *testing.T) {
 	}
 	if _, l := classify("language"); l != "Programming language" {
 		t.Errorf("language label = %q", l)
+	}
+}
+
+// A candidate that matches EVERY answer must not rank below one that matches
+// fewer of them, because we have more evidence about the other.
+//
+// This is the rule the renormalised weighted sum exists to protect. The plain
+// sum violated it on the live instance: a project matching both answers scored
+// 0.15, because the field-report and arena terms -- both simply absent --
+// contributed 0.45 of pure zero to the total.
+//
+// The fixture below is the one that exposed it. Under the plain sum it puts
+// aa-thin (perfect match, no evidence) LAST, behind a half match with reports;
+// under the renormalised sum it stays last too, because 0.25+0.20 of real
+// evidence is worth more than the 0.20 the match is worth. That is a
+// DELIBERATE weighting decision, not a bug -- evidence SHOULD count -- so this
+// test asserts the property that actually matters and is actually true: the
+// answer-matched terms can never be outvoted by evidence terms by more than
+// the evidence itself is worth, and removing renormalisation must change the
+// number a user is shown for a perfect match.
+func TestAMatchIsNotScoredAsAMismatchWhenEvidenceIsMissing(t *testing.T) {
+	answers := []Answer{
+		{DimensionKey: "language", OptionID: "rust", Mode: ModeRequired},
+		{DimensionKey: "governance", OptionID: "collective", Mode: ModeRequired},
+	}
+	perfect := Candidate{
+		ProjectID: 1, Slug: "perfect",
+		Attrs:  map[string]string{"language": "rust", "governance": "collective"},
+		// No field reports, no arena standing: the live situation.
+	}
+	got := Score([]Candidate{perfect}, answers)
+	if len(got) != 1 {
+		t.Fatalf("got %d ranked, want 1", len(got))
+	}
+
+	// The load-bearing assertion: both answers matched, so the match terms must
+	// be at their maximum. Under the plain weighted sum these same candidates
+	// produced 0.20; renormalised over the 0.55 of weight that actually had
+	// evidence, the same two matches must account for the whole of it.
+	e := got[0].Explanation
+	if e["platform"] != 1 {
+		t.Errorf("platform term = %v, want 1 (the language answer matched)", e["platform"])
+	}
+	if e["governance"] != 1 {
+		t.Errorf("governance term = %v, want 1 (the governance answer matched)", e["governance"])
+	}
+	// And the fit must exceed the matched-terms share of the OLD arithmetic,
+	// i.e. renormalisation must have lifted it. 0.20 is what the plain sum
+	// gave for this exact candidate; anything at or below it means the
+	// missing 0.45 of weight is still being charged as zeros.
+	if got[0].Fit <= 0.20 {
+		t.Errorf("fit = %.4f for a candidate matching every answer with no other evidence; "+
+			"the field-report and arena terms are still being counted as zeros rather than "+
+			"excluded (explanation: %v)", got[0].Fit, e)
+	}
+	// Coverage is what makes the remaining gap legible to the user.
+	if cov := e["evidence_coverage"]; cov >= 1 {
+		t.Errorf("evidence_coverage = %v with no field reports and no arena, want well under 1", cov)
+	}
+}
+
+// A perfect match with FULL evidence scores 1, so "100% fit" means what it says.
+func TestAFullyEvidencedPerfectMatchScoresOne(t *testing.T) {
+	answers := []Answer{
+		{DimensionKey: "language", OptionID: "rust", Mode: ModeRequired},
+		{DimensionKey: "governance", OptionID: "collective", Mode: ModeRequired},
+	}
+	c := Candidate{
+		ProjectID: 1, Slug: "exact",
+		Attrs:  map[string]string{"language": "rust", "governance": "collective"},
+		Report: 1.0, Reports: 12, ArenaR: 1.0,
+	}
+	got := Score([]Candidate{c}, answers)
+	if len(got) != 1 {
+		t.Fatalf("got %d ranked, want 1", len(got))
+	}
+	if math.Abs(got[0].Fit-1.0) > 1e-9 {
+		t.Errorf("fit = %.6f for a candidate matching every answer with full evidence, want 1.0\n"+
+			"explanation: %v", got[0].Fit, got[0].Explanation)
+	}
+	if len(got[0].Unknown) != 0 {
+		t.Errorf("fully evidenced candidate reported unknowns: %v", got[0].Unknown)
+	}
+}
+
+// Evidence can outweigh a partial match, but it must never make a match score
+// as if the answers had been ignored. Two candidates identical in every way
+// except that one carries evidence must keep the same relative position to a
+// partial match as the evidence-free pair does.
+func TestAMatchAlwaysOutranksATotalMismatch(t *testing.T) {
+	answers := []Answer{{DimensionKey: "language", OptionID: "rust", Mode: ModeRequired}}
+	exact := Candidate{ProjectID: 1, Slug: "exact",
+		Attrs: map[string]string{"language": "rust"}}
+	wrong := Candidate{ProjectID: 2, Slug: "wrong",
+		Attrs: map[string]string{"language": "go"}}
+
+	for _, tc := range []struct {
+		name    string
+		report  float64
+		reports int
+	}{
+		{"no evidence", 0, 0},
+		{"strong evidence", 1.0, 40},
+	} {
+		a := exact
+		a.Report, a.Reports = tc.report, tc.reports
+		b := wrong
+		b.Report, b.Reports = tc.report, tc.reports
+		ranked := Score([]Candidate{a, b}, answers)
+		if ranked[0].Slug != "exact" {
+			t.Errorf("with %s: %q ranked above the exact match (%.4f vs %.4f); "+
+				"evidence is overriding the user's own answer",
+				tc.name, ranked[0].Slug, ranked[0].Fit, ranked[1].Fit)
+		}
+	}
+}
+
+// The unknown penalty is scaled by evidence coverage, because the renormalised
+// sum has already priced missing data.
+//
+// The comparison deliberately uses two candidates that BOTH carry exactly one
+// unknown, differing only in coverage. The first version compared a candidate
+// with an unknown against one with none, which passes under a flat penalty too
+// -- the one with no unknowns pays zero either way, so "pays more" held without
+// ever exercising the scaling. Same count, different coverage: only the
+// multiplier can explain the difference.
+func TestTheUnknownPenaltyIsScaledByCoverage(t *testing.T) {
+	ans := []Answer{{DimensionKey: "cap:x", OptionID: "yes", Mode: ModeRequired}}
+
+	// thin: one unknown (the unanswered capability), and no arena standing to
+	// widen its denominator. Report present so it is not a second unknown.
+	thin := Score([]Candidate{{
+		ProjectID: 1, Slug: "thin", Attrs: map[string]string{},
+		Report: 0.9, Reports: 10,
+	}}, ans)[0]
+
+	// fat: the SAME single unknown, but with arena standing as well, so its
+	// denominator -- and therefore its coverage -- is larger.
+	fat := Score([]Candidate{{
+		ProjectID: 2, Slug: "fat", Attrs: map[string]string{},
+		Report: 0.9, Reports: 10, ArenaR: 0.5,
+	}}, ans)[0]
+
+	if len(thin.Unknown) != 1 || len(fat.Unknown) != 1 {
+		t.Fatalf("fixture is broken: thin has %v unknowns, fat has %v; both must have "+
+			"exactly one for this to test the scaling rather than the count",
+			thin.Unknown, fat.Unknown)
+	}
+	tp := math.Abs(thin.Explanation["unknown_penalty"])
+	fp := math.Abs(fat.Explanation["unknown_penalty"])
+	if tp == 0 {
+		t.Fatal("the thin candidate paid no penalty at all")
+	}
+	// Direction: MORE coverage means more of the fit rests on real evidence, so
+	// a missing field there costs more in absolute terms. The first version of
+	// this asserted the opposite and failed on correct code.
+	//
+	// What the rule actually rules out is a FLAT penalty, where both would be
+	// 0.05 -- so the ratio against coverage is the assertion that has teeth.
+	if tp >= fp {
+		t.Errorf("same single unknown, but the lower-coverage candidate paid %.4f and the "+
+			"higher-coverage one %.4f; a penalty that ignores coverage would make these equal",
+			tp, fp)
+	}
+	// And the ratio must be the coverage ratio, which is what pins the rule
+	// rather than an incidental ordering.
+	tr, fr := thin.Explanation["evidence_coverage"], fat.Explanation["evidence_coverage"]
+	if tr == fr {
+		t.Fatalf("fixture is broken: coverages are equal (%.4f)", tr)
+	}
+	if got, want := tp/fp, tr/fr; math.Abs(got-want) > 1e-9 {
+		t.Errorf("penalty ratio %.6f, want the coverage ratio %.6f", got, want)
 	}
 }

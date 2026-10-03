@@ -75,6 +75,11 @@ type finderCandidateDTO struct {
 	Slug        string            `json:"slug"`
 	Name        string            `json:"name"`
 	Fit         float64           `json:"fit_score"`
+	// Coverage is the share of scoring weight that had evidence behind it.
+	// It travels with Fit because a fit number without it is not readable: 60%
+	// fit backed by full evidence and 60% fit backed by a third of it are
+	// different facts, and the page cannot tell them apart without this.
+	Coverage    float64           `json:"evidence_coverage"`
 	Matches     map[string]string `json:"matches"`
 	Warnings    map[string]string `json:"warnings"`
 	Unknown     []string          `json:"unknown"`
@@ -117,6 +122,15 @@ type finderAnswerRequest struct {
 }
 
 // ---------------------------------------------------------------- catalog
+
+// handleFinderPage renders the Finder shell.
+//
+// Seeded from ?seed= (§3's deep link). The value is echoed into an input's
+// value attribute by the template's own JS reading location.search, not here,
+// so a crafted seed cannot inject markup through template interpolation.
+func (s *Server) handleFinderPage(w http.ResponseWriter, r *http.Request) {
+	s.render(w, http.StatusOK, "finder", s.page("Finder"))
+}
 
 // handleFinderQuestionCatalog returns every dimension the engine can ask about,
 // with its live information gain.
@@ -363,6 +377,7 @@ func (s *Server) handleFinderResults(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, struct {
 		SessionID   string               `json:"session_id"`
 		Answers     []finder.Answer      `json:"answers"`
+		CandidateCount int               `json:"candidate_count"`
 		Candidates  []finderCandidateDTO `json:"candidates"`
 		UnknownFit  []finderCandidateDTO `json:"unknown_fit"`
 		FilteredOut []finderFilteredOut  `json:"filtered_out"`
@@ -371,6 +386,7 @@ func (s *Server) handleFinderResults(w http.ResponseWriter, r *http.Request) {
 	}{
 		SessionID:   sess.ID,
 		Answers:     sess.Answers,
+		CandidateCount: len(sess.Candidates),
 		Candidates:  toCandidateDTOs(ranked),
 		UnknownFit:  unknownFit(ranked),
 		FilteredOut: sess.Removed,
@@ -473,6 +489,7 @@ func toCandidateDTOs(ranked []finder.Ranked) []finderCandidateDTO {
 			Slug:        r.Slug,
 			Name:        r.Name,
 			Fit:         r.Fit,
+			Coverage:    r.Explanation["evidence_coverage"],
 			Matches:     r.Matches,
 			Warnings:    r.Warnings,
 			Unknown:     r.Unknown,

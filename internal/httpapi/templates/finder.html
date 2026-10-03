@@ -1,0 +1,149 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <p class="breadcrumb"><a href="/">Home</a> / <span>Finder</span></p>
+    <h1>🧞 Finder</h1>
+    <p class="lede">I'll ask a few questions to help you find software. You can
+      skip anything, go back, and see results update as we go.</p>
+  </div>
+</div>
+
+<!--
+  Three states in one page: the seed form, the question flow, and the results.
+  All three are rendered by finder.js from one state object, because splitting
+  them into three pages would mean the answers have to survive a navigation
+  and they live in a process-local session.
+
+  aria-live="assertive" on the question is deliberate rather than decorative:
+  Finder is keyboard-first (1-9, Enter, S, Esc, R, V), so a screen-reader user
+  moves between questions without a page load to announce the change.
+-->
+<div id="finder-root" aria-busy="true">
+<script src="{{ asset "/assets/js/skeleton.js" }}"></script>
+<script>
+(function(){var b=document.getElementById("finder-root");
+if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(1);}})();
+</script>
+
+  <!-- Seed -->
+  <section id="finder-seed" hidden>
+    <form id="finder-seed-form">
+      <label class="field">
+        <span class="field-label">To start, roughly what are you looking for?</span>
+        <input type="text" id="finder-seed-text" name="seed"
+               placeholder="e.g. &quot;note-taking app&quot;, &quot;kanban board&quot;, &quot;git hosting&quot;"
+               autocomplete="off">
+      </label>
+      <p class="hint">Leave it blank to browse everything and let the questions
+        do the narrowing.</p>
+      <div class="field">
+        <span class="field-label">Or pick a category:</span>
+        <div class="chip-row" id="finder-categories"></div>
+      </div>
+      <div class="actions">
+        <button type="submit" class="btn btn-primary">Start →</button>
+        <a class="btn" href="/scout">I know what I want, use Scout instead</a>
+      </div>
+    </form>
+  </section>
+
+  <!-- Question + short list -->
+  <section id="finder-flow" class="finder-layout" hidden>
+    <div class="finder-question-pane">
+      <p class="finder-progress">
+        <span id="finder-progress-text"></span>
+        <span id="finder-progress-bar" class="finder-progress-bar" role="progressbar"
+              aria-valuemin="0" aria-valuemax="100"></span>
+      </p>
+
+      <div id="finder-question" aria-live="assertive">
+        <h2 id="finder-question-text"></h2>
+        <div id="finder-options" class="finder-options" role="radiogroup"
+             aria-labelledby="finder-question-text"></div>
+
+        <details id="finder-why" class="finder-why">
+          <summary>Why this question?</summary>
+          <p id="finder-why-text"></p>
+        </details>
+
+        <div class="finder-alt-actions">
+          <button type="button" class="btn btn-ghost" data-mode="decide-later">
+            ↩ I'll decide later</button>
+          <button type="button" class="btn btn-ghost" data-mode="skip">
+            ⤼ Skip this question</button>
+        </div>
+
+        <div class="actions">
+          <button type="button" class="btn" id="finder-back">← Back</button>
+          <button type="button" class="btn btn-primary" id="finder-stop">
+            ⏹ Stop and see results</button>
+        </div>
+      </div>
+
+      <div id="finder-stop-prompt" class="finder-stop-prompt" hidden>
+        <h3>Looks like we've narrowed it down.</h3>
+        <p id="finder-stop-reason"></p>
+        <ol id="finder-stop-top"></ol>
+        <div class="actions">
+          <button type="button" class="btn btn-primary" id="finder-stop-go">See full results</button>
+          <button type="button" class="btn" id="finder-stop-keep">Keep narrowing anyway</button>
+        </div>
+      </div>
+    </div>
+
+    <aside class="finder-shortlist" id="finder-shortlist">
+      <details open>
+        <summary id="finder-shortlist-summary">Short-list</summary>
+        <ol id="finder-shortlist-items" class="finder-shortlist-items"></ol>
+        <button type="button" class="btn btn-ghost" id="finder-view-all">View all →</button>
+        <div id="finder-answers-tray" class="finder-answers-tray">
+          <h4>Your answers so far</h4>
+          <ul id="finder-answers"></ul>
+        </div>
+      </details>
+    </aside>
+  </section>
+
+  <!-- Results -->
+  <section id="finder-results" hidden>
+    <div class="page-head">
+      <h2>Finder results</h2>
+      <div class="actions">
+        <a class="btn" id="finder-export-json" download="finder-results.json">Export JSON</a>
+        <a class="btn" id="finder-export-md" download="finder-results.md">Export Markdown</a>
+      </div>
+    </div>
+
+    <div class="finder-answers-summary" id="finder-results-answers"></div>
+
+    <h3 id="finder-ranked-heading">Ranked matches</h3>
+    <ol id="finder-ranked" class="finder-ranked"></ol>
+
+    <div id="finder-unknown" class="finder-unknown" hidden>
+      <h3>Unknown fit</h3>
+      <p>We don't have enough data on these to rank them. Unknown is not
+        &ldquo;no&rdquo; — confirming a capability is what moves them.</p>
+      <ul id="finder-unknown-items"></ul>
+      <a class="btn" href="{{ asset "/projects" }}">Help by confirming capabilities →</a>
+    </div>
+
+    <div id="finder-filtered-out" class="finder-filtered-out" hidden>
+      <h3>Recently filtered out</h3>
+      <ul id="finder-filtered-items"></ul>
+    </div>
+
+    <div id="finder-nothing" class="finder-nothing" hidden>
+      <h3>Nothing matches all your constraints</h3>
+      <p id="finder-nothing-detail"></p>
+      <div class="actions">
+        <a class="btn" href="/scout">Scout: should I build this?</a>
+        <a class="btn" href="/requests/new">File a request →</a>
+      </div>
+    </div>
+  </section>
+
+  <div id="finder-error" class="finder-error" hidden role="alert"></div>
+</div>
+
+<script src="{{ asset "/assets/js/finder.js" }}"></script>
+{{end}}

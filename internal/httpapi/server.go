@@ -10,6 +10,7 @@ import (
 	"html/template"
 	"log"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -178,8 +179,15 @@ func (s *Server) loadTemplates() error {
 	// writes JSON -- so a mistyped URL returned 404 with a raw
 	// {"error": "not found"} body and not one link. The status was correct; only
 	// the presentation was missing.
+	//
+	// A template that is not listed here does not fail loudly. render() falls
+	// back to writing "<html><body><h1>finder</h1></body></html>" with HTTP
+	// 200, so adding a page without registering it produces a blank page that
+	// looks like a successful load -- which is exactly what happened when
+	// finder.html was first written. The list is the only thing standing
+	// between a new template and that failure.
 	pages := []string{"index", "search", "projects", "project", "board",
-		"login", "register", "rank", "ranking", "documents", "notfound"}
+		"login", "register", "rank", "ranking", "documents", "notfound", "finder"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -227,6 +235,12 @@ func (s *Server) render(w http.ResponseWriter, status int, name string, data any
 	w.WriteHeader(status)
 	tmpl, ok := s.pages[name]
 	if !ok {
+		// An unregistered template is a programming error, not a user error,
+		// so it must not be a 200. It used to render a near-empty page with a
+		// success status, which is indistinguishable from a working page in a
+		// browser and in a status-code test.
+		log.Printf("render %s: no such template (registered: %v)", name, s.pageNames())
+		w.WriteHeader(http.StatusInternalServerError)
 		_, _ = fmt.Fprintf(w, "<html><body><h1>%s</h1></body></html>", name)
 		return
 	}
@@ -276,6 +290,12 @@ func (s *Server) Router() http.Handler {
 	// caller has no project context yet, which is why the token identifies the
 	// project rather than the other way round.
 	r.Post("/api/v1/auth/redeem-invite", s.handleRedeemInvite)
+
+	// Finder's page. The data comes from /api/v1/finder/* at runtime, so the
+	// page is a shell that renders for anyone -- unlike the project page, which
+	// must 404 for a project the caller cannot see. There is no slug to protect
+	// and no data in the HTML.
+	r.Get("/finder", s.handleFinderPage)
 
 	// Finder (docs/specs/finder-spec.md): the question-at-a-time discovery flow.
 	//
@@ -592,4 +612,14 @@ func (s *Server) page(title string) pageData {
 
 func (s *Server) pageWithScript(title, script string) pageData {
 	return pageData{Title: title, Version: s.Version, Scripts: script}
+}
+
+// pageNames lists the registered templates, for the error path above.
+func (s *Server) pageNames() []string {
+	out := make([]string, 0, len(s.pages))
+	for n := range s.pages {
+		out = append(out, n)
+	}
+	sort.Strings(out)
+	return out
 }

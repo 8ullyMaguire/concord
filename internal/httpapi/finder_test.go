@@ -11,10 +11,12 @@ package httpapi
 import (
 	"bytes"
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"regexp"
+	"strings"
 	"testing"
 
 	"git.polarisocial.xyz/concord/concord/internal/store"
@@ -538,16 +540,28 @@ func TestSeedingWithAnUnreadableProjectIsNotFound(t *testing.T) {
 // must be non-empty whenever the catalog is thin, and must name capabilities
 // rather than projects.
 func TestTheCatalogEndpointReportsGaps(t *testing.T) {
-	ts, _ := newTestServerWithStore(t)
+	ts, db := newTestServerWithStore(t)
+	// This one was missed when the fixture was added to every other Finder
+	// test, so it ran against an EMPTY catalog and asserted "no gaps" while
+	// reporting the vacuous truth: with no projects there are no unknown fields,
+	// so an empty gap list was correct and the assertion was wrong.
+	finderFixture(t, db)
 	code, body := finderGet(t, ts, "/api/v1/finder/questions")
 	if code != http.StatusOK {
 		t.Fatalf("GET = %d", code)
 	}
 	raw, _ := json.Marshal(body)
+	// Field names taken from the live response, not invented: the first version
+	// of this test decoded into Capability/Missing, which the endpoint never
+	// sends, so every gap decoded to a zero value and the loop below asserted
+	// nothing. A test that passes on absent fields is worse than no test.
 	var out struct {
 		Gaps []struct {
-			Capability string `json:"capability"`
-			Missing    int    `json:"missing"`
+			Key           string `json:"key"`
+			Label         string `json:"label"`
+			Family        string `json:"family"`
+			UnknownFields int    `json:"unknown_fields"`
+			HeldBack      int    `json:"held_back"`
 		} `json:"gaps"`
 		Weights map[string]float64 `json:"weights"`
 	}
@@ -562,15 +576,185 @@ func TestTheCatalogEndpointReportsGaps(t *testing.T) {
 				"was never told about", w)
 		}
 	}
+	if len(out.Gaps) == 0 {
+		t.Error("no gaps reported, but the fixture asserts 2 of 3 capabilities for " +
+			"6 projects, so most fields ARE unknown; an empty gap list means the " +
+			"contribution loop (§5.3) has nothing to offer")
+	}
 	for _, g := range out.Gaps {
-		if g.Capability == "" {
+		if g.Key == "" {
 			t.Error("a gap was reported without naming a capability")
 		}
-		if g.Missing <= 0 {
-			t.Errorf("gap on %q claims %d missing; it must only appear when data is "+
-				"actually absent", g.Capability, g.Missing)
+		if g.UnknownFields <= 0 {
+			t.Errorf("gap on %q claims %d unknown fields; it must only appear when "+
+				"data is actually absent", g.Key, g.UnknownFields)
+		}
+		if g.HeldBack > g.UnknownFields {
+			t.Errorf("gap on %q claims %d held back but only %d unknown",
+				g.Key, g.HeldBack, g.UnknownFields)
 		}
 	}
 }
 
-var _ = fmt.Sprintf
+
+// The page must render and must NOT require a project the caller can see: there
+// is no slug in the URL, and the data comes from the API at runtime.
+func TestTheFinderPageRenders(t *testing.T) {
+	ts, _ := newTestServerWithStore(t)
+
+	resp, err := ts.Client().Get(ts.URL + "/finder")
+	if err != nil {
+		t.Fatalf("GET /finder: %v", err)
+	}
+	defer resp.Body.Close()
+	body, _ := io.ReadAll(resp.Body)
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /finder = %d, want 200", resp.StatusCode)
+	}
+	page := string(body)
+	// The mount points the JS needs. A missing one is a blank page with HTTP
+	// 200, which is the failure this asserts.
+	for _, id := range []string{
+		"finder-root", "finder-seed-text", "finder-seed-form",
+		"finder-question-text", "finder-options", "finder-shortlist-items",
+		"finder-answers", "finder-ranked", "finder-unknown",
+		"finder-filtered-out", "finder-error", "finder-stop",
+	} {
+		if !strings.Contains(page, `id="`+id+`"`) {
+			t.Errorf("the page has no element with id %q; finder.js will fail to "+
+				"find it and the flow renders blank", id)
+		}
+	}
+	if !strings.Contains(page, "/assets/js/finder.js") {
+		t.Error("finder.js is not referenced, so nothing is ever fetched")
+	}
+	// The deep link (§3) is handled in JS from location.search, so the input
+	// must exist and the form must not require a seed.
+	if strings.Contains(page, "required") && strings.Contains(page, "finder-seed-text") {
+		t.Error("the seed input is marked required; §4.1 allows starting with a blank seed")
+	}
+}
+
+// Every element the JS reaches for must exist, and every one it writes to must
+// not be missing on the results path. Derived from the ids in finder.js so the
+// two cannot drift.
+func TestEveryElementFinderJSUsesExistsInThePage(t *testing.T) {
+	ts, _ := newTestServerWithStore(t)
+	resp, err := ts.Client().Get(ts.URL + "/finder")
+	if err != nil {
+		t.Fatalf("GET /finder: %v", err)
+	}
+	defer resp.Body.Close()
+	pageBytes, _ := io.ReadAll(resp.Body)
+	page := string(pageBytes)
+
+	jsBytes, err := os.ReadFile("assets/js/finder.js")
+	if err != nil {
+		t.Fatalf("read finder.js: %v", err)
+	}
+	js := string(jsBytes)
+
+	re := regexp.MustCompile(`el\('(finder-[a-z-]+)'\)|getElementById\('(finder-[a-z-]+)'\)`)
+	used := map[string]bool{}
+	for _, m := range re.FindAllStringSubmatch(js, -1) {
+		if m[1] != "" {
+			used[m[1]] = true
+		} else if m[2] != "" {
+			used[m[2]] = true
+		}
+	}
+	if len(used) < 10 {
+		t.Fatalf("only found %d element ids in finder.js; the regexp is not "+
+			"matching the file's actual style any more", len(used))
+	}
+	for id := range used {
+		if id == "finder-root" {
+			continue
+		}
+		if !strings.Contains(page, `id="`+id+`"`) {
+			t.Errorf("finder.js uses #%s but the page does not define it", id)
+		}
+	}
+}
+
+// The seed view's contents are built by script, so "the page has the element"
+// is not the same as "the page shows something". This asserts the SCRIPT calls
+// its own render path at init: finder.js ended up calling only show(), which
+// left the category row empty on a page that otherwise looked fine.
+func TestFinderJSRendersTheSeedViewAtInit(t *testing.T) {
+	jsBytes, err := os.ReadFile("assets/js/finder.js")
+	if err != nil {
+		t.Fatalf("read finder.js: %v", err)
+	}
+	js := string(jsBytes)
+
+	i := strings.LastIndex(js, "show('seed');")
+	if i < 0 {
+		t.Fatal("finder.js never calls show('seed')")
+	}
+	// The executable text between show('seed') and the next statement boundary.
+	// Comments are stripped first, because a comment MENTIONING render() is not
+	// a call to it -- the first version of this test passed with the call
+	// deleted, since its own comment said "calling only show() left the category
+	// row empty" and contained the word.
+	tail := js[i:]
+	if c := strings.Index(tail, "//"); c >= 0 {
+		if nl := strings.Index(tail[c:], "\n"); nl >= 0 {
+			tail = tail[:c+nl+1]
+		} else {
+			tail = tail[:c]
+		}
+	}
+	if !strings.Contains(tail, "render()") {
+		t.Errorf("finder.js switches to the seed view and then does not call render(); "+
+			"the category picker will be empty. Statements after show('seed'): %q", tail)
+	}
+}
+
+// Guards the whole file against the failure this suite actually suffered: a
+// Finder test that builds a server but never seeds a catalog, and therefore
+// asserts vacuously. TestTheCatalogEndpointReportsGaps did exactly that -- it
+// demanded "gaps must be reported" against an empty catalog, where an empty
+// list is the correct answer, and it passed that way for several commits.
+//
+// A test may legitimately skip the fixture (routing, validation and markup
+// tests do not need candidates), so this asserts the ones that make claims
+// about candidates, questions or gaps DO have one. The allow-list is explicit:
+// an unlisted test that starts needing the fixture fails here rather than
+// quietly proving nothing.
+func TestNoFinderTestAssertsAboutCandidatesWithoutAFixture(t *testing.T) {
+	src, err := os.ReadFile("finder_test.go")
+	if err != nil {
+		t.Fatalf("read finder_test.go: %v", err)
+	}
+	// Tests that genuinely do not need a catalog, with the reason.
+	allowed := map[string]string{
+		"TestGoingBackWithNoAnswersIsRejected":      "asserts a 400 before any session has answers",
+		"TestAnInvalidAnswerModeIsRejected":         "asserts request validation, not candidate data",
+		"TestTheFinderPageRenders":                  "asserts markup and mount points",
+		"TestEveryElementFinderJSUsesExistsInThePage": "asserts JS and template agree on ids",
+		"TestFinderJSRendersTheSeedViewAtInit":      "reads the JS source, no server involved",
+		"TestNoFinderTestAssertsAboutCandidatesWithoutAFixture": "this test",
+	}
+
+	re := regexp.MustCompile(`func (Test\w+)\(t \*testing\.T\) \{`)
+	for _, m := range re.FindAllStringSubmatch(string(src), -1) {
+		name := m[1]
+		if _, ok := allowed[name]; ok {
+			continue
+		}
+		// Find the body.
+		start := strings.Index(string(src), "func "+name+"(")
+		end := strings.Index(string(src[start:]), "\n}\n")
+		if end < 0 {
+			t.Fatalf("could not delimit the body of %s", name)
+		}
+		body := string(src)[start : start+end]
+		if strings.Contains(body, "newTestServerWithStore") && !strings.Contains(body, "finderFixture") {
+			t.Errorf("%s builds a test server but never calls finderFixture, so it runs "+
+				"against an empty catalog; add the fixture, or add it to the allow-list in "+
+				"this test with a reason", name)
+		}
+	}
+}

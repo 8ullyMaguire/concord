@@ -212,12 +212,28 @@ func Gain(counts []int) float64 {
 // distribution includes what is missing rather than quietly shrinking the
 // denominator -- otherwise a dimension asserted on 2 of 70 candidates would look
 // like a clean 50/50 split.
+// countsByValue buckets candidates by a dimension's value.
+//
+// All four ways of being unusable collapse into ONE UnknownValue bucket:
+// an absent attribute, a blank value, the explicit "__unknown__" sentinel, and
+// the literal "unknown" the capability store records when somebody has said
+// "nobody knows" (store.CapUnknown). The last one was missing, and it is the
+// one that matters on real data: every Findable-capability assertion the
+// capableseed tool writes uses "unknown", so Gaps() counted zero unknown fields
+// for a catalog where most capability data was unknown -- the contribution loop
+// that §5.3 promises had nothing to offer, on an instance whose entire problem
+// is missing capability data.
+//
+// Scoring already handled the literal (line 538 checks storeUnknownWord), which
+// is why the ranking looked right and the gap report was empty: two places
+// enumerated the ways to be unknown and one of them was short.
 func countsByValue(cands []Candidate, key string) (map[string]int, int) {
 	counts := map[string]int{}
 	known := 0
 	for _, c := range cands {
 		v, ok := c.Attrs[key]
-		if !ok || strings.TrimSpace(v) == "" {
+		if !ok || strings.TrimSpace(v) == "" ||
+			v == UnknownValue || v == storeUnknownWord() {
 			counts[UnknownValue]++
 			continue
 		}
@@ -485,16 +501,26 @@ func Gaps(st State) []Gap {
 			continue
 		}
 		counts, _ := countsByValue(st.Candidates, key)
-		g := Gain(mapValues(counts))
-		if g >= MinGainBits {
-			continue // this one is askable; it is not a gap
-		}
 		family, label := classify(key)
 		// countsByValue returns (distribution, known-count). The unknown count
 		// is the distribution's own bucket, read back from it rather than
 		// recomputed: two ways to count the same thing is how a number starts
 		// disagreeing with itself.
+		// A gap is UNKNOWN DATA, not "cannot be asked about". Those are
+		// independent: a dimension can split perfectly (a great question) and
+		// still have 60% of its candidates unknown, and those 60% are exactly
+		// what §5.3 wants contributed.
+		//
+		// This used to `continue` when the dimension was askable, which made
+		// the live contribution loop appear to work for the wrong reason --
+		// cap:wip-limits showed up because its gain was 0.295, not because
+		// anything was unknown about it -- while a dimension that split badly
+		// AND happened to be fully known was reported as a gap with zero
+		// unknown fields.
 		unknown := counts[UnknownValue]
+		if unknown == 0 {
+			continue // nothing to contribute here
+		}
 		out = append(out, Gap{
 			Key:           key,
 			Label:         label,
@@ -604,12 +630,22 @@ func Score(cands []Candidate, answers []Answer) []Ranked {
 		// Capability term.
 		capTotal, capHit := 0.0, 0.0
 		for _, k := range capKeys {
+			// capTotal counts what the user ASKED, not what this candidate
+			// happens to have. An unknown field still increments it.
+			//
+			// This ordering matters: an unknown branch used to `continue` before
+			// capTotal++, so a candidate with no capability data at all had
+			// capTotal == 0 -- and the weighted sum then left out
+			// WeightCapability for it entirely. The candidate with the LEAST data
+			// lost the weight that carries its unknown penalty, so its demotion
+			// silently evaluated to zero. The rank order was still correct, which
+			// is why only the penalty assertions caught it.
 			v, present := c.Attrs[k]
+			capTotal++
 			if !present || v == "" || v == UnknownValue || v == storeUnknownWord() {
 				r.Unknown = append(r.Unknown, k)
 				continue
 			}
-			capTotal++
 
 			if want, asked := required[k]; asked {
 				switch v {
@@ -669,11 +705,12 @@ func Score(cands []Candidate, answers []Answer) []Ranked {
 				continue
 			}
 			v, present := c.Attrs[k]
+			// Same rule as capTotal: the denominator is what was asked.
+			structTotal++
 			if !present || v == "" {
 				r.Unknown = append(r.Unknown, k)
 				continue
 			}
-			structTotal++
 			if v == want {
 				structScore++
 				r.Matches[k] = v
@@ -704,24 +741,70 @@ func Score(cands []Candidate, answers []Answer) []Ranked {
 		}
 		r.Explanation["governance"] = gov
 
-		// Field report rate. Zero reports is not zero quality; it is absence of
-		// evidence, so a project with no reports is neither rewarded nor
-		// punished here beyond the unknown penalty.
+		// Field report rate, and whether there is one at all. Zero reports is
+		// not zero quality, so it is EXCLUDED from the weighted sum below
+		// rather than entering it as a zero.
 		report := c.Report
-		if c.Reports == 0 {
-			report = 0
+		haveReport := c.Reports > 0
+		if !haveReport {
 			r.Unknown = append(r.Unknown, "field-reports")
 		}
 		r.Explanation["field_report"] = report
 
-		// Arena standing.
+		// Arena standing, and whether there is one. Same treatment: no arena
+		// that ranks projects is absence of evidence, not a score of zero.
+		haveArena := c.ArenaR > 0
 		r.Explanation["arena"] = c.ArenaR
 
-		fit := WeightCapability*capScore +
-			WeightPlatform*platform +
-			WeightGovernance*gov +
-			WeightFieldReport*report +
-			WeightArena*c.ArenaR
+		// WEIGHTED SUM RENORMALISED OVER AVAILABLE EVIDENCE.
+		//
+		// This used to be a plain weighted sum, and on the live instance it
+		// labelled a project that matched EVERY answer 15% fit -- because the
+		// two terms there was no evidence for (field reports, arena standing)
+		// contributed 0.25 + 0.20 of pure absence to the total. The rank order
+		// was still right, but the number told the user a perfect match was
+		// bad, which is the opposite of what §4.5 shows them.
+		//
+		// Missing evidence now leaves both the numerator and the denominator,
+		// so absence can no longer drag a candidate down. What the user still
+		// needs to know is how thin the evidence was, and that is reported
+		// separately as coverage rather than hidden in a deflated percentage.
+		// A term whose denominator is zero is a term for evidence that does not
+		// exist, so it leaves the weighted sum entirely -- not just the
+		// numerator. capScore is 0 whenever the user asked no capability
+		// questions, yet WeightCapability stayed in `den`, so a candidate that
+		// matched every question it was asked scored 0.65 instead of 1.0:
+		// 0.35 of the total was a term for questions nobody asked. Same defect
+		// as the arena term, one layer up.
+		num, den := 0.0, 0.0
+		if capTotal > 0 {
+			num += WeightCapability * capScore
+			den += WeightCapability
+		}
+		if structTotal > 0 {
+			num += WeightPlatform * platform
+			den += WeightPlatform
+		}
+		if _, asked := required["governance"]; asked {
+			if v, present := c.Attrs["governance"]; present && v != "" {
+				num += WeightGovernance * gov
+				den += WeightGovernance
+			}
+		}
+		if haveReport {
+			num += WeightFieldReport * report
+			den += WeightFieldReport
+		}
+		if haveArena {
+			num += WeightArena * c.ArenaR
+			den += WeightArena
+		}
+		// No evidence at all cannot produce a number; 0 is the only honest
+		// value, and it is reachable only if nothing is known about anything.
+		fit := 0.0
+		if den > 0 {
+			fit = num / den
+		}
 
 		// Soft preference bonus for the structured dimensions a user deferred:
 		// matching a stated preference adds a little, having it recorded as
@@ -751,11 +834,26 @@ func Score(cands []Candidate, answers []Answer) []Ranked {
 		}
 		r.Explanation["soft_preference"] = bonus
 
-		// Unknown penalty: demote, never drop. Deduplicated, because a
-		// dimension can be both scored (capability term) and unknown, and
-		// penalising it twice for one missing field is a penalty for the
-		// catalog's gaps rather than for anything about the candidate.
-		penalty := -UnknownPenalty * float64(len(r.Unknown))
+		// Coverage: the share of total weight that had evidence behind it. This
+		// is what makes a non-100% fit legible -- "100% of what we know, and we
+		// know 36% of it" is a different statement from "36% fit", and the user
+		// needs both to tell a well-evidenced match from a lucky one.
+		//
+		// Computed before the penalty because the penalty scales by it.
+		coverage := 0.0
+		totalWeight := WeightCapability + WeightPlatform + WeightGovernance + WeightFieldReport + WeightArena
+		if totalWeight > 0 {
+			coverage = den / totalWeight
+		}
+		r.Explanation["evidence_coverage"] = coverage
+
+		// Unknown penalty: demote, never drop. Scaled BY COVERAGE, because the
+		// renormalised sum has already priced missing evidence -- an unknown
+		// field keeps its term out of both the numerator and the denominator.
+		// Subtracting a flat UnknownPenalty on top charged for the same missing
+		// field twice, and did it in absolute units, so a large penalty could
+		// outrun the signal it was meant to modulate.
+		penalty := -UnknownPenalty * float64(len(r.Unknown)) * coverage
 		r.Explanation["unknown_penalty"] = penalty
 
 		fit += bonus

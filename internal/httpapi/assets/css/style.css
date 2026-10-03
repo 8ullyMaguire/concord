@@ -1218,3 +1218,64 @@ textarea:focus-visible {
 .skeleton-lines > span:nth-child(2) { width: 92%; }
 .skeleton-lines > span:nth-child(3) { width: 78%; }
 .skeleton-lines > span:nth-child(4) { width: 85%; }
+
+/* ---------------------------------------------------------------- Finder
+   Two panes on desktop, one column on mobile (§4.2).
+
+   The short-list is deliberately NOT sticky on desktop: it is a live result,
+   not navigation, and a sticky result panel that reorders itself under the
+   cursor while someone is reading a question is worse than one that moves.
+   On mobile it becomes a collapsible summary at the top so the count stays
+   visible while answering. */
+.finder-layout { display: grid; grid-template-columns: 3fr 2fr; gap: 2rem; align-items: start; }
+.finder-question-pane { min-width: 0; }
+@media (max-width: 860px) {
+  .finder-layout { grid-template-columns: 1fr; }
+  .finder-shortlist { order: -1; }
+}
+.finder-progress { display: flex; align-items: center; gap: 0.75rem; color: var(--slate-500); font-size: 0.875rem; }
+.finder-progress-bar { display: inline-block; height: 6px; width: 120px; background: var(--slate-200); border-radius: 3px; overflow: hidden; position: relative; }
+.finder-progress-bar::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 0; background: var(--indigo); transition: width 0.25s ease; }
+.finder-progress-bar[style] { background: var(--slate-200); }
+#finder-options { display: flex; flex-direction: column; gap: 0.5rem; margin: 1.25rem 0; }
+.finder-option {
+  display: flex; align-items: center; gap: 0.75rem; text-align: left;
+  padding: 0.75rem 1rem; background: #fff; border: 1px solid var(--slate-200);
+  border-radius: 8px; cursor: pointer; font-size: 1rem; color: var(--ink);
+}
+.finder-option:hover { border-color: var(--indigo-border); background: var(--slate-100); }
+.finder-option:focus-visible { outline: 2px solid var(--indigo); outline-offset: 2px; }
+.finder-option.selected { border-color: var(--indigo); background: var(--indigo-light); }
+.finder-option-key { display: inline-flex; align-items: center; justify-content: center; width: 1.5rem; height: 1.5rem; border-radius: 4px; background: var(--slate-100); color: var(--slate-600); font-size: 0.8125rem; flex-shrink: 0; }
+.finder-option.selected .finder-option-key { background: var(--indigo); color: #fff; }
+.finder-option-any { border-style: dashed; color: var(--slate-500); }
+.finder-why { margin: 1rem 0; color: var(--slate-600); font-size: 0.875rem; }
+.finder-why summary { cursor: pointer; }
+.finder-alt-actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.finder-shortlist { background: #fff; border: 1px solid var(--slate-200); border-radius: 8px; padding: 1rem; }
+.finder-shortlist summary { font-weight: 600; cursor: pointer; }
+.finder-shortlist-items { list-style: none; margin: 0.75rem 0; padding: 0; display: flex; flex-direction: column; gap: 0.375rem; }
+.finder-shortlist-item { display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.9375rem; }
+.finder-rank { color: var(--slate-400); font-variant-numeric: tabular-nums; flex-shrink: 0; }
+.finder-fit { margin-left: auto; color: var(--slate-500); font-variant-numeric: tabular-nums; font-size: 0.8125rem; }
+.finder-warn { color: var(--amber-600, #b45309); font-size: 0.75rem; flex-basis: 100%; }
+.finder-answers-tray { border-top: 1px solid var(--slate-200); margin-top: 0.75rem; padding-top: 0.75rem; font-size: 0.8125rem; }
+.finder-answers-tray ul { list-style: none; margin: 0.5rem 0 0; padding: 0; color: var(--slate-600); }
+.finder-mode { color: var(--slate-400); }
+/* §4.3 step 1: removed items fade, new rankings slide. Applied only when the
+   count actually changed (see finder.js), so a re-render of identical content
+   does not flash. */
+.finder-changed { animation: finder-slide 0.28s ease; }
+@keyframes finder-slide { from { opacity: 0.35; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.finder-stop-prompt { background: var(--slate-100); border: 1px solid var(--slate-200); border-radius: 8px; padding: 1rem 1.25rem; margin: 1.5rem 0; }
+.finder-stop-prompt h3 { margin-top: 0; }
+.finder-stop-prompt ol { color: var(--slate-600); }
+.finder-ranked { list-style: none; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
+.finder-result { display: flex; align-items: baseline; gap: 0.5rem; padding: 0.75rem; background: #fff; border: 1px solid var(--slate-200); border-radius: 8px; }
+.finder-unknown, .finder-filtered-out, .finder-nothing { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--slate-200); }
+.finder-error { margin-top: 1.5rem; padding: 0.75rem 1rem; background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; color: #991b1b; }
+.chip-row { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.chip { padding: 0.375rem 0.75rem; border: 1px solid var(--slate-200); border-radius: 999px; background: #fff; cursor: pointer; font-size: 0.875rem; }
+.chip-on { border-color: var(--indigo); background: var(--indigo-light); color: var(--indigo-hover); }
+@media (prefers-reduced-motion: reduce) { .finder-changed { animation: none; } .finder-progress-bar::after { transition: none; } }
+.finder-thin { color: var(--slate-400); font-size: 0.75rem; }
