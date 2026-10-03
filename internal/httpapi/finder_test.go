@@ -88,35 +88,35 @@ func finderFixture(t *testing.T, st *store.DB) {
 }
 
 type finderQ struct {
-	Key   string `json:"key"`
-	Kind  string `json:"kind"`
-	Gain  float64 `json:"gain_bits"`
-	Ask   bool   `json:"askable"`
-	Opts  []string `json:"values_present"`
+	Key  string   `json:"key"`
+	Kind string   `json:"kind"`
+	Gain float64  `json:"gain_bits"`
+	Ask  bool     `json:"askable"`
+	Opts []string `json:"values_present"`
 }
 
 type finderStateRes struct {
-	SessionID       string `json:"session_id"`
-	CandidateCount  int    `json:"candidate_count"`
-	InitialCount    int    `json:"initial_candidate_count"`
-	QuestionsAsked  int    `json:"questions_asked"`
-	ShouldStop      bool   `json:"should_suggest_stop"`
-	StopReason      string `json:"stop_reason"`
-	Persisted       bool   `json:"persisted"`
-	Question        *struct {
-		Key      string          `json:"key"`
-		Text     string          `json:"text"`
-		WhyAsked string          `json:"why_asked"`
+	SessionID      string `json:"session_id"`
+	CandidateCount int    `json:"candidate_count"`
+	InitialCount   int    `json:"initial_candidate_count"`
+	QuestionsAsked int    `json:"questions_asked"`
+	ShouldStop     bool   `json:"should_suggest_stop"`
+	StopReason     string `json:"stop_reason"`
+	Persisted      bool   `json:"persisted"`
+	Question       *struct {
+		Key      string `json:"key"`
+		Text     string `json:"text"`
+		WhyAsked string `json:"why_asked"`
 		Options  []struct {
 			ID     string `json:"id"`
 			Impact int    `json:"impact_if_chosen"`
 		} `json:"options"`
 	} `json:"question"`
 	Top []struct {
-		Slug    string             `json:"slug"`
-		Fit     float64            `json:"fit_score"`
-		Unknown []string           `json:"unknown"`
-		Matches map[string]string  `json:"matches"`
+		Slug    string            `json:"slug"`
+		Fit     float64           `json:"fit_score"`
+		Unknown []string          `json:"unknown"`
+		Matches map[string]string `json:"matches"`
 	} `json:"top_candidates"`
 }
 
@@ -167,8 +167,8 @@ func TestFinderOnlyOffersOptionsTheCatalogCanDeliver(t *testing.T) {
 	}
 
 	var cat struct {
-		CandidateCount int        `json:"candidate_count"`
-		MinGainBits    float64    `json:"min_gain_bits"`
+		CandidateCount int       `json:"candidate_count"`
+		MinGainBits    float64   `json:"min_gain_bits"`
 		Dimensions     []finderQ `json:"dimensions"`
 	}
 	raw, _ := json.Marshal(body)
@@ -596,7 +596,6 @@ func TestTheCatalogEndpointReportsGaps(t *testing.T) {
 	}
 }
 
-
 // The page must render and must NOT require a project the caller can see: there
 // is no slug in the URL, and the data comes from the API at runtime.
 func TestTheFinderPageRenders(t *testing.T) {
@@ -730,11 +729,11 @@ func TestNoFinderTestAssertsAboutCandidatesWithoutAFixture(t *testing.T) {
 	}
 	// Tests that genuinely do not need a catalog, with the reason.
 	allowed := map[string]string{
-		"TestGoingBackWithNoAnswersIsRejected":      "asserts a 400 before any session has answers",
-		"TestAnInvalidAnswerModeIsRejected":         "asserts request validation, not candidate data",
-		"TestTheFinderPageRenders":                  "asserts markup and mount points",
-		"TestEveryElementFinderJSUsesExistsInThePage": "asserts JS and template agree on ids",
-		"TestFinderJSRendersTheSeedViewAtInit":      "reads the JS source, no server involved",
+		"TestGoingBackWithNoAnswersIsRejected":                  "asserts a 400 before any session has answers",
+		"TestAnInvalidAnswerModeIsRejected":                     "asserts request validation, not candidate data",
+		"TestTheFinderPageRenders":                              "asserts markup and mount points",
+		"TestEveryElementFinderJSUsesExistsInThePage":           "asserts JS and template agree on ids",
+		"TestFinderJSRendersTheSeedViewAtInit":                  "reads the JS source, no server involved",
 		"TestNoFinderTestAssertsAboutCandidatesWithoutAFixture": "this test",
 	}
 

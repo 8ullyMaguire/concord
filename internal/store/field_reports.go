@@ -32,10 +32,10 @@ import (
 
 // Field report outcomes (§4.7's four).
 const (
-	ReportWorked     = "worked"
-	ReportCaveats    = "worked-with-caveats"
-	ReportAbandoned  = "abandoned"
-	ReportMigrated   = "migrated-away"
+	ReportWorked    = "worked"
+	ReportCaveats   = "worked-with-caveats"
+	ReportAbandoned = "abandoned"
+	ReportMigrated  = "migrated-away"
 )
 
 // CaveatCredit is how much a 'worked with caveats' report counts toward the
@@ -183,9 +183,9 @@ const fieldReportSelect = `
 
 func scanFieldReport(sc interface{ Scan(...any) error }) (FieldReport, error) {
 	var (
-		r     FieldReport
-		rm    int
-		ct    float64
+		r  FieldReport
+		rm int
+		ct float64
 	)
 	if err := sc.Scan(&r.ID, &r.ProjectID, &r.UserID, &r.Version, &r.UseCase,
 		&r.Environment, &r.Scale, &r.Duration, &r.Outcome, &r.MigratedTo,
@@ -378,9 +378,9 @@ func (d *DB) FieldReportOutcomeRate(ctx context.Context, projectID int64) (float
 	var n int
 	for rows.Next() {
 		var (
-			uid   int64
-			out   string
-			rep   float64
+			uid int64
+			out string
+			rep float64
 		)
 		if err := rows.Scan(&uid, &out, &rep); err != nil {
 			return 0, 0, err

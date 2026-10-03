@@ -36,11 +36,11 @@ import (
 // specific projects. Assertions are keyed by project slug so the file stays
 // readable and does not depend on autoincrement ids.
 type seedCapability struct {
-	Key      string   `json:"key"`
-	Label    string   `json:"label"`
-	Category string   `json:"category"`
-	Kind     string   `json:"kind"`
-	Values   []string `json:"values,omitempty"`
+	Key      string            `json:"key"`
+	Label    string            `json:"label"`
+	Category string            `json:"category"`
+	Kind     string            `json:"kind"`
+	Values   []string          `json:"values,omitempty"`
 	Assert   map[string]string `json:"assert,omitempty"`
 }
 

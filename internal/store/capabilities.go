@@ -36,12 +36,12 @@ import (
 
 // Capability states. The assertion value set and the confirmation quorum.
 const (
-	CapYes      = "yes"
-	CapPartial  = "partial"
-	CapNo       = "no"
-	CapUnknown  = "unknown"
-	CapBoolean  = "boolean"
-	CapEnum     = "enum"
+	CapYes     = "yes"
+	CapPartial = "partial"
+	CapNo      = "no"
+	CapUnknown = "unknown"
+	CapBoolean = "boolean"
+	CapEnum    = "enum"
 
 	// CapStateAsserted is a claim nobody outside its author has backed.
 	CapStateAsserted = "asserted"
@@ -217,7 +217,7 @@ func sameValues(a, b []string) bool {
 func (d *DB) GetCapability(ctx context.Context, key string) (Capability, error) {
 	key = NormalizeCapabilityKey(key)
 	var (
-		c      Capability
+		c       Capability
 		rawVals string
 	)
 	err := d.QueryRowContext(ctx,

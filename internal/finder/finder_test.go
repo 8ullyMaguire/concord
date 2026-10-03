@@ -923,7 +923,7 @@ func TestAMatchIsNotScoredAsAMismatchWhenEvidenceIsMissing(t *testing.T) {
 	}
 	perfect := Candidate{
 		ProjectID: 1, Slug: "perfect",
-		Attrs:  map[string]string{"language": "rust", "governance": "collective"},
+		Attrs: map[string]string{"language": "rust", "governance": "collective"},
 		// No field reports, no arena standing: the live situation.
 	}
 	got := Score([]Candidate{perfect}, answers)

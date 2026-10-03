@@ -34,11 +34,11 @@ const (
 
 // Filtering modes: the two that actually remove candidates.
 const (
-	ModeYes   = "yes"
-	ModeNo    = "no"
-	ModeAny   = "any"
-	ModePart  = "partial"
-	ModeOff   = "off"
+	ModeYes  = "yes"
+	ModeNo   = "no"
+	ModeAny  = "any"
+	ModePart = "partial"
+	ModeOff  = "off"
 )
 
 // Dimension families. Used for the diversity rule and for grouping the question
@@ -111,10 +111,10 @@ type Option struct {
 
 // Dimension is a question the engine can ask about the candidate set.
 type Dimension struct {
-	Key     string   `json:"key"`   // "cap:wip-limits" | "language" | "governance"
+	Key     string   `json:"key"` // "cap:wip-limits" | "language" | "governance"
 	Family  string   `json:"family"`
 	Label   string   `json:"label"`
-	Kind    string   `json:"kind"`   // "single" | "tri-state"
+	Kind    string   `json:"kind"` // "single" | "tri-state"
 	Options []Option `json:"options"`
 	// GainBits is the expected information gain of asking this dimension now.
 	GainBits float64 `json:"gain_bits"`
@@ -154,10 +154,10 @@ type Answer struct {
 // Ranked is a scored candidate with the reasoning that produced the score.
 type Ranked struct {
 	Candidate
-	Fit        float64            `json:"fit"`
-	Matches    map[string]string  `json:"matches"`
-	Warnings   map[string]string  `json:"warnings"`
-	Unknown    []string           `json:"unknown"`
+	Fit         float64            `json:"fit"`
+	Matches     map[string]string  `json:"matches"`
+	Warnings    map[string]string  `json:"warnings"`
+	Unknown     []string           `json:"unknown"`
 	Explanation map[string]float64 `json:"explanation"`
 }
 

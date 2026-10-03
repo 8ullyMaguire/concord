@@ -37,16 +37,16 @@ import (
 // an exploration nobody committed to is the honest behaviour rather than a
 // silent failure — the client is told the session is not persisted.
 type finderSession struct {
-	ID         string
-	Seed       finderSeed
-	Candidates []finder.Candidate
-	Answers    []finder.Answer
-	Asked      map[string]bool
-	Depth      int
-	LastFamily string
+	ID           string
+	Seed         finderSeed
+	Candidates   []finder.Candidate
+	Answers      []finder.Answer
+	Asked        map[string]bool
+	Depth        int
+	LastFamily   string
 	InitialCount int
-	Removed    []finderFilteredOut
-	CreatedAt  time.Time
+	Removed      []finderFilteredOut
+	CreatedAt    time.Time
 }
 
 type finderSeed struct {
@@ -58,61 +58,61 @@ type finderSeed struct {
 // `firstQuestion` / `nextQuestion`; impact is computed server-side because it
 // depends on the live candidate distribution, so the client cannot derive it.
 type finderQuestionDTO struct {
-	ID          string          `json:"id"`
-	Key         string          `json:"key"`
-	Family      string          `json:"family"`
-	Text        string          `json:"text"`
-	Kind        string          `json:"kind"`
-	Options     []finder.Option `json:"options"`
-	GainBits    float64         `json:"expected_information_gain"`
-	KnownFrac   float64         `json:"known_fraction"`
-	CanSkip     bool            `json:"can_skip"`
-	WhyAsked    string          `json:"why_asked"`
+	ID        string          `json:"id"`
+	Key       string          `json:"key"`
+	Family    string          `json:"family"`
+	Text      string          `json:"text"`
+	Kind      string          `json:"kind"`
+	Options   []finder.Option `json:"options"`
+	GainBits  float64         `json:"expected_information_gain"`
+	KnownFrac float64         `json:"known_fraction"`
+	CanSkip   bool            `json:"can_skip"`
+	WhyAsked  string          `json:"why_asked"`
 }
 
 type finderCandidateDTO struct {
-	ProjectID   int64             `json:"project_id"`
-	Slug        string            `json:"slug"`
-	Name        string            `json:"name"`
-	Fit         float64           `json:"fit_score"`
+	ProjectID int64   `json:"project_id"`
+	Slug      string  `json:"slug"`
+	Name      string  `json:"name"`
+	Fit       float64 `json:"fit_score"`
 	// Coverage is the share of scoring weight that had evidence behind it.
 	// It travels with Fit because a fit number without it is not readable: 60%
 	// fit backed by full evidence and 60% fit backed by a third of it are
 	// different facts, and the page cannot tell them apart without this.
-	Coverage    float64           `json:"evidence_coverage"`
-	Matches     map[string]string `json:"matches"`
-	Warnings    map[string]string `json:"warnings"`
-	Unknown     []string          `json:"unknown"`
+	Coverage    float64            `json:"evidence_coverage"`
+	Matches     map[string]string  `json:"matches"`
+	Warnings    map[string]string  `json:"warnings"`
+	Unknown     []string           `json:"unknown"`
 	Explanation map[string]float64 `json:"explanation"`
 }
 
 type finderStateDTO struct {
-	SessionID       string                `json:"session_id"`
-	CandidateCount  int                   `json:"candidate_count"`
-	InitialCount    int                   `json:"initial_candidate_count"`
-	Asked           int                   `json:"questions_asked"`
-	Question        *finderQuestionDTO    `json:"question"`
-	TopCandidates   []finderCandidateDTO  `json:"top_candidates"`
-	ShouldSuggestStop bool                `json:"should_suggest_stop"`
-	StopReason      string                `json:"stop_reason"`
-	Gaps            []finder.Gap          `json:"gaps"`
-	Weights         map[string]float64    `json:"weights"`
-	Answered        []finder.Answer       `json:"answers"`
-	FilteredOut     []finderFilteredOut   `json:"filtered_out"`
-	Persisted       bool                  `json:"persisted"`
+	SessionID         string               `json:"session_id"`
+	CandidateCount    int                  `json:"candidate_count"`
+	InitialCount      int                  `json:"initial_candidate_count"`
+	Asked             int                  `json:"questions_asked"`
+	Question          *finderQuestionDTO   `json:"question"`
+	TopCandidates     []finderCandidateDTO `json:"top_candidates"`
+	ShouldSuggestStop bool                 `json:"should_suggest_stop"`
+	StopReason        string               `json:"stop_reason"`
+	Gaps              []finder.Gap         `json:"gaps"`
+	Weights           map[string]float64   `json:"weights"`
+	Answered          []finder.Answer      `json:"answers"`
+	FilteredOut       []finderFilteredOut  `json:"filtered_out"`
+	Persisted         bool                 `json:"persisted"`
 }
 
 type finderFilteredOut struct {
-	Slug    string `json:"slug"`
-	Name    string `json:"name"`
+	Slug    string   `json:"slug"`
+	Name    string   `json:"name"`
 	Reasons []string `json:"reasons"`
 	Filters []string `json:"filters"`
 }
 
 type finderStartRequest struct {
-	Text           string   `json:"text"`
-	Category       string   `json:"category"`
-	SeedCandidates []int64  `json:"seed_candidates"`
+	Text           string  `json:"text"`
+	Category       string  `json:"category"`
+	SeedCandidates []int64 `json:"seed_candidates"`
 }
 
 type finderAnswerRequest struct {
@@ -158,10 +158,10 @@ func (s *Server) handleFinderQuestionCatalog(w http.ResponseWriter, r *http.Requ
 		Options       []string `json:"values_present"`
 	}
 	out := struct {
-		CandidateCount int     `json:"candidate_count"`
-		MinGainBits    float64 `json:"min_gain_bits"`
-		Dimensions     []entry `json:"dimensions"`
-		Gaps           []finder.Gap `json:"gaps"`
+		CandidateCount int                `json:"candidate_count"`
+		MinGainBits    float64            `json:"min_gain_bits"`
+		Dimensions     []entry            `json:"dimensions"`
+		Gaps           []finder.Gap       `json:"gaps"`
 		Weights        map[string]float64 `json:"weights"`
 	}{
 		CandidateCount: len(projects),
@@ -375,23 +375,23 @@ func (s *Server) handleFinderResults(w http.ResponseWriter, r *http.Request) {
 	}
 	ranked := finder.Score(sess.Candidates, sess.Answers)
 	writeJSON(w, http.StatusOK, struct {
-		SessionID   string               `json:"session_id"`
-		Answers     []finder.Answer      `json:"answers"`
-		CandidateCount int               `json:"candidate_count"`
-		Candidates  []finderCandidateDTO `json:"candidates"`
-		UnknownFit  []finderCandidateDTO `json:"unknown_fit"`
-		FilteredOut []finderFilteredOut  `json:"filtered_out"`
-		Gaps        []finder.Gap         `json:"gaps"`
-		Weights     map[string]float64   `json:"weights"`
+		SessionID      string               `json:"session_id"`
+		Answers        []finder.Answer      `json:"answers"`
+		CandidateCount int                  `json:"candidate_count"`
+		Candidates     []finderCandidateDTO `json:"candidates"`
+		UnknownFit     []finderCandidateDTO `json:"unknown_fit"`
+		FilteredOut    []finderFilteredOut  `json:"filtered_out"`
+		Gaps           []finder.Gap         `json:"gaps"`
+		Weights        map[string]float64   `json:"weights"`
 	}{
-		SessionID:   sess.ID,
-		Answers:     sess.Answers,
+		SessionID:      sess.ID,
+		Answers:        sess.Answers,
 		CandidateCount: len(sess.Candidates),
-		Candidates:  toCandidateDTOs(ranked),
-		UnknownFit:  unknownFit(ranked),
-		FilteredOut: sess.Removed,
-		Gaps:        finder.Gaps(finder.State{Candidates: sess.Candidates, Asked: sess.Asked}),
-		Weights:     finder.WeightReport(),
+		Candidates:     toCandidateDTOs(ranked),
+		UnknownFit:     unknownFit(ranked),
+		FilteredOut:    sess.Removed,
+		Gaps:           finder.Gaps(finder.State{Candidates: sess.Candidates, Asked: sess.Asked}),
+		Weights:        finder.WeightReport(),
 	})
 }
 
@@ -409,17 +409,17 @@ func (s *Server) finderState(sess *finderSession) finderStateDTO {
 
 	stop, reason := finder.ShouldStop(st)
 	out := finderStateDTO{
-		SessionID:        sess.ID,
-		CandidateCount:   len(sess.Candidates),
-		InitialCount:     sess.InitialCount,
-		Asked:            sess.Depth,
+		SessionID:         sess.ID,
+		CandidateCount:    len(sess.Candidates),
+		InitialCount:      sess.InitialCount,
+		Asked:             sess.Depth,
 		ShouldSuggestStop: stop,
-		StopReason:       reason,
-		Gaps:             finder.Gaps(st),
-		Weights:          finder.WeightReport(),
-		Answered:         sess.Answers,
-		FilteredOut:      sess.Removed,
-		Persisted:        false,
+		StopReason:        reason,
+		Gaps:              finder.Gaps(st),
+		Weights:           finder.WeightReport(),
+		Answered:          sess.Answers,
+		FilteredOut:       sess.Removed,
+		Persisted:         false,
 	}
 
 	ranked := finder.Score(sess.Candidates, sess.Answers)

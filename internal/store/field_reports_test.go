@@ -373,7 +373,7 @@ func TestARemovedReportDoesNotCountTowardTheOutcomeRate(t *testing.T) {
 }
 
 // The environment index needs an environment. A report filed without one must
-// not create a "" bucket, or "worked for 83% of reporters on ''" is a sentence
+// not create a "" bucket, or "worked for 83% of reporters on ”" is a sentence
 // the UI can render.
 func TestAReportWithNoEnvironmentDoesNotCreateAnEmptyBucket(t *testing.T) {
 	store, _, pid := reportFixture(t)
