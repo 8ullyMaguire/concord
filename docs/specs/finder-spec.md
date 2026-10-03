@@ -326,7 +326,7 @@ POST /api/v1/finder/sessions/{id}/answer → candidate count, top candidates, ne
 POST /api/v1/finder/sessions/{id}/back   → recompute, do not replay
 POST /api/v1/finder/sessions/{id}/lift   → remove one filter, re-rank
 POST /api/v1/finder/sessions/{id}/results → full ranked results
-GET  /api/v1/finder/questions/catalog    → every question the engine can ask, with live gain
+GET  /api/v1/finder/questions         → every question the engine can ask, with live gain
 ```
 
 **Sessions live in memory, not in the database.** Finder §4.6 offers "Save a
@@ -336,7 +336,7 @@ whose only durable need is "a list of answers". An in-memory session is lost on
 restart, which for an unsaved exploration is the honest behaviour. Recorded as a
 decision, not an omission.
 
-`GET /api/v1/finder/questions/catalog` exists for the honest reason that
+`GET /api/v1/finder/questions` exists for the honest reason that
 "Finder never asks about an option the catalog can't actually deliver" (§5.4) is
 untestable at the UI level but is one query away at the API level.
 
@@ -363,14 +363,59 @@ the others and is the argument for revisiting that decision later.
    count compared before and after and no index lost (the method the visibility
    note established, and the one that caught seven dropped indexes elsewhere).
 3. Every §3.3 and §4.3 AC has a named test that fails when its rule is broken.
-4. `GET /api/v1/finder/questions/catalog` on the live instance returns the real
+4. `GET /api/v1/finder/questions` on the live instance returns the real
    dimensions with real gains, and no dimension with 0.00 bits is askable.
 5. A seeded capability set exists for at least three categories, so the engine
    has more than one possible question to ask.
 6. The Finder page is opened in a browser and driven end to end.
 7. `docs/HANDOFF.md` and `docs/PLAN-r4.md` updated: R5 shipped, R8 added.
 
-## 9. The GraphQL contracts, recorded
+## 9. What the live run changed
+
+The DoD asked for the page to be opened in a browser. It was, against a copy of
+the live database with 12 capabilities seeded, and the run found four defects
+that the test suite as it stood could not. They are recorded here because each
+one changed a rule in this document rather than only fixing a line of code.
+
+**§5.2 changed.** `fit` is now a weighted sum **renormalised over available
+evidence**, with `evidence_coverage` reported beside it. A candidate matching
+every answer used to score 0.15 on this instance, because the field-report and
+arena terms — both of which this instance has no data for — contributed 0.45 of
+pure zero. The rule is: a term with no denominator leaves the sum entirely, in
+both numerator and denominator. "Unknown" must never be evidence *against* a
+candidate; it is the absence of evidence, and absence is priced by dividing, not
+by subtracting.
+
+**§3.3 gained a sibling case.** `capTotal` counts what the user **asked**, not
+what a candidate happens to have data for. It did the latter, so the candidate
+with the least data lost the weight carrying its own unknown penalty and was
+never demoted at all.
+
+**§3.3's gaps are about unknown data, not askability.** `Gaps()` previously
+skipped every dimension whose gain cleared the threshold, which made the
+contribution loop look functional for the wrong reason: a capability appeared as
+a "gap" because its gain was 0.295, not because anything was unknown about it.
+A dimension can be an excellent question *and* have 60% of its candidates
+unknown, and those 60% are precisely what §5.3 wants contributed.
+
+**§2.4 has a sharper statement than "never remove".** The engine counts a stored
+`unknown` (the capability matrix's own value for *somebody recorded that nobody
+knows*) as an unknown bucket. It did not, and the two places that enumerated
+"the ways to be unknown" were written independently, so one was short.
+
+**Live numbers, for the record.** 70 candidates, 12 dimensions derived, 3
+askable: `language` at 2.71 bits, `governance` at 0.51, `license` at 0.37. The
+other nine are between 0.11 and 0.30 bits and are correctly *not* offered — on
+this instance there is nothing else worth asking. 11 capability gaps reported.
+70 → 27 → 22 candidates across two answers, with the top match at "99% fit on
+20% of the evidence".
+
+The engine reporting that only 3 of 12 dimensions are worth asking is the
+correct outcome on this data, not a defect: it is §2.1 refusing to waste the
+user's time. An Akinator needs 20–30 bits of entropy to work; this catalog has
+4.68 across every hard-constraint dimension.
+
+## 10. The GraphQL contracts, recorded
 
 The Finder spec's §8 contracts map one-to-one onto §6. The one shape difference
 worth stating: `impactIfChosen` is computed server-side and returned, not derived

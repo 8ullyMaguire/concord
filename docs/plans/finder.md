@@ -357,7 +357,7 @@ Routes (finder-spec §6). Session state in memory behind a `sync.RWMutex` on the
 already known to have a 100 req/min process-global rate limit, so a Finder
 session's ten answers cost ten of the budget — stated, not worked around.
 
-`GET /api/v1/finder/questions/catalog` calls `finder.NextQuestion` against the
+`GET /api/v1/finder/questions` calls `finder.NextQuestion` against the
 whole catalog and returns every dimension with its **live gain**, so "Finder
 never asks about an option the catalog can't deliver" is one curl away from
 being checked.
@@ -466,7 +466,7 @@ ssh thinkcentre 'sqlite3 ~/.local/share/concord/concord.db "select count(*) from
 # expect: 22
 ssh thinkcentre 'sqlite3 ~/.local/share/concord/concord.db "select count(*) from capabilities;"'
 # expect: > 0 after seeding
-ssh thinkcentre 'curl -s http://127.0.0.1:8006/api/v1/finder/questions/catalog | head -c 400'
+ssh thinkcentre 'curl -s http://127.0.0.1:8006/api/v1/finder/questions | head -c 400'
 # expect: real dimensions with real gain values, NOT {"error":"not found"}
 ```
 
