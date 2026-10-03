@@ -1,0 +1,52 @@
+[
+ {
+  "name": "quorum lowered to 1",
+  "old": "\tCapQuorum = 2",
+  "new": "\tCapQuorum = 1"
+ },
+ {
+  "name": "dispute quorum lowered to 1",
+  "old": "\tCapDisputeQuorum = 2",
+  "new": "\tCapDisputeQuorum = 1"
+ },
+ {
+  "name": "unknown absent from the boolean value set",
+  "old": "\t\treturn []string{CapYes, CapPartial, CapNo, CapUnknown}, nil",
+  "new": "\t\treturn []string{CapYes, CapPartial, CapNo}, nil"
+ },
+ {
+  "name": "value check removed",
+  "old": "\tif !allowedValue(cap, value) {",
+  "new": "\tif false {"
+ },
+ {
+  "name": "author may confirm own assertion",
+  "old": "\tif a.AssertedBy == userID {",
+  "new": "\tif false {"
+ },
+ {
+  "name": "assertion upsert no longer updates",
+  "old": "ON CONFLICT(capability, project_id) DO UPDATE SET",
+  "new": "ON CONFLICT(capability, project_id) DO NOTHING SET"
+ },
+ {
+  "name": "dispute no longer outranks confirm",
+  "old": "\tcase a.Disputes >= CapDisputeQuorum:",
+  "new": "\tcase false:"
+ },
+ {
+  "name": "capability value no longer lowercased",
+  "old": "\tvalue = strings.ToLower(strings.TrimSpace(value))",
+  "new": "\tvalue = strings.TrimSpace(value)"
+ },
+ {
+  "name": "author's own confirmations counted",
+  "old": "\t  WHERE c.assertion_id = a.id AND c.confirmed = 1\n\t    AND c.user_id <> a.asserted_by),",
+  "new": "\t  WHERE c.assertion_id = a.id AND c.confirmed = 1),"
+ },
+ {
+  "name": "absent assertion reported as unknown",
+  "old": "\t\tout[pid][key] = val",
+  "new": "\t\tout[pid][key] = val\n\t\t_ = 0"
+ }
+]

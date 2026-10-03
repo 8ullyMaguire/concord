@@ -1,0 +1,102 @@
+[
+ {
+  "name": "unknown is removed like a no",
+  "old": "\t\tcase !present || v == \"\" || v == UnknownValue || v == storeUnknownWord():\n\t\t\t// Unknown keeps. \u00a72.7.\n\t\t\tkept = append(kept, c)",
+  "new": "\t\tcase false:\n\t\t\tkept = append(kept, c)"
+ },
+ {
+  "name": "unknown is scored as a mismatch",
+  "old": "\t\t\tif !present || v == \"\" || v == UnknownValue || v == storeUnknownWord() {\n\t\t\t\tr.Unknown = append(r.Unknown, k)\n\t\t\t\tcontinue\n\t\t\t}",
+  "new": "\t\t\tif false {\n\t\t\t\tr.Unknown = append(r.Unknown, k)\n\t\t\t\tcontinue\n\t\t\t}"
+ },
+ {
+  "name": "skip and doesnt-matter start filtering",
+  "old": "\tcase ModeSkip, ModeDoesntMatter, ModeDecideLater, \"\":",
+  "new": "\tcase ModeRequired, ModeSkip, ModeDoesntMatter, ModeDecideLater, \"\":"
+ },
+ {
+  "name": "unknown penalty removed",
+  "old": "penalty := -UnknownPenalty * float64(len(r.Unknown))",
+  "new": "penalty := 0.0 * float64(len(r.Unknown))"
+ },
+ {
+  "name": "constant dimension becomes askable",
+  "old": "\t\tif d.GainBits < MinGainBits {",
+  "new": "\t\tif false {"
+ },
+ {
+  "name": "already-asked question may repeat",
+  "old": "\t\tif st.Asked[key] {",
+  "new": "\t\tif false {"
+ },
+ {
+  "name": "arena term dropped",
+  "old": "\t\t\tWeightArena*c.ArenaR",
+  "new": "\t\t\t0.0*c.ArenaR"
+ },
+ {
+  "name": "field report term dropped",
+  "old": "\t\t\tWeightFieldReport*report",
+  "new": "\t\t\t0.0*report"
+ },
+ {
+  "name": "capability term dropped",
+  "old": "fit := WeightCapability*capScore +",
+  "new": "fit := 0.0*capScore +"
+ },
+ {
+  "name": "partial credit becomes full",
+  "old": "\t\t\t\t\t// Present but a different value (partial where yes was\n\t\t\t\t\t// wanted, or the other way round). Partial credit.\n\t\t\t\t\tcapHit += 0.5",
+  "new": "\t\t\t\t\t// Present but a different value (partial where yes was\n\t\t\t\t\t// wanted, or the other way round). Partial credit.\n\t\t\t\t\tcapHit += 1.0"
+ },
+ {
+  "name": "decide-later preference stops scoring",
+  "old": "\t\t\tif want, asked := preferred[k]; asked && want != ModeAny {\n\t\t\t\tif v == want {\n\t\t\t\t\tcapHit++\n\t\t\t\t\tr.Matches[k] = v\n\t\t\t\t} else {\n\t\t\t\t\tr.Matches[k] = v\n\t\t\t\t}\n\t\t\t\tcontinue\n\t\t\t}",
+  "new": "\t\t\tif want, asked := preferred[k]; asked && want != ModeAny {\n\t\t\t\tif v == want {\n\t\t\t\t\tr.Matches[k] = v\n\t\t\t\t} else {\n\t\t\t\t\tr.Matches[k] = v\n\t\t\t\t}\n\t\t\t\tcontinue\n\t\t\t}"
+ },
+ {
+  "name": "no field reports counted as good reports",
+  "old": "\t\tif c.Reports == 0 {\n\t\t\treport = 0",
+  "new": "\t\tif c.Reports == 0 {\n\t\t\treport = 0.9"
+ },
+ {
+  "name": "confidence needs no margin",
+  "old": "if top >= HighConfidence && second > 0 && top/second >= ConfidenceMargin {",
+  "new": "if top >= HighConfidence {"
+ },
+ {
+  "name": "confidence needs no score",
+  "old": "if top >= HighConfidence && second > 0 && top/second >= ConfidenceMargin {",
+  "new": "if second > 0 && top/second >= ConfidenceMargin {"
+ },
+ {
+  "name": "saturation threshold ignored",
+  "old": "if len(st.Candidates) <= SaturationCount {",
+  "new": "if false {"
+ },
+ {
+  "name": "question cap ignored",
+  "old": "\tif st.Depth >= MaxQuestions {",
+  "new": "\tif false {"
+ },
+ {
+  "name": "tiebreak by slug removed",
+  "old": "\t\tif out[i].Slug != out[j].Slug {\n\t\t\treturn out[i].Slug < out[j].Slug\n\t\t}",
+  "new": "\t\tif out[i].Slug != out[j].Slug {\n\t\t\treturn false\n\t\t}"
+ },
+ {
+  "name": "option order no longer sorted",
+  "old": "func sortedKeys(m map[string]int) []string {\n\tout := make([]string, 0, len(m))\n\tfor k := range m {\n\t\tout = append(out, k)\n\t}\n\tsort.Strings(out)\n\treturn out\n}",
+  "new": "func sortedKeys(m map[string]int) []string {\n\tout := make([]string, 0, len(m))\n\tfor k := range m {\n\t\tout = append(out, k)\n\t}\n\treturn out\n}"
+ },
+ {
+  "name": "entropy of a single value is not zero",
+  "old": "\tif total <= 1 {\n\t\treturn 0\n\t}",
+  "new": "\tif total <= 1 {\n\t\treturn 0.5\n\t}"
+ },
+ {
+  "name": "entropy uses natural log",
+  "old": "h -= p * math.Log2(p)",
+  "new": "h -= p * math.Log(p)"
+ }
+]

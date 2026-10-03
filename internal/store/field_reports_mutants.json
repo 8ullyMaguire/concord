@@ -1,0 +1,62 @@
+[
+ {
+  "name": "migrated-away no longer needs a successor",
+  "old": "\tif r.Outcome == ReportMigrated && strings.TrimSpace(r.MigratedTo) == \"\" {",
+  "new": "\tif false {"
+ },
+ {
+  "name": "caveat credit silently changed",
+  "old": "const CaveatCredit = 0.5",
+  "new": "const CaveatCredit = 0.9"
+ },
+ {
+  "name": "caveated success ranks as clean success",
+  "old": "\t\treturn CaveatCredit",
+  "new": "\t\treturn 1.0"
+ },
+ {
+  "name": "caveated success ranks as abandonment",
+  "old": "\t\treturn CaveatCredit",
+  "new": "\t\treturn 0.0"
+ },
+ {
+  "name": "owner flag taken from a truthy role",
+  "old": "\tisOwner := role != \"guest\" && role != \"\"",
+  "new": "\tisOwner := true"
+ },
+ {
+  "name": "owner may also remove reports",
+  "old": "\tif role != \"guest\" && role != \"\" {\n\t\treturn fmt.Errorf(\"%w: a project owner may respond to a report but not remove it\", ErrPerm)\n\t}",
+  "new": "\tif false {\n\t\treturn fmt.Errorf(\"%w: a project owner may respond to a report but not remove it\", ErrPerm)\n\t}"
+ },
+ {
+  "name": "removal becomes a hard delete",
+  "old": "\t\tUPDATE field_reports SET removed = 1, removed_by = ?, removal_reason = ?\n\t\t WHERE id = ?",
+  "new": "\t\tDELETE FROM field_reports WHERE id = ?"
+ },
+ {
+  "name": "removed reports still counted",
+  "old": " WHERE r.project_id = ? AND r.removed = 0`, projectID)",
+  "new": " WHERE r.project_id = ? AND 1=1`, projectID)"
+ },
+ {
+  "name": "reputation weight uncapped",
+  "old": "\treturn 1 + math.Min(reputation, MaxReportReputation)/MaxReportReputation",
+  "new": "\treturn 1 + reputation/MaxReportReputation"
+ },
+ {
+  "name": "empty environment counted as a bucket",
+  "old": "\t\tif env == \"\" {\n\t\t\tcontinue\n\t\t}",
+  "new": "\t\tif false {\n\t\t\tcontinue\n\t\t}"
+ },
+ {
+  "name": "responses not marked for owners",
+  "old": "boolInt(isOwner), now)",
+  "new": "0, now)"
+ },
+ {
+  "name": "report with no author accepted",
+  "old": "\tif r.UserID == 0 {",
+  "new": "\tif false {"
+ }
+]

@@ -1,0 +1,137 @@
+{
+  "_comment": [
+    "Capability seed (docs/plans/finder.md step 4).",
+    "",
+    "These are the capabilities Finder's own mockup names, registered so the",
+    "question-selection engine has dimensions to choose between. A capability",
+    "matrix with definitions and no assertions has no information gain, and the",
+    "engine correctly declines to ask anything -- honest, and useless.",
+    "",
+    "Assertions are deliberately SPARSE and include explicit 'unknown' rows.",
+    "Those unknown rows are the contribution queue: they are the questions this",
+    "instance is asking its users. Asserting everything as known would make the",
+    "matrix look complete while being the thing §2.7 of the Finder spec forbids --",
+    "unknown treated as no.",
+    "",
+    "Project slugs are real slugs from the instance. A slug that does not exist",
+    "makes cmd/capableseed fail loudly rather than silently skipping, so add",
+    "assertions only for projects you can see."
+  ],
+  "capabilities": [
+    {
+      "key": "wip-limits",
+      "label": "WIP limits",
+      "category": "project-management",
+      "kind": "boolean",
+      "assert": {
+        "stash": "yes",
+        "stash-box": "yes",
+        "lorehaven": "unknown"
+      }
+    },
+    {
+      "key": "offline",
+      "label": "Works offline",
+      "category": "project-management",
+      "kind": "boolean",
+      "assert": {
+        "stash": "partial",
+        "lorehaven": "unknown"
+      }
+    },
+    {
+      "key": "self-hosted",
+      "label": "Can be self-hosted",
+      "category": "deployment",
+      "kind": "boolean",
+      "assert": {
+        "stash": "yes",
+        "stash-box": "yes",
+        "lorehaven": "yes"
+      }
+    },
+    {
+      "key": "plugins",
+      "label": "Plugin system",
+      "category": "extensibility",
+      "kind": "boolean",
+      "assert": {
+        "lorehaven": "yes",
+        "stash": "no"
+      }
+    },
+    {
+      "key": "dark-mode",
+      "label": "Dark mode",
+      "category": "interface",
+      "kind": "boolean",
+      "assert": {}
+    },
+    {
+      "key": "keyboard-shortcuts",
+      "label": "Keyboard shortcuts",
+      "category": "interface",
+      "kind": "boolean",
+      "assert": {}
+    },
+    {
+      "key": "export",
+      "label": "Data export",
+      "category": "data",
+      "kind": "enum",
+      "values": ["none", "partial", "full", "unknown"],
+      "assert": {}
+    },
+    {
+      "key": "sync",
+      "label": "Cross-device sync",
+      "category": "data",
+      "kind": "boolean",
+      "assert": {
+        "stash": "no",
+        "lorehaven": "unknown"
+      }
+    },
+    {
+      "key": "api",
+      "label": "Public API",
+      "category": "interface",
+      "kind": "boolean",
+      "assert": {
+        "stash-box": "yes",
+        "lorehaven": "yes",
+        "stash": "partial"
+      }
+    },
+    {
+      "key": "encryption-at-rest",
+      "label": "Encryption at rest",
+      "category": "security",
+      "kind": "boolean",
+      "assert": {
+        "lorehaven": "unknown"
+      }
+    },
+    {
+      "key": "multi-user",
+      "label": "Multiple users",
+      "category": "collaboration",
+      "kind": "boolean",
+      "assert": {
+        "stash": "yes",
+        "lorehaven": "yes",
+        "stash-box": "no"
+      }
+    },
+    {
+      "key": "mobile-friendly",
+      "label": "Works on mobile",
+      "category": "interface",
+      "kind": "boolean",
+      "assert": {
+        "lorehaven": "yes",
+        "stash": "no"
+      }
+    }
+  ]
+}
