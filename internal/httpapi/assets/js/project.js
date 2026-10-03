@@ -1,10 +1,189 @@
 // Concord project detail — resolves the slug, then hydrates from the API.
 (function () {
   function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+      });
+    }
+
+    // ------------------------------------------------------- the §4.10 panels
+    //
+    // Capabilities, field reports and solutions. Three read-only panels added
+    // 2026-10-03; their stores shipped long before with full test coverage and no
+    // way for a browser to see any of it.
+    //
+    // Each is fetched separately and each degrades on its own, following the rule
+    // the complaints fetch above already follows: a panel that fails must not cost
+    // the panels that worked. A failure renders as an explicit "could not load"
+    // rather than as an empty state, because "no capabilities" and "we could not
+    // ask" look identical when both are an empty div -- and the second one is a
+    // lie about the project.
+
+    // capabilityValue is what a row says about a capability.
+    //
+    //   no claim yet  -> nobody has asserted this capability for this project at all
+    //   unknown       -> somebody DID assert it, valued "unknown", i.e. recorded
+    //                    that nobody knows
+    //   yes/no/partial-> somebody claimed it
+    //
+    // A disputed claim prints its value WITH the dispute beside it. It never prints
+      // as settled, and it is never flattened to "no" -- "people disagree" and "this
+      // is false" are different claims about a project.
+      function capabilityValue(c) {
+        if (!c.asserted) {
+          // "no claim yet", not "not reported": "report" is field-report vocabulary
+          // one screen below, and "not reported" reads as "someone reported that it
+          // is unknown" -- which is the other state.
+          return '<span class="cap-unknown">no claim yet</span>';
+        }
+        var val = c.value || 'unknown';
+        var mark = '';
+        if (c.state === 'disputed') {
+          mark = ' <span class="badge badge-amber" title="People disagree about this. ' +
+            esc(c.disputes || 0) + ' contested it; the original claim is not rewritten.">disputed</span>';
+        } else if (c.state === 'confirmed') {
+          mark = ' <span class="badge badge-green" title="Confirmed by ' +
+            esc(c.confirms || 0) + ' independent confirmations.">confirmed</span>';
+        } else {
+          // The third state, and the only one of the three with no store-side
+          // confirmation behind it: one claim, nobody has agreed or disagreed yet.
+          mark = ' <span class="badge badge-slate">asserted, unconfirmed</span>';
+        }
+        return '<span class="cap-value">' + esc(val) + '</span>' + mark;
+      }
+
+    function capabilitiesPanel(data) {
+      if (!data) {
+        return panelError('Capabilities', 'The capability matrix could not be loaded.');
+      }
+      var caps = data.capabilities || [];
+      // The root is the wrapper <div class="panel-capabilities"> opened at the end of
+      // this function, NOT the section-head inside it. Marking both made
+      // `.panel-capabilities` match two elements and every strict-mode locator
+      // in the e2e suite fail on ambiguity rather than on a real defect.
+      var head = '<div class="section-head"><h2 class="section-title" style="font-size:1.25rem;">Capabilities</h2>' +
+        '<p class="section-sub">What this project claims about itself, and what nobody has ' +
+        'claimed yet. ' + (data.unknown_count > 0
+          ? esc(data.unknown_count) + ' of ' + caps.length + ' have no claim from anyone.'
+          : 'Every capability in the catalog has a claim.') + '</p></div>';
+
+      if (!caps.length) {
+        return '<div class="panel-capabilities">' + head + panelEmpty('No capability matrix yet',
+          'This instance has no capability catalog, so there is nothing for a ' +
+          'project to claim. Capabilities are created instance-wide and then ' +
+          'asserted per project.') + '</div>';
+      }
+      var rows = caps.map(function (c) {
+        // The evidence goes in the row. The API has been returning it since the
+        // panel's endpoint was written and this table dropped it, which is the
+        // whole substance of a claim: "yes" from a project that enforces WIP
+        // limits and "yes" from one that heard of them are different claims, and
+        // the evidence is what tells them apart. Authored text, so escaped.
+        var evidence = c.evidence
+          ? '<div class="cap-evidence">' + esc(c.evidence) + '</div>'
+          : '';
+        return '<tr><td>' + esc(c.label || c.key) +
+          '<div class="cap-key">' + esc(c.key) + '</div></td>' +
+          '<td class="cap-cat">' + esc(c.category || '') + '</td>' +
+          '<td>' + capabilityValue(c) + evidence + '</td></tr>';
+      }).join('');
+      return '<div class="panel-capabilities">' + head +
+        '<div class="card"><table class="cap-table"><thead><tr>' +
+        '<th>Capability</th><th>Category</th><th>Claim</th>' +
+        '</tr></thead><tbody>' + rows + '</tbody></table></div></div>';
+    }
+
+    // A rate is never printed without its denominator. "worked for 83% of
+    // reporters" and "83%" are different claims, and a project nobody has tried has
+    // no rate at all rather than a rate of zero.
+    function fieldReportsPanel(data) {
+      if (!data) {
+        return panelError('Field reports', 'Field reports could not be loaded.');
+      }
+      var reports = data.reports || [];
+      var head = '<div class="section-head" style="margin-top:2rem;">' +
+        '<h2 class="section-title" style="font-size:1.25rem;">Field reports</h2>' +
+        '<p class="section-sub">Structured experience records: version, environment, and ' +
+        'what actually happened.</p></div>';
+
+      // The summary is computed BEFORE the empty check and included in both
+      // returns, so the `outcome_rate != null` guard below is the thing that
+      // decides whether a rate appears.
+      //
+      // It used to sit after an early return on `!reports.length`, which made
+      // the guard unreachable in its false branch: no reports implies a nil
+      // rate, so `if (true)` was indistinguishable from `if (rate != null)` and
+      // a mutation run reported it as SURVIVED. The observable behaviour was not
+      // wrong, but the guard was decorative -- it could not fail -- and a
+      // decorative guard protects nothing when the store's rule changes.
+      var summary = '';
+      if (data.outcome_rate != null) {
+        var pct = Math.round(data.outcome_rate * 100);
+        summary = '<div class="fr-summary"><strong>' + pct + '%</strong> of ' +
+          esc(data.sample_size) + ' reporter' + (data.sample_size === 1 ? '' : 's') +
+          ' report this working, weighted by reporter reputation.</div>';
+      }
+      var env = '';
+      var envs = data.by_environment || {};
+      var envKeys = Object.keys(envs);
+      if (envKeys.length) {
+        env = '<div class="pill-row" style="margin-top:0.5rem;">' + envKeys.map(function (k) {
+          return '<span class="badge badge-slate">' + esc(k) + ' ' +
+            Math.round(envs[k] * 100) + '%</span>';
+        }).join('') + '</div>';
+      }
+
+      if (!reports.length) {
+        // summary and env are still emitted, and both are empty for this state --
+        // but they are emitted by the same guard that governs the populated
+        // path, so a rate cannot appear here without the store having sent one.
+        return '<div class="panel-field-reports">' + head + summary + env + panelEmpty('No field reports yet',
+          'Nobody has recorded using this. Until someone does, there is no evidence ' +
+          'here to weigh against the project\'s claims.') + '</div>';
+      }
+
+      var cards = reports.map(function (r) {
+        var body = '';
+        if (r.caveats) body += '<p class="card-text">' + esc(r.caveats) + '</p>';
+        if (r.advice) body += '<p class="card-text"><strong>Advice:</strong> ' + esc(r.advice) + '</p>';
+        var responses = (r.responses || []).map(function (resp) {
+          return '<div class="fr-response"><span class="badge ' +
+            (resp.is_owner ? 'badge-indigo' : 'badge-slate') + '">' +
+            (resp.is_owner ? 'owner' : 'reply') + '</span> ' + esc(resp.body) + '</div>';
+        }).join('');
+        return '<div class="card fr-card"><div class="card-title">' +
+          esc(r.use_case || 'field report') + '</div>' +
+          '<div class="pill-row">' +
+          '<span class="badge badge-purple">' + esc(r.outcome) + '</span>' +
+          (r.version ? '<span class="badge badge-slate">' + esc(r.version) + '</span>' : '') +
+          (r.environment ? '<span class="badge badge-slate">' + esc(r.environment) + '</span>' : '') +
+          '</div>' + body + responses + '</div>';
+      }).join('');
+
+      var omitted = data.omitted > 0
+        ? '<p class="section-sub">Showing the newest ' + esc(data.shown) +
+          '; ' + esc(data.omitted) + ' older report' + (data.omitted === 1 ? '' : 's') +
+          ' not shown.</p>'
+        : '';
+
+      return '<div class="panel-field-reports">' + head + summary + env + omitted +
+        '<div class="grid-responsive-2" style="margin-top:1rem;">' + cards + '</div></div>';
+    }
+
+    function panelEmpty(title, description) {
+      return '<div class="empty-state"><p class="empty-state-title">' + esc(title) + '</p>' +
+        '<p class="empty-state-description">' + esc(description) + '</p></div>';
+    }
+
+    // A failed fetch renders differently from an empty one, on purpose. Both being
+    // "nothing here" is how a broken endpoint passes for a project with no data.
+    function panelError(what, message) {
+      return '<div class="empty-state panel-error ' +
+        (what === 'Capabilities' ? 'panel-capabilities' : 'panel-field-reports') +
+        '"><p class="empty-state-title">' +
+        esc(what) + ' unavailable</p>' +
+        '<p class="empty-state-description">' + esc(message) + '</p></div>';
+    }
 
   function healthBar(score) {
     if (score == null) return '<p class="health-label"><span>health</span><span>no metrics yet</span></p>';
@@ -200,7 +379,8 @@
       });
   }
 
-  function render(p, features, complaints, documents) {
+  function render(p, features, complaints, documents, panels) {
+    panels = panels || {};
     var badges = '<div class="pill-row" style="margin-top:0.75rem;">' +
       '<span class="badge badge-indigo">' + esc(p.governance_model || 'governed') + '</span>' +
       (p.license ? '<span class="badge badge-slate">' + esc(p.license) + '</span>' : '') +
@@ -252,6 +432,11 @@
         : '<div class="empty-state"><div class="empty-state-icon">\u2728</div>' +
           '<p class="empty-state-title">No features yet</p>' +
           '<p class="empty-state-description">Features are proposed from validated complaints.</p></div>') +
+      // §4.10's order: capabilities, then field reports, then the standing.
+      // Between the header and Complaints, because the capability matrix is what
+      // says what the project IS and complaints are what it is trying to fix.
+      capabilitiesPanel(panels.capabilities) +
+      fieldReportsPanel(panels.fieldReports) +
       forms(p);
   }
 
@@ -297,14 +482,27 @@
           // us the two that matter.
           fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/documents')
             .then(function (r) { return r.ok ? r.json() : []; })
-            .catch(function () { return []; })
+            .catch(function () { return []; }),
+          // The two §4.10 panels. Both swallow their own failures and resolve to
+          // null, which panelError() renders differently from an empty result --
+          // so an endpoint that 500s says "unavailable" instead of quietly
+          // claiming the project has no capabilities and no field reports.
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/capabilities')
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .catch(function () { return null; }),
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/field-reports')
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .catch(function () { return null; })
         ])
           .then(function (res) {
             var features = res[0], complaints = res[1], documents = res[2];
             // The feature form's select needs the complaint list at render
             // time, so it is stashed rather than threaded through the markup.
             window.__complaints = complaints || [];
-            box.innerHTML = render(p, features, complaints, documents);
+            box.innerHTML = render(p, features, complaints, documents, {
+              capabilities: res[3],
+              fieldReports: res[4]
+            });
             if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
             wire(box, slug, p.id);
           });

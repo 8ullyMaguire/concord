@@ -36,6 +36,7 @@ e2e: build
 	$(E2E_PYTEST) tests/e2e/harness_selftest_test.py -q
 	$(E2E_PYTEST) tests/e2e/e2e_test.py -q
 	$(E2E_PYTEST) tests/e2e/finder_e2e.py -q
+	$(E2E_PYTEST) tests/e2e/project_panels_e2e.py -q
 
 # The mutation gates. Each rewrites one source file per mutant and asserts the
 # suite goes red, so a green run means every mutant was killed. A SURVIVED entry

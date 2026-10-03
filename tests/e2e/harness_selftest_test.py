@@ -45,7 +45,8 @@ def test_every_suite_is_collected_by_a_directory_run():
     out = subprocess.run(
         [sys.executable, "-m", "pytest", "tests/e2e", "--collect-only", "-q"],
         cwd=REPO, capture_output=True, text=True, timeout=120).stdout
-    for suite in ("e2e_test.py", "finder_e2e.py", "harness_selftest_test.py"):
+    for suite in ("e2e_test.py", "finder_e2e.py", "project_panels_e2e.py",
+                    "harness_selftest_test.py"):
         assert suite in out, (
             f"{suite} contributed no tests to a directory-level run -- it matches "
             f"neither of pytest's default patterns and is absent from "
@@ -54,9 +55,10 @@ def test_every_suite_is_collected_by_a_directory_run():
     m = re.search(r"(\d+) tests? collected", out)
     assert m, f"pytest --collect-only printed no count:\n{out[-2000:]}"
     total = int(m.group(1))
-    assert total >= 76, (
-        f"only {total} tests collected across all suites; expected >= 76 "
-        f"(35 site + 38 finder + 5 harness). A drop means a suite lost tests.")
+    assert total >= 88, (
+        f"only {total} tests collected across all suites; expected >= 88 "
+        f"(35 site + 38 finder + 10 project panels + 5 harness). A drop means a "
+        f"suite lost tests.")
 
 
 def test_the_two_browser_suites_cannot_share_one_pytest_process():

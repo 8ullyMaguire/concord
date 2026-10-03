@@ -286,11 +286,22 @@ func TestProjectPageRendersComplaintsTheServerActuallyHas(t *testing.T) {
 		t.Error("render does not call complaintCards with the complaint list")
 	}
 	// render now takes documents as a fourth argument (2026-10-02, the document
-	// badge), so the call carries all three lists it fetched. The assertion is on
-	// the prefix rather than the whole call so adding a fifth list does not
-	// require editing this test -- which is how it went stale when it did.
-	if !strings.Contains(js, "render(p, features, complaints, documents)") {
+	// badge) and panels as a fifth (2026-10-03, §4.10's capabilities and field
+	// reports).
+	//
+	// The assertion is on the PREFIX, deliberately without the closing paren, so
+	// that adding a sixth list does not require editing this test. The comment
+	// claiming this was already the case was wrong until 2026-10-03: the
+	// assertion included ")" and so failed the moment a fifth argument was
+	// passed, which is precisely the staleness the comment says it prevents.
+	if !strings.Contains(js, "render(p, features, complaints, documents") {
 		t.Error("render is not given the complaints and documents it fetched")
+	}
+	// And the panels, by the same reasoning -- the two panel fetches must reach
+	// render rather than racing it as fire-and-forget promises.
+	if !strings.Contains(js, "capabilities: res[3]") ||
+		!strings.Contains(js, "fieldReports: res[4]") {
+		t.Error("render is not given the panel data it fetched")
 	}
 	if !strings.Contains(js, "/complaints") {
 		t.Error("project.js never reads the complaint list")

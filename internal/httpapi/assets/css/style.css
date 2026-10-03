@@ -1288,3 +1288,50 @@ textarea:focus-visible {
 .chip-on { border-color: var(--indigo); background: var(--indigo-light); color: var(--indigo-hover); }
 @media (prefers-reduced-motion: reduce) { .finder-changed { animation: none; } .finder-progress-bar::after { transition: none; } }
 .finder-thin { color: var(--slate-400); font-size: 0.75rem; }
+
+/* Project panels (2026-10-03): capabilities and field reports, §4.10. Appended
+   only -- reordering an existing rule here would change every page, which is how
+   a page-scoped change becomes a site-wide regression. */
+
+/* `cap-unknown` is load-bearing and not a styling preference. An unasserted
+   capability and an asserted `unknown` are different facts (nobody said anything
+   vs somebody recorded that nobody knows), so they must not look alike at a
+   glance. Grey italic for the first, plain text for the second. */
+.cap-table { width: 100%; border-collapse: collapse; font-size: 0.9375rem; }
+.cap-table th {
+  text-align: left; font-size: 0.75rem; text-transform: uppercase;
+  letter-spacing: 0.05em; color: var(--slate-500); font-weight: 600;
+  padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--slate-200);
+}
+.cap-table td { padding: 0.625rem 0.75rem; border-bottom: 1px solid var(--slate-100); vertical-align: top; }
+.cap-table tr:last-child td { border-bottom: none; }
+.cap-key { color: var(--slate-400); font-size: 0.75rem; font-family: ui-monospace, monospace; }
+.cap-cat { color: var(--slate-500); font-size: 0.8125rem; }
+.cap-value { font-weight: 600; }
+/* The reason somebody gave for a claim. Smaller and quieter than the value, and
+   beneath it: the claim is the assertion, the evidence is its support. */
+.cap-evidence { margin-top: 0.375rem; font-size: 0.8125rem; color: var(--slate-500); }
+.cap-unknown { color: var(--slate-400); font-style: italic; }
+
+/* The rate and its denominator, styled as one unit so they are read together. A
+   percentage on its own is the misleading form this panel exists to avoid. */
+.fr-summary {
+  padding: 0.875rem 1rem; border: 1px solid var(--slate-200);
+  border-left: 3px solid var(--indigo); border-radius: 6px;
+  background: var(--slate-50); font-size: 0.9375rem;
+}
+.fr-summary strong { font-size: 1.25rem; color: var(--indigo-hover); }
+.fr-card .card-title { margin-bottom: 0.5rem; }
+.fr-response {
+  margin-top: 0.625rem; padding: 0.5rem 0.625rem; font-size: 0.875rem;
+  border-left: 2px solid var(--slate-200); color: var(--slate-600);
+}
+
+/* A panel whose fetch failed says so. Without the distinct border, "unavailable"
+   and "nothing here" are both an empty state and a broken endpoint passes for a
+   project with no data. */
+.panel-error {
+  border: 1px dashed var(--slate-300);
+  border-left: 3px solid var(--slate-400);
+  border-radius: 6px;
+}
