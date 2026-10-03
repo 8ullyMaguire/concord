@@ -65,6 +65,10 @@ project-entity-aware via `EntityProject`) has no arena to act on.
 
 ### 2.3 The project page has no solutions, capabilities or field reports (r4 §4.10)
 
+<!-- PARTIALLY SHIPPED 2026-10-03: capabilities and field reports landed
+     (fd2ceae, 633cdcc). Solutions is still missing. See §4.4. -->
+
+
 §4.10 spells out the page anatomy: "Capabilities → Health breakdown → **Field
 reports** → Known pain → Roadmap (native: ranked features, **solution
 standings**, board snapshot)". Read the template list in
@@ -182,6 +186,55 @@ arena S2 populates and renders an explicit empty state before then.
   known values in all three panels, asserting the values appear and that a
   disputed claim reads as disputed.
 - `make verify` green.
+
+### 4.4 Shipped — Capabilities and Field reports (2026-10-03, `fd2ceae` + `633cdcc`)
+
+Both panels are live on `/projects/{slug}` and covered at three layers: the API
+tests assert the JSON, `project_panels_script_test.go` asserts the script, and
+`project_panels_e2e.py` asserts the rendered DOM in real Chromium. Twelve browser
+tests; three named mutants killed.
+
+What the live build changed, which is the reason this section exists:
+
+- **`requireProjectID` was an existence oracle.** It answered
+  `{"error": "not found: project \"slug\""}` for an absent project and a bare
+  `{"error": "not found"}` for an unreadable one — same status code, different
+  body, which is exactly what §4.2's visibility rule exists to prevent. Fourteen
+  files route through it, so all of them leaked. Fixed in the helper, not in
+  `mapError`, whose per-sentinel detail is worth keeping on routes where the
+  caller is entitled to ask.
+- **The route must be top-level `/api/v1/projects/{project_id}/…`.** Registered
+  inside the existing `/{slug}` block, chi binds the parameter as `slug`, the
+  helper reads `project_id`, gets `""`, and every call 404s with `project ""` — an
+  error naming the data rather than the route. It cost about an hour.
+- **Two shapes of "don't know" stay apart**, and the panel is where that is
+  decided: a capability nobody has asserted, versus an assertion valued
+  `unknown`. The panel says `no claim yet` for the first, and deliberately NOT
+  `not reported` — on that row the other reading is "somebody reported that it is
+  unknown", which is the second state, while field reports sit one screen below
+  using the word correctly.
+- **`outcome_rate` is absent, never 0, with no reports.** The
+  `outcome_rate != null` guard first sat after an early return on empty reports,
+  so its false branch was unreachable: `if (true)` was indistinguishable from the
+  real guard and a mutation run reported it SURVIVED. The behaviour was right; the
+  guard was decorative. It now governs both paths.
+- **A failed fetch and an empty panel are different states** and render
+  differently. Both being an empty state is how a broken endpoint passes for a
+  project with no data.
+- **The evidence behind a claim was being dropped.** The API returned it and the
+  table discarded it, which reduced every claim to an unfalsifiable bare value —
+  "yes" from a project that enforces WIP limits and "yes" from one that heard of
+  them rendered identically.
+
+Not done in §4: the **Solutions panel**, the third of the three. §4.7's
+per-environment split IS shown, from the same handler.
+
+The §4.3 definition of done says "three httptest page tests". Nine API tests and
+ten script tests were written instead, plus twelve browser tests. Two reasons,
+both structural rather than thoroughness: the API and the script are different
+questions and merging them produced three wrong assertions in a row, and a test
+that pins a badge's exact wording is a change-detector that fails on a
+legitimate edit.
 
 ## 5. S2 — Alternatives arenas
 

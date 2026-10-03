@@ -12,14 +12,20 @@ symbol marked **(new)** does not exist and is introduced by the step naming it.
 2. `make gates` must stay green. It rewrites source files per mutant, so never
    run `go test`, `make verify` or a build while it is running, and never stage
    a file while it runs — see `mutation-gate-discipline`.
-3. `make e2e` must stay green for anything user-visible. It is three pytest
-   processes and takes ~100s; it is not optional for S1 and S2.
+3. `make e2e` must stay green for anything user-visible. It is four pytest
+   processes and takes ~110s; it is not optional for S1 and S2. A NEW browser
+   suite gets its own process, its own `pytest.ini` entry and a named entry in
+   `test_every_suite_is_collected_by_a_directory_run` — all three, or it is
+   silently skipped.
 4. New domain ⇒ new test file. Every `internal/store/*.go` domain has been
    paired with a test since arenas landed; keep it that way.
 5. MaxOpenConns(1) (PLAN.md rule 6): never query while a `*sql.Rows` cursor is
    open. Collect, close, then query.
 6. 100 req/min per-visitor rate limit is global in the e2e suites; each browser
-   context gets its own `X-Forwarded-For` already.
+   context gets its own `X-Forwarded-For`. This is not optional and the plan's
+   claim that it was "already" true was only true of `finder_e2e.py`: a new
+   browser suite that omits it fails mid-run with `{"error":"rate limit
+   exceeded"}` rendered as the page body, which reads as a broken panel.
 7. If reality differs from this plan, fix the plan in the same commit as the
    code and say in the message what the plan got wrong.
 
@@ -30,6 +36,14 @@ make verify            # green: vet + 579 tests + build
 make gates             # 4 gates, 59/59 mutants killed, 0 survived
 make e2e               # 8 harness + 35 site + 38 finder = 81 passed
 schema version 22      # 78 tables on the live instance
+```
+
+Measured again after S1.1 and S1.2 (commits `fd2ceae`, `633cdcc`):
+
+```
+make verify            # green
+make gates             # field_reports.go gate now 16/16, 0 survived
+make e2e               # 8 harness + 35 site + 38 finder + 12 panels = 93 passed
 ```
 
 Verify before starting:
@@ -45,7 +59,11 @@ make verify && echo VERIFY_OK
 
 Three read-only panels on `/projects/{slug}`. The spec's §4.
 
-## Step S1.1 — Read the three data paths and fix what is missing
+**Status 2026-10-03: S1.1 and S1.2 are DONE** (`fd2ceae`, `633cdcc`). S1.3 (the
+Solutions panel) is not started. Notes on what the plan got wrong are in each
+commit message and repeated at the step, per ground rule 7.
+
+## Step S1.1 — Read the three data paths and fix what is missing  [DONE]
 
 Three API surfaces must already answer "what does this panel show?" or S1 is
 building a view over a question nobody can ask. Check each, and close the gap
@@ -67,6 +85,22 @@ handler reads them. The Finder reaches capabilities through its own server-side
 store call, not an API.
 
 So S1.1 is: add two read-only handlers plus routes.
+
+**What S1.1 actually found, beyond the two handlers.** The plan said "add two
+read-only handlers plus routes" and that was true but incomplete:
+
+1. `requireProjectID` answered `{"error": "not found: project \"slug\""}` for an
+   absent project and bare `{"error": "not found"}` for an unreadable one. Same
+   status code, different body — an existence oracle in exactly the way the 403
+   it replaced would have been, and invisible to a status-code assertion. 14
+   files route through that helper, so all of them leaked. Fixed in the helper,
+   not in `mapError`, whose per-sentinel detail is worth keeping elsewhere.
+2. Registering the routes inside the existing `/{slug}` route block is WRONG. chi
+   binds that parameter as `slug`, `requireProjectID` reads `project_id`, gets
+   `""`, and every call 404s with `project ""` — an error that points at the data
+   rather than at the route. They must be top-level `/api/v1/projects/
+   {project_id}/...`, like `criteria`. This cost about an hour and is why
+   `TestANonSlugProjectPathIsANotFoundRatherThanAnEmptyProject` exists.
 
 **Files:** `internal/httpapi/field_reports.go` **(new)**,
 `internal/httpapi/capabilities.go` **(new)**,
@@ -130,9 +164,10 @@ The last two curls are the check `make deploy`'s healthz cannot make: healthz is
 one route and these are two others, and a deploy that reports success while the
 new route answers `not found` has proved nothing.
 
-## Step S1.2 — Three page tests, and the private-project test
+## Step S1.2 — Three page tests, and the private-project test  [DONE]
 
-**Files:** `internal/httpapi/project_surfaces_test.go` **(new)**
+**Files:** `internal/httpapi/project_surfaces_test.go` **(new)**,
+`internal/httpapi/project_panels_script_test.go` **(new)**
 
 Use `newTestServerWithStore(t)` (`httpapi_test.go:114`) and seed through the
 store, not through HTTP, so a test does not depend on the handler it is
@@ -149,13 +184,47 @@ testing.
 That last one is the anti-enumeration test and the reason S1's rules put
 visibility first.
 
+**What S1.2 actually built, and where the plan's table was wrong.**
+
+The plan's fifth row names an alternatives panel, which belongs to S2 and could
+not be written in S1. It is dropped rather than stubbed: a test named
+`TestAnAlternativesPanelWithNoArenaRendersAnEmptyState` that asserts the panel is
+absent would pass forever and would be a lie about what it covers.
+
+Nine API tests were written instead, and every one is proven by a named mutant
+rather than trusted — `make gates` only covers the store layer, so the API tests
+kill their own:
+
+| mutant | killed by |
+|---|---|
+| restore the slug in the not-found body | `...TheRefusalIsNotDistinguishable` |
+| 403 instead of 404 | the same test, both assertions |
+| unasserted capability reported as `unknown` | `...IsListedAsUnassertedAndCountedAsUnknown` |
+
+A first mutant attempt rewrote the guard as `if false`, which orphaned the
+`errors` import and failed to BUILD. A build failure is not a RED and proves
+nothing; the balanced version is what killed the test.
+
+**A second test file the plan did not anticipate.** The plan puts all of S1.2 in
+`project_surfaces_test.go`, reading it as page tests. The API tests and the
+script tests are different questions — the first is "does the endpoint answer
+with the right JSON", the second is "does the script fetch it and render the
+distinction" — and merging them produced three bad assertions in a row (pinning
+badge labels, grepping the whole file for a phrase that a comment explains,
+counting `return` statements that belong to `.map()` callbacks). Split, they are
+each obvious. `project_panels_script_test.go` asserts on `project.js` rather than
+`project.html` because the template is a nine-line mount point, which is the
+reasoning `TestProjectPageHasTheForms` already gives.
+
 **Verification:**
 
 ```bash
 go test ./internal/httpapi/ -run 'Capability|FieldReport|Alternative|Private' -v 2>&1 | tail -40
 ```
 
-## Step S1.3 — The panel markup and the script
+## Step S1.3 — The panel markup and the script  [DONE for Capabilities and Field reports]
+
+Solutions is NOT done; see the step.
 
 **Files:** `internal/httpapi/templates/project.html` (edit — append sections),
 `internal/httpapi/assets/js/project.js` (edit), `internal/httpapi/assets/css/style.css` (edit — append only).
@@ -187,12 +256,49 @@ make verify && echo OK
 # project has more than 10 reports.
 ```
 
-## Step S1.4 — Playwright, then docs
+## Step S1.4 — Playwright, then docs  [DONE for Capabilities and Field reports]
 
-**Files:** `tests/e2e/e2e_test.py` (edit the seed; add 4 tests)
+**Files:** `tests/e2e/project_panels_e2e.py` **(new)** — *not*
+`tests/e2e/e2e_test.py`, as the plan below said. Recorded per ground rule 7.
 
-Extend the fixture with a capability assertion (one `confirmed`, one `disputed`),
-one field report, and two solutions, then:
+**Why a separate suite.** Two reasons, and the first is the one that matters:
+
+1. `project_panels_e2e.py` is a BROWSER suite: it opens a session-scoped
+   `sync_playwright()` and drives Chromium. `e2e_test.py` is an HTTP suite with no
+   browser. `harness_selftest_test.py` already asserts that the two browser suites
+   cannot share one pytest process, so a third browser suite cannot live in the
+   HTTP file either.
+2. The panel tests need a `sync_playwright` fixture and a per-test
+   `X-Forwarded-For` counter (the rate limiter is 100 req/min per client key and
+   `clientKey()` honours that header from loopback, so an 8-test browser suite on
+   one IP renders `{"error":"rate limit exceeded"}` as the page body). `e2e_test.py`
+   has no such machinery and adding it would put browser fixtures in a file whose
+   other 35 tests do not use a browser.
+
+The suite is registered in `pytest.ini`'s `python_files` AND in the Makefile's
+`e2e` target as its own process, and `test_every_suite_is_collected_by_a_directory_run`
+now names it — otherwise it would be silently skipped, which is exactly how the
+38 Finder tests went missing once before.
+
+**The fixture seeds through sqlite, never through the API.** A browser test whose
+data comes from the endpoints under test cannot fail for the reason it exists: a
+bug in the write path produces an empty panel and "the panel is empty" passes.
+
+Twelve tests rather than the four tabulated below, because the plan's four miss
+the states that actually break:
+
+| plan | shipped |
+|---|---|
+| disputed claim reads as disputed | plus: NOT shown as `no`, and NOT carrying the confirmed badge |
+| rate with its sample size | plus: the rate is not 0 or 100 for a mixed fixture (a hand-computed literal would pass a wrong number) |
+| — | asserted `unknown` is not rendered as "no claim yet" — the two states the matrix exists to separate |
+| — | an unclaimed capability says so, is counted, and the panel lists ALL catalog capabilities |
+| — | an instance with no catalog says so, distinctly from a project with no claims |
+| — | per-environment split shown (§4.7's "83% of reporters on arm64") |
+| — | a private project's page carries none of its data into the DOM |
+| — | no console errors across every panel shape |
+
+The plan's four, kept:
 
 | test | asserts |
 |---|---|
@@ -202,9 +308,19 @@ one field report, and two solutions, then:
 | `test_the_panels_survive_a_project_with_no_data` | a project with zero assertions/reports/solutions renders the three empty states, not a broken layout |
 
 ```bash
-python3 -m pytest tests/e2e/e2e_test.py -q    # expect 39 passed
-make e2e                                     # all three suites
+python3 -m pytest tests/e2e/project_panels_e2e.py -q   # expect 12 passed
+make e2e                                                # all four suites
 ```
+
+**What shipped instead of the count above:** 12, and `make e2e` now reports
+8 harness + 35 site + 38 finder + 12 panels = 93.
+
+Three mutants were killed by name (disputed badge dropped, rate guard defeated,
+unasserted treated as a value). The third SURVIVED the first attempt, and it was
+right to: `outcome_rate != null` sat after an early return on empty reports, so
+its false branch was unreachable — `if (true)` was indistinguishable from the
+real guard. Behaviour was correct; the guard was decorative. Moved above the
+empty check so it governs both paths, and the mutant now dies.
 
 Docs: `docs/PLAN-r4.md` gets an **R8 Phase-3 close-out** row; `docs/HANDOFF.md`'s
 "not started" list loses whatever S1 closed; `docs/specs/phase3-spec.md` §4 gets a

@@ -34,8 +34,9 @@ count in the Status section is the current one.
 | Features | exists | r4 wants `outcome`/`criteria` fields |
 | Consensus | exists | + hold, tiers, stand-aside fixed |
 | Lists / Requests | exists | separate vote tables, not arenas |
-| Field reports | **missing** | §4.7 |
-| Capabilities matrix | **missing** | §4.1 |
+| Field reports | **shipped** (2026-10-03) | §4.7. Store + 16-mutant gate + `GET /api/v1/projects/{id}/field-reports` + project-page panel. §4.7's per-environment split is rendered |
+| Capabilities matrix | **shipped** (2026-10-03) | §4.1. Store + `GET /api/v1/projects/{id}/capabilities` + project-page panel. Three claim states kept distinct on the page |
+| Project-page solutions panel | **missing** | §4.10 — the third of the three panels; the API exists, nothing renders it |
 | Scout | **missing** | §4.5, Phase 3 |
 | Alternatives arena | **missing** | §5 table |
 

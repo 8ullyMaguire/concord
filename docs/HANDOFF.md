@@ -33,7 +33,11 @@ the tree wins and this file is the bug.
   five qualifying routes plus a role floor, inside a 365-day window. Two clauses
   are unimplementable against the current schema and are stated as such in the
   source ("seated by charter consensus"; "agents are excluded").
-- **Not started:** R5 field reports / capabilities, R6 Scout. No tables exist.
+- **Shipped 2026-10-03:** field reports and capabilities — migrations, stores,
+  read endpoints (`/api/v1/projects/{id}/capabilities`,
+  `/api/v1/projects/{id}/field-reports`), and both project-page panels, with
+  API, script and Playwright coverage. See `docs/specs/phase3-spec.md` §4.4.
+- **Still not started:** R6 Scout.
 - **Untouched by r4:** `internal/store/lists.go` and `requests.go` still use
   their own vote tables rather than arenas. Ranks fine; it just means those two
   surfaces are not comparable with features or solutions in one leaderboard.
