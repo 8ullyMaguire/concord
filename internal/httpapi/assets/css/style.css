@@ -1376,3 +1376,37 @@ textarea:focus-visible {
 /* A feature nobody has proposed for is still shown, in a quieter key. */
 .sol-empty { border-style: dashed; background: var(--slate-50); }
 .sol-empty .card-text { color: var(--slate-500); margin: 0; font-size: 0.875rem; }
+
+/* Alternatives arenas (2026-10-03, S2): the fourth §4.10 panel. Appended only. */
+
+/* Each use case is its own contest, so each gets its own block. The heavy left
+   border is the visual form of "these are separate rankings" — the same thing
+   solutions-panel-spec.md argues in prose, and the reason the panel says it in
+   words too. */
+.alt-arena {
+  border: 1px solid var(--slate-200); border-left: 3px solid var(--slate-400);
+  border-radius: 6px; padding: 0.875rem 1rem; background: #fff;
+}
+.alt-arena + .alt-arena { margin-top: 0.75rem; }
+.alt-usecase { font-weight: 600; font-size: 0.9375rem; }
+
+/* The better-for / worse-for pair is a property of the arena, not of any one
+   competitor, so it sits above the list rather than on every row. */
+.alt-pair {
+  display: flex; flex-wrap: wrap; gap: 0.75rem;
+  margin: 0.35rem 0 0.6rem; font-size: 0.8125rem; color: var(--slate-500);
+}
+.alt-list { list-style: none; margin: 0; padding: 0; }
+.alt-row {
+  display: flex; align-items: baseline; gap: 0.625rem;
+  padding: 0.3125rem 0; font-size: 0.875rem;
+  font-variant-numeric: tabular-nums;
+}
+.alt-row + .alt-row { border-top: 1px solid var(--slate-100); }
+
+/* Rank rendered as a number rather than implied by list order, for the same
+   reason the solutions panel's does. */
+.alt-rank { min-width: 1.25rem; text-align: right; color: var(--slate-400); font-size: 0.75rem; }
+.alt-title { flex: 1; min-width: 0; color: var(--ink-700); text-decoration: none; }
+.alt-title:hover { text-decoration: underline; }
+.alt-rating { color: var(--slate-500); font-size: 0.8125rem; min-width: 2.5rem; text-align: right; }

@@ -98,7 +98,20 @@ type ArenaEntry struct {
 }
 
 // ErrArenaNotFound is returned for an arena that does not exist.
-var ErrArenaNotFound = errors.New("arena not found")
+//
+// It WRAPS ErrNotFound, and it did not until 2026-10-03. As a bare
+// `errors.New("arena not found")` it matched no arm in the HTTP layer's
+// mapError, so `GET /api/v1/projects/{p}/alternatives/999999/...` answered 500
+// with `{"error":"arena not found"}` while an arena belonging to ANOTHER project
+// answered 404 with `{"error":"not found"}`. Two answers, both naming the arena
+// kind, one of them a server error for what is plainly a missing row — an
+// existence oracle built out of a status code and a distinct string.
+//
+// Wrapping rather than replacing, so `errors.Is(err, store.ErrNotFound)` now
+// holds and mapError's first arm catches it. solutions.go:425 already listed both
+// sentinels explicitly, which is the tell that this was a known gap: the caller
+// had to know about the second one because the mapping did not follow from it.
+var ErrArenaNotFound = fmt.Errorf("arena not found: %w", ErrNotFound)
 
 // setDerived fills the display fields from the stored triple.
 func (e *ArenaEntry) setDerived() {
@@ -287,6 +300,144 @@ func (d *DB) ListArases(ctx context.Context, arenaType string, limit int) ([]Are
 		out = append(out, a)
 	}
 	return out, rows.Err()
+}
+
+// ListProjectArases returns every arena of the given types that belongs to ONE
+// project, with each one's entry count.
+//
+// Needed by S2 (alternatives arenas, spec §2): `ListArases` filters on TYPE
+// alone, so it returns every alternatives arena on the instance to every caller
+// who asks for one project. The alternatives panel is project-scoped, and a
+// project listing another's arenas is both wrong and an enumeration leak.
+//
+// `types` is variadic so one query serves the alternatives panel (one type) and
+// any future panel that wants several kinds. An empty list returns nothing
+// rather than everything: "no kinds requested" is a caller bug, and defaulting
+// it to every type would silently reintroduce the leak this exists to close.
+func (d *DB) ListProjectArases(ctx context.Context, projectID int64, types ...string) ([]Arena, error) {
+	if projectID <= 0 {
+		return nil, fmt.Errorf("%w: project id required", ErrInvalid)
+	}
+	if len(types) == 0 {
+		return nil, fmt.Errorf("%w: at least one arena type required", ErrInvalid)
+	}
+	for _, t := range types {
+		if !IsArenaType(t) {
+			return nil, fmt.Errorf("%w: unknown arena type %q", ErrInvalid, t)
+		}
+	}
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(types)), ",")
+	args := make([]any, 0, len(types)+2)
+	args = append(args, projectID)
+	for _, t := range types {
+		args = append(args, t)
+	}
+	args = append(args, 500)
+
+	rows, err := d.QueryContext(ctx, `
+		SELECT a.id, a.type, a.project_id, a.feature_id, a.question, a.use_case,
+		       a.created_at,
+		       (SELECT COUNT(*) FROM arena_entries e WHERE e.arena_id = a.id)
+		FROM arenas a
+		WHERE a.project_id = ? AND a.type IN (`+placeholders+`)
+		ORDER BY a.use_case, a.id
+		LIMIT ?`, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Arena{}
+	for rows.Next() {
+		var a Arena
+		var project, feature sql.NullInt64
+		var useCase sql.NullString
+		if err := rows.Scan(&a.ID, &a.Type, &project, &feature, &a.Question,
+			&useCase, &a.CreatedAt, &a.Count); err != nil {
+			return nil, err
+		}
+		a.ProjectID = project.Int64
+		a.FeatureID = feature.Int64
+		a.UseCase = useCase.String
+		out = append(out, a)
+	}
+	return out, rows.Err()
+}
+
+// IsArenaType reports whether a string names an arena kind this tree knows.
+//
+// Exported because a caller constructing a list of types for
+// `ListProjectArases` must be able to reject its own typo. Without it, an
+// unknown type matches no rows and the caller reads "this project has no
+// arenas" — a silent wrong answer, which is the same failure mode as the
+// `use_case=”` collision S2's rules are built on.
+func IsArenaType(t string) bool {
+	switch t {
+	case ArenaFeaturePriority, ArenaSolution, ArenaList, ArenaRequest,
+		ArenaAlternatives, ArenaUseCase:
+		return true
+	}
+	return false
+}
+
+// AddArenaCompetitor adds a project to an alternatives arena, refusing the two
+// cases that would make the arena meaningless.
+//
+// This is `refuseOwnVote`'s sibling at the ENTRY point. The two rules are
+// different: `refuseOwnVote` stops a voter judging something they authored,
+// while this stops the arena ever holding a pair it cannot compare. Doing it
+// here rather than at vote time is deliberate — a self-comparing arena would be
+// visible to a reader as its own project listed as a competitor to itself, and a
+// vote-time-only check leaves that on screen even though nobody can act on it.
+//
+// The own-project refusal is by ID, not by "is the caller an owner of it": the
+// arena's project is `arenas.project_id`, and that is the thing that must not
+// compete with itself.
+//
+// Not transactional against a concurrent add of the same project, and it does
+// not need to be: `UpsertArenaEntry` is the idempotent half, and a duplicate
+// add leaves one entry rather than two.
+func (d *DB) AddArenaCompetitor(ctx context.Context, arenaID, candidateProjectID int64) error {
+	arena, err := d.GetArena(ctx, arenaID)
+	if err != nil {
+		return err
+	}
+	if arena.Type != ArenaAlternatives && arena.Type != ArenaUseCase {
+		return fmt.Errorf("%w: an arena of type %q ranks %s, not competing projects",
+			ErrInvalid, arena.Type, entryKindFor(arena.Type))
+	}
+	if candidateProjectID <= 0 {
+		return fmt.Errorf("%w: candidate project id required", ErrInvalid)
+	}
+	if arena.ProjectID == candidateProjectID {
+		return fmt.Errorf("%w: project %d cannot compete against itself; an "+
+			"alternatives arena ranks other projects", ErrInvalid, candidateProjectID)
+	}
+	// The candidate must exist. Without this, a typo'd id becomes an arena entry
+	// pointing at nothing, and the leaderboard skips it (ListSolutions does the
+	// same for a solution whose row is gone) — so the arena looks like it ranked
+	// fewer projects than were added, with nothing in the response to say why.
+	if _, err := d.GetProjectByID(ctx, candidateProjectID); err != nil {
+		return err
+	}
+	return d.UpsertArenaEntry(ctx, arenaID, EntityProject, candidateProjectID)
+}
+
+// entryKindFor names what an arena type ranks, for a refusal message.
+//
+// A reader who posts a project to a feature arena is not asking for a technical
+// error, so the message says what that arena does rank instead.
+func entryKindFor(arenaType string) string {
+	switch arenaType {
+	case ArenaFeaturePriority:
+		return "features"
+	case ArenaSolution:
+		return "solutions"
+	case ArenaList:
+		return "list entries"
+	case ArenaRequest:
+		return "requests"
+	}
+	return "entities"
 }
 
 // UpsertArenaEntry adds or refreshes a competitor's slot in an arena.

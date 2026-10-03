@@ -65,8 +65,11 @@ project-entity-aware via `EntityProject`) has no arena to act on.
 
 ### 2.3 The project page has no solutions, capabilities or field reports (r4 §4.10)
 
-<!-- PARTIALLY SHIPPED 2026-10-03: capabilities and field reports landed
-     (fd2ceae, 633cdcc). Solutions is still missing. See §4.4. -->
+<!-- SHIPPED 2026-10-03, in three commits. Capabilities and field reports
+     (fd2ceae, 633cdcc), then solution standings (ef0977f). The three panels now
+     render on the project page and each is covered at the API, script and
+     browser layers. This section is kept as the record of what was missing, not
+     as a live gap -- see §4 for what each panel now asserts. -->
 
 
 §4.10 spells out the page anatomy: "Capabilities → Health breakdown → **Field

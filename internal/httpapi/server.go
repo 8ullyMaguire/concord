@@ -408,6 +408,25 @@ func (s *Server) Router() http.Handler {
 	// "do nothing" baseline for one feature could outrank a real proposal for
 	// another. See docs/specs/solutions-panel-spec.md.
 	r.Get("/api/v1/projects/{project_id}/solutions", s.handleListProjectSolutions)
+
+	// S2: alternatives arenas (docs/specs/alternatives-panel-spec.md).
+	//
+	// These are the FIRST arena routes in the API. `ArenaAlternatives` and
+	// `ArenaUseCase` existed as constants, in DefaultArenaQuestion and in
+	// FindArena's key shape, and nothing ever created one — all 70 live arenas
+	// were feature-priority. Every kind of arena below already worked; this is
+	// what makes the kind reachable.
+	//
+	// `{project_id}` in the path is the arena's OWNING project, resolved from a
+	// slug by requireProjectID. The competing project in an entry body is a
+	// numeric id, and that asymmetry is the only confusing thing about the shape.
+	r.Route("/api/v1/projects/{project_id}/alternatives", func(r chi.Router) {
+		r.Get("/", s.handleListAlternatives)
+		r.Post("/", s.handleCreateAlternative)
+		r.Post("/{arena_id}/entries", s.handleAddAlternativeCompetitor)
+		r.Post("/{arena_id}/vote", s.handleCastAlternativesVote)
+	})
+
 	r.Route("/api/v1/projects/{project_id}/criteria-profiles", func(r chi.Router) {
 		r.Get("/", s.handleListCriteriaProfiles)
 		r.Post("/", s.handleSaveCriteriaProfile)

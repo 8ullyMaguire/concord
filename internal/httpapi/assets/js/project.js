@@ -243,6 +243,73 @@
         '<div class="sol-groups">' + blocks + '</div></div>';
     }
 
+  // The fourth §4.10 panel: alternatives arenas (S2,
+  // docs/specs/alternatives-panel-spec.md).
+  //
+  // Two states, and the distinction is the panel's whole point: a project that has
+  // never posed the question says so, and a project that posed it and got no
+  // entries also says so — in different words. Merging them reads as "nothing to
+  // do here" when the truth is "you asked and nobody answered".
+  function alternativesPanel(data) {
+    if (!data) {
+      return panelError('Alternatives', 'Alternative project rankings could not be loaded.');
+    }
+    var arenas = data.arenas || [];
+    // No panel class on the head: the wrapper the return opens is the root, and
+    // marking both is what made every strict-mode browser locator ambiguous.
+    var head = '<div class="section-head" style="margin-top:2rem;">' +
+      '<h2 class="section-title" style="font-size:1.25rem;">Alternatives</h2>' +
+      '<p class="section-sub">Competing projects, ranked for a use case you name. ' +
+      'Each use case is ranked on its own, so scores are not comparable between ' +
+      'them.</p></div>';
+
+    // The marker and the root are deliberately on ONE line, as in the other three
+    // panels. The root-element test requires that a state be identifiable from its
+    // own `return` line, and a version with the title on the following line broke
+    // that — the test reported "no return produces this state" for a state that
+    // existed and rendered correctly.
+    if (!arenas.length) {
+      return '<div class="panel-alternatives">' + head + panelEmpty('No use cases compared yet',
+        'This project has not compared itself against other projects for a ' +
+        'particular use case. Those comparisons are added per use case, and each ' +
+        'one is ranked separately.') + '</div>';
+    }
+
+    var blocks = arenas.map(function (a) {
+      var rows = (a.entries || []).map(function (e) {
+        return '<li class="alt-row">' +
+          '<span class="alt-rank">' + esc(e.rank) + '</span>' +
+          '<a class="alt-title" href="/projects/' + esc(e.slug) + '">' +
+          esc(e.title) + '</a>' +
+          '<span class="alt-rating">' + esc(e.rating.toFixed ? e.rating.toFixed(0) : e.rating) + '</span>' +
+          '</li>';
+      }).join('');
+      var list = rows
+        ? '<ul class="alt-list">' + rows + '</ul>'
+        : '<p class="card-text">No projects entered yet. ' +
+          'This use case has been posed and nothing has been compared against it.</p>';
+      // §7.3's better-for / worse-for pair, stated once per use case rather than
+      // per entry: repeating it on every row is noise, and it is a property of the
+      // arena, not of any one competitor.
+      // better_for / worse_for are per-ENTRY fields in the response, and every
+      // entry of one arena carries the arena's own use case — so the pair is read
+      // off the first entry and stated once. If the arena has no entries there is
+      // no pair to state, which is why `entries` is checked first.
+      var pair = '';
+      if (a.entries && a.entries.length) {
+        pair = '<p class="alt-pair"><span>Better for: ' +
+          esc(a.entries[0].better_for) + '</span>' +
+          (a.entries[0].worse_for ? '<span>' + esc(a.entries[0].worse_for) + '</span>' : '') +
+          '</p>';
+      }
+      return '<div class="alt-arena">' +
+        '<div class="alt-usecase">' + esc(a.use_case) + '</div>' +
+        pair + list + '</div>';
+    }).join('');
+
+    return '<div class="panel-alternatives">' + head + blocks + '</div>';
+  }
+
   function panelEmpty(title, description) {
       return '<div class="empty-state"><p class="empty-state-title">' + esc(title) + '</p>' +
         '<p class="empty-state-description">' + esc(description) + '</p></div>';
@@ -266,7 +333,8 @@
       var roots = {
         'Capabilities': 'panel-capabilities',
         'Field reports': 'panel-field-reports',
-        'Solutions': 'panel-solutions'
+        'Solutions': 'panel-solutions',
+        'Alternatives': 'panel-alternatives'
       };
       return '<div class="empty-state panel-error ' + (roots[what] || '') + '">' +
         '<p class="empty-state-title">' +
@@ -528,6 +596,7 @@
       fieldReportsPanel(panels.fieldReports) +
       // §4.10's order puts standings in the roadmap, after field reports.
       solutionsPanel(panels.solutions) +
+      alternativesPanel(panels.alternatives) +
       forms(p);
   }
 
@@ -589,6 +658,12 @@
           // from an empty result.
           fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/solutions')
             .then(function (r) { return r.ok ? r.json() : null; })
+            .catch(function () { return null; }),
+          // The fourth §4.10 panel, and the first panel whose data is grouped by
+          // something the project NAMED rather than by a fixed dimension. Same
+          // failure rule: swallow its own failure, resolve to null.
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/alternatives')
+            .then(function (r) { return r.ok ? r.json() : null; })
             .catch(function () { return null; })
         ])
           .then(function (res) {
@@ -599,7 +674,8 @@
             box.innerHTML = render(p, features, complaints, documents, {
               capabilities: res[3],
               fieldReports: res[4],
-              solutions: res[5]
+              solutions: res[5],
+              alternatives: res[6]
             });
             if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
             wire(box, slug, p.id);

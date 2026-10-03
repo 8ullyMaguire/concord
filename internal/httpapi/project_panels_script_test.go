@@ -427,3 +427,91 @@ func TestEachPanelStateCarriesItsRootElement(t *testing.T) {
 		}
 	}
 }
+
+// The fourth §4.10 panel, on the same terms as the other three: fetched, threaded
+// into render, and given a root element on every exit path.
+func TestTheScriptFetchesAndRendersTheAlternativesPanel(t *testing.T) {
+	ts := newTestServer(t)
+	js := assetBody(t, ts, "/assets/js/project.js")
+
+	for _, want := range []string{
+		"'/alternatives'",
+		"alternatives: res[6]",
+		"alternativesPanel(panels.alternatives)",
+	} {
+		if !strings.Contains(js, want) {
+			t.Errorf("project.js does not contain %q; the fourth panel never "+
+				"reaches the page", want)
+		}
+	}
+}
+
+// Two states, distinguished in words. A project that never posed the question and
+// one that posed it and got no entries both have "nothing to show", and rendering
+// them identically tells a reader the question is unimportant.
+func TestTheScriptDistinguishesNoUseCaseFromAnUnansweredOne(t *testing.T) {
+	ts := newTestServer(t)
+	js := assetBody(t, ts, "/assets/js/project.js")
+
+	if !strings.Contains(js, "No use cases compared yet") {
+		t.Error("the panel has no wording for a project that never compared " +
+			"anything")
+	}
+	if !strings.Contains(js, "No projects entered yet") {
+		t.Error("a use case with no entries has no rendered state of its own; it " +
+			"collapses into the no-use-case state")
+	}
+	// §7.3's pair, stated once per arena rather than per row.
+	if !strings.Contains(js, "Better for:") {
+		t.Error("the panel does not render the better-for half of the pair")
+	}
+	// And the not-comparable warning, because each arena is its own ranking.
+	if !strings.Contains(js, "not comparable between") {
+		t.Error("the panel does not tell the reader that scores are not comparable " +
+			"between use cases")
+	}
+	// Competitor identity, from the same defect the solutions panel had.
+	if !strings.Contains(js, "esc(e.slug)") || !strings.Contains(js, "esc(e.title)") {
+		t.Error("a competitor is not rendered with its slug and title; a ranked " +
+			"list of ids is not a ranking")
+	}
+}
+
+// The fourth root, checked the same way as the other three — and this is the
+// assertion that has bitten twice, so it is checked for ALL FOUR panels here.
+func TestTheAlternativesPanelRootExistsOnEveryExitPath(t *testing.T) {
+	ts := newTestServer(t)
+	js := assetBody(t, ts, "/assets/js/project.js")
+
+	states := []struct{ marker, cls string }{
+		{"No use cases compared yet", "panel-alternatives"},
+		{"head + blocks +", "panel-alternatives"},
+	}
+	for _, st := range states {
+		var root, seen bool
+		for _, line := range strings.Split(js, "\n") {
+			if !strings.Contains(line, "return ") || !strings.Contains(line, st.marker) {
+				continue
+			}
+			seen, root = true, strings.Contains(line, st.cls)
+			break
+		}
+		switch {
+		case !seen:
+			t.Errorf("no return produces the %q state", st.marker)
+		case !root:
+			t.Errorf("the %q state returns markup without %s", st.marker, st.cls)
+		}
+	}
+
+	// panelError must know this panel, or a failed fetch of it renders with no
+	// root and a browser locator reports the panel as MISSING rather than broken.
+	errFn := js[strings.Index(js, "function panelError"):]
+	if !strings.Contains(errFn, "'panel-alternatives'") &&
+		!strings.Contains(errFn, "panel-alternatives") {
+		t.Error("panelError does not emit panel-alternatives")
+	}
+	if !strings.Contains(errFn, "'Alternatives'") {
+		t.Error("panelError has no mapping for the 'Alternatives' panel title")
+	}
+}

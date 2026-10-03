@@ -113,6 +113,55 @@ by nothing yet; it was the reason the `neither` outcome silently scored as a
 draw before 2026-10-02. One representation should be authoritative and
 constrained, not two with one unwritten.
 
+## The finder suite has a class of `wait_for_timeout` races, not one flaky test
+
+Recorded after the third instance appeared on 2026-10-03, and this entry
+supersedes the narrower one below — same root cause, wider blast radius.
+
+| Test | Symptom | Frequency seen |
+|---|---|---|
+| `test_escape_goes_back` | reads `#finder-shortlist-summary` before it has populated | ~1 run in 3 |
+| `test_results_show_the_answers_that_produced_them` | `to_have_count(1)` on `#finder-results-answers li` fails | ~1 run in 5 |
+
+The cause is the same in both: a fixed `page.wait_for_timeout(800)` standing in
+for a wait on the thing the test actually asserts. The finder is a mount point
+that paints instantly and fills in after fetches, so 800ms is a guess about
+network latency, and every such guess is a flake waiting for a slow run.
+
+The fix is a wait on the element or its content, not a longer sleep. Two
+concretely:
+
+```python
+# before
+page.wait_for_timeout(800)
+before = page.locator("#finder-shortlist-summary").inner_text()
+
+# after
+expect(page.locator("#finder-shortlist-summary")).to_contain_text("matches")
+before = page.locator("#finder-shortlist-summary").inner_text()
+```
+
+and for the answers list, wait for the first `li` to exist rather than for a
+count to settle:
+
+```python
+expect(page.locator("#finder-results-answers li").first).to_be_visible(timeout=10000)
+```
+
+Deliberately not applied in the commits that tripped over these. Both are the
+finder's own tests, both were green on the runs that followed, and a suite that
+gets its flakes patched by whoever happened to run them last stops being the
+finder's problem and starts being everyone's. It belongs with the finder work.
+
+### A note on running `make verify` and `make gates` together
+
+`make gates` mutates `internal/httpapi/finder.go` in place while it runs. Running
+it in the same shell as `make verify` produces a `TestWhyThisQuestionDescribes-
+TheSplitNotOneOption` failure that does not reproduce when either runs alone:
+the test reads source that is mid-mutation. It cost a diagnostic cycle on
+2026-10-03 and is the reason the two targets should be run serially, or from
+different working trees.
+
 ## `test_escape_goes_back` is flaky — roughly 1 run in 3
 
 Found 2026-10-03 while verifying the §4.10 project panels. Pre-existing: the file

@@ -280,6 +280,62 @@ def seed(db):
             " VALUES (?,'solution',?,1500,350,0.06,0,?,?)",
             (arena, sid, 1 if stype == "do-nothing" else 0, now))
 
+    # --- panels-alternatives: one use case, two competing projects ------------
+    #
+    # `arena_entries.entity_type` must be 'project'. That is the whole point of the
+    # panel — an alternatives arena ranks PROJECTS, so a feature here would render
+    # as a ranking that is quietly about something else.
+    apid = project("panels-alternatives")
+    # The arena is created FIRST and its id captured — the entries reference it, so
+    # a row written before it exists has no arena_id to point at. The first draft
+    # of this fixture inserted entries and only afterwards went looking for an
+    # arena it had never created, which is a None where an int belongs.
+    cur.execute(
+        "INSERT INTO arenas (type, project_id, use_case, question, created_at)"
+        " VALUES ('alternatives',?,'teams needing audit logs',"
+        "'Which is the better alternative?',?)",
+        (apid, now))
+    aid = cur.lastrowid
+    for slug, rating in [("rival-ledger", 1600), ("rival-notebook", 1400)]:
+        pid_c = project(slug)
+        cur.execute(
+            "INSERT INTO arena_entries (arena_id, entity_type, entity_id, r, rd,"
+            " sigma, games, is_baseline, updated_at)"
+            " VALUES (?,'project',?,?,350,0.06,0,0,?)",
+            (aid, pid_c, rating, now))
+
+    # A SECOND use case on the same project, with one competitor.
+    #
+    # This exists because of a mutation that survived: collapsing the per-arena
+    # blocks into a single flattened list produces byte-identical markup when a
+    # project has exactly ONE arena, so no browser test could see it. With two,
+    # the flattening is observable — two `.alt-arena` blocks become one.
+    #
+    # The rule being guarded is the same one solutions-panel-spec.md argues: each
+    # use case is its own contest, so a merged list ranks numbers that were never
+    # comparable.
+    cur.execute(
+        "INSERT INTO arenas (type, project_id, use_case, question, created_at)"
+        " VALUES ('alternatives',?,'solo operators',"
+        "'Which is the better alternative?',?)",
+        (apid, now))
+    aid2 = cur.lastrowid
+    solo = project("rival-solo")
+    cur.execute(
+        "INSERT INTO arena_entries (arena_id, entity_type, entity_id, r, rd,"
+        " sigma, games, is_baseline, updated_at)"
+        " VALUES (?,'project',?,1500,350,0.06,0,0,?)",
+        (aid2, solo, now))
+
+    # A second project with a use case posed and NOTHING entered, so the panel's
+    # two empty states can be told apart in the browser rather than only in Go.
+    bpid = project("panels-unanswered")
+    cur.execute(
+        "INSERT INTO arenas (type, project_id, use_case, question, created_at)"
+        " VALUES ('alternatives',?,'teams with a compliance deadline',"
+        "'Which is the better alternative?',?)",
+        (bpid, now))
+
     con.commit()
     con.close()
 
@@ -300,6 +356,7 @@ def open_project(page, slug):
     expect(page.locator(".panel-capabilities")).to_be_visible(timeout=10000)
     expect(page.locator(".panel-field-reports")).to_be_visible(timeout=10000)
     expect(page.locator(".panel-solutions")).to_be_visible(timeout=10000)
+    expect(page.locator(".panel-alternatives")).to_be_visible(timeout=10000)
 
 
 # ---------------------------------------------------------------------------
@@ -521,6 +578,117 @@ def test_a_project_with_no_features_says_it_has_no_roadmap(page):
 
 
 # ---------------------------------------------------------------------------
+# Alternatives arenas — the fourth §4.10 panel
+# ---------------------------------------------------------------------------
+
+def test_the_alternatives_panel_renders_a_real_ranking_of_projects(page):
+    """The panel's whole claim: competing PROJECTS, ranked, one arena per use case.
+
+    Asserted on `entity_type` at the store level in Go. What can only be checked
+    here is that the ranking reaches the page and reads as a ranking — a panel
+    that renders the arena and drops the entries looks identical to one with
+    nothing to show.
+    """
+    # The project that OWNS the arena. The competitors are separate projects and
+    # have their own pages; the panel lives on the owner's. The first version
+    # opened `rival-ledger` — an entry ON the panel — and landed on a login page,
+    # because that project is owned by the fixture's other user and the harness
+    # identity is not a member of it. A red test for a reason that had nothing to
+    # do with the panel.
+    open_project(page, "panels-alternatives")
+
+    # Scoped to one arena by its use case: the fixture project has two, and the
+    # other one is a different contest with different competitors.
+    arena = page.locator(".alt-arena", has_text="teams needing audit logs")
+    expect(arena).to_have_count(1)
+    expect(arena.locator(".alt-row")).to_have_count(2)
+
+    # Both competitors, by identity. The fixture names them "rival-ledger" and the
+    # project's `name` column title-cases the slug, so the rendered TEXT is "Rival
+    # Ledger" and the slug lives in the href. Asserting the slug was visible as text
+    # failed against a panel that was rendering perfectly — a title is what a reader
+    # sees, and a slug is what a link points at, so both are checked where they are.
+    expect(page.locator(".alt-title", has_text="Rival Ledger")).to_be_visible()
+    expect(page.locator(".alt-title", has_text="Rival Notebook")).to_be_visible()
+    expect(page.locator('a.alt-title[href="/projects/rival-ledger"]')).to_have_count(1)
+    expect(page.locator('a.alt-title[href="/projects/rival-notebook"]')).to_have_count(1)
+
+    # A VISIBLE rank per row, and the ratings the arena stored are rendered.
+    #
+    # `to_be_visible`, not `to_have_text`: a mutation that adds `hidden` to the
+    # rank leaves the element's text unchanged, so a text assertion still passes
+    # and the mutant survives. That is what happened — the fifth mutant of this
+    # panel was killed only after this line became a visibility check. A rank a
+    # reader cannot see is not a rank.
+    expect(arena.locator(".alt-rank").nth(0)).to_be_visible()
+    expect(arena.locator(".alt-rank").nth(1)).to_be_visible()
+    expect(arena.locator(".alt-row").nth(0)).to_contain_text("1600")
+    expect(arena.locator(".alt-row").nth(1)).to_contain_text("1400")
+
+    # Ranked 1,2 in the order the arena stored them — and rendered as numbers, not
+    # implied by list order, the same rule as the solutions panel.
+    expect(arena.locator(".alt-rank").nth(0)).to_have_text("1")
+    expect(arena.locator(".alt-rank").nth(1)).to_have_text("2")
+
+    # §7.3's pair, stated once for the arena.
+    expect(arena.locator(".alt-pair")).to_contain_text("Better for: teams needing audit logs")
+
+    # And the reader is told these are separate rankings.
+    expect(page.locator(".panel-alternatives")).to_contain_text("not comparable between")
+
+
+def test_the_two_empty_states_are_different_words(page):
+    """A use case posed with nothing entered is not a project that asked nothing.
+
+    The two read the same to a count-based check — one has no rows in both cases —
+    so the assertion has to be on the wording.
+    """
+    open_project(page, "panels-unanswered")
+    expect(page.locator("text=No projects entered yet")).to_be_visible()
+    # NOT the other state.
+    expect(page.locator("text=No use cases compared yet")).to_have_count(0)
+
+
+def test_each_use_case_is_its_own_ranking_not_a_merged_list(page):
+    """The rule solutions-panel-spec.md argues for solutions, argued here for
+    use cases.
+
+    One project, TWO arenas, three competitors. A merged list would render one
+    block and one ranking; grouped standings render two blocks, each with its own
+    use case heading.
+
+    This test exists because the flattening mutation survived every other version:
+    with a single arena, collapsing the blocks produces identical markup, so the
+    defect was real and untestable at once.
+    """
+    open_project(page, "panels-alternatives")
+
+    expect(page.locator(".alt-arena")).to_have_count(2)
+
+    audit = page.locator(".alt-arena", has_text="teams needing audit logs")
+    solo = page.locator(".alt-arena", has_text="solo operators")
+    expect(audit.locator(".alt-row")).to_have_count(2)
+    expect(solo.locator(".alt-row")).to_have_count(1)
+
+    # The ranks restart per use case, which is the visual form of "separate
+    # contests" — the same rule the solutions panel has.
+    expect(audit.locator(".alt-rank").nth(0)).to_be_visible()
+    expect(audit.locator(".alt-rank").nth(0)).to_have_text("1")
+    expect(solo.locator(".alt-rank").nth(0)).to_be_visible()
+    expect(solo.locator(".alt-rank").nth(0)).to_have_text("1")
+
+    # And the not-comparable warning is present, because it is exactly true here.
+    expect(page.locator(".panel-alternatives")).to_contain_text("not comparable between")
+
+
+def test_a_project_that_never_compared_anything_says_so(page):
+    open_project(page, "panels-empty")
+    expect(page.locator("text=No use cases compared yet")).to_be_visible()
+    expect(page.locator(".alt-arena")).to_have_count(0)
+    expect(page.locator(".alt-row")).to_have_count(0)
+
+
+# ---------------------------------------------------------------------------
 # Refusals. A panel that leaks is worse than one that is missing.
 # ---------------------------------------------------------------------------
 
@@ -585,6 +753,7 @@ def test_no_console_errors_on_any_panelled_page(page):
     has none. Checked across every panel shape so a TypeError in one branch
     cannot hide behind the happy path."""
     for slug in ["panels-confirmed", "panels-disputed", "panels-unasserted",
-                 "panels-empty", "panels-reports", "panels-standings"]:
+                 "panels-empty", "panels-reports", "panels-standings",
+                 "panels-alternatives", "panels-unanswered"]:
         open_project(page, slug)
     assert not page.errors, f"console/page errors: {page.errors}"
