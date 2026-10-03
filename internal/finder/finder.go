@@ -378,6 +378,31 @@ func candidateDimensionKeys(cands []Candidate) []string {
 	return out
 }
 
+// AllDimensions returns every dimension derivable from the candidate set, with
+// its live gain -- including the ones too weak to ask about.
+//
+// The question selector picks one; this is what the catalog endpoint shows, and
+// the reason it exists as a separate call rather than a debug flag on
+// NextQuestion: "Finder never asks about an option the catalog can't actually
+// deliver" (§5.4) is otherwise only checkable by driving the whole UI, and the
+// dimensions that were NOT offered are the ones worth inspecting -- they are the
+// instance's gaps.
+func AllDimensions(st State) []Dimension {
+	out := []Dimension{}
+	if len(st.Candidates) == 0 {
+		return out
+	}
+	for _, key := range candidateDimensionKeys(st.Candidates) {
+		if st.Asked[key] {
+			continue
+		}
+		family, label := classify(key)
+		counts, known := countsByValue(st.Candidates, key)
+		out = append(out, buildDimension(key, family, label, counts, known, len(st.Candidates)))
+	}
+	return out
+}
+
 // classify assigns a family and a human label to a dimension key.
 //
 // The prefix is the contract: "cap:" is a capability from the matrix, everything
@@ -696,7 +721,7 @@ func Score(cands []Candidate, answers []Answer) []Ranked {
 			WeightPlatform*platform +
 			WeightGovernance*gov +
 			WeightFieldReport*report +
-			0.0*c.ArenaR
+			WeightArena*c.ArenaR
 
 		// Soft preference bonus for the structured dimensions a user deferred:
 		// matching a stated preference adds a little, having it recorded as

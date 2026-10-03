@@ -2,6 +2,7 @@ package store
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"strings"
 	"testing"
@@ -217,6 +218,189 @@ func TestAnUnknownAssertionIsDistinguishableFromAMissingOne(t *testing.T) {
 	if _, present := got["wip-limits"]; present {
 		t.Error("a capability nobody asserted appeared in the map; absence and 'unknown' must stay distinct")
 	}
+}
+
+// A mixed-case VALUE is accepted and stored normalized.
+//
+// The capability KEY is normalized in two places (NormalizeCapabilityKey on
+// read, EnsureCapability on write) and every existing test exercises that: the
+// fixture registers "WIP-Limits" and asserts on "wip-limits". The VALUE is a
+// separate normalization at AssertCapability, and nothing asserted a mixed-case
+// value, so removing it changed no observable — the mutant survived a fully
+// green suite.
+//
+// The rule is not cosmetic. CapYes is "yes", and a contributor typing "Yes" or
+// "YES" from a form must not be told their answer is invalid, and must not
+// create a capability value that no query will ever match. Storing it raw would
+// make "yes" and "Yes" two different values in the same column: both would pass
+// the allowed-value check against the same declared set, and then Finder's
+// question options would show two spellings of one answer.
+func TestAMixedCaseValueIsStoredNormalized(t *testing.T) {
+	store, uid, slug := capFixture(t)
+	ctx := context.Background()
+
+	a, err := store.AssertCapability(ctx, "wip-limits", slug, "  YES  ", "typed by hand", uid)
+	if err != nil {
+		t.Fatalf("AssertCapability with a mixed-case value: %v", err)
+	}
+	if a.Value != CapYes {
+		t.Errorf("stored value = %q, want %q", a.Value, CapYes)
+	}
+
+	// And it is reachable by the normalized spelling, which is the point: one
+	// stored value, one way to ask for it.
+	got, err := store.ListCapabilitiesForSet(ctx, []int64{a.ProjectID}, "")
+	if err != nil {
+		t.Fatalf("ListCapabilitiesForSet: %v", err)
+	}
+	if v := got[a.ProjectID]["wip-limits"]; v != CapYes {
+		t.Errorf("read back %q, want %q — the value must be normalized on write, "+
+			"not only on the way in", v, CapYes)
+	}
+
+	// Two spellings of one answer must collapse onto one assertion, not
+	// accumulate: "yes" and "Yes" are one claim, and two rows would make the
+	// quorum count votes on a split claim.
+	again, err := store.AssertCapability(ctx, "wip-limits", slug, "Yes", "typed again", uid)
+	if err != nil {
+		t.Fatalf("AssertCapability 'Yes': %v", err)
+	}
+	if again.ID != a.ID {
+		t.Errorf("second spelling created assertion %d, want the existing %d — "+
+			"normalization must make it an update", again.ID, a.ID)
+	}
+	var rows int
+	if err := d0(store).QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM capability_assertions WHERE capability = ? AND project_id = ?`,
+		"wip-limits", a.ProjectID).Scan(&rows); err != nil {
+		t.Fatalf("count assertions: %v", err)
+	}
+	if rows != 1 {
+		t.Errorf("%d assertion rows for one capability/project, want 1", rows)
+	}
+}
+
+// ONE dispute does not dispute a claim. TWO does.
+//
+// The existing dispute test only ever creates two disputes, so it cannot
+// distinguish CapDisputeQuorum=2 from CapDisputeQuorum=1: both pass. This pins
+// the boundary from below, which is the half that decides whether one person
+// objecting can relabel a community consensus as "disputed".
+//
+// Asymmetry is the point (see CapDisputeQuorum): disputing is meant to be
+// expensive, so the test that matters is that the SECOND voice is required.
+func TestASingleDisputeDoesNotDisputeAClaim(t *testing.T) {
+	store, uid, slug := capFixture(t)
+	ctx := context.Background()
+
+	a, err := store.AssertCapability(ctx, "wip-limits", slug, CapYes, "docs", uid)
+	if err != nil {
+		t.Fatalf("AssertCapability: %v", err)
+	}
+
+	other := newUserNamed(t, store, "disputer1")
+
+	after, err := store.ConfirmCapability(ctx, a.ID, other, false)
+	if err != nil {
+		t.Fatalf("ConfirmCapability (dispute): %v", err)
+	}
+	if after.State == CapStateDisputed {
+		t.Errorf("state = %q after ONE dispute; a single objector must not be able to "+
+			"relabel a claim as disputed (CapDisputeQuorum is %d)", after.State, CapDisputeQuorum)
+	}
+	// The single objection is still visible even though it does not win.
+	confirmed, disputes, _ := selfVoteTally(t, store, a.ID)
+	if confirmed != 0 || disputes != 1 {
+		t.Errorf("tally = %d confirmed / %d disputed, want 0 / 1 — the single objection "+
+			"must be recorded even though it does not win", confirmed, disputes)
+	}
+	if after.Value != CapYes {
+		t.Errorf("value = %q, want %q — a disputed-but-not-won claim keeps its value",
+			after.Value, CapYes)
+	}
+}
+
+// An author's own confirmations never count toward quorum.
+//
+// assertionColumns excludes the author from BOTH subqueries. Without that
+// exclusion an author could confirm their own assertion, reach quorum alone,
+// and promote it to confirmed — the exact thing quorum exists to prevent. The
+// existing author test covers the explicit ErrPerm guard in ConfirmCapability;
+// this covers the counting, which is a different code path and was unguarded.
+func TestAnAuthorsOwnConfirmationDoesNotCountTowardQuorum(t *testing.T) {
+	store, uid, slug := capFixture(t)
+	ctx := context.Background()
+
+	a, err := store.AssertCapability(ctx, "wip-limits", slug, CapYes, "docs", uid)
+	if err != nil {
+		t.Fatalf("AssertCapability: %v", err)
+	}
+
+	// Inserted directly rather than through ConfirmCapability, which refuses
+	// this outright. The point is to bypass the GUARD and test the COUNTING:
+	// the row exists, so if the subquery ever stops excluding the author, the
+	// count moves. A test that used the API would keep passing even if the
+	// exclusion were deleted, because the guard would hide it.
+	//
+	// Column is `at`, and UNIQUE(assertion_id, user_id) means one row per
+	// voter -- so a single self-vote, which is the only shape the schema allows.
+	if _, err := d0(store).ExecContext(ctx, `
+		INSERT INTO capability_confirmations (assertion_id, user_id, confirmed, at)
+		VALUES (?, ?, 1, ?)`, a.ID, uid, 1.0); err != nil {
+		t.Fatalf("seed self-confirmation: %v", err)
+	}
+
+	// Read the count the LIST query computes, since that is where the exclusion
+	// lives. getAssertion would not exercise assertionColumns at all.
+	selfConfirmed, disputes, state := selfVoteTally(t, store, a.ID)
+	if selfConfirmed != 0 {
+		t.Errorf("Confirmations = %d, want 0 — the author's own votes must be excluded "+
+			"from the count (or one person promotes their own claim)", selfConfirmed)
+	}
+	if disputes != 0 {
+		t.Errorf("Disputes = %d from self-votes, want 0", disputes)
+	}
+	if state == CapStateConfirmed {
+		t.Error("the author promoted their own assertion to confirmed with their own votes")
+	}
+
+	// One independent confirmation DOES count. If this were 0 as well, the
+	// exclusion would be excluding everything.
+	other := newUserNamed(t, store, "independent1")
+	if _, err := store.ConfirmCapability(ctx, a.ID, other, true); err != nil {
+		t.Fatalf("ConfirmCapability: %v", err)
+	}
+	independent, disputes, state := selfVoteTally(t, store, a.ID)
+	if independent != 1 {
+		t.Errorf("Confirmations = %d after one independent vote, want 1 — if this is 0 "+
+			"the exclusion is excluding everyone, not just the author", independent)
+	}
+	if disputes != 0 {
+		t.Errorf("Disputes = %d, want 0", disputes)
+	}
+	if state == CapStateConfirmed {
+		t.Errorf("state = %q after ONE independent vote, want %q (quorum is %d)",
+			state, CapStateAsserted, CapQuorum)
+	}
+}
+
+// d0 exposes the wrapped *sql.DB for the two assertions in this file that need
+// to see rows the public API deliberately does not surface: confirmation counts
+// as the list query computes them, and the raw row count behind an upsert.
+func d0(s *DB) *sql.DB { return s.DB }
+
+// selfVoteTally reads the confirm/dispute counts and derived state for one
+// assertion, through the same scanAssertion/getAssertion path the API uses, so
+// the exclusion under test is the production one and not a copy of it that can
+// drift. getAssertion selects assertionColumns, whose subqueries carry the
+// `AND c.user_id <> a.asserted_by` clause this test exists to pin.
+func selfVoteTally(t *testing.T, s *DB, assertionID int64) (confirmed, disputes int, state string) {
+	t.Helper()
+	a, err := s.getAssertion(context.Background(), assertionID)
+	if err != nil {
+		t.Fatalf("getAssertion %d: %v", assertionID, err)
+	}
+	return a.Confirms, a.Disputes, a.State
 }
 
 func TestEnsureCapabilityRefusesToChangeTheValueSetUnderLiveAssertions(t *testing.T) {

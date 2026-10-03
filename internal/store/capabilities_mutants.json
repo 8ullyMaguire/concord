@@ -45,8 +45,8 @@
   "new": "\t  WHERE c.assertion_id = a.id AND c.confirmed = 1),"
  },
  {
-  "name": "absent assertion reported as unknown",
-  "old": "\t\tout[pid][key] = val",
-  "new": "\t\tout[pid][key] = val\n\t\t_ = 0"
+  "name": "absent row materialised as unknown",
+  "old": "\t\tif out[pid] == nil {\n\t\t\tout[pid] = map[string]string{}\n\t\t}\n\t\tout[pid][key] = val",
+  "new": "\t\tif out[pid] == nil {\n\t\t\tout[pid] = map[string]string{\"wip-limits\": CapUnknown}\n\t\t}\n\t\tout[pid][key] = val"
  }
 ]

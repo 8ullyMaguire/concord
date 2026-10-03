@@ -138,6 +138,14 @@ type Server struct {
 	Version       string
 	WebhookSecret string
 	pages         map[string]*template.Template
+
+	// Finder sessions are process-local and guarded by finderMu rather than
+	// held in a map read without a lock. Lazy construction under the mutex means
+	// NewServer stays the only constructor and no test has to remember to
+	// initialise this -- an uninitialised map field that every call site
+	// forgets to check is a nil-map write, which panics.
+	finderMu sync.Mutex
+	finder   *finderStore
 }
 
 func NewServer(store *store.DB, version string, webhookSecret ...string) (*Server, error) {
@@ -268,6 +276,29 @@ func (s *Server) Router() http.Handler {
 	// caller has no project context yet, which is why the token identifies the
 	// project rather than the other way round.
 	r.Post("/api/v1/auth/redeem-invite", s.handleRedeemInvite)
+
+	// Finder (docs/specs/finder-spec.md): the question-at-a-time discovery flow.
+	//
+	// All of it read- and session-scoped: answering a Finder question writes to
+	// a process-local session, never to the catalog. The contribution loop
+	// (§5.3) is the one path that persists, and it goes through the same
+	// capability endpoints the project page uses, not a Finder-specific write.
+	r.Route("/api/v1/finder", func(r chi.Router) {
+		r.Get("/questions", s.handleFinderQuestionCatalog)
+		r.Post("/sessions", s.handleStartFinderSession)
+		// Under /sessions, not beside it. Written the other way round the
+		// {session_id} mount is a sibling of the /sessions literal, so the
+		// literal wins that segment and every /sessions/{id}/answers request
+		// dies as a chi subrouter miss -- a bare 404 with no JSON body, which
+		// looks exactly like a missing route rather than a wrong one.
+		r.Route("/sessions/{session_id}", func(r chi.Router) {
+			r.Get("/", s.handleGetFinderSession)
+			r.Post("/answers", s.handleAnswerFinderQuestion)
+			r.Post("/back", s.handleGoBackFinder)
+			r.Post("/lift", s.handleLiftFinder)
+			r.Get("/results", s.handleFinderResults)
+		})
+	})
 
 	r.Route("/api/v1/projects", func(r chi.Router) {
 		r.Get("/", s.handleListProjects)
