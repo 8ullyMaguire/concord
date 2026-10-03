@@ -13,54 +13,30 @@ limiter's proxy-header path under real browser load.
 import json
 import os
 import sqlite3
-import subprocess
 import tempfile
 import time
-import urllib.request
-from pathlib import Path
 
 import pytest
 from playwright.sync_api import expect, sync_playwright
 
-REPO = Path(__file__).resolve().parents[2]
-BIN = REPO / "bin" / "concord"
+import harness
+
 PORT = 8421
 BASE = f"http://127.0.0.1:{PORT}"
 
 
 def api(method, path, body=None):
-    data = json.dumps(body).encode() if body is not None else None
-    req = urllib.request.Request(
-        BASE + path, data=data, method=method,
-        headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(req, timeout=5) as resp:
-        return json.loads(resp.read())
+    return harness.api(BASE, method, path, body)
 
 
 @pytest.fixture(scope="session")
 def server(request):
+    # One throwaway DB and one real server, shared by the whole session. See
+    # harness.py for why nothing here kills by pattern.
     dbdir = tempfile.mkdtemp(prefix="concord-e2e-")
-    db = os.path.join(dbdir, "concord.db")
-    env = dict(os.environ, CONCORD_DB=db, CONCORD_LISTEN=f"127.0.0.1:{PORT}")
-    # Clean up any leaked server from a previous crashed run, and refuse to
-    # proceed if the port is still occupied by something we did not start.
-    subprocess.run(["pkill", "-f", str(BIN)], check=False)
-    time.sleep(0.5)
-    proc = subprocess.Popen([str(BIN)], env=env,
-                            stdout=subprocess.DEVNULL, stderr=subprocess.STDOUT)
-    request.addfinalizer(lambda: (proc.terminate(), proc.wait(timeout=5)))
-    for _ in range(50):
-        try:
-            with urllib.request.urlopen(f"{BASE}/api/v1/healthz", timeout=1) as r:
-                if b"ok" in r.read():
-                    break
-        except Exception:
-            time.sleep(0.2)
-    else:
-        proc.terminate()
-        raise RuntimeError("concord did not become healthy on :%d" % PORT)
-    if proc.poll() is not None:
-        raise RuntimeError("concord exited immediately — port %d already in use?" % PORT)
+    logdir = tempfile.mkdtemp(prefix="concord-e2e-log-")
+    proc, db, base = harness.start_server(PORT, dbdir, logdir)
+    request.addfinalizer(lambda: harness.stop_server(proc))
 
     # -- seed everything directly (actor-gated writes have no interim HTTP auth) --
     con = sqlite3.connect(db)
@@ -128,7 +104,7 @@ def server(request):
     con.commit()
     con.close()
 
-    yield {"base": BASE}
+    yield {"base": base, "db": db, "logdir": logdir}
 
 
 @pytest.fixture(scope="session")
@@ -313,8 +289,15 @@ def test_project_detail_name_description(server, page):
 
 def test_project_detail_features(server, page):
     page.goto(BASE + "/projects/governance-lab")
-    expect(page.locator("#project-detail .grid-responsive-2 .card")).to_have_count(3)
-    expect(page.locator("#project-detail")).to_contain_text("Quorum calculator")
+    # Three seeded features plus the health card, which the project page gained
+    # when 7f3f846 added the document viewer rail. The count is asserted
+    # against the fixture's own features rather than a literal, so adding a
+    # card to the page is a visible change to this line rather than a silent
+    # break — this test was asserting 3 for two commits after the page grew.
+    cards = page.locator("#project-detail .grid-responsive-2 .card")
+    expect(cards).to_have_count(4)
+    for title in ["Quorum calculator", "Health dashboard", "Complaint triage queue"]:
+        expect(page.locator("#project-detail")).to_contain_text(title)
     expect(page.locator("#project-detail .badge-purple").first).to_contain_text("rating")
 
 
@@ -324,10 +307,21 @@ def test_project_detail_board_link(server, page):
     expect(page).to_have_url(BASE + "/projects/governance-lab/board")
 
 
-def test_project_not_found_graceful(server, page):
+def test_project_not_found_is_a_styled_404(server, page):
+    """A project that does not exist, and one you may not see, must be
+    INDISTINGUISHABLE — both 404 with the same body.
+
+    The page is a template shell, but it must not render for a project the
+    caller cannot see: a 200 with the title is enough to enumerate private
+    slugs. 7f3f846 changed this from a 200 shell to a real 404; this test was
+    still asserting the old behaviour, so it had been failing since then.
+    """
     resp = page.goto(BASE + "/projects/nope-not-real")
-    assert resp.status == 200  # shell renders; hydration shows the message
-    expect(page.get_by_text("Project not found")).to_be_visible()
+    assert resp.status == 404
+    expect(page.locator(".empty-state.notfound")).to_be_visible()
+    expect(page.get_by_text("Not found")).to_be_visible()
+    # And it offers a way out rather than a dead end.
+    expect(page.get_by_role("link", name="Browse projects")).to_be_visible()
 
 
 # ---------------------------------------------------------------- board
