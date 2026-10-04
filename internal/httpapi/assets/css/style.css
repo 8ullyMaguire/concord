@@ -1492,3 +1492,11 @@ textarea:focus-visible {
 .scout-error { color: #b3261e; margin-top: 0.75rem; }
 .scout-empty { color: #666; font-style: italic; }
 .scout-report-actions { margin-bottom: 1rem; }
+
+/* Scout's save control. The field sits inline with the buttons rather than on its
+   own row so the whole "what now" affordance reads as one group; the label is
+   still present for a screen reader, just visually compact. */
+.scout-save-field { display: inline-flex; flex-direction: column; margin: 0; }
+.scout-save-field .field-label { font-size: 0.8rem; }
+.scout-save-field input { min-width: 12rem; }
+#scout-save-ok { color: #1a7f4b; font-size: 0.85rem; margin: 0; }

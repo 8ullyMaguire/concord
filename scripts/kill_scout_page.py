@@ -45,10 +45,13 @@ MUTANTS = [
         "testNoFieldReportsIsNotRenderedAsZeroPercent",
     ),
     (
-        "P3 signals are not rendered at all",
+        # Anchored to the ON-SCREEN renderer. The stored-markdown one has the same
+        # guard now that reports can be saved, so the bare pattern occurs twice and
+        # the harness would ABORT rather than mutate. P14 covers the markdown side.
+        "P3 signals are not rendered on screen",
         JS,
-        "if (v.signals && v.signals.length) {",
-        "if (false) {",
+        "if (v.signals && v.signals.length) {\n      var sig = document.createElement('ul');",
+        "if (false) {\n      var sig = document.createElement('ul');",
         "testATiedVerdictSaysWhoItTiesWith",
     ),
     (
@@ -116,6 +119,58 @@ MUTANTS = [
         "<h1>\U0001F52D Scout</h1>",
         "<h1>Not found</h1>",
         "testTheScoutPageLoadsAndIsNotA404",
+    ),
+    (
+        "P11 the save sends the wrong kind",
+        JS,
+        "kind: 'scout',",
+        "kind: 'plan',",
+        "testAReportSavesAsADocumentOfKindScout",
+    ),
+    (
+        # Targeted at the two-ideas test, not the repeat test. A constant slug
+        # REPLACES just as cleanly when the same idea is saved twice, so the repeat
+        # test cannot see this defect -- it passed with the mutation, and only
+        # "two different ideas are two different documents" distinguishes them.
+        "P12 the save slug is not derived from the idea, so a second report overwrites the first",
+        JS,
+        "return s ? ('scout-' + s) : 'scout-report';",
+        "return 'scout-report';",
+        "testTwoDifferentIdeasAreTwoDifferentDocuments",
+    ),
+    (
+        "P13 a failed save leaves a stale success message",
+        JS,
+        ".catch(function (err) {\n      saveFail(err.message || 'Could not save the report.');",
+        ".catch(function (err) {\n      saveFail('');",
+        "testAFailedSaveDoesNotLeaveAStaleSuccessMessage",
+    ),
+    (
+        "P14 the stored document drops the signals",
+        JS,
+        "out.push('Signals: ' + v.signals.map(function (s) { return '`' + s + '`'; }).join(', '));",
+        "out.push('Signals: (omitted)');",
+        "testASavedReportCarriesTheReasoning",
+    ),
+    (
+        # This is the bug the browser found and no Go test could: scout.js had no
+        # token()/headers() because its GET needs no auth, and the save path called
+        # headers() the moment it was written. The page threw on click and every
+        # read-only test still passed.
+        "P15 the save posts without a bearer token",
+        JS,
+        "var t = token();\n    if (t) h.Authorization = 'Bearer ' + t;",
+        "var t = null;\n    if (t) h.Authorization = 'Bearer ' + t;",
+        "testAReportSavesAsADocumentOfKindScout",
+    ),
+    (
+        # Going "back" without dropping lastReport would let a save file the
+        # PREVIOUS idea under whatever project is typed next.
+        "P16 going back keeps the old report so it can be saved by mistake",
+        JS,
+        "lastReport = null;\n      show(report, false);",
+        "show(report, false);",
+        "testGoingBackClearsTheReportSoItCannotBeSavedByMistake",
     ),
 ]
 

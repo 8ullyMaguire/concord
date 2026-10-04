@@ -29,6 +29,7 @@ Every project gets a DISTINCT owner, because `refuseOwnVote` resolves ownership
 through `members` and one identity owning all of them breaks the arena rules.
 """
 import json
+import re
 import sqlite3
 import tempfile
 import time
@@ -159,6 +160,53 @@ def page(browser):
     pg.errors = errors
     yield pg
     ctx.close()
+
+
+@pytest.fixture()
+def signed_in(page, server):
+    """A page with a session token in localStorage.
+
+    Saving posts through the documents endpoint, which requires contributor rights
+    on the target project — so the save tests cannot run anonymous. Registering over
+    HTTP rather than inserting a user keeps the token real: the page authenticates
+    the way a browser does, and a hand-written localStorage token would test
+    nothing about the middleware.
+    """
+    username = f"scout-saver-{_xff_counter['n']}"
+    body = harness.api(server["base"], "POST", "/api/v1/auth/register", {
+        "username": username, "password": "correct-horse-battery",
+        "display_name": username,
+    })
+    token = body.get("token")
+    assert token, f"register returned no token: {body}"
+
+    # Grant contributor rights directly, on every seeded project.
+    #
+    # There is no API route for this: server.go registers GET .../members and
+    # nothing else, so a fixture that guesses a PUT or POST gets a 404 that reads
+    # like a permissions bug. JoinProject writes a plain member row, which is below
+    # the `contributor` level the documents handler requires, so the role is
+    # promoted with SQL.
+    #
+    # Promoting ALL projects is deliberate: the save tests are about the document
+    # path, not about access control, and a test that could fail for lack of rights
+    # in an unrelated project would be testing the fixture.
+    uid = body.get("user", {}).get("id") or body.get("user_id") or body.get("id")
+    assert uid, f"register returned no user id: {body}"
+    con = sqlite3.connect(server["db"])
+    try:
+        con.execute(
+            "INSERT INTO members (project_id, user_id, role, joined_at)"
+            " SELECT id, ?, 'contributor', ? FROM projects"
+            " WHERE id NOT IN (SELECT project_id FROM members WHERE user_id = ?)",
+            (uid, time.time(), uid))
+        con.commit()
+    finally:
+        con.close()
+
+    page.goto(BASE + "/scout")
+    page.evaluate("t => window.localStorage.setItem('concord.token', t)", token)
+    return page
 
 
 def ask(page, idea, exclude=None):
@@ -418,3 +466,213 @@ def testNoScriptErrorsDuringAReport(page):
     ask(page, "offline, wip limits, self-hosted")
     expect(page.locator("#scout-verdicts [data-verdict]").first).to_be_visible()
     assert not page.errors, f"JS errors during the report: {page.errors}"
+
+# --- saving a report as a document ---------------------------------------
+def scout_docs(server, slug):
+    """The scout documents on `slug`, as a list.
+
+    The list endpoint answers a BARE JSON ARRAY, not an object — harness.api
+    returns whatever the server sent, so `body.get(...)` on it raises
+    AttributeError. The first version of these tests assumed a wrapper object
+    because doJSON in the Go harness wraps arrays under "items", which does not
+    apply to Python. Both shapes are accepted so the helper cannot be wrong about
+    the server's choice.
+    """
+    body = harness.api(server["base"], "GET",
+                       f"/api/v1/projects/{slug}/documents?kind=scout")
+    if isinstance(body, list):
+        return body
+    return body.get("documents") or body.get("items") or []
+
+
+
+
+# Saving goes through the EXISTING documents endpoint with kind `scout`, so these
+# tests need a session with contributor rights on the target project. Scout's read
+# path deliberately still works logged out, which is what the `page` fixture is for.
+
+
+def save(pg, slug, idea="offline support and wip limits"):
+    """Ask, then save to `slug`. Asserts only that a visible outcome appeared."""
+    ask(pg, idea)
+    pg.fill("#scout-save-slug", slug)
+    pg.click("#scout-save")
+    expect(pg.locator("#scout-save-ok")).to_be_visible(timeout=10000)
+
+
+# A failed save is a DELIBERATE 404 in some of these tests, and the browser logs
+# every non-2xx response to the console. "No console errors" would fail on the very
+# behaviour under test, so the filter drops resource failures and leaves genuine
+# script errors — an undefined function, a thrown exception — which is what the
+# assertion is actually for.
+def assert_no_script_errors(pg):
+    script_errors = [e for e in pg.errors if "Failed to load resource" not in e]
+    assert not script_errors, f"JS errors: {script_errors}"
+
+
+# The whole point of §8: a report you can come back to. It is stored through the
+# EXISTING documents endpoint with kind `scout`, not a scout-specific write path,
+# so this asserts the document really is there under that kind.
+def testAReportSavesAsADocumentOfKindScout(signed_in, server):
+    pg = signed_in
+    save(pg, "beta-core")
+    ok = pg.locator("#scout-save-ok").text_content()
+    assert "scout" in ok, f"the confirmation does not name the kind: {ok!r}"
+
+    # And it is actually stored, which the confirmation alone does not establish.
+    #
+    # beta-core, and an exact count of one, because the server fixture is
+    # SESSION-scoped: a previous test's document on alpha-core is still there, and
+    # counting documents absolutely would make this test depend on execution order.
+    docs = scout_docs(server, "beta-core")
+    assert len(docs) == 1, f"expected one scout document on beta-core, got {docs}"
+    assert docs[0]["kind"] == "scout"
+
+
+# The stored body has to be useful months later with no instance running, so it
+# must carry the reason AND the signals. A document holding only verdict labels
+# answers nothing.
+def testASavedReportCarriesTheReasoning(signed_in, server):
+    pg = signed_in
+    save(pg, "gamma-partial", "offline, wip limits and self-hosted")
+
+    doc = scout_docs(server, "gamma-partial")[0]
+    text = doc["body"]
+    assert "## What Scout read" in text, "the decomposition is missing"
+    assert "### " in text, "no per-verdict sections"
+    assert "Signals:" in text, (
+        "the signals are missing, so the stored document cannot answer 'why did "
+        "Scout say this' later")
+    # At least one verdict must carry them, with its actual signal values rather
+    # than a placeholder. The first version asserted only the heading, and a
+    # mutant replacing the push with a literal "Signals: (omitted)" still wrote
+    # the heading — so it passed.
+    signal_lines = [l for l in text.splitlines() if l.startswith("Signals: ")]
+    assert signal_lines, "no verdict wrote a signals line at all"
+    assert any(re.search(r"`[a-z_]+[:0-9]", l) for l in signal_lines), (
+        f"signals lines carry no values: {signal_lines}")
+    # The honesty rules survive the round trip into a document.
+    assert "health not measured" in text, (
+        f"an unmeasured health was stored as a number: {text[:400]!r}")
+    assert "no field reports yet" in text, (
+        f"an unmeasured report count was stored as a rate: {text[:400]!r}")
+
+
+# PutDocument REPLACES at the same (kind, slug), so saving the same idea twice must
+# bump the revision rather than accumulate near-duplicates. The slug is derived
+# from the idea precisely to make that true.
+def testSavingTheSameIdeaTwiceReplacesRatherThanDuplicates(signed_in, server):
+    pg = signed_in
+    save(pg, "delta-none")
+    first = pg.locator("#scout-save-ok").text_content()
+
+    pg.click("#scout-again")
+    expect(pg.locator("#scout-seed")).to_be_visible(timeout=5000)
+    save(pg, "delta-none")
+    second = pg.locator("#scout-save-ok").text_content()
+
+    # A RELATIVE claim, not "revision 2". The server is session-scoped, so the
+    # absolute revision depends on how many tests ran before this one — asserting
+    # a fixed number made the test fail on execution order alone.
+    def rev(text):
+        return int(text.rsplit("revision", 1)[1].strip().rstrip("."))
+    assert rev(second) == rev(first) + 1, (
+        f"saving the same idea twice did not replace: {first!r} then {second!r}")
+
+    # One document, not two: the (kind, slug) uniqueness is what makes the replace
+    # work at all.
+    docs = scout_docs(server, "delta-none")
+    assert len(docs) == 1, f"expected one document after two saves, got {len(docs)}"
+
+
+# The slug is derived FROM THE IDEA, so two different ideas are two different
+# documents. This is the half the replace test cannot check: saving the same idea
+# twice replaces correctly whether or not the slug is derived, because a constant
+# slug would replace just as cleanly — and would also silently overwrite every other
+# report on the project.
+def testTwoDifferentIdeasAreTwoDifferentDocuments(signed_in, server):
+    pg = signed_in
+    save(pg, "epsilon-proprietary", "offline support and wip limits")
+    save(pg, "epsilon-proprietary", "self-hosted deployment please")
+
+    docs = scout_docs(server, "epsilon-proprietary")
+    assert len(docs) == 2, (
+        f"saving two different ideas produced {len(docs)} documents; a constant "
+        f"document slug would make the second overwrite the first: "
+        f"{[d['title'] for d in docs]}")
+
+
+# Going back to the seed must drop the report on screen. Without that, saving
+# after clicking "New idea" files the PREVIOUS idea under whatever project is typed
+# next — the most plausible way to put a report in the wrong project.
+def testGoingBackClearsTheReportSoItCannotBeSavedByMistake(signed_in, server):
+    pg = signed_in
+    ask(pg, "offline support and wip limits")
+    pg.click("#scout-again")
+    expect(pg.locator("#scout-seed")).to_be_visible(timeout=5000)
+    expect(pg.locator("#scout-save")).to_be_hidden()
+
+    # The first version stopped at `to_be_hidden()` and SURVIVED a mutation that
+    # kept lastReport: the button is hidden either way, because the report VIEW is
+    # hidden. Visibility is not the claim.
+    #
+    # The second version asked a NEW question and then saved, and also survived --
+    # because `renderReport` reassigns `lastReport` on every ask, so by the time Save
+    # ran the new report was there regardless. The clearing only matters in the
+    # window BETWEEN going back and the next ask, and in that window the Save button
+    # is unreachable by click.
+    #
+    # So it is driven through the handler directly, which is the only way to reach
+    # it: click Save's own listener with no report present and assert it REFUSES
+    # rather than saving the previous one. `pg.evaluate` clicks it programmatically.
+    result = pg.evaluate("""() => {
+      document.getElementById('scout-save').click();
+      const err = document.getElementById('scout-save-error');
+      return {hidden: err.hidden, text: err.textContent};
+    }""")
+    assert not result["hidden"], (
+        "after going back, saving still succeeded; the previous report was kept and "
+        "could be filed under a project typed next")
+    assert "Ask Scout something first" in result["text"], (
+        f"saving after going back gave {result['text']!r} rather than refusing")
+
+
+# A project that does not exist must fail visibly rather than appearing to save.
+def testSavingToAMissingProjectReportsTheError(signed_in):
+    pg = signed_in
+    ask(pg, "offline support")
+    pg.fill("#scout-save-slug", "no-such-project-anywhere")
+    pg.click("#scout-save")
+    expect(pg.locator("#scout-save-error")).to_be_visible(timeout=10000)
+    expect(pg.locator("#scout-save-ok")).to_be_hidden()
+    assert_no_script_errors(pg)
+
+
+# Saving with no project named is refused client-side.
+def testSavingWithoutAProjectIsRefused(signed_in):
+    pg = signed_in
+    ask(pg, "offline support")
+    pg.fill("#scout-save-slug", "  ")
+    pg.click("#scout-save")
+    expect(pg.locator("#scout-save-error")).to_be_visible(timeout=5000)
+    expect(pg.locator("#scout-save-ok")).to_be_hidden()
+
+
+# A failed save must not leave a stale success behind, or the next save looks like
+# it worked before it was even attempted.
+def testAFailedSaveDoesNotLeaveAStaleSuccessMessage(signed_in):
+    pg = signed_in
+    ask(pg, "offline support")
+    pg.fill("#scout-save-slug", "no-such-project-anywhere")
+    pg.click("#scout-save")
+    expect(pg.locator("#scout-save-error")).to_be_visible(timeout=10000)
+
+    # epsilon-proprietary, and a FRESH page region: the success message is cleared
+    # when a report renders, but a test that reuses a project another test already
+    # saved into could be reading a stale success left by an earlier test.
+    pg.fill("#scout-save-slug", "epsilon-proprietary")
+    pg.click("#scout-save")
+    expect(pg.locator("#scout-save-ok")).to_be_visible(timeout=10000)
+    expect(pg.locator("#scout-save-error")).to_be_hidden()
+    assert "epsilon-proprietary" in pg.locator("#scout-save-ok").text_content()
+    assert_no_script_errors(pg)

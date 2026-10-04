@@ -60,6 +60,23 @@ if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(4);}})();
   <section id="scout-report" hidden>
     <div class="actions scout-report-actions">
       <button type="button" class="btn" id="scout-again">← New idea</button>
+
+      <!--
+        Saving goes through the EXISTING document endpoint
+        (PUT /api/v1/projects/{slug}/documents/) with kind `scout`, not a
+        scout-specific write path. That endpoint already checks visibility, checks
+        role, and validates the kind against store.DocumentKinds -- so a second
+        write path would have to duplicate all three and would be the first one to
+        drift when any of them changed.
+      -->
+      <label class="field scout-save-field">
+        <span class="field-label">Save this report to a project</span>
+        <input type="text" id="scout-save-slug" placeholder="project-slug"
+               autocomplete="off">
+      </label>
+      <button type="button" class="btn" id="scout-save">Save as a scout report</button>
+      <p class="scout-error" id="scout-save-error" role="alert" hidden></p>
+      <p class="hint" id="scout-save-ok" hidden></p>
     </div>
 
     <!-- The decomposition, first and always. It is what the user is meant to
