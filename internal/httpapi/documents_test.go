@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
+
+	"git.polarisocial.xyz/concord/concord/internal/store"
 )
 
 // Project documents at the HTTP layer (spec extension, 2026-09-30).
@@ -264,13 +267,31 @@ func TestDocuments_kinds_vocabulary_is_served(t *testing.T) {
 		t.Fatalf("kinds: status %d body=%v", resp.StatusCode, body)
 	}
 	kinds, _ := body["kinds"].([]any)
-	want := []string{"readme", "spec", "plan", "wiki", "adr", "changelog"}
-	if len(kinds) != len(want) {
-		t.Fatalf("got %d kinds, want %d: %v", len(kinds), len(want), kinds)
+
+	// Derived from store.DocumentKinds rather than hardcoded. This test was
+	// written with a literal six-element list, so adding `scout` to the vocabulary
+	// — which is exactly what §8 required — failed it. The failure was CORRECT and
+	// the fix belongs here, but a literal list means every future kind needs this
+	// test edited too, and the edit is easy to forget because nothing else fails.
+	//
+	// Comparing against the source of truth keeps the test's actual claim — "the
+	// endpoint serves the vocabulary the store accepts" — which is the thing that
+	// can break. Order still matters and is still checked.
+	if len(kinds) != len(store.DocumentKinds) {
+		t.Fatalf("the endpoint serves %d kinds, the store accepts %d: %v vs %v",
+			len(kinds), len(store.DocumentKinds), kinds, store.DocumentKinds)
 	}
-	for i, k := range want {
+	for i, k := range store.DocumentKinds {
 		if kinds[i] != k {
-			t.Errorf("kind %d = %v, want %q", i, kinds[i], k)
+			t.Errorf("kind %d = %v, want %q (store.DocumentKinds)", i, kinds[i], k)
 		}
+	}
+
+	// And `scout` specifically, because it is the one that arrived with a
+	// migration and a store change rather than with the original vocabulary. If a
+	// future refactor drops it from one of the two places, this names which.
+	if !slices.Contains(kinds, any("scout")) {
+		t.Error("the kinds endpoint does not offer \"scout\"; scout reports are " +
+			"stored as documents of that kind and an editor cannot create one")
 	}
 }

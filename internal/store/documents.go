@@ -46,7 +46,14 @@ type Document struct {
 // DocumentKinds are the accepted values of Document.Kind. Kept here rather than
 // only in the CHECK constraint so the API can reject a bad kind with a useful
 // message instead of surfacing a SQLite constraint error.
-var DocumentKinds = []string{"readme", "spec", "plan", "wiki", "adr", "changelog"}
+//
+// `scout` is last, and was added by 0023_scout_document_kind.sql, which rebuilt
+// the table's CHECK constraint to admit it. Keeping the Go list and the CHECK in
+// step is the point of having this list at all: the API rejects a bad kind here
+// with a useful message rather than surfacing a SQLite constraint error, and that
+// only works if the two agree.
+var DocumentKinds = []string{"readme", "spec", "plan", "wiki", "adr", "changelog",
+	"scout"}
 
 // validDocumentKind reports whether kind is accepted.
 func validDocumentKind(kind string) bool {
