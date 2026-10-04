@@ -2,7 +2,9 @@ package store
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"git.polarisocial.xyz/concord/concord/internal/ranking"
@@ -775,5 +777,282 @@ func TestFeatureVoteStillMirrorsOntoTheFeatureRow(t *testing.T) {
 	}
 	if after.EloR == before.EloR {
 		t.Error("features.elo_r did not move: the priority endpoint would contradict the arena leaderboard")
+	}
+}
+
+// --- Alternatives arenas (spec §5, §7.3) ---------------------------------
+//
+// AddArenaCompetitor is the one arena method that was reachable from the HTTP
+// layer and called by NO test in the repository. Its six rules were documented in
+// comments and proved by nothing, so the S2 mutation gate reported 0/6 killed
+// against 22 armed tests -- which was the gate telling the truth about the code,
+// not about itself. These tests are what it was asking for.
+//
+// The rules under test, each stated by a comment on the method:
+//
+//  1. only alternatives and use-case arenas take competing projects;
+//  2. the candidate id must be positive;
+//  3. the arena's own project cannot compete against itself;
+//  4. the candidate project must exist;
+//  5. the entry is stored as a PROJECT pair, not a feature pair;
+//  6. adding is idempotent and does not overwrite an existing rating.
+
+// alternativesFixture gives an alternatives arena over a project, plus a second
+// project that can compete against it.
+func alternativesFixture(t *testing.T) (*DB, int64, int64, int64, int64) {
+	t.Helper()
+	d, uid, pid := setupWithProject(t)
+	arena, err := d.EnsureArena(context.Background(), ArenaAlternatives, pid, 0, "", "")
+	if err != nil {
+		t.Fatalf("EnsureArena(alternatives): %v", err)
+	}
+	return d, uid, pid, arena.ID, newCompetingProject(t, d, uid, "other-tool")
+}
+
+// newCompetingProject makes a second project owned by `uid`.
+//
+// `slug` really is a slug: CreateProject validates it as lowercase kebab-case, and
+// passing a human title here fails the test for a reason that has nothing to do
+// with the arena.
+//
+// A project, not a feature: an alternatives arena ranks PROJECTS (§5), and a
+// fixture that produced features would let a mutant that stores a feature pair
+// pass -- the entry would resolve, just against the wrong table.
+func newCompetingProject(t *testing.T, d *DB, uid int64, slug string) int64 {
+	t.Helper()
+	created, err := d.CreateProject(context.Background(), uid, slug, "A different tool",
+		"body", "collective", "MIT")
+	if err != nil {
+		t.Fatalf("CreateProject(%q): %v", slug, err)
+	}
+	return created.ID
+}
+
+func TestAnAlternativesArenaAcceptsAnotherProject(t *testing.T) {
+	d, _, _, arenaID, rivalID := alternativesFixture(t)
+	if err := d.AddArenaCompetitor(context.Background(), arenaID, rivalID); err != nil {
+		t.Fatalf("AddArenaCompetitor: %v", err)
+	}
+	e, err := d.GetArenaEntry(context.Background(), arenaID, EntityProject, rivalID)
+	if err != nil {
+		t.Fatalf("GetArenaEntry: %v", err)
+	}
+	if e.EntityID != rivalID {
+		t.Fatalf("entry is for entity %d, want %d", e.EntityID, rivalID)
+	}
+}
+
+// The load-bearing one, and the plan's: the pair must be stored as a project.
+// A feature pair resolves against the feature table, so the leaderboard shows a
+// rating for a row that is not the competing project at all -- and every other
+// assertion in this file still passes.
+func TestAnAlternativesArenaRanksProjectsNotFeatures(t *testing.T) {
+	d, _, _, arenaID, rivalID := alternativesFixture(t)
+	if err := d.AddArenaCompetitor(context.Background(), arenaID, rivalID); err != nil {
+		t.Fatalf("AddArenaCompetitor: %v", err)
+	}
+	e, err := d.GetArenaEntry(context.Background(), arenaID, EntityProject, rivalID)
+	if err != nil {
+		t.Fatalf("GetArenaEntry as a project: %v", err)
+	}
+	if e.EntityType != EntityProject {
+		t.Fatalf("entry is a %q, want %q", e.EntityType, EntityProject)
+	}
+	// The same id must NOT resolve as a feature. Entity id spaces are separate,
+	// so this is the check that distinguishes the two rather than a restatement.
+	if _, err := d.GetArenaEntry(context.Background(), arenaID, EntityFeature, rivalID); err == nil {
+		t.Fatalf("entry %d also resolves as a %s", rivalID, EntityFeature)
+	}
+}
+
+// The arena's own project is the subject, not a competitor to itself: §7.3's
+// honest "do nothing" is keep using X.
+func TestAProjectCannotCompeteAgainstItself(t *testing.T) {
+	d, _, pid, arenaID, _ := alternativesFixture(t)
+	err := d.AddArenaCompetitor(context.Background(), arenaID, pid)
+	if err == nil {
+		t.Fatal("the arena's own project was accepted as its own competitor")
+	}
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("got %v, want ErrInvalid", err)
+	}
+}
+
+// A feature-priority arena ranks features. Posting a project to it is a category
+// error, and the message says what that arena does rank instead -- a reader who
+// got this wrong is not asking for a technical error.
+func TestAnArenaOfTheWrongTypeRefusesACompetingProject(t *testing.T) {
+	d, uid, pid := setupWithProject(t)
+	arena, err := d.EnsureArena(context.Background(), ArenaFeaturePriority, pid, 0, "", "")
+	if err != nil {
+		t.Fatalf("EnsureArena: %v", err)
+	}
+	arenaID := arena.ID
+	rivalID := newCompetingProject(t, d, uid, "some-other-tool")
+	err = d.AddArenaCompetitor(context.Background(), arenaID, rivalID)
+	if err == nil {
+		t.Fatal("a project was added to a feature-priority arena")
+	}
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("got %v, want ErrInvalid", err)
+	}
+	if !strings.Contains(err.Error(), "features") {
+		t.Errorf("the message does not say what the arena ranks: %v", err)
+	}
+}
+
+// Without the existence check a typo'd id becomes an entry pointing at nothing,
+// and the leaderboard skips it -- so the arena looks like it ranked fewer projects
+// than were added, with nothing in the response to say why.
+func TestACandidateProjectThatDoesNotExistIsRefused(t *testing.T) {
+	d, _, _, arenaID, _ := alternativesFixture(t)
+	missing := int64(987654)
+	if _, err := d.GetProjectByID(context.Background(), missing); err == nil {
+		t.Skip("that project id exists; the fixture is wrong, not the code")
+	}
+	err := d.AddArenaCompetitor(context.Background(), arenaID, missing)
+	if err == nil {
+		t.Fatalf("a nonexistent candidate project %d was accepted", missing)
+	}
+}
+
+func TestACandidateIDOfZeroIsRefused(t *testing.T) {
+	d, _, _, arenaID, _ := alternativesFixture(t)
+	for _, id := range []int64{0, -1} {
+		if err := d.AddArenaCompetitor(context.Background(), arenaID, id); err == nil {
+			t.Fatalf("candidate id %d was accepted", id)
+		}
+	}
+}
+
+// Re-registering a competitor must not reset a 400-vote rating to the prior.
+// UpsertArenaEntry refresh semantics are the reason, and this is the test that
+// says so at the level a user meets it.
+func TestAddingTheSameCompetitorTwiceKeepsItsRating(t *testing.T) {
+	d, _, _, arenaID, rivalID := alternativesFixture(t)
+	ctx := context.Background()
+	if err := d.AddArenaCompetitor(ctx, arenaID, rivalID); err != nil {
+		t.Fatalf("first add: %v", err)
+	}
+	// Stand in for a rated history.
+	if _, err := d.ExecContext(ctx,
+		`UPDATE arena_entries SET r = 1723, games = 412
+		 WHERE arena_id = ? AND entity_type = ? AND entity_id = ?`,
+		arenaID, EntityProject, rivalID); err != nil {
+		t.Fatalf("seed a rating: %v", err)
+	}
+	if err := d.AddArenaCompetitor(ctx, arenaID, rivalID); err != nil {
+		t.Fatalf("second add: %v", err)
+	}
+	e, err := d.GetArenaEntry(ctx, arenaID, EntityProject, rivalID)
+	if err != nil {
+		t.Fatalf("GetArenaEntry: %v", err)
+	}
+	if e.R != 1723 || e.Games != 412 {
+		t.Fatalf("re-adding reset the rating to %v/%d games, want 1723/412", e.R, e.Games)
+	}
+}
+
+// Adding twice must leave ONE entry, not two -- the arena would otherwise show the
+// same competitor twice in a leaderboard.
+func TestAddingTheSameCompetitorTwiceLeavesOneEntry(t *testing.T) {
+	d, _, _, arenaID, rivalID := alternativesFixture(t)
+	ctx := context.Background()
+	for i := 0; i < 3; i++ {
+		if err := d.AddArenaCompetitor(ctx, arenaID, rivalID); err != nil {
+			t.Fatalf("add %d: %v", i, err)
+		}
+	}
+	board, err := d.ArenaLeaderboard(ctx, arenaID, 50)
+	if err != nil {
+		t.Fatalf("ArenaLeaderboard: %v", err)
+	}
+	n := 0
+	for _, e := range board {
+		if e.EntityID == rivalID {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Fatalf("the competitor appears %d times in the leaderboard, want 1", n)
+	}
+}
+
+// §5.2's sibling rule: a voter cannot judge an entry they authored. It is
+// enforced at the vote end by refuseOwnVote, and this covers the store level --
+// the HTTP layer has its own test.
+func TestAProjectOwnerCannotVoteOnTheirOwnProjectInTheArena(t *testing.T) {
+	d, uid, _, arenaID, _ := alternativesFixture(t)
+	ctx := context.Background()
+	// Two DIFFERENT projects, one of them owned by `uid`. The first version of this
+	// test voted a project against ITSELF, which the "a comparison needs two
+	// different entries" check refuses first -- so it passed while
+	// `refuseOwnVote` was never reached, and the mutation that deleted that call
+	// survived. A test that cannot fail for the right reason is worse than none:
+	// it reports the rule as covered.
+	mine := newCompetingProject(t, d, uid, "a-third-tool")
+	theirs := newCompetingProject(t, d, createStranger(t, d), "a-fourth-tool")
+	alsoTheirs := newCompetingProject(t, d, createStranger(t, d), "a-fifth-tool")
+	for _, id := range []int64{mine, theirs, alsoTheirs} {
+		if err := d.AddArenaCompetitor(ctx, arenaID, id); err != nil {
+			t.Fatalf("AddArenaCompetitor(%d): %v", id, err)
+		}
+	}
+
+	// `uid` owns `mine`, so judging it is a self-vote.
+	_, err := d.CastArenaVote(ctx, arenaID, uid,
+		EntityProject, mine, EntityProject, theirs, "a", "", 1.0)
+	if !errors.Is(err, ErrSelfVote) {
+		t.Fatalf("got %v, want ErrSelfVote", err)
+	}
+
+	// And the refusal is authorship, not a blanket ban on owners taking part in
+	// their own arena: `uid` owns neither side here, so this must be allowed.
+	//
+	// Outcomes are lowercase ("a", "b", "both", "neither", "skip"). The uppercase
+	// "A" was refused by the outcome switch, which runs before refuseOwnVote --
+	// the same ordering trap as the self-comparison above: the test reports the
+	// rule as covered while the rule was never reached.
+	//
+	// Both sides matter -- `refuseOwnVote` runs on each of them, so a vote between
+	// one of `uid`'s projects and somebody else's is refused whichever order it is
+	// cast in. Only a pair `uid` is unrelated to can be judged.
+	if _, err := d.CastArenaVote(ctx, arenaID, uid,
+		EntityProject, theirs, EntityProject, alsoTheirs, "a", "", 1.0); err != nil {
+		t.Fatalf("refused a vote by an owner on two projects they did not author: %v", err)
+	}
+}
+
+// The baseline is ONE representation. S2.0 was ordered to remove the ambiguity
+// between arena_entries.is_baseline and the unwritten arenas.baseline_entry_id
+// before an alternatives arena shipped; if the leaderboard starts reading a
+// literal, the flag stops reaching it.
+func TestTheLeaderboardCarriesTheBaselineFlag(t *testing.T) {
+	d, _, _, arenaID, rivalID := alternativesFixture(t)
+	ctx := context.Background()
+	if err := d.AddArenaCompetitor(ctx, arenaID, rivalID); err != nil {
+		t.Fatalf("AddArenaCompetitor: %v", err)
+	}
+	if _, err := d.ExecContext(ctx,
+		`UPDATE arena_entries SET is_baseline = 1
+		 WHERE arena_id = ? AND entity_type = ? AND entity_id = ?`,
+		arenaID, EntityProject, rivalID); err != nil {
+		t.Fatalf("flag the baseline: %v", err)
+	}
+	board, err := d.ArenaLeaderboard(ctx, arenaID, 50)
+	if err != nil {
+		t.Fatalf("ArenaLeaderboard: %v", err)
+	}
+	found := false
+	for _, e := range board {
+		if e.EntityID == rivalID {
+			found = true
+			if !e.IsBaseline {
+				t.Fatal("the leaderboard row lost the baseline flag")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("the competitor is missing from the leaderboard entirely")
 	}
 }

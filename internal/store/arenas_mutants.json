@@ -1,0 +1,32 @@
+[
+  {
+    "name": "the arena's own project becomes a candidate",
+    "old": "\tif arena.ProjectID == candidateProjectID {\n\t\treturn fmt.Errorf(\"%w: project %d cannot compete against itself; an \"+\n\t\t\t\"alternatives arena ranks other projects\", ErrInvalid, candidateProjectID)\n\t}",
+    "new": "\tif false {\n\t\treturn fmt.Errorf(\"%w: project %d cannot compete against itself; an \"+\n\t\t\t\"alternatives arena ranks other projects\", ErrInvalid, candidateProjectID)\n\t}"
+  },
+  {
+    "name": "a project pair is written as a feature pair",
+    "old": "\treturn d.UpsertArenaEntry(ctx, arenaID, EntityProject, candidateProjectID)",
+    "new": "\treturn d.UpsertArenaEntry(ctx, arenaID, EntityFeature, candidateProjectID)"
+  },
+  {
+    "name": "a candidate project that does not exist is accepted",
+    "old": "\tif _, err := d.GetProjectByID(ctx, candidateProjectID); err != nil {\n\t\treturn err\n\t}",
+    "new": ""
+  },
+  {
+    "name": "an arena of the wrong type accepts a competing project",
+    "old": "\tif arena.Type != ArenaAlternatives && arena.Type != ArenaUseCase {",
+    "new": "\tif false {"
+  },
+  {
+    "name": "a voter judges an entry they authored",
+    "old": "\tif err := d.refuseOwnVote(ctx, aType, aID, voterID); err != nil {",
+    "new": "\tif err := error(nil); err != nil {"
+  },
+  {
+    "name": "the baseline is read from the second representation",
+    "old": "\t\tSELECT arena_id, entity_type, entity_id, r, rd, sigma, games,\n\t\t       is_baseline, parent_entry_id, updated_at\n\t\tFROM arena_entries WHERE arena_id = ?",
+    "new": "\t\tSELECT arena_id, entity_type, entity_id, r, rd, sigma, games,\n\t\t       0, parent_entry_id, updated_at\n\t\tFROM arena_entries WHERE arena_id = ?"
+  }
+]
