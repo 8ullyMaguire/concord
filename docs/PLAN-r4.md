@@ -28,17 +28,17 @@ count in the Status section is the current one.
 | Solution arena + baseline | **shipped** | permanent per feature; see KNOWN-ISSUES on `is_baseline` |
 | Coverage + challengeable claims | **shipped** | κ=200; contested claims stop counting until upheld |
 | Derived/forked solutions | **shipped** | `parent_id`, rating inherited with inflated RD |
-| Ranking->consensus gating | **partial** | gate + agenda live; no `decision_records` |
-| Decision records (ADR) | **missing** | §6.5 — the one remaining gap in this pillar |
+| Ranking->consensus gating | **shipped** | gate + agenda live; the ADR on close writes a `decision record` |
+| Decision records (ADR) | **shipped** | §6.5. `writeDecisionRecord` stores one as a `project_documents` row of kind `adr`; **16 live** |
 | Complaints | exists | + duplicate detection (this session) |
 | Features | exists | r4 wants `outcome`/`criteria` fields |
 | Consensus | exists | + hold, tiers, stand-aside fixed |
 | Lists / Requests | exists | separate vote tables, not arenas |
 | Field reports | **shipped** (2026-10-03) | §4.7. Store + 16-mutant gate + `GET /api/v1/projects/{id}/field-reports` + project-page panel. §4.7's per-environment split is rendered |
 | Capabilities matrix | **shipped** (2026-10-03) | §4.1. Store + `GET /api/v1/projects/{id}/capabilities` + project-page panel. Three claim states kept distinct on the page |
-| Project-page solutions panel | **missing** | §4.10 — the third of the three panels; the API exists, nothing renders it |
-| Scout | **missing** | §4.5, Phase 3 |
-| Alternatives arena | **missing** | §5 table |
+| Project-page solutions panel | **shipped** | §4.10. `solutionsPanel()` in project.js, with a script-level test |
+| Scout | **shipped** | §4.5. A scout report is a `project_documents` row of kind `scout`, not a table — so looking for a `scout_reports` table finds nothing and wrongly reads as missing |
+| Alternatives arena | **shipped** | §5. `alternativesPanel()` in project.js |
 
 ## Milestone order
 
@@ -131,9 +131,9 @@ means there is code, a migration and a test -- not that the surface is complete.
 | R1 arenas | **shipped** | `0017_arenas.sql`; 70 arenas live. Generalized ranking is the substrate; `pairwise_votes` gained `arena_id` + `reason` |
 | R2 solutions | **shipped** | `0018_solutions.sql`; all six types, `exclusive`/`complementary`, forks with inflated RD, claim challenge/uphold |
 | R3 solution ranking + coverage | **shipped** | kappa=200; leaderboard carries rank/score/confidence/coverage/effort/risk. Known issue: `is_baseline` has no DB-level guarantee |
-| R4 ranking->consensus gating | **partial** | `0019_solution_consensus_calls.sql`, agenda and eligibility gate live. **`decision_records` does not exist** -- the ADR on close is the missing half |
-| R5 field reports + capabilities | **not started** | no `field_reports`, `capabilities` or `capability_confirmations` table |
-| R6 Scout | **not started** | no `scout_reports` table |
+| R4 ranking->consensus gating | **shipped** | `0019_solution_consensus_calls.sql`; agenda, eligibility gate, and the ADR on close (a `kind='adr'` document) |
+| R5 field reports + capabilities | **shipped** | `0021_capabilities.sql`, `0022_field_reports.sql`; panels on the project page |
+| R6 Scout | **shipped** | `0023_scout_document_kind.sql`; a report is a `kind='scout'` document, so the absent `scout_reports` table is the design, not the gap |
 | R7 docs sync | **in progress** | this file, README, KNOWN-ISSUES and HANDOFF updated 2026-10-02. `docs/concord-spec.md` is still two revisions stale -- it remains a verbatim copy of the master that the r4 rewrite replaced |
 
 ### What is deliberately left
@@ -150,3 +150,32 @@ that section 6.5 requires to be pre-agreed has nowhere to live, so the part of t
 outcome a reader most needs later -- why we did this instead of the runner-up --
 is recorded nowhere. It is a small migration and a small write path, and it closes
 the last gap in the consensus pillar.
+
+
+---
+
+## Correction (2026-10-05)
+
+Four of the five `**missing**` / `**partial**` rows above were WRONG, and every one
+was wrong in the same direction: the table claimed a gap that the code had
+already closed. Checked against the code and the live instance rather than
+against this file:
+
+| claimed | actually |
+|---|---|
+| no `decision_records` | `writeDecisionRecord` (consensus_solutions.go:552) stores one as a `project_documents` row of kind `adr` — **16 live** |
+| solutions panel missing | `solutionsPanel()` in project.js, covered by project_panels_script_test.go |
+| Scout missing | a scout report IS a document of kind `scout`; there is no `scout_reports` table **by design** (0023) |
+| alternatives arena missing | `alternativesPanel()` in project.js |
+
+**A tracker row is a claim, not a measurement.** The `decision_records` row was
+the most misleading of the four: the feature exists, is named after a table the
+design deliberately does not use, and reading the table sent me looking for
+something absent when the thing I wanted was already in production. The
+generalisation worth keeping: **when a plan says something is missing, confirm it
+is missing before building it**, because "the plan says so" is exactly as
+unreliable as a test that never met its mutant.
+
+**Also note the live schema is 78 tables with 1,806 audit rows** — and the audit
+log could be written by twenty call sites and read by none until this pass.
+Nothing on this page mentioned that.
