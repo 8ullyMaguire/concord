@@ -49,7 +49,14 @@ if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(4);}})();
     <!-- Quorum progress: participants against the threshold, before any ratios. -->
     <p class="consensus-quorum" id="consensus-quorum"></p>
 
-    <div class="consensus-tally">
+    <!--
+      §6.6's hidden tally. The two measures below are hidden until the call closes
+      and the note is shown instead; `tally_visible` from the response decides which,
+      and the page never decides for itself.
+    -->
+    <p class="consensus-tally-hidden" id="consensus-tally-hidden" hidden></p>
+
+    <div class="consensus-tally" id="consensus-tally">
       <div class="tally-measure">
         <span class="tally-label">Support</span>
         <span class="tally-value" id="tally-support"></span>

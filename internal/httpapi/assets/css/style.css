@@ -1550,6 +1550,17 @@ textarea:focus-visible {
   opacity: 0.8;
 }
 
+/* §6.6's hidden-tally note. Styled as an explanation, not an error: the absence of
+   the counts is a decision, and a reader who is not told why will think it is broken. */
+.consensus-tally-hidden {
+  padding: var(--space-sm, 0.75rem);
+  border: 1px dashed var(--border, #e2e8f0);
+  border-radius: 8px;
+  font-size: 0.92rem;
+  opacity: 0.85;
+  margin-block: var(--space-md, 1rem);
+}
+
 .consensus-quorum {
   font-size: 0.95rem;
   opacity: 0.85;

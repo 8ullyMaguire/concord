@@ -81,13 +81,30 @@
     $('consensus-meta').textContent = bits.join(' · ');
   }
 
-  function renderTally(t) {
+  function renderTally(t, visible) {
     // Quorum first: it is the question "has this call enough people in it yet",
-    // and it is answered before any ratio means anything.
+    // and it is answered before any ratio means anything. §6.6 keeps it visible even
+    // while the tally is hidden, so it is rendered on both paths.
     var q = $('consensus-quorum');
     q.textContent = t.participants + ' of ' + t.quorum_required +
       ' needed to reach quorum (' + t.eligible + ' eligible)';
 
+    var box = $('consensus-tally');
+    if (!visible) {
+      // §6.6: "Running counts are hidden until the call closes, to prevent
+      // bandwagoning." The decision is the SERVER's -- `tally_visible` -- because a
+      // rule enforced here would be bypassed with devtools. Say WHY, so the absence
+      // reads as a decision rather than a missing feature.
+      show(box, false);
+      var note = $('consensus-tally-hidden');
+      note.textContent = 'Running counts are hidden until this call closes, so nobody ' +
+        'is influenced by how others have voted.';
+      show(note, true);
+      return;
+    }
+
+    show($('consensus-tally-hidden'), false);
+    show(box, true);
     $('tally-support').textContent = pct(t.support_ratio);
     $('tally-support-detail').textContent =
       'consent ÷ (consent + reservations + blocks) · needs ' + pct(t.support_required);
@@ -97,7 +114,10 @@
       'consent ÷ (consent + blocks) · needs ' + pct(t.decisive_required);
   }
 
-  function renderObjections(list) {
+  function renderObjections(list, tallyVisible) {
+    // Objections are stances on the public record while a call is open, and §6.6
+    // hides the running picture. They appear when the call closes.
+    if (!tallyVisible) { show(objectionsEl, false); return; }
     if (!list || !list.length) { show(objectionsEl, false); return; }
     var ul = $('objection-list');
     ul.textContent = '';
@@ -138,8 +158,9 @@
     $('consensus-question').textContent =
       call.question || call.summary || 'Untitled call';
     renderMeta(call);
-    renderTally(data.tally || {});
-    renderObjections(data.objections);
+    // `tally_visible` is the server's answer, not this page's.
+    renderTally(data.tally || {}, data.tally_visible === true);
+    renderObjections(data.objections, data.tally_visible === true);
     show(callEl, true);
 
     // Signed out: read-only, with a prompt where each write control would be.

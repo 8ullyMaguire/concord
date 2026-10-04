@@ -374,3 +374,62 @@ design, which is indistinguishable from a missing route.
   reached from a feature or solution.
 - **`positions.reason`.** `CastPosition` takes no reason; the column defaults to `''`.
   Render the stance or nothing.
+
+---
+
+# Step C9 — Hide the tally until the call closes  [the spec's rule, missed once]
+
+**Added 2026-10-04.** `concord-spec-r4.md` §6.6:
+
+> **Hidden tally.** Running counts are hidden until the call closes, to prevent
+> bandwagoning. Participation progress and the quorum bar remain visible.
+
+The page shipped showing live counts and ratios — the exact bandwagon the section
+forbids. See spec §3.5 for why it was missed.
+
+**C9.1 — the server decides.** A `tally_visible` boolean on the response, so the
+rule cannot be bypassed with devtools. In `handleGetConsensus`, alongside the tally:
+
+```go
+	// §6.6's hidden tally. The flag is computed SERVER-side on purpose: if the
+	// client decided this, anyone could open devtools and read the running counts,
+	// which defeats the rule rather than implementing it.
+	tally := store.ConsensusThresholdsSummary(counts, governance.DefaultCharter(gm))
+	payload := map[string]any{
+		"call": c, "positions": positions, "objections": objections, "tally": tally,
+	}
+	if c.Status != "closed" {
+		// Participation and the quorum bar stay visible; §6.6 preserves them.
+		// Everything that reveals a stance goes.
+		payload["tally_visible"] = false
+		payload["positions"] = myPositionsOnly(positions, getActorID(r))
+		payload["tally"] = participationOnly(tally)
+	} else {
+		payload["tally_visible"] = true
+	}
+	writeJSON(w, http.StatusOK, payload)
+```
+
+`participationOnly` keeps `participants`, `eligible`, `quorum_required` and zeroes the
+stance counts and ratios. `myPositionsOnly` keeps the caller's own row so they can see
+what they recorded — §6.6 hides the tally, not a voter's own act.
+
+**Verify:** the two API tests. `TestAnOpenCallDoesNotLeakTheRunningTally` and
+`TestAClosedCallRevealsTheTally`, the second by closing a real call.
+
+**C9.2 — the page renders what it is told.** In `consensus.js`: when
+`tally_visible` is false, hide `#consensus-tally` and the objection counts, keep
+`#consensus-quorum`, and say why the numbers are absent. Never compute the
+visibility locally.
+
+**C9.3 — Playwright.** Two tests: an open call shows the quorum bar and NOT the
+ratios; a closed call shows both. The first is verified by mutation — removing the
+`if c.Status != "closed"` branch must fail it.
+
+**Verify:**
+
+```bash
+python3 -m pytest -p no:cacheprovider tests/e2e/consensus_e2e.py -q
+# expect: 9 passed
+make verify && make gates
+```

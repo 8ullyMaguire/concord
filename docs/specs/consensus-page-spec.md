@@ -59,6 +59,37 @@ wired. Step C2 exists to give it one.
 A client that recomputes either ratio is a client that can be wrong about what
 consent means, and it will be wrong silently.
 
+### 3.5 The rule this spec originally missed: the tally is HIDDEN until close
+
+**Added 2026-10-04, after the first version of this page shipped in violation of it.**
+
+`concord-spec-r4.md` §6.6 states, as its own paragraph:
+
+> **Hidden tally.** Running counts are hidden until the call closes, to prevent
+> bandwagoning. Participation progress and the quorum bar remain visible.
+
+The page shipped showing live counts and live ratios, which is precisely the
+bandwagon §6.6 forbids. Worse, this spec's own §3 quoted §6.3 — a section about a
+ratio that counts a stand-aside against consent — and never opened §6.6, which is
+where the hidden-tally rule lives. **A spec that cites the neighbouring section is
+evidence the section was not read.**
+
+The rule, and what stays visible because §6.6 says so explicitly:
+
+| while the call is OPEN | after it CLOSES |
+|---|---|
+| participants / quorum bar | all four counts |
+| **NOT** the counts | both ratios |
+| **NOT** the ratios | the result |
+| your own position | every position |
+
+`eligible` and `quorum_required` are not counts of anyone's stance, so they stay
+visible throughout — they are the quorum bar, which §6.6 preserves.
+
+**The server decides, not the client.** The read response gains a `tally_visible`
+flag (step C9), and the page renders what it is told. A client that decided for
+itself would let anyone bypass the rule with devtools, which defeats it.
+
 ---
 
 ## 4. The page

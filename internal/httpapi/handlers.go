@@ -1137,12 +1137,58 @@ func (s *Server) handleGetConsensus(w http.ResponseWriter, r *http.Request) {
 	if !gm.Valid() {
 		gm = governance.Collective
 	}
-	writeJSON(w, http.StatusOK, map[string]any{
+	// §6.6's HIDDEN TALLY: "Running counts are hidden until the call closes, to
+	// prevent bandwagoning. Participation progress and the quorum bar remain
+	// visible."
+	//
+	// The first version of this page ignored that and showed live counts and ratios,
+	// which is the bandwagon the rule exists to prevent. It is enforced HERE, on the
+	// server, and not in consensus.js: a client-side rule is bypassed by devtools,
+	// which defeats it instead of implementing it.
+	//
+	// What stays visible is exactly what §6.6 preserves -- participation and the
+	// quorum bar -- plus the caller's OWN position, because the rule hides the tally,
+	// not a voter's own act. Nothing else leaks a stance.
+	tally := store.ConsensusThresholdsSummary(counts, governance.DefaultCharter(gm))
+	payload := map[string]any{
 		"call":       c,
-		"positions":  positions,
 		"objections": objections,
-		"tally":      store.ConsensusThresholdsSummary(counts, governance.DefaultCharter(gm)),
-	})
+		"tally":      tally,
+	}
+	if c.Status == "closed" {
+		payload["tally_visible"] = true
+		payload["positions"] = positions
+	} else {
+		payload["tally_visible"] = false
+		payload["positions"] = ownPositionsOnly(positions, getActorID(r))
+		for k := range tally {
+			switch k {
+			case "participants", "eligible", "quorum_required":
+				// Kept: §6.6 preserves the quorum bar.
+			default:
+				tally[k] = nil
+			}
+		}
+	}
+	writeJSON(w, http.StatusOK, payload)
+}
+
+// ownPositionsOnly reduces a call's positions to the caller's own row.
+//
+// An empty slice rather than nil, so the JSON is `[]` and a client iterating it does
+// not have to handle null. A caller with no position gets an empty list, which is
+// also what "you have not voted" looks like.
+func ownPositionsOnly(positions []store.Position, actorID int64) []store.Position {
+	out := []store.Position{}
+	if actorID == 0 {
+		return out
+	}
+	for _, p := range positions {
+		if p.UserID == actorID {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 func (s *Server) handleCastConsensusPosition(w http.ResponseWriter, r *http.Request) {

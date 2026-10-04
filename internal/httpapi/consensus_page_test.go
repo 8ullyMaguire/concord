@@ -64,7 +64,8 @@ func tallyFor(t *testing.T, ts *httptest.Server, slug string, callID int64, tok 
 		t.Fatalf("read consensus: status %d, body %s", code, raw)
 	}
 	var out struct {
-		Tally map[string]any `json:"tally"`
+		Tally        map[string]any `json:"tally"`
+		TallyVisible bool           `json:"tally_visible"`
 	}
 	if err := json.Unmarshal(raw, &out); err != nil {
 		t.Fatalf("decode consensus read: %v", err)
@@ -72,7 +73,24 @@ func tallyFor(t *testing.T, ts *httptest.Server, slug string, callID int64, tok 
 	if out.Tally == nil {
 		t.Fatalf("the read carries no tally: %s", raw)
 	}
+	// §6.6 hides the running counts until the call closes, so a test asking for the
+	// tally must close the call first. Saying so HERE turns a future mistake into one
+	// clear message: four tests that read an open call all failed with
+	// "consent=<nil>, want 4", which is true but reads as a broken tally rather than as
+	// a test reading the wrong path.
+	if !out.TallyVisible {
+		t.Fatalf("the call is open, so §6.6 hides the tally -- close it first "+
+			"(db.CloseConsensusCall) before asking for counts. body: %s", raw)
+	}
 	return out.Tally
+}
+
+// closeForTally closes a call so its tally becomes visible (§6.6).
+func closeForTally(t *testing.T, db *store.DB, callID int64) {
+	t.Helper()
+	if _, err := db.CloseConsensusCall(context.Background(), callID); err != nil {
+		t.Fatalf("CloseConsensusCall: %v", err)
+	}
 }
 
 func TestTheConsensusReadCarriesTheTally(t *testing.T) {
@@ -83,6 +101,9 @@ func TestTheConsensusReadCarriesTheTally(t *testing.T) {
 		t.Fatalf("CreateConsensusCall: %v", err)
 	}
 
+	// Closed, because §6.6 hides the counts while the call is open and this test is
+	// about the shape a page receives on the path where the numbers exist.
+	closeForTally(t, db, call.ID)
 	tally := tallyFor(t, ts, slug, call.ID, anonAuth)
 
 	// All thirteen keys, because a page that reads one it cannot find has to guess.
@@ -122,6 +143,9 @@ func TestTheTallyReportsBothRatiosSeparately(t *testing.T) {
 		castAs(t, ts, slug, call.ID, tok, stance)
 	}
 
+	// Closed: §6.6's hidden tally means an open call reports null for every count, so
+	// the two-ratio claim can only be made once the call has resolved.
+	closeForTally(t, db, call.ID)
 	tally := tallyFor(t, ts, slug, call.ID, anonAuth)
 
 	if got := numOf(tally["consent"]); got != 4 {
@@ -175,12 +199,31 @@ func TestTheTallyShowsQuorumProgressWhileTheCallIsOpen(t *testing.T) {
 	if out.Call.Status != "open" {
 		t.Errorf("reading the call changed its status to %q", out.Call.Status)
 	}
-	tally := tallyFor(t, ts, slug, call.ID, anonAuth)
-	if got := numOf(tally["participants"]); got != 1 {
-		t.Errorf("participants=%v, want 1", got)
+	// Read raw, NOT via tallyFor: this test is about what an OPEN call may show, and
+	// §6.6 says participation and the quorum bar stay visible while the counts do not.
+	// Going through a helper that demands a revealed tally would invert the claim.
+	var open struct {
+		Tally        map[string]any `json:"tally"`
+		TallyVisible bool           `json:"tally_visible"`
 	}
-	if _, present := tally["quorum_required"]; !present {
+	if err := json.Unmarshal(raw, &open); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if open.TallyVisible {
+		t.Error("an open call reports the tally visible; §6.6 hides it until close")
+	}
+	if got := numOf(open.Tally["participants"]); got != 1 {
+		t.Errorf("participants=%v, want 1 -- §6.6 keeps participation progress visible", got)
+	}
+	if _, present := open.Tally["quorum_required"]; !present {
 		t.Error("an open call reports no quorum_required, so the page cannot show progress")
+	}
+	// And the other half of the same rule: the counts themselves stay hidden.
+	for _, k := range []string{"consent", "stand_aside", "block",
+		"support_ratio", "decisive_ratio"} {
+		if v := open.Tally[k]; v != nil {
+			t.Errorf("an open call reports %s=%v; §6.6 hides the running counts", k, v)
+		}
 	}
 }
 
