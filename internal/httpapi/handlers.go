@@ -105,10 +105,31 @@ func (s *Server) handleListComplaints(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetComplaint(w http.ResponseWriter, r *http.Request) {
-	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	// requireProjectID checks the caller's access to the project named in the
+	// path. It was missing here, so a complaint of a private project was readable
+	// by anyone who counted to its id.
+	//
+	// The ParseInt error was also discarded (`id, _ :=`): a non-numeric id became
+	// id 0 and asked the store about a row that does not exist, which is a 404
+	// for the wrong reason. It is now ErrInvalid, which is what it is.
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		mapError(w, store.ErrInvalid)
+		return
+	}
 	c, err := s.Store.GetComplaint(r.Context(), id)
 	if err != nil {
 		mapError(w, err)
+		return
+	}
+	// The complaint must belong to the project in the path, or one project's
+	// complaint is served under another's URL.
+	if c.ProjectID != projectID {
+		mapError(w, store.ErrNotFound)
 		return
 	}
 	writeJSON(w, http.StatusOK, c)
@@ -245,10 +266,33 @@ func (s *Server) handleFeaturePriorities(w http.ResponseWriter, r *http.Request)
 }
 
 func (s *Server) handleGetFeature(w http.ResponseWriter, r *http.Request) {
-	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		mapError(w, store.ErrInvalid)
+		return
+	}
 	f, err := s.Store.GetFeature(r.Context(), id)
 	if err != nil {
 		mapError(w, err)
+		return
+	}
+
+	// Two checks, and both are load-bearing.
+	//
+	// The project one closes an enumeration hole: this handler read the row by its
+	// numeric id alone, so an anonymous caller could read any feature of any private
+	// project by counting. The list endpoint beside it was already guarded, so the
+	// API answered 404 for a private project's features and 200 for the same
+	// project's feature 1 -- the list hidden, its contents not.
+	//
+	// The ownership one stops feature A being served under project B's URL, which
+	// is the same class of mistake handleGetSolution guards against for solutions.
+	if f.ProjectID != projectID {
+		mapError(w, store.ErrNotFound)
 		return
 	}
 	writeJSON(w, http.StatusOK, f)

@@ -110,6 +110,68 @@ A `{{define "project-tabs"}}` block placed at the top of `base.html` — above
 markup no reader of the file is looking for. It belongs at the end, with a comment
 saying why.
 
+## Six endpoints served any row by numeric id, from any project (fixed 2026-10-05)
+
+Found while picking up the next page to build, by reading handlers rather than
+trusting the access-control tests that already existed.
+
+Six handlers loaded a row by its NUMERIC id and returned it with no access check:
+
+| Handler | Route |
+|---|---|
+| `handleGetFeature` | `GET /api/v1/projects/{slug}/features/{id}` |
+| `handleGetComplaint` | `GET /api/v1/projects/{slug}/complaints/{id}` |
+| `handleGetList` | `GET /api/v1/projects/{slug}/lists/{id}` |
+| `handleGetListEntries` | `GET /api/v1/projects/{slug}/lists/{id}/entries` |
+| `handleGetRequest` | `GET /api/v1/requests/{request_id}` |
+| `handleGetRequestAnswers` | `GET /api/v1/requests/{request_id}/answers` |
+
+None sits under an auth group, so all six are anonymous-reachable, and ids are
+sequential integers from 1 — "know the id" is "count from one".
+
+**Measured, before the fix.** An anonymous caller reading feature 1 of a private
+project got `200` and the whole row: title, body, status, `elo_r`, `elo_rd`. The
+complaint endpoint did the same. The worst part is the shape: the API answered
+`404` for a private project's feature **list** and `200` for feature 1 of the same
+project — the list hidden, its contents not.
+
+### The two request endpoints hid the bug from a route scan
+
+`/api/v1/requests/{request_id}` has **no project segment**, so it does not look
+project-scoped and the project-scoped guard was never applied to it. It needs the
+project reached *through the row* (`requireReadableRequest`). A static scan of
+"routes under `/api/v1/projects/{slug}`" cannot see these at all.
+
+### Each guard needed its own test, and two were untested
+
+`internal/httpapi/id_enumeration_test.go`, 7 tests. Five mutants were written to
+try to make it green again:
+
+| Mutation | Killed by |
+|---|---|
+| remove `requireProjectID` from `handleGetFeature` | `TestPrivateProjectItemsAreNotReadableByID` |
+| drop the ownership check on feature | `TestAFeatureCannotBeReadThroughAnotherProjectsURL` |
+| drop the ownership check on complaint | `TestAComplaintCannotBeReadThroughAnotherProjectsURL` |
+| `requireReadableRequest` skips visibility | `TestRequestsOfAPrivateProjectAreNotReadable` |
+| `requireReadableList` skips visibility | `TestListEntriesOfAPrivateProjectAreNotReadable` |
+
+**The ownership checks survived the entire suite** until those two tests existed.
+`requireProjectID` checks the caller's access to the project *named in the path*,
+which is necessary and not sufficient: a **public** project in the path plus a row
+belonging to a **private** one still returns the private row, because the check
+passes on the project that was named rather than the project that owns the row.
+
+A mutation that removes `requireProjectID` while keeping the ownership check also
+**compiles and passes** if the project id is then taken from the row — so the
+ownership check alone is not sufficient either. Both are load-bearing.
+
+### Two smaller defects fixed in the same handlers
+
+- `id, _ := strconv.ParseInt(...)` discarded the error, so a non-numeric id became
+  id `0` and asked the store about a row that does not exist: a `404` for the wrong
+  reason. Now `ErrInvalid`, which is what it is.
+- The same discarded-error pattern was in four of the six handlers.
+
 ## `PRAGMA integrity_check` disagrees with itself across SQLite builds
 
 `ALTER TABLE t ADD COLUMN b REAL NOT NULL DEFAULT 0.5` does not write a value

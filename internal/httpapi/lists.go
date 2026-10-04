@@ -12,10 +12,27 @@ import (
 
 // handleGetList returns a single list.
 func (s *Server) handleGetList(w http.ResponseWriter, r *http.Request) {
-	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	// requireProjectID checks the caller's access to the project in the path. It
+	// was missing, so a list belonging to a private project was readable by anyone
+	// who counted to its id.
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		mapError(w, store.ErrInvalid)
+		return
+	}
 	l, err := s.Store.GetList(r.Context(), id)
 	if err != nil {
 		mapError(w, err)
+		return
+	}
+	// And the list must belong to THAT project, or one project's list is served
+	// under another's URL.
+	if l.ProjectID != projectID {
+		mapError(w, store.ErrNotFound)
 		return
 	}
 	writeJSON(w, http.StatusOK, l)
@@ -23,7 +40,14 @@ func (s *Server) handleGetList(w http.ResponseWriter, r *http.Request) {
 
 // handleGetListEntries returns entries for a list.
 func (s *Server) handleGetListEntries(w http.ResponseWriter, r *http.Request) {
-	listID, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	// Entries carry the list's own visibility, so the LIST is checked rather than
+	// the project: a protected list inside a public project must not become
+	// readable just because its parent is.
+	list, ok := s.requireReadableList(w, r)
+	if !ok {
+		return
+	}
+	listID := list.ID
 	entries, err := s.Store.GetListEntries(r.Context(), listID)
 	if err != nil {
 		mapError(w, err)
@@ -61,10 +85,13 @@ func (s *Server) handleCreateListEntry(w http.ResponseWriter, r *http.Request) {
 
 // handleGetRequest returns a single request.
 func (s *Server) handleGetRequest(w http.ResponseWriter, r *http.Request) {
-	id, _ := strconv.ParseInt(chi.URLParam(r, "request_id"), 10, 64)
-	request, err := s.Store.GetRequest(r.Context(), id)
-	if err != nil {
-		mapError(w, err)
+	// The route is /api/v1/requests/{request_id} -- there is NO project segment --
+	// so the project has to be reached THROUGH the request row. Checking a path
+	// parameter that does not exist is how this endpoint stayed unguarded: it does
+	// not look like a project-scoped route, so the project-scoped guard was never
+	// applied to it.
+	request, ok := s.requireReadableRequest(w, r)
+	if !ok {
 		return
 	}
 	writeJSON(w, http.StatusOK, request)
@@ -72,8 +99,13 @@ func (s *Server) handleGetRequest(w http.ResponseWriter, r *http.Request) {
 
 // handleGetRequestAnswers returns answers for a request.
 func (s *Server) handleGetRequestAnswers(w http.ResponseWriter, r *http.Request) {
-	requestID, _ := strconv.ParseInt(chi.URLParam(r, "request_id"), 10, 64)
-	answers, err := s.Store.GetRequestAnswers(r.Context(), requestID)
+	// The answers belong to the request, so the request is what gets checked --
+	// /api/v1/requests/{request_id}/answers carries no project segment of its own.
+	request, ok := s.requireReadableRequest(w, r)
+	if !ok {
+		return
+	}
+	answers, err := s.Store.GetRequestAnswers(r.Context(), request.ID)
 	if err != nil {
 		mapError(w, err)
 		return
@@ -228,4 +260,65 @@ func (s *Server) handleVoteAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, map[string]string{"status": "voted"})
+}
+
+
+// requireReadableList loads the list named in {id} and confirms the caller may
+// read it, answering the request itself when they may not.
+//
+// Entries are read through this rather than by bare id: a list lives inside a
+// project, so checking the project is what actually decides the answer, and a
+// numeric id on its own carries no access information at all.
+func (s *Server) requireReadableList(w http.ResponseWriter, r *http.Request) (store.List, bool) {
+	listID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		mapError(w, store.ErrInvalid)
+		return store.List{}, false
+	}
+	l, err := s.Store.GetList(r.Context(), listID)
+	if err != nil {
+		mapError(w, err)
+		return store.List{}, false
+	}
+	proj, err := s.Store.GetProjectByID(r.Context(), l.ProjectID)
+	if err != nil {
+		mapError(w, store.ErrNotFound)
+		return store.List{}, false
+	}
+	if !s.projectReadable(r, proj) {
+		// 404, not 403: a 403 would confirm the id exists.
+		mapError(w, store.ErrNotFound)
+		return store.List{}, false
+	}
+	return l, true
+}
+
+// requireReadableRequest loads the request named in {request_id} and confirms the
+// caller may read it.
+//
+// This exists because the route is /api/v1/requests/{request_id}: there is no
+// project in the path to run requireProjectID against. Reaching the project through
+// the row is the only way to apply the same access rule, and it is what these two
+// handlers were missing.
+func (s *Server) requireReadableRequest(w http.ResponseWriter, r *http.Request) (store.Request, bool) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "request_id"), 10, 64)
+	if err != nil {
+		mapError(w, store.ErrInvalid)
+		return store.Request{}, false
+	}
+	req, err := s.Store.GetRequest(r.Context(), id)
+	if err != nil {
+		mapError(w, err)
+		return store.Request{}, false
+	}
+	proj, err := s.Store.GetProjectByID(r.Context(), req.ProjectID)
+	if err != nil {
+		mapError(w, store.ErrNotFound)
+		return store.Request{}, false
+	}
+	if !s.projectReadable(r, proj) {
+		mapError(w, store.ErrNotFound)
+		return store.Request{}, false
+	}
+	return req, true
 }
