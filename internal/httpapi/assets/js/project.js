@@ -572,13 +572,16 @@
     return '<div class="detail-header">' +
       '<div><h1 class="page-title">' + esc(p.name) + ' <span class="badge badge-slate" style="vertical-align:middle;">' + esc(p.slug) + '</span></h1>' +
       '<p class="page-subtitle">' + esc(p.description || 'No description yet.') + '</p></div>' +
+      // The sub-page tab bar is rendered by templates/base.html, not here.
+      //
+      // It was here first, which made it wrong: each sub-page is a separate
+      // template loading its own bundle, so a tab bar built in project.js appeared
+      // on the overview and nowhere else, turning every other sub-page into a
+      // dead end. The layout sees the request path and can put it on all of them.
+      // See the comment on the tab bar in base.html.
       '<div class="detail-actions">' +
       '<a class="btn btn-primary" href="/projects/' + esc(p.slug) + '/board">Open board</a>' +
-      '<a class="btn" href="/projects/' + esc(p.slug) + '/documents">Documents' +
-      (documents ? ' <span class="badge badge-slate">' + documents.length + '</span>' : '') +
-      '</a>' +
-      '<a class="btn btn-secondary" href="/projects/' + esc(p.slug) + '/audit">Audit log</a>' +
-      '<a class="btn btn-secondary" href="/projects">Back</a>' +
+      '<a class="btn btn-secondary" href="/projects">All projects</a>' +
       '</div></div>' +
       '<div class="card mb-6">' + badges + healthBar(p.health_score) + meta + '</div>' +
       '<div class="section-head"><h2 class="section-title" style="font-size:1.25rem;">Complaints</h2>' +

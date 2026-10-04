@@ -104,6 +104,35 @@ main.container {
 
 .site-nav { display: flex; align-items: center; gap: 0.25rem; }
 
+/* Nav on a phone.
+
+   The nav was three links and fitted at 375px by luck, with no media query
+   anywhere. Adding Scout and Finder made it five, and
+   test_mobile_no_horizontal_overflow failed with 20px of overflow -- the row is
+   nowrap, so the links simply ran past the viewport.
+
+   The fix is to let it WRAP rather than to shrink the labels: five short words
+   across two rows is readable, whereas 11px tap targets are not, and the header
+   is sticky so a second row costs one line of scroll rather than any interaction.
+
+   min-width:0 on the nav is load-bearing. It is a flex item of a nowrap flex
+   container, so without it the nav's min-content width (the widest unbreakable
+   run) refuses to shrink and the row overflows anyway -- which is the same
+   overflow this rule exists to remove.
+
+   The brand name is hidden on the narrowest screens for the same reason: it is
+   the least useful word on the line, and the tile beside it still links home. */
+@media (max-width: 640px) {
+  .site-nav { flex-wrap: wrap; min-width: 0; justify-content: flex-end; }
+  .site-nav a,
+  .site-nav .nav-signout { padding: 0.375rem 0.5rem; }
+}
+
+@media (max-width: 30rem) {
+  .brand-name { display: none; }
+  .site-header .container { gap: 0.5rem; }
+}
+
 .site-nav a {
   border-radius: 0.5rem;
   padding: 0.375rem 0.75rem;
@@ -710,6 +739,65 @@ a.card { display: block; color: inherit; }
 }
 
 .detail-actions { display: flex; gap: 0.5rem; }
+
+/* Project sub-page navigation.
+
+   Six sub-pages previously existed with no navigation between them, so a reader
+   who wanted the audit log had to know the URL. These tabs are the only thing
+   that makes them discoverable, so they get a full-width row of their own rather
+   than sharing the header with the action buttons: at seven links they wrap
+   awkwardly otherwise.
+
+   The underline is inset so it aligns with the label rather than the tab box,
+   which is what makes a row of tabs read as one control. is-active is driven by
+   subPageFromPath(), so the state is real rather than decorative. */
+.detail-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1.25rem;
+  width: 100%;
+  margin: 0 0 1.25rem;
+  padding: 0 0 0.5rem;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+}
+
+.detail-tab {
+  position: relative;
+  padding: 0.4rem 0 0.55rem;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--muted, #6b7280);
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.detail-tab:hover { color: var(--text, #111827); }
+
+/* A 2px underline rather than a background: the tabs sit on the page surface,
+   and a filled pill here competed with the .btn controls below it. */
+.detail-tab.is-active {
+  color: var(--text, #111827);
+  font-weight: 600;
+}
+
+.detail-tab.is-active::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -0.5rem;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--accent, #6366f1);
+}
+
+@media (prefers-color-scheme: dark) {
+  .detail-tabs { border-bottom-color: #374151; }
+  .detail-tab { color: #9ca3af; }
+  .detail-tab:hover,
+  .detail-tab.is-active { color: #f9fafb; }
+  .detail-tab.is-active::after { background: #818cf8; }
+}
 
 
 /* ------------------------------------------------------------ ranking UI

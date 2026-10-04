@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -30,6 +31,14 @@
       <span class="brand-name">Concord</span>
     </a>
     <nav class="site-nav">
+      <!-- Finder and Scout are how a complaint gets filed at all, and until this
+           link existed each was reachable only by typing its URL. They are the two
+           entry points of the product, so they sit ahead of the browse links.
+
+           The order is deliberate: Scout ("should I build this?") and Finder
+           ("help me file it") are decisions, Search and Projects are browsing. -->
+      <a href="/scout">Scout</a>
+      <a href="/finder">Finder</a>
       <a href="/search">Search</a>
       <a href="/projects">Projects</a>
       <a href="/login" data-auth-link="login">Sign in</a>
@@ -42,6 +51,20 @@
   </div>
 </header>
 <main class="container">
+  <!-- Project sub-page navigation.
+
+       Rendered here, in the shared layout, rather than inside each page: the
+       sub-pages are separate templates each loading their own bundle, so a tab
+       bar living in any one of them appears on that page only and every other
+       sub-page becomes a dead end. Six pages already worked that way.
+
+       Driven from the request path, not from template data. Every page handler
+       passes a different anonymous struct, so threading a slug through all of
+       them is a wide change for something the URL already knows -- and a tab
+       bar that renders from the path cannot disagree with the page it is on. -->
+  {{with tabFor .Path}}
+    {{template "project-tabs" .}}
+  {{end}}
   {{if .Flash}}
   <div class="flash">{{.Flash}}</div>
   {{end}}
@@ -58,3 +81,23 @@
 {{end}}
 </body>
 </html>
+
+{{/*
+  The project tab bar.
+
+  Defined at the END of this file on purpose. go's html/template treats a
+  {{define}} block as belonging to the template it appears in, so placing it above
+  <!DOCTYPE html> is legal but hides the document's real shape behind a block of
+  markup no reader of the file is looking for.
+*/}}
+{{define "project-tabs"}}
+<nav class="detail-tabs" aria-label="Project sections">
+  <a class="detail-tab{{if eq .Sub ""}} is-active{{end}}" href="/projects/{{.Slug}}">Overview</a>
+  <a class="detail-tab{{if eq .Sub "consensus"}} is-active{{end}}" href="/projects/{{.Slug}}/consensus">Consensus</a>
+  <a class="detail-tab{{if eq .Sub "board"}} is-active{{end}}" href="/projects/{{.Slug}}/board">Board</a>
+  <a class="detail-tab{{if eq .Sub "rank"}} is-active{{end}}" href="/projects/{{.Slug}}/rank">Vote</a>
+  <a class="detail-tab{{if eq .Sub "ranking"}} is-active{{end}}" href="/projects/{{.Slug}}/ranking">Ranking</a>
+  <a class="detail-tab{{if eq .Sub "documents"}} is-active{{end}}" href="/projects/{{.Slug}}/documents">Documents</a>
+  <a class="detail-tab{{if eq .Sub "audit"}} is-active{{end}}" href="/projects/{{.Slug}}/audit">Audit</a>
+</nav>
+{{end}}

@@ -6,6 +6,7 @@ package httpapi
 import (
 	"embed"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"html/template"
 	"log"
@@ -208,7 +209,9 @@ func (s *Server) loadTemplates() error {
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
 		tmpl, err := template.New("").Funcs(template.FuncMap{
-			"asset": assetFunc(),
+			"asset":  assetFunc(),
+			"dict":   dictFunc,
+			"tabFor": projectTabs,
 		}).ParseFS(templateFS, "templates/base.html", "templates/"+name+".html")
 		if err != nil {
 			return err
@@ -231,6 +234,19 @@ func (s *Server) loadTemplates() error {
 // handleProjectPage). This function therefore takes a reason string for the
 // page's own copy and nothing that would distinguish absent from forbidden.
 func (s *Server) notFoundPage(w http.ResponseWriter, r *http.Request, reason string) {
+	// s.page, NOT s.pageFor.
+	//
+	// Path drives the project tab bar, and on a 404 the slug in the path is
+	// precisely what must NOT be echoed: it is either unknown or forbidden, and
+	// rendering seven links built from it confirms the project exists and puts its
+	// name on the page. TestDocumentsPageHidesAPrivateProjectFromAnonymousCallers
+	// caught exactly that when this handler was switched to pageFor -- a 404 for a
+	// private project came back containing the private slug.
+	//
+	// The status must also stay 404 rather than 403 for the same reason: 403 would
+	// distinguish "exists but hidden" from "does not exist", which is the whole
+	// point of answering both the same way.
+	_ = r
 	s.render(w, http.StatusNotFound, "notfound", struct {
 		pageData
 		Reason string
@@ -712,11 +728,71 @@ func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 
 // mapError maps store domain errors to HTTP status codes.
 // pageData wraps template data with common fields.
+// dictFunc builds a map for a template call, so a shared sub-template can take
+// keyword-ish arguments. go's html/template has no equivalent, and writing one
+// small helper is cheaper than defining a struct per shared template.
+func dictFunc(values ...any) (map[string]any, error) {
+	if len(values)%2 != 0 {
+		return nil, errors.New("dict needs an even number of arguments")
+	}
+	m := make(map[string]any, len(values)/2)
+	for i := 0; i < len(values); i += 2 {
+		key, ok := values[i].(string)
+		if !ok {
+			return nil, errors.New("dict keys must be strings")
+		}
+		m[key] = values[i+1]
+	}
+	return m, nil
+}
+
+// projectTabs reports the slug and sub-page for a request path, or nil when the
+// path is not a project page.
+//
+// This exists instead of splitting the path inside the template because template
+// index arithmetic on a short slice is an EXECUTION ERROR, and an execution error
+// in the shared layout truncates the whole document: `render` has already sent
+// 200 by then, so the page arrives cut off mid-head and looks like a broken
+// deploy rather than a template bug.
+//
+// Depending on `and` short-circuiting not to evaluate `index $parts 1` for "/"
+// would be correct today and fragile tomorrow -- it depends on a language
+// subtlety, in the one place a mistake costs every page on the site. Returning
+// nil here makes the template say only {{with tabFor .Path}}, which cannot fail.
+func projectTabs(path string) map[string]string {
+	if path == "" {
+		return nil
+	}
+	var parts []string
+	for _, p := range strings.Split(path, "/") {
+		if p != "" {
+			parts = append(parts, p)
+		}
+	}
+	if len(parts) < 2 || parts[0] != "projects" {
+		return nil
+	}
+	sub := ""
+	if len(parts) >= 3 {
+		sub = parts[2]
+	}
+	return map[string]string{"Slug": parts[1], "Sub": sub}
+}
+
 type pageData struct {
 	Title   string
 	Version string
 	Flash   string
 	Scripts string
+
+	// Path is the request path, used by the shared layout to render the project
+	// tab bar without every page handler having to thread a slug through its own
+	// anonymous struct.
+	//
+	// Empty when a handler did not set it, and the tab bar is then simply absent --
+	// a missing tab bar on a non-project page is correct, so the zero value is the
+	// safe one.
+	Path string
 }
 
 func (s *Server) page(title string) pageData {
@@ -725,6 +801,19 @@ func (s *Server) page(title string) pageData {
 
 func (s *Server) pageWithScript(title, script string) pageData {
 	return pageData{Title: title, Version: s.Version, Scripts: script}
+}
+
+// pageFor is page() with the request path attached. Every PAGE route uses it, so
+// the project tab bar works on all of them without a per-handler field.
+//
+// The API handlers keep using s.page() and have no path, which is right: they
+// serialise JSON and never render the layout.
+func (s *Server) pageFor(r *http.Request, title string) pageData {
+	p := s.page(title)
+	if r != nil {
+		p.Path = r.URL.Path
+	}
+	return p
 }
 
 // pageNames lists the registered templates, for the error path above.

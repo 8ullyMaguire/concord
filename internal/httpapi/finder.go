@@ -129,7 +129,7 @@ type finderAnswerRequest struct {
 // value attribute by the template's own JS reading location.search, not here,
 // so a crafted seed cannot inject markup through template interpolation.
 func (s *Server) handleFinderPage(w http.ResponseWriter, r *http.Request) {
-	s.render(w, http.StatusOK, "finder", s.page("Finder"))
+	s.render(w, http.StatusOK, "finder", s.pageFor(r, "Finder"))
 }
 
 // handleFinderQuestionCatalog returns every dimension the engine can ask about,

@@ -1429,7 +1429,7 @@ func (s *Server) handleRejectMerge(w http.ResponseWriter, r *http.Request) {
 // List and request handlers are in lists.go
 
 func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
-	s.render(w, http.StatusOK, "index", s.page("Home"))
+	s.render(w, http.StatusOK, "index", s.pageFor(r, "Home"))
 }
 
 func (s *Server) handleSearchPage(w http.ResponseWriter, r *http.Request) {
@@ -1437,7 +1437,7 @@ func (s *Server) handleSearchPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, "search", struct {
 		pageData
 		Query string
-	}{s.page("Search"), q})
+	}{s.pageFor(r, "Search"), q})
 }
 
 func (s *Server) handleProjectPage(w http.ResponseWriter, r *http.Request) {
@@ -1462,7 +1462,7 @@ func (s *Server) handleProjectPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, "project", struct {
 		pageData
 		Slug string
-	}{s.page(slug), slug})
+	}{s.pageFor(r, slug), slug})
 }
 
 // handleDocumentsPage renders the document viewer for a project.
@@ -1491,7 +1491,7 @@ func (s *Server) handleDocumentsPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, "documents", struct {
 		pageData
 		Slug string
-	}{s.page("Documents - " + slug), slug})
+	}{s.pageFor(r, "Documents - "+slug), slug})
 }
 
 func (s *Server) handleBoardPage(w http.ResponseWriter, r *http.Request) {
@@ -1516,7 +1516,7 @@ func (s *Server) handleBoardPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, "board", struct {
 		pageData
 		Slug string
-	}{s.page("Board - " + slug), slug})
+	}{s.pageFor(r, "Board - "+slug), slug})
 }
 
 // handleConsensusPage renders /projects/{slug}/consensus?call=<id>.
@@ -1550,7 +1550,7 @@ func (s *Server) handleConsensusPage(w http.ResponseWriter, r *http.Request) {
 		pageData
 		Slug   string
 		CallID string
-	}{s.page("Consensus - " + slug), slug, callID})
+	}{s.pageFor(r, "Consensus - "+slug), slug, callID})
 }
 
 // handleRankPage and handleRankingPage render the two halves of the ranking
@@ -1578,7 +1578,7 @@ func (s *Server) handleRankPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, "rank", struct {
 		pageData
 		Slug string
-	}{s.page("Rank features - " + slug), slug})
+	}{s.pageFor(r, "Rank features - "+slug), slug})
 }
 
 func (s *Server) handleRankingPage(w http.ResponseWriter, r *http.Request) {
@@ -1603,7 +1603,7 @@ func (s *Server) handleRankingPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, "ranking", struct {
 		pageData
 		Slug string
-	}{s.page("Ranking - " + slug), slug})
+	}{s.pageFor(r, "Ranking - "+slug), slug})
 }
 
 func (s *Server) handleAuditPage(w http.ResponseWriter, r *http.Request) {
@@ -1624,15 +1624,15 @@ func (s *Server) handleAuditPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, "audit", struct {
 		pageData
 		Slug string
-	}{s.page("Audit log - " + slug), slug})
+	}{s.pageFor(r, "Audit log - "+slug), slug})
 }
 
 func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
-	s.render(w, http.StatusOK, "login", s.page("Sign in - Concord"))
+	s.render(w, http.StatusOK, "login", s.pageFor(r, "Sign in - Concord"))
 }
 
 func (s *Server) handleRegisterPage(w http.ResponseWriter, r *http.Request) {
-	s.render(w, http.StatusOK, "register", s.page("Create an account - Concord"))
+	s.render(w, http.StatusOK, "register", s.pageFor(r, "Create an account - Concord"))
 }
 
 // getActorID returns the authenticated user id, or 0 when anonymous.
@@ -1691,7 +1691,7 @@ func (s *Server) handleHealthz(w http.ResponseWriter, r *http.Request) {
 // ---------------------------------------------------------------- list pages
 
 func (s *Server) handleProjectsPage(w http.ResponseWriter, r *http.Request) {
-	s.render(w, http.StatusOK, "projects", s.page("Projects"))
+	s.render(w, http.StatusOK, "projects", s.pageFor(r, "Projects"))
 }
 
 // handleListRequests is in lists.go

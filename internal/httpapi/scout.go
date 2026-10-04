@@ -239,5 +239,5 @@ func (s *Server) handleScoutPage(w http.ResponseWriter, r *http.Request) {
 	// `page`, NOT `pageWithScript`: scout.html already has a <script> tag for
 	// scout.js, exactly as finder.html does for finder.js. pageWithScript would add
 	// a SECOND tag for the same file and the whole report would render twice.
-	s.render(w, http.StatusOK, "scout", s.page("Scout"))
+	s.render(w, http.StatusOK, "scout", s.pageFor(r, "Scout"))
 }

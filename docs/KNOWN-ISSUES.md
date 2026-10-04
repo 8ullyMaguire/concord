@@ -3,6 +3,113 @@
 Defects confirmed by reproduction, with what was ruled out. Each entry states how
 it was verified, because every one of these looked like something else first.
 
+## Every page existed; almost nothing linked to them (fixed 2026-10-05)
+
+**Reported as:** "I can't see the finder or anything else on the site."
+
+**The cause was not a bug. Nothing was broken.** Measured on the live instance
+before touching anything:
+
+| Page | Status | Linked from |
+|---|---|---|
+| `/finder` | 200 | **nothing** |
+| `/scout` | 200 | **nothing** |
+| `/projects/{slug}/consensus` | 200 | **nothing** |
+| `/projects/{slug}/audit` | 200 | only in an undeployed `project.js` |
+| `/projects/{slug}/board`, `/documents`, `/rank`, `/ranking` | 200 | the project header |
+
+The site nav held four links: `/`, `/search`, `/projects`, `/login`. Finder and
+Scout each linked only to the *other*, and only from inside their own result state,
+so neither was reachable by clicking from anywhere.
+
+A page is a route plus a template. Nothing requires anything to LINK to it, so an
+unreachable page is a perfectly ordinary state for the code to be in — which is why
+the entire suite was green throughout: every Go test, every e2e test, every UI
+mutation killed. None of them could see a missing link.
+
+### The first diagnosis was wrong, and the way it was wrong is the useful part
+
+Grepping the templates for `href="/board"` reported board, documents, rank, ranking,
+consensus and audit all orphaned. Four of those six were linked the whole time —
+in `project.js`, as string concatenations:
+
+    '<a class="btn" href="/projects/' + esc(p.slug) + '/board">Open board</a>'
+
+A static grep cannot see that, so it reported working navigation as missing. Only
+the browser showed the truth: `document.querySelectorAll('.detail-tab')` found four,
+not zero. **Verify navigation in a rendered DOM, never by scanning source.**
+
+That mistake is recorded here because it points the wrong way twice: it invents
+bugs that are not there, and — had the real gaps been dismissed as "grep says it's
+fine" — it hides the ones that are.
+
+### The fix, and the first attempt at it that was also wrong
+
+Nav now carries Scout and Finder ahead of the browse links. The project header
+became a seven-tab bar: Overview, Consensus, Board, Vote, Ranking, Documents,
+Audit.
+
+The tab bar was first built in `project.js`, which is wrong for a reason worth
+stating: **every sub-page is a separate template loading its own bundle**, so a tab
+bar built there appears on the overview and nowhere else — turning six working
+pages into six dead ends. It now lives in `templates/base.html`, driven by the
+request path, so it renders on all seven and cannot disagree with the page it is
+on.
+
+### Four bugs this introduced, each caught by making the check fail
+
+Every one of these was green until something was made to go red:
+
+1. **A 404 leaked a private project's slug.** `Path` drove the tab bar, and
+   `notFoundPage` was switched to `pageFor`, so every 404 under
+   `/projects/<slug>` rendered seven links naming a project the caller may not
+   read — enough to enumerate the instance. Caught by
+   `TestDocumentsPageHidesAPrivateProjectFromAnonymousCallers`, a *documents* test.
+   `notFoundPage` uses `s.page()` again, and
+   `TestErrorPagesNeverEchoTheSlugFromThePath` now guards it.
+2. **The whole document rendered twice**, so every project page carried 14 tabs.
+   Caught by nothing: every navigation test asks whether a link EXISTS, not how
+   many times. `TestLayoutRendersEachPieceOnce` asserts counts.
+3. **`index $parts 1` panicked the template on `/`**, truncating the page after
+   `render` had already sent 200 — the exact failure mode `base.html` documents in
+   its own comment about a 506-byte page ending mid-head. Replaced the template
+   index arithmetic with a `tabFor` helper that returns nil, so the template says
+   only `{{with tabFor .Path}}`.
+4. **A redundant-looking guard had no test isolating it.** `projectTabs` checks
+   both `len(parts) < 2` and `parts[0] != "projects"`; dropping the second survived
+   because every case was either shorter than two segments or began with
+   `/projects`. Adding `/finder/x` killed it.
+
+### The e2e suite caught the regression this fix introduced
+
+Adding two nav links made the header 20px too wide at a 375px viewport:
+`test_mobile_no_horizontal_overflow` failed with `horizontal overflow of 20px`.
+
+The nav had **three** links and fit at 375px by luck, with no media query touching
+it anywhere in the stylesheet — so the breakpoint that mattered was never written
+down, it was just whatever the link count happened to allow. Adding a fifth broke
+it.
+
+Fixed by letting the nav wrap below 640px and hiding the brand name below 30rem.
+`min-width: 0` on the nav is load-bearing: it is a flex item in a `nowrap`
+container, so without it its min-content width refuses to shrink and the row
+overflows anyway — the same overflow the rule exists to remove.
+
+The general lesson: **a layout that fits is not a layout that has a breakpoint.**
+"Narrow screens work" was never tested; three links happened to fit.
+
+### Now gated
+
+`internal/httpapi/navigation_test.go`, 10 tests: every registered page has an
+inbound link, the nav links every top-level page, every sub-page carries the tab
+bar with its own tab lit, non-project pages carry none, the layout renders each
+piece once, and error pages never echo the slug.
+
+A `{{define "project-tabs"}}` block placed at the top of `base.html` — above
+`<!DOCTYPE html>` — is legal and hides the document's shape behind a block of
+markup no reader of the file is looking for. It belongs at the end, with a comment
+saying why.
+
 ## `PRAGMA integrity_check` disagrees with itself across SQLite builds
 
 `ALTER TABLE t ADD COLUMN b REAL NOT NULL DEFAULT 0.5` does not write a value
