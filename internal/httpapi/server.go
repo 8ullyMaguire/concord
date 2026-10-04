@@ -494,6 +494,22 @@ func (s *Server) Router() http.Handler {
 	// ListScoutCandidates, which applies the same CanAccessProject decision the
 	// project-scoped routes use — so a project the viewer cannot read is invisible
 	// here too, including in the coverage counts.
+	// The INSTANCE-WIDE request board.
+	//
+	// requests.project_id is nullable and the migration says why: "NULL =
+	// instance-wide board". Nothing reached that state -- CreateRequest requires a
+	// project id and every caller passed one -- so the one kind of request several
+	// projects can answer was unreachable, and with it the cross-project comparison
+	// the pairwise answer vote exists to make.
+	//
+	// Deliberately NOT under /projects/{project_id}: there is no project in the path.
+	// This is the second place, after requireReadableRequest, where the project has to
+	// be resolved from somewhere other than a path parameter.
+	r.Route("/api/v1/requests", func(r chi.Router) {
+		r.Get("/", s.handleListInstanceRequests)
+		r.Post("/", s.handleCreateInstanceRequest)
+	})
+
 	r.Get("/api/v1/scout", s.handleScout)
 
 	// Complaints
@@ -671,6 +687,10 @@ func (s *Server) Router() http.Handler {
 
 	// Merge
 	r.Route("/api/v1/projects/{project_id}/merge", func(r chi.Router) {
+		// GET was missing, so the four write endpoints had no list to appear on and a
+		// merge-request page could not exist. Found by tests/e2e/api_surface.py, which
+		// got a 405 from the only route in this file with no read side.
+		r.Get("/", s.handleListMergeRequests)
 		r.Post("/", s.handleCreateMergeRequest)
 		r.Put("/{mr_id}/approve", s.handleApproveMerge)
 		r.Put("/{mr_id}/execute", s.handleExecuteMerge)

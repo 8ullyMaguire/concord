@@ -135,3 +135,58 @@ func TestNestedComment(t *testing.T) {
 		t.Errorf("expected ParentID %d, got %d", parent.ID, *child.ParentID)
 	}
 }
+
+// TestGetThreadCommentsToleratesANullLabel is a regression guard for a 500, found by
+// measuring the whole API surface rather than by reading a handler.
+//
+//	GET /api/v1/projects/probe/threads/feature/1
+//	-> 500 {"error":"sql: Scan error on column index 7, name \"label\":
+//	         converting NULL to string is unsupported"}
+//
+// The cause is a type mismatch that reads as correct. comments.label is NULLABLE
+// (`label TEXT CHECK (label IN (...))` -- no NOT NULL) and ParentID right above it
+// is correctly a *int64 for the same reason. Label was a plain string, so every
+// read of a comment posted WITHOUT a label -- which is the default, since the field
+// is omitempty -- scanned NULL into a string and failed.
+//
+// That made the whole comments API unusable for the ordinary case: a thread could be
+// created and then never listed. The comment page could not have been built on it.
+func TestGetThreadCommentsToleratesANullLabel(t *testing.T) {
+	store, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+
+	// The ordinary case: no label. This is what every reader posting a comment
+	// produces, because Label is omitempty.
+	if _, err := store.CreateComment(ctx, pid, 1, "feature", uid, "no label here", "", nil); err != nil {
+		t.Fatalf("CreateComment without a label: %v", err)
+	}
+
+	got, err := store.GetThreadComments(ctx, pid, 1, "feature")
+	if err != nil {
+		t.Fatalf("reading a thread whose comments have no label must not error: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 comment, got %d", len(got))
+	}
+	if got[0].Label != "" {
+		t.Errorf("a NULL label read as %q, want the empty string", got[0].Label)
+	}
+}
+
+// TestGetThreadCommentsStillReadsLabels keeps the labelled case working, so the fix
+// cannot be "stop selecting the column".
+func TestGetThreadCommentsStillReadsLabels(t *testing.T) {
+	store, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+
+	if _, err := store.CreateComment(ctx, pid, 1, "feature", uid, "needs evidence", "objection", nil); err != nil {
+		t.Fatalf("CreateComment with a label: %v", err)
+	}
+	got, err := store.GetThreadComments(ctx, pid, 1, "feature")
+	if err != nil {
+		t.Fatalf("GetThreadComments: %v", err)
+	}
+	if len(got) != 1 || got[0].Label != "objection" {
+		t.Fatalf("want one comment labelled objection, got %+v", got)
+	}
+}

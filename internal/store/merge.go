@@ -113,3 +113,34 @@ func (d *DB) RejectMerge(ctx context.Context, mrID, projectID int64) error {
 	}
 	return d.AddAudit(ctx, projectID, 0, "merge_reject", "merge_request", mrID, "rejected")
 }
+
+// ListMergeRequests returns a project's merge requests, newest first.
+//
+// There was no read side: the table had CreateMergeRequest, GetMergeRequest and the
+// approve/execute/reject transitions, and nothing that listed them. So a merge-request
+// page could not exist, and the four write endpoints had no list to appear on.
+//
+// external_ref and closed_at are nullable and both are already *string/*float64 on
+// the struct, so they scan straight through. status is NOT NULL.
+//
+// Empty, never nil.
+func (d *DB) ListMergeRequests(ctx context.Context, projectID int64) ([]MergeRequest, error) {
+	rows, err := d.QueryContext(ctx, `
+		SELECT id, project_id, feature_id, author_id, title, external_ref, status,
+			opened_at, closed_at
+		FROM merge_requests WHERE project_id=? ORDER BY opened_at DESC`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []MergeRequest{}
+	for rows.Next() {
+		var m MergeRequest
+		if err := rows.Scan(&m.ID, &m.ProjectID, &m.FeatureID, &m.AuthorID, &m.Title,
+			&m.ExternalRef, &m.Status, &m.OpenedAt, &m.ClosedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, m)
+	}
+	return out, rows.Err()
+}
