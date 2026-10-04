@@ -432,6 +432,16 @@ func (s *Server) Router() http.Handler {
 		r.Post("/", s.handleSaveCriteriaProfile)
 	})
 
+	// Scout (docs/specs/scout-spec.md).
+	//
+	// NOT under /projects/{project_id}/ on purpose: Scout answers "what should I
+	// build on" across the whole catalog, so scoping it to one project would make
+	// the feature meaningless. Access control is therefore per-candidate, inside
+	// ListScoutCandidates, which applies the same CanAccessProject decision the
+	// project-scoped routes use — so a project the viewer cannot read is invisible
+	// here too, including in the coverage counts.
+	r.Get("/api/v1/scout", s.handleScout)
+
 	// Complaints
 	r.Route("/api/v1/projects/{project_id}/complaints", func(r chi.Router) {
 		r.Get("/", s.handleListComplaints)
