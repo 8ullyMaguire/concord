@@ -347,7 +347,7 @@ func (d *DB) hydrateSimilarities(ctx context.Context, kind string, sims []embed.
 // Reported rather than assumed: a partially indexed corpus silently produces
 // "no duplicates found", which a filer reads as "I am the first to report this".
 func (d *DB) EmbeddingCoverage(ctx context.Context, kind string) (map[string]any, error) {
-	var total, embedded int
+	var total, embedded, unembeddable int
 	table := map[string]string{
 		KindComplaint: "complaints", KindFeature: "features",
 		KindRequest: "requests", KindProject: "projects",
@@ -358,6 +358,37 @@ func (d *DB) EmbeddingCoverage(ctx context.Context, kind string) (map[string]any
 	}
 	if err := d.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+table).Scan(&total); err != nil {
 		return nil, err
+	}
+	// Rows with nothing to embed are excluded from the DENOMINATOR, and reported
+	// separately as `unembeddable`.
+	//
+	// BackfillEmbeddingIndex deliberately skips a row whose text is empty
+	// (`strings.TrimSpace(it.text) == ""`), because an all-whitespace string has
+	// no vector worth storing and asking a model for one wastes a round trip.
+	// Counting those rows in `total` made coverage permanently unreachable: the
+	// live instance has one complaint with an empty title AND body, so it read
+	// 99.8% forever and could never reach 100 -- and a permanent "incomplete"
+	// warning trains an operator to ignore the warning, which is worse than not
+	// having one. "Embedded" should mean "every row that COULD be embedded is",
+	// which is a threshold a healthy database actually reaches.
+	//
+	// The same TrimSpace test, so the denominator matches the writer exactly
+	// rather than approximately: two predicates that disagree about which rows
+	// are skippable produce a coverage number that lies in both directions.
+	if col, ok := map[string]string{
+		KindComplaint: "title || ' ' || COALESCE(body, '')",
+		KindFeature:   "title || ' ' || COALESCE(body, '')",
+		KindRequest:   "title || ' ' || COALESCE(body, '')",
+		KindProject:   "name || ' ' || COALESCE(description, '')",
+	}[kind]; ok {
+		if err := d.QueryRowContext(ctx,
+			`SELECT COUNT(*) FROM `+table+` WHERE TRIM(`+col+`) = ''`).Scan(&unembeddable); err != nil {
+			return nil, err
+		}
+		total -= unembeddable
+		if total < 0 {
+			total = 0
+		}
 	}
 	// COUNT(DISTINCT entity_id), not COUNT(*): each entity has up to two vectors
 	// (title and full), so a row count reports twice the coverage and then
@@ -377,7 +408,10 @@ func (d *DB) EmbeddingCoverage(ctx context.Context, kind string) (map[string]any
 	return map[string]any{
 		"kind": kind, "model_id": d.embedderID(),
 		"total": total, "embedded": embedded,
-		"coverage": frac, "complete": embedded >= total,
+		// Reported so "555/556" is explainable rather than mysterious. A reader
+		// who cannot account for the missing row will assume the index is broken.
+		"unembeddable": unembeddable,
+		"coverage":     frac, "complete": embedded >= total,
 	}, nil
 }
 

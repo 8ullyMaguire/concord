@@ -439,3 +439,45 @@ func firstScore(sims []embed.Similarity) float64 {
 	}
 	return sims[0].Score
 }
+
+// A row with nothing to embed must not hold coverage below 100% forever.
+//
+// BackfillEmbeddingIndex skips empty text on purpose, so if `total` counts those
+// rows then a database whose ONLY unindexed rows are unembeddable reports
+// "incomplete" for ever. The live instance hit exactly this: one complaint with an
+// empty title AND body, complaint coverage stuck at 99.8%, and a startup warning
+// that would fire on every deploy until someone learned to ignore it.
+//
+// A warning that always fires is worse than no warning, because it teaches the
+// reader that warnings here are noise.
+func TestEmbeddingCoverageReachesCompleteWhenOnlyUnembeddableRowsRemain(t *testing.T) {
+	store, uid, pid := dupFixture(t)
+	ctx := context.Background()
+
+	if _, err := store.DB.ExecContext(ctx,
+		`INSERT INTO complaints (project_id, author_id, title, body, created_at, updated_at)
+		 VALUES (?, ?, '', '', 1, 1)`, pid, uid); err != nil {
+		t.Fatalf("insert an unembeddable complaint: %v", err)
+	}
+
+	// Every embeddable row IS indexed, so coverage must read complete.
+	cov, err := store.EmbeddingCoverage(ctx, KindComplaint)
+	if err != nil {
+		t.Fatalf("coverage: %v", err)
+	}
+	if complete, _ := cov["complete"].(bool); !complete {
+		unembed, _ := cov["unembeddable"].(int)
+		total, _ := cov["total"].(int)
+		embedded, _ := cov["embedded"].(int)
+		t.Errorf("coverage is incomplete with only unembeddable rows left: "+
+			"embedded=%d total=%d unembeddable=%d. An unembeddable row must not "+
+			"be counted in the denominator, or coverage can never reach 100%%.",
+			embedded, total, unembed)
+	}
+	// And the count must be REPORTED, not silently dropped: a reader seeing
+	// 555/556 needs to know where the last row went.
+	if unembed, _ := cov["unembeddable"].(int); unembed != 1 {
+		t.Errorf("unembeddable=%d, want 1: the skipped row must be reported so "+
+			"a coverage number that cannot reach 100%% stays explainable", unembed)
+	}
+}

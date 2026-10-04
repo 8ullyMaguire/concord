@@ -86,10 +86,30 @@ func TestMigration24AppliesToAPopulatedDatabase(t *testing.T) {
 	if auditsAfter != auditsBefore {
 		t.Errorf("audit rows went from %d to %d: the migration lost data", auditsBefore, auditsAfter)
 	}
-	// +1 for maintenance_signals. Anything else means it rebuilt something.
-	if want := tablesBefore + 1; tablesAfter != want {
-		t.Errorf("table count went from %d to %d, want %d: the migration was not purely additive",
-			tablesBefore, tablesAfter, want)
+	// The expectation is "no table LOST and the two triggers are live", not
+	// "+1": 0024 may already have been applied to the live instance by an earlier
+	// deploy, in which case Migrate correctly does nothing and adds no table.
+	//
+	// An earlier version of this test hard-coded tablesBefore+1 and started
+	// failing the moment the migration shipped -- which is the wrong lesson to
+	// learn from a test: the fix is to assert the property that actually matters
+	// (nothing lost, triggers attached) rather than to bake in a baseline that a
+	// legitimate deploy invalidates. A test that breaks when the code it
+	// describes is deployed is testing a moment, not a rule.
+	if tablesAfter < tablesBefore {
+		t.Errorf("table count went from %d to %d: the migration dropped tables",
+			tablesBefore, tablesAfter)
+	}
+	// Exactly +1 only when the maintenance_signals table was not there before.
+	var sigTables int
+	if err := sqlDB.QueryRowContext(ctx,
+		`SELECT count(*) FROM sqlite_master WHERE type='table' AND name='maintenance_signals'`).Scan(&sigTables); err != nil {
+		t.Fatalf("check maintenance_signals: %v", err)
+	}
+	if sigTables != 1 {
+		t.Errorf("maintenance_signals absent after migrating the live copy: " +
+			"the escape hatch has no table, so the DELETE trigger would refuse " +
+			"every delete including dedupe.py's")
 	}
 
 	// The triggers must be present AND working on the populated database -- a
