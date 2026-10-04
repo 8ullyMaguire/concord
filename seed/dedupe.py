@@ -18,6 +18,7 @@ count a complaint against a feature that no longer exists.
 import argparse
 import sqlite3
 import sys
+import time
 
 DB = "/home/alvaro/.local/share/concord/concord.db"
 
@@ -48,6 +49,25 @@ def main() -> int:
 
     con = sqlite3.connect(args.db)
     cur = con.cursor()
+
+    # pairwise_votes is append-only (migration 0024), and repairing duplicate
+    # seed data legitimately has to delete a vote. So the repair ARMS an explicit
+    # signal first -- the trigger permits deletes only while exactly one
+    # maintenance signal is enabled, and this is the one writer that sets it.
+    #
+    # Armed before any delete and disarmed after all of them, in ONE
+    # transaction, so there is no window in which the database is left with the
+    # hatch open. Reported in the output because a table that refuses to be
+    # edited is the sort of thing an operator meets and cannot explain.
+    if args.apply:
+        cur.execute(
+            "INSERT INTO maintenance_signals (name, enabled, set_at, set_by) "
+            "VALUES ('seed_dedupe', 1, ?, 'dedupe.py') "
+            "ON CONFLICT(name) DO UPDATE SET enabled = 1, set_at = excluded.set_at, "
+            "set_by = excluded.set_by",
+            (time.time(),),
+        )
+        print("armed the pairwise_votes maintenance signal for this run")
 
     removed = {"features": 0, "complaints": 0}
 
@@ -95,6 +115,19 @@ def main() -> int:
     else:
         con.rollback()
         print("\nreport only; pass --apply to delete")
+
+    # Disarm, and commit that too. If this process dies between the deletes and
+    # here, the next --apply run finds exactly one enabled signal already set --
+    # which is precisely the state its own arming refuses, so it would report a
+    # confusing failure instead of doing the work. Disarming in the same
+    # transaction as the deletes cannot leave that state behind at all.
+    if args.apply:
+        cur.execute(
+            "UPDATE maintenance_signals SET enabled = 0, set_at = ? "
+            "WHERE name = 'seed_dedupe' AND enabled = 1",
+            (time.time(),),
+        )
+        con.commit()
     con.close()
     return 0
 

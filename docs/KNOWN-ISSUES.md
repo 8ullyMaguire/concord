@@ -49,6 +49,82 @@ observation that looks like the bug being fixed. Two rounds of "fixing" a
 non-existent problem came from comparing against such copies. Always copy
 `db`, `db-wal` and `db-shm` together, or checkpoint first.
 
+## `pairwise_votes` was append-only only in intent (fixed 2026-10-05, `0024`)
+
+**Was:** the table every priority score on this site is computed from had no
+`CHECK`, no trigger, and no application-layer guard against `UPDATE` or `DELETE`.
+`admin_ledger` got both triggers in `0013`; the ranking substrate never did.
+
+**Why that one mattered more than `admin_ledger`.** An `admin_ledger` row is a
+record of an event — rewriting it erases history. A `pairwise_votes` row is an
+**input to a Glicko-2 rating**: `RecordVote` applies the voter's weight, and the
+rating is derived from the sum. Editing one row does not just erase the record,
+it silently changes every rating derived from it, and Glicko-2 cannot tell a
+corrected database from a tampered one — a tampered rating set is still internally
+consistent, which is exactly what makes it hard to notice. Editing three rows
+would buy any position on the board.
+
+**What the live instance actually holds, so this is not overstated:** 55
+`feature-priority` arenas exist and **`pairwise_votes` has 0 rows** — no vote has
+ever been cast here. So the table being unprotected was a real hole in the
+*schema*, and it is the table every vote will land in, but no rating is currently
+being distorted because no rating exists. Worth stating plainly: had I found
+"0 votes", I would not have claimed a tampering problem — I am claiming a missing
+constraint on the table the ranking depends on, which is true and would matter the
+moment voting is used. The trigger is cheap and has no HTTP path to it, so there
+was no reason to defer it to first use.
+
+**Now:** `0024_vote_log_append_only.sql` refuses both, in the database, with the
+message naming the rule.
+
+**The escape hatch, and why it is explicit rather than absent.**
+`seed/dedupe.py --apply` legitimately deletes votes — it repairs duplicate seed
+data, and a feature's pain is the sum over its linked complaints, so a complaint
+recorded twice doubles the pain of every feature linked to it. A trigger with no
+way through would turn a maintenance script into a crash rather than a warning.
+So deletes are permitted only while exactly one row in `maintenance_signals` is
+enabled, and `dedupe.py` is the only writer that sets it — armed before its first
+delete and disarmed after its last, in one transaction, so there is no window
+where the hatch is left open. There is no HTTP path to that table.
+
+**Gates that write the bad row.** `internal/db/vote_log_append_only_test.go`
+attempts the `UPDATE` and the `DELETE` and requires them to fail *by message* —
+"some error" is satisfied by a malformed `UPDATE`, which proves nothing about the
+trigger. The hatch is tested in both directions, because a gate that only proves
+the happy path is half a gate: it must open while armed, and refuse again once
+disarmed. Five mutants of the migration itself, all killed:
+
+| mutant | killed by |
+|---|---|
+| DELETE trigger dropped | `TestAVoteCannotBeDeleted` |
+| `WHEN` clause always fires (hatch never opens) | `TestTheDedupeEscapeHatchWorksOnlyWhileArmed` |
+| exactly-one check dropped | `TestTheHatchCannotBeArmedIntoPermittingMoreThanOneRun` |
+| UPDATE trigger dropped | `TestAVoteCannotBeEdited` |
+| `CHECK` on the signal removed | `TestTheHatchSignalIsCheckedNotAnyValue` |
+
+`tests/dedupe_hatch_check.py` runs the **real** `dedupe.py` — imported, not
+reimplemented — against a database holding a real duplicate and real votes.
+
+**Two gates I wrote that were themselves vacuous**, both caught by running them:
+
+- The "table is protected again afterwards" check deleted from a table that
+  `--apply` had just emptied. A `BEFORE DELETE` trigger fires **per row**, so
+  deleting zero rows fires nothing, succeeds, and the check reported a hole that
+  did not exist. It now seeds a vote first. This is the third time this session
+  that a fixture which could not distinguish correct code from broken code was
+  the actual defect — the same lesson as an inert XSS fixture and as a Go gate
+  that only forbids private fields.
+- The fixture itself failed four times before it worked, and every failure was
+  the fixture, not the trigger: `features.author_id` is `NOT NULL`, `status` is
+  `CHECK`ed (`draft`, not `proposed`), `pairwise_votes.arena_id` became
+  `NOT NULL` in `0017`, `INSERT OR IGNORE` silently duplicates because
+  `(project_id, title)` is not unique, and one `Scan` cannot read two ids from a
+  two-row query. Worth recording because the honest reading of four red runs is
+  "the thing under test is broken", and here it never was.
+
+**Still true, unchanged:** `git fsck`/`VACUUM` are advisory on this file, and
+the WAL-copy trap below still applies.
+
 ## `0008_project_delete_cascade.sql` breaks if applied after a later `ADD COLUMN`
 
 `INSERT INTO charters_new SELECT * FROM charters` copies positionally. Once

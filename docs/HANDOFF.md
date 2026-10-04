@@ -5,7 +5,11 @@ For the implementing agent taking over from here. Read this, then
 then `docs/ARCHITECTURE.md`. `docs/PLAN.md` covers the pre-r4 milestones (all
 complete) and `docs/concord-spec.md` is superseded — do not plan from either.
 
-## What exists right now (verified 2026-10-02, `v0.4.0-voting-36-gb964f75`)
+## What exists right now (verified 2026-10-05, `9310506`)
+
+> The per-milestone detail below is from 2026-10-02 and is **frozen history**, not
+> current state. What is true now is the two tables at the end of this file and
+> `docs/KNOWN-ISSUES.md`.
 
 Measured, not remembered: `make verify` green, 443 tests, schema 19, 73 tables,
 19 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
@@ -181,11 +185,32 @@ against the tree AND the live service). All milestones now AC-tested.
 
 ### Remaining (non-blocking)
 
-1. **Interim actor auth for HTTP writes** — feature/consensus writes are
-   actor-gated and getActorID only reads context values nothing sets over
-   HTTP yet; real auth arrives with Forgejo OAuth.
-2. **Browser forms** for creating projects/complaints (APIs exist; UI
-   forms are the next frontend layer).
+1. ~~**Interim actor auth for HTTP writes**~~ — **RESOLVED.** This entry was
+   written when `getActorID` read a context value nothing set, and it stayed
+   readable long after the middleware existed: `internal/httpapi/auth.go` now
+   derives the actor from the session and puts it on the request context, and
+   every mutating route runs through it. Verified 2026-10-05 by grepping for
+   `actorKey` rather than trusting this file. Kept as a row because a stale
+   "remaining" list is how a shipped feature gets rebuilt.
+2. ~~**Browser forms** for creating projects/complaints~~ — **RESOLVED.** Both
+   have working forms; every other feature surface added since (features,
+   votes, solutions, consensus, audit, field reports) has one too.
+3. **The vote log is append-only** — see below. This one was real, and it was
+   the only remaining entry whose absence was a live hole rather than a
+   cosmetic one.
+
+### Fixed since this page was written (2026-10-05)
+
+| Was | Now |
+|---|---|
+| vote log rewritable by any writer | migration `0024_vote_log_append_only.sql`: UPDATE and DELETE refused by trigger, with one arming-signal escape hatch for `dedupe.py --apply`. 5/5 mutants killed. |
+| "62 tests pass" | 752 top-level Go tests across 9 packages, 149 e2e across 8 suites, cold cache, exit 0 |
+| audit log written by ~20 call sites and readable by none | `store.ListAudit` + `GET /api/v1/projects/{slug}/audit` + a page |
+| `PLAN-r4.md` claimed decision records, solutions panel, Scout and alternatives arena were missing | all four ship; the tracker was corrected rather than the features rebuilt |
+
+The recurring lesson across this page and `PLAN-r4.md`: **a plan or handoff that
+says something is missing is a claim, not a measurement.** Confirm it is missing
+before building it. Four of the five entries above were already shipped.
 
 ### Frontend (premise-2 theme, commit 1e6d48b)
 
