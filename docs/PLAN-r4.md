@@ -120,9 +120,14 @@ be rewritten. Federation and MCP are listed in the plan for later.
 
 ## Status
 
-Measured against the running instance (schema 19, 73 tables, 443 tests,
-`v0.4.0-voting-36-gb964f75`), not against the plan's own history. "Shipped"
+Measured against the running instance (schema 25, 79 tables, 766 tests,
+`v0.4.0-voting-90-g6b9bb17`), not against the plan's own history. "Shipped"
 means there is code, a migration and a test -- not that the surface is complete.
+
+**These numbers are gated.** `scripts/check_doc_numbers.py` fails when a document
+states a schema version, migration count, table count or test count that
+disagrees with the tree, so this header cannot go quietly stale the way the last
+one did.
 
 | Milestone | Status | Notes |
 |---|---|---|

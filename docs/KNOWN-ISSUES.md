@@ -310,26 +310,114 @@ banner, and re-introducing a misdirected citation in `PREMISE.md`.
 superseded prose and the honest options are delete-it or leave-it, and deleting it
 would break every historical link. The banner is the reversible choice.
 
-## `docs/HANDOFF.md` and `docs/PLAN-r4.md` counted work instead of measuring it
+## `docs/HANDOFF.md` and `docs/PLAN-r4.md` counted work instead of measuring it (gated 2026-10-05)
 
-`HANDOFF.md` claimed 62 tests, 12 store files, and listed arenas and solutions as
-unbuilt — 15 milestones after it was written. `PLAN-r4.md` marked R1–R4 "pending"
-with the state table still saying arenas were "missing, the spec's central
+**Was:** `HANDOFF.md` claimed 62 tests, 12 store files, and listed arenas and
+solutions as unbuilt — 15 milestones after it was written. `PLAN-r4.md` marked R1–R4
+"pending" with the state table still saying arenas were "missing, the spec's central
 abstraction". Both were updated 2026-10-02 against the running instance.
 
-The failure is structural: a status table written once and never reconciled goes
-stale silently, and nothing in `make verify` reads docs. Milestone rows now name
-the migration that proves them.
+**Then it happened again, silently, and that is the finding.** Measured 2026-10-05:
+`HANDOFF.md` and `PLAN.md` both still quoted the *then-current* schema, table,
+migration and test counts — all four wrong, by six schema versions and several
+hundred tests — while the tree had moved on. Nothing failed, because nothing read
+the docs, which is the structural half of this entry and the half that was unfixed.
 
-## Arena `is_baseline` has no column-level guarantee
+> Written without the literal figures on purpose: this gate fails on a document
+> stating a measured count that disagrees with the tree, and a sentence QUOTING a
+> stale count trips it. The exemption is a markdown table row and nothing else —
+> see `is_historical` — because the alternative (exempting prose that mentions
+> "was") silently exempted every line in `docs/`.
 
-The "do nothing" baseline is identified by `arena_entries.is_baseline`, enforced
-only in Go (`RemoveArenaEntry` refuses to clear it). A direct SQL `UPDATE` can
-clear it, and there is no `CHECK` or trigger behind it. The
-`arenas.baseline_entry_id` column exists for the same purpose and is populated
-by nothing yet; it was the reason the `neither` outcome silently scored as a
-draw before 2026-10-02. One representation should be authoritative and
-constrained, not two with one unwritten.
+**Now gated:** `scripts/check_doc_numbers.py` fails when a document states a schema
+version, migration count, table count or test count that disagrees with the tree.
+Wired into `make verify` via `docs-check`, with its own 8 tests in
+`scripts/test_check_doc_numbers.py`. It found two more stale lines on its first
+honest run (PLAN-r4's status header) beyond the two above.
+
+### The gate was decorative on its first run, twice
+
+Worth recording, because the failure is the same shape as the thing it guards:
+
+- **It exempted every line containing the word "was"**, on the theory that such a
+  line was quoting a past state. Every status line in `docs/` contains "was", so it
+  examined **0 numbers**, printed `OK 0 measured number(s)` and exited 0. A gate
+  that reports OK without examining anything is worse than no gate: it converts a
+  known risk into a false assurance.
+- **A slice-based edit left a second definition of its check-builder after
+  `main`**, and Python binds the last one, so the call site used a different
+  contract than the checks were built for. The same run, the same green.
+
+Both are now closed structurally: `is_historical` matches only a markdown table row,
+and a run that examines zero numbers returns **1**, not 0.
+
+### A gate that flags correct subset counts is worse than one that flags none
+
+The first honest run reported `KNOWN-ISSUES.md: 0008 rebuilds 23 tables` as stale,
+three times. Those are **correct** — 23 is the number of tables migration `0008`
+rebuilds, a subset of the 79.
+
+So the table pattern is narrowed to a claim about the whole schema ("the 79 tables").
+Narrowing a gate after it cries wolf is normally how you end up with a gate that
+catches nothing, so the narrowing is constrained two ways: each subset phrasing in
+`docs/` is named in a negative lookbehind, and `test_a_subset_count_is_not_a_finding`
+asserts both ("rebuilds 23", "across all 23") stay unflagged. A **new** subset
+phrasing therefore arrives as a finding to classify, not as noise to ignore.
+
+## Arena `is_baseline` had no schema guarantee — the invariant lived only in Go (fixed 2026-10-05, `0025`)
+
+**Was:** §6.3's "every solution arena has a permanent baseline" was enforced in
+exactly one place — `setBaseline` in Go. No CHECK, no trigger, no index.
+
+**Understated, twice.** The note said "Go-enforced", which reads like a weaker
+guarantee rather than a missing one. Measured:
+
+```
+INSERT (arena 1, solution 5, is_baseline 1)
+INSERT (arena 1, solution 6, is_baseline 1)   -- accepted: TWO baselines
+```
+
+**Two baselines is an ambiguity. ZERO is the real hazard,** and it is reachable
+*inside the store*: `setBaseline` clears every baseline and then sets one, in two
+statements with no transaction between them — and `CreateSolution` runs outside any
+transaction at all. The state in that window is an arena with no baseline, where
+`neither` has nothing to lose to and reads as a 0.5/0.5 draw instead of a loss to
+doing nothing. That is precisely the bug `arenas.baseline_entry_id` caused before
+`0018` dropped it, and this column is now the only representation of that fact.
+
+**Fixed** by `0025`: a partial unique index,
+`CREATE UNIQUE INDEX ... ON arena_entries(arena_id) WHERE is_baseline = 1`. A CHECK
+cannot express "at most one" at all — it cannot see other rows.
+
+### A behavioural test cannot tell a partial index from a catastrophic one
+
+`UNIQUE (arena_id)` refuses a second baseline **exactly as well** — while capping
+every arena at ONE COMPETITOR. `TestArenaRefusesASecondBaseline` passes for both.
+
+`sqlite_master` has no `partial` column, so the index's own `sql` TEXT is what
+distinguishes them, and `TestArenaBaselineIndexIsPartial` reads it. Mutating the
+index to non-partial is killed only by that test; the behavioural one stays green.
+
+### Three wrong versions of the test before one that could fail
+
+All three are recorded because the shape recurs:
+
+1. **Reused the baseline's own `entity_id`**, so the composite PRIMARY KEY
+   `(arena_id, entity_type, entity_id)` refused the row and the test passed proving
+   nothing about `is_baseline`.
+2. **Asked `CreateSolution` for another solution** — which returned the SAME
+   `entity_id`, because the arena entry already existed. The PK refused again.
+3. **Asserted only `err != nil`**, so any constraint at all satisfied it.
+
+A guard satisfied by an unrelated constraint is decoration: it reports the invariant
+holds while leaving it untested. The working version uses an `entity_id` nothing
+could have generated, and asserts on the error TEXT — SQLite names the indexed
+COLUMN, not the index, so the message is necessary but not sufficient, which is
+why the partial-shape test has to exist separately.
+
+Verified on a copy of the live database with a seeded 7-entry arena: a second
+baseline is refused, the store's demote-then-set still works, and 6 ordinary
+competitors are unaffected.
 
 ## The finder suite's wait_for_timeout races — SUPERSEDED, see the section below
 

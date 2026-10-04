@@ -78,6 +78,8 @@ vet:
 # argument that a finding only in a markdown list is a note, not a control.
 docs-check:
 	python3 scripts/check_spec_drift.py
+	python3 -m unittest discover -s scripts -p 'test_*.py'
+	python3 scripts/check_doc_numbers.py
 
 # E2E synchronisation. In `verify` because the pattern it bans is invisible to
 # every other check: a sleep-then-read test passes on a fast machine and fails on

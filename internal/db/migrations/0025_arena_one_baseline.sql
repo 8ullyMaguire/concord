@@ -1,0 +1,44 @@
+-- arenas: enforce "at most one baseline per arena" in the schema.
+--
+-- WHY. §6.3: "Every solution arena has a permanent baseline." That fact lived in
+-- exactly one column, `arena_entries.is_baseline`, and was enforced ONLY by
+-- `setBaseline` in Go. Every other writer -- a script, a migration, a future
+-- handler, or `setBaseline` itself interrupted between its own two UPDATEs -- left
+-- the arena with two baselines or none.
+--
+-- Reproduced directly against the schema as it stood:
+--
+--   INSERT (arena 1, solution 5, is_baseline 1)
+--   INSERT (arena 1, solution 6, is_baseline 1)   -- accepted: TWO baselines
+--
+-- Two is a scoring ambiguity. ZERO is the worse one: `neither` then has nothing to
+-- lose to, so it reads as a 0.5/0.5 draw rather than a loss to doing nothing, and
+-- solutions that all lose to "do nothing" can still open a call. That is precisely
+-- the bug `arenas.baseline_entry_id` caused before 0018 dropped it -- and this
+-- column is now the only representation of that fact, so nothing would notice it
+-- happening again.
+--
+-- WHY A PARTIAL UNIQUE INDEX AND NOT A CHECK. A CHECK cannot see other rows, so it
+-- cannot express "at most one" at all. The partial index is the only object SQLite
+-- offers for it: it constrains exactly the rows that carry the flag, so it is
+-- silent about the millions of ordinary entries. `sqlite_master` has no `partial`
+-- column, so a gate that wants to verify this must compare the index's `sql` text
+-- -- see TestArenaBaselineIndexIsPartial.
+--
+-- WHY NOT A TRIGGER. A trigger that cleared the other rows would make the flag
+-- self-healing, but it would also mean `setBaseline`'s two-statement dance is
+-- redundant, and a trigger that silently rewrites a row is harder to reason about
+-- than a constraint that refuses. The store's job is to demote deliberately; the
+-- schema's job is to refuse.
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_arena_entries_one_baseline
+    ON arena_entries(arena_id) WHERE is_baseline = 1;
+
+-- WHY NOT FORCED ON EXISTING ROWS. Every arena with more than one baseline would
+-- make this migration fail on a database that has been running with the flaw. The
+-- store demotes the previous baseline before setting a new one, so the reachable
+-- states in practice are zero or one; two requires a writer that bypasses the
+-- store. `TestArenaBaselineIndexIsPartial` asserts the index exists, and
+-- TestSetBaselineLeavesExactlyOne asserts the store still produces one -- together
+-- they make a pre-existing violation a loud migration failure rather than a
+-- silent one, which is the correct time to learn about it.

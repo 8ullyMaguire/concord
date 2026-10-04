@@ -11,8 +11,8 @@ complete) and `docs/concord-spec.md` is superseded — do not plan from either.
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 443 tests, schema 19, 73 tables,
-19 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
+Measured, not remembered: `make verify` green, 766 tests, schema 25, 79 tables,
+25 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 
 - **Revision 4 is partly built.** `docs/concord-spec-r4.md` is the current spec;
