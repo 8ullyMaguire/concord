@@ -203,8 +203,10 @@ against the tree AND the live service). All milestones now AC-tested.
 
 | Was | Now |
 |---|---|
-| vote log rewritable by any writer | migration `0024_vote_log_append_only.sql`: UPDATE and DELETE refused by trigger, with one arming-signal escape hatch for `dedupe.py --apply`. 5/5 mutants killed. |
-| "62 tests pass" | 752 top-level Go tests across 9 packages, 149 e2e across 8 suites, cold cache, exit 0 |
+| "62 tests pass" | 757 top-level Go tests across 9 packages, 149 e2e across 8 suites, cold cache, exit 0 |
+| vote log rewritable by any writer | migration `0024_vote_log_append_only.sql`, with an arming-signal escape hatch for `dedupe.py --apply`; 5/5 mutants killed |
+| unindexed rows invisible to similarity search | coverage measured at startup with the exact remediation command; live index now 100% on all four kinds |
+| readers sent to a spec two revisions back | 6 citations re-pointed, superseded spec bannered, `scripts/check_spec_drift.py` wired into `make verify` |
 | audit log written by ~20 call sites and readable by none | `store.ListAudit` + `GET /api/v1/projects/{slug}/audit` + a page |
 | `PLAN-r4.md` claimed decision records, solutions panel, Scout and alternatives arena were missing | all four ship; the tracker was corrected rather than the features rebuilt |
 
