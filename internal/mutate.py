@@ -108,7 +108,29 @@ def run_gate(src, test_pkg, test_file, mutants, label, repo=None):
     print(f"[{label}] ---- {killed}/{total} killed, {survived} survived, {notapplied} not applicable")
     shutil.copy(bak, src_path)
     os.remove(bak)
-    return 0 if survived == 0 else 1
+
+    # A NOT APPLIED mutant fails the gate, deliberately. It is the one verdict
+    # that is indistinguishable from a pass at a glance: before this change a
+    # gate whose mutants were all stale patterns reported
+    #
+    #     ---- 0/1 killed, 0 survived, 1 not applicable
+    #     GATE_EXIT=0
+    #
+    # which reads as "no survivors" and means "nothing ran". Verified by
+    # execution, not by argument: a mutant naming a pattern absent from
+    # capabilities.go exited 0 on a suite that kills 6 of its own mutants.
+    # A refactor silently renaming the guarded expression is exactly the common
+    # case, so this is the state a gate spends most of its life in after any
+    # code motion -- and it was green.
+    #
+    # The failure is not cosmetic either: a refactor that renames the guarded
+    # expression leaves the RULE unproven while the gate says it is proven, and
+    # the next person to read the mutant list has no way to know.
+    if notapplied:
+        print(f"[{label}] FAIL: {notapplied} mutant(s) never applied. The rules "
+              f"they guard are UNPROVEN and this run proves nothing about them. "
+              f"Update the patterns in the mutants file to the current source.")
+    return 0 if (survived == 0 and notapplied == 0) else 1
 
 
 def main():
