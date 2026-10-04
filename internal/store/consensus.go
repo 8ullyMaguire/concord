@@ -291,6 +291,63 @@ func (d *DB) ResolveObjection(ctx context.Context, id int64, status, resolution 
 	return err
 }
 
+// TallyConsensus builds a call's counts without closing it.
+//
+// Split out of CloseConsensusCall because the counts are needed for an OPEN call:
+// the Consensus page has to show quorum progress while the call is still running,
+// and before this the only way to get them was to close it. CloseConsensusCall calls
+// this too, so the numbers a page shows mid-call and the numbers a close evaluates
+// come from one computation rather than two that can drift.
+func (d *DB) TallyConsensus(ctx context.Context, c ConsensusCall) (governance.ConsensusCounts, error) {
+	positions, err := d.GetPositions(ctx, c.ID)
+	if err != nil {
+		return governance.ConsensusCounts{}, err
+	}
+	var counts governance.ConsensusCounts
+	for _, p := range positions {
+		counts.Participants++
+		switch p.Position {
+		case "consent":
+			counts.Consent++
+		case "stand_aside":
+			counts.StandAside++
+		case "block":
+			counts.Block++
+		case "abstain":
+			counts.Abstain++
+		}
+	}
+	objections, err := d.GetObjections(ctx, c.ID)
+	if err != nil {
+		return governance.ConsensusCounts{}, err
+	}
+	for _, o := range objections {
+		if o.Status == "open" {
+			counts.OpenObjections++
+		}
+	}
+
+	// Eligible must be set before EvaluateConsensus, or quorum is vacuous.
+	//
+	// QuorumThreshold(eligible<=0) returns 0, and EvaluateConsensus's first check is
+	// `Participants < QuorumThreshold(...)`, so an unset Eligible makes every call
+	// satisfy quorum by definition: one member consenting to their own call was
+	// enough to accept it, in a project with three members eligible to vote. Probed
+	// with a real fixture (see TestAClosedCallCountsTheEligiblePopulationForQuorum),
+	// which is why this was caught: the ratios and every other branch were correct,
+	// so no test that asserted on a ratio or a threshold could see it.
+	//
+	// §8.2's conjunction -- role AND a qualifying contribution inside the activity
+	// window -- is what EligibleCollaboratorCount already computes, so the threshold
+	// the page shows and the threshold enforced here are the same number.
+	eligible, err := d.EligibleCollaboratorCount(ctx, c.ProjectID)
+	if err != nil {
+		return governance.ConsensusCounts{}, fmt.Errorf("eligible collaborators: %w", err)
+	}
+	counts.Eligible = eligible
+	return counts, nil
+}
+
 func (d *DB) CloseConsensusCall(ctx context.Context, callID int64) (ConsensusSummary, error) {
 	c, err := d.GetConsensusCall(ctx, callID)
 	if err != nil {
@@ -318,54 +375,10 @@ func (d *DB) CloseConsensusCall(ctx context.Context, callID int64) (ConsensusSum
 	if err != nil {
 		return ConsensusSummary{}, err
 	}
-	positions, err := d.GetPositions(ctx, callID)
+	counts, err := d.TallyConsensus(ctx, c)
 	if err != nil {
 		return ConsensusSummary{}, err
 	}
-	var counts governance.ConsensusCounts
-	for _, p := range positions {
-		counts.Participants++
-		switch p.Position {
-		case "consent":
-			counts.Consent++
-		case "stand_aside":
-			counts.StandAside++
-		case "block":
-			counts.Block++
-		case "abstain":
-			counts.Abstain++
-		}
-	}
-	objections, err := d.GetObjections(ctx, callID)
-	if err != nil {
-		return ConsensusSummary{}, err
-	}
-	openObj := 0
-	for _, o := range objections {
-		if o.Status == "open" {
-			openObj++
-		}
-	}
-	counts.OpenObjections = openObj
-
-	// Eligible must be set before EvaluateConsensus, or quorum is vacuous.
-	//
-	// QuorumThreshold(eligible<=0) returns 0, and EvaluateConsensus's first check is
-	// `Participants < QuorumThreshold(...)`, so an unset Eligible makes every call
-	// satisfy quorum by definition: one member consenting to their own call was
-	// enough to accept it, in a project with three members eligible to vote. Probed
-	// with a real fixture (see TestAClosedCallCountsTheEligiblePopulationForQuorum),
-	// which is why this was caught: the ratios and every other branch were correct,
-	// so no test that asserted on a ratio or a threshold could see it.
-	//
-	// §8.2's conjunction -- role AND a qualifying contribution inside the activity
-	// window -- is what EligibleCollaboratorCount already computes, so the threshold
-	// the page will show and the threshold enforced here are the same number.
-	eligible, err := d.EligibleCollaboratorCount(ctx, c.ProjectID)
-	if err != nil {
-		return ConsensusSummary{}, fmt.Errorf("eligible collaborators: %w", err)
-	}
-	counts.Eligible = eligible
 
 	var modelStr string
 	err = d.QueryRowContext(ctx,

@@ -11,6 +11,7 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"git.polarisocial.xyz/concord/concord/internal/embed"
+	"git.polarisocial.xyz/concord/concord/internal/governance"
 	"git.polarisocial.xyz/concord/concord/internal/ranking"
 	"git.polarisocial.xyz/concord/concord/internal/store"
 )
@@ -1055,11 +1056,55 @@ func (s *Server) handleCreateConsensus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, call)
 }
 
+// requireCallInProject resolves BOTH the project in the path and the call in the
+// path, and refuses unless the caller may read the project.
+//
+// Every consensus handler here used to parse call_id and load the call by id alone.
+// That left two holes, both measured in
+// TestAConsensusCallCannotBeReadThroughAnotherProjectsURL:
+//
+//   - a private project's call was readable by anyone who could guess a small
+//     integer, because nothing asked whether the caller may read the project;
+//   - a call in project A was readable through project B's URL, so the project
+//     segment of the path was decorative -- naming any project at all sufficed.
+//
+// The project check is requireProjectID, the same guard every other project-scoped
+// handler uses, so a private project stays indistinguishable from a nonexistent one:
+// a generic 404 body naming no slug.
+//
+// handleGetConsensus additionally compares the call's project to this one. This
+// helper does not, because a write's own store call is what surfaces the mismatch;
+// doing the check in one place for reads and in another for writes is how the two
+// drift apart. handleRecordCallOutcome already did both by hand and is left alone.
+func (s *Server) requireCallInProject(w http.ResponseWriter, r *http.Request) (callID, projectID int64, ok bool) {
+	projectID, ok = s.requireProjectID(w, r)
+	if !ok {
+		return 0, 0, false
+	}
+	callID, _ = strconv.ParseInt(chi.URLParam(r, "call_id"), 10, 64)
+	if callID <= 0 {
+		// A non-numeric or missing id is "not found", not a 400: the caller learns
+		// nothing about which ids exist.
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return 0, 0, false
+	}
+	return callID, projectID, true
+}
+
 func (s *Server) handleGetConsensus(w http.ResponseWriter, r *http.Request) {
-	callID, _ := strconv.ParseInt(chi.URLParam(r, "call_id"), 10, 64)
+	callID, projectID, ok := s.requireCallInProject(w, r)
+	if !ok {
+		return
+	}
 	c, err := s.Store.GetConsensusCall(r.Context(), callID)
 	if err != nil {
 		mapError(w, err)
+		return
+	}
+	if c.ProjectID != projectID {
+		// The call exists but not under this project, so the answer is the same 404
+		// as for a call that does not exist. Anything else confirms the id is real.
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
 		return
 	}
 	positions, err := s.Store.GetPositions(r.Context(), callID)
@@ -1072,11 +1117,40 @@ func (s *Server) handleGetConsensus(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]any{"call": c, "positions": positions, "objections": objections})
+	// The tally, computed by the SAME method a close uses. The page must not derive
+	// these numbers: §6.6 requires two ratios with different denominators, and a
+	// client that recomputes them can be wrong about what consent means without
+	// anything looking broken. store.ConsensusThresholdsSummary is what makes both
+	// visible in one response; it existed with no caller until this.
+	counts, err := s.Store.TallyConsensus(r.Context(), c)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	var modelStr string
+	if err := s.Store.QueryRowContext(r.Context(),
+		`SELECT governance_model FROM projects WHERE id = ?`, c.ProjectID).Scan(&modelStr); err != nil {
+		mapError(w, err)
+		return
+	}
+	gm := governance.GovernanceModel(modelStr)
+	if !gm.Valid() {
+		gm = governance.Collective
+	}
+	writeJSON(w, http.StatusOK, map[string]any{
+		"call":       c,
+		"positions":  positions,
+		"objections": objections,
+		"tally":      store.ConsensusThresholdsSummary(counts, governance.DefaultCharter(gm)),
+	})
 }
 
 func (s *Server) handleCastConsensusPosition(w http.ResponseWriter, r *http.Request) {
-	callID, _ := strconv.ParseInt(chi.URLParam(r, "call_id"), 10, 64)
+	callID, projectID, ok := s.requireCallInProject(w, r)
+	if !ok {
+		return
+	}
+	_ = projectID
 	if getActorID(r) == 0 {
 		mapError(w, fmt.Errorf("authentication required"))
 		return
@@ -1097,7 +1171,11 @@ func (s *Server) handleCastConsensusPosition(w http.ResponseWriter, r *http.Requ
 }
 
 func (s *Server) handleCreateObjection(w http.ResponseWriter, r *http.Request) {
-	callID, _ := strconv.ParseInt(chi.URLParam(r, "call_id"), 10, 64)
+	callID, projectID, ok := s.requireCallInProject(w, r)
+	if !ok {
+		return
+	}
+	_ = projectID
 	if getActorID(r) == 0 {
 		mapError(w, store.ErrAuth)
 		return
@@ -1159,7 +1237,10 @@ func (s *Server) handleCloseConsensus(w http.ResponseWriter, r *http.Request) {
 		mapError(w, fmt.Errorf("authentication required"))
 		return
 	}
-	callID, _ := strconv.ParseInt(chi.URLParam(r, "call_id"), 10, 64)
+	callID, _, ok := s.requireCallInProject(w, r)
+	if !ok {
+		return
+	}
 	summary, err := s.Store.CloseConsensusCall(r.Context(), callID)
 	if err != nil {
 		mapError(w, err)
