@@ -499,5 +499,8 @@ def test_an_instance_wide_request_is_labelled_on_the_board(page, server):
 def test_no_console_errors_on_the_board(page, server):
     for path in (f"/projects/{SLUG}/requests", f"/projects/{SLUG}/lists"):
         page.goto(BASE + path)
-        page.wait_for_timeout(1200)
+        # Wait for the section the assertions are about rather than for a duration.
+        page.wait_for_selector("#lists-root .card, #lists-root .empty-state",
+                               timeout=15000)
+        page.wait_for_selector("#list-root .list-detail", timeout=15000)
         assert not page.errors, f"{path}: {page.errors}"

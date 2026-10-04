@@ -383,5 +383,15 @@ def test_no_console_errors_on_any_lists_page(page, server):
     for path in (f"/projects/{SLUG}/lists", f"/projects/{SLUG}/lists/2",
                  f"/projects/{SLUG}", f"/projects/{PRIVATE}/lists"):
         page.goto(BASE + path)
-        page.wait_for_timeout(1200)
+        # Wait for the section the assertions are about rather than for a duration.
+        # Wait for the ROOT to stop being aria-busy, which is the page's own signal
+        # that its fetches have resolved.
+        #
+        # NOT `.list-detail`: one of the four paths is a private project, which
+        # legitimately renders no detail at all, so waiting for one timed out on a
+        # correct page. `#lists-root[aria-busy]` is present on every lists page.
+        if "/lists/" in path:
+            page.wait_for_selector("#list-root:not([aria-busy])", timeout=15000)
+        else:
+            page.wait_for_selector("#lists-root:not([aria-busy])", timeout=15000)
         assert not page.errors, f"{path}: {page.errors}"

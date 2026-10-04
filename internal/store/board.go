@@ -32,7 +32,7 @@ type BoardCard struct {
 	// the decision that replaces the guess this flag marks -- after which the
 	// card is served from the row and stops being derived. See GetBoard and
 	// MoveCard.
-	Derived   bool `json:"derived,omitempty"`
+	Derived bool `json:"derived,omitempty"`
 }
 
 // GetBoard returns the columns plus the cards for a project.
@@ -103,14 +103,14 @@ func (d *DB) GetBoard(ctx context.Context, projectID int64) ([]BoardColumn, []Bo
 // about where that state belongs, and guessing it is the same fabrication as
 // guessing any other placement.
 var featureStatusToPhase = map[string]string{
-	"draft":      "inbox",
-	"discussion": "triaged",
-	"consensus":  "consensus",
-	"ready":      "ready",
+	"draft":       "inbox",
+	"discussion":  "triaged",
+	"consensus":   "consensus",
+	"ready":       "ready",
 	"in_progress": "in_progress",
-	"review":     "review",
-	"shipped":    "done",
-	"rejected":   "rejected",
+	"review":      "review",
+	"shipped":     "done",
+	"rejected":    "rejected",
 }
 
 // deriveBoardCards synthesises cards for unplaced features.
@@ -239,6 +239,20 @@ func (d *DB) moveRow(ctx context.Context, cardID int64, newColumn string, projec
 	if err != nil {
 		return err
 	}
+	// THE WIP LIMIT. It was set by SetBoardColumn, read by GetBoard, printed by the
+	// board page as "n / WIP k" -- and ENFORCED NOWHERE. So the column header said a
+	// limit was in force while the server accepted any number of cards into it, and a
+	// reader who respected the number had no mechanism holding them to it.
+	//
+	// A WIP limit that is only displayed is worse than none: it teaches people the
+	// board is policed, and then lets the board grow.
+	//
+	// Counted BEFORE the move and EXCLUDING the card being moved, so re-dropping a card
+	// on the column it is already in is not a refusal -- otherwise every retry of a
+	// successful move would report a full column.
+	if err := d.checkWIPLimit(ctx, colID, cardID, projectID, newColumn); err != nil {
+		return err
+	}
 	// RowsAffected separates "moved" from "no such card". Without it a bogus id
 	// is reported as success.
 	res, err := d.ExecContext(ctx, `UPDATE board_cards SET column_id=? WHERE id=? AND project_id=?`,
@@ -252,6 +266,59 @@ func (d *DB) moveRow(ctx context.Context, cardID int64, newColumn string, projec
 	}
 	if n == 0 {
 		return fmt.Errorf("%w: board card %d", ErrNotFound, cardID)
+	}
+	return nil
+}
+
+// checkWIPLimit refuses a move that would take a column past its wip_limit.
+//
+// Three cases, and the differences between them are the whole reason this is a
+// function rather than a comparison:
+//
+//   - the column has NO limit (wip_limit IS NULL): always allowed
+//   - the card is ALREADY in this column: allowed, because it does not change the count.
+//     Without this exemption a drag that did not move reported the column as full, which
+//     is a false refusal about a card that is exactly where it already was.
+//   - the card is MOVING in, and the column is at or over its limit: refused, with the
+//     count and the limit in the message, because "WIP limit reached" tells a reader
+//     nothing they can act on and "cannot exceed 3" does.
+//
+// errConflict rather than errInvalid: the request is well-formed and the state is what
+// refuses it, which is what a 409 is for. A 400 would tell the reader they made a
+// mistake in their request.
+func (d *DB) checkWIPLimit(ctx context.Context, colID, cardID, projectID int64, column string) error {
+	var limit sql.NullInt64
+	if err := d.QueryRowContext(ctx,
+		`SELECT wip_limit FROM board_columns WHERE id=? AND project_id=?`,
+		colID, projectID).Scan(&limit); err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: board column %d", ErrNotFound, colID)
+		}
+		return err
+	}
+	if !limit.Valid {
+		return nil // no limit set
+	}
+
+	// Already here? Then the count is unchanged, so there is nothing to refuse.
+	var already int64
+	if err := d.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM board_cards WHERE column_id=? AND id=?`,
+		colID, cardID).Scan(&already); err != nil {
+		return err
+	}
+	if already > 0 {
+		return nil
+	}
+
+	var count int64
+	if err := d.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM board_cards WHERE column_id=?`, colID).Scan(&count); err != nil {
+		return err
+	}
+	if count >= limit.Int64 {
+		return fmt.Errorf("%w: \"%s\" holds %d of its %d permitted -- finish or move "+
+			"something out before adding another", ErrConflict, column, count, limit.Int64)
 	}
 	return nil
 }
@@ -275,6 +342,25 @@ func (d *DB) placeFeature(ctx context.Context, featureID int64, newColumn string
 	}
 	if err != nil {
 		return err
+	}
+	// The WIP limit here too. placeFeature is the path taken by any feature that has no
+	// board_cards row yet -- every feature whose status maps to a phase -- so a limit
+	// checked only in moveRow would be bypassed by exactly the cards a reader never
+	// dragged.
+	var existing int64
+	_ = d.QueryRowContext(ctx,
+		`SELECT id FROM board_cards WHERE project_id=? AND feature_id=?`,
+		projectID, featureID).Scan(&existing)
+	if existing == 0 {
+		// 0 is not a card id, so checkWIPLimit's "already here" test correctly reports
+		// no existing card and the limit applies.
+		if err := d.checkWIPLimit(ctx, colID, 0, projectID, newColumn); err != nil {
+			return err
+		}
+	} else if existing != colID {
+		if err := d.checkWIPLimit(ctx, colID, existing, projectID, newColumn); err != nil {
+			return err
+		}
 	}
 	res, err := d.ExecContext(ctx, `
 		INSERT INTO board_cards (project_id, kind, feature_id, column_id, entered_at)

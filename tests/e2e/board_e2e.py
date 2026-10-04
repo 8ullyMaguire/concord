@@ -234,6 +234,38 @@ def anon_page(browser):
     return pg
 
 
+
+def settled(page, card_text, column):
+    """Wait until a card is in a named column -- a STATE, not a duration.
+
+    Nine fixed durations stood in for this. They pass on a fast machine and fail on a
+    busy one, and the repo's own check_e2e_sync.py bans the pattern because the flake it
+    causes cannot be reproduced: the finder suite had twenty such calls and the recorded
+    symptom was a green CI and a broken local run.
+
+    (That linter greps for the API name, so this comment once read as a violation of its
+    own rule -- IDLE rather than RACY, which is the classification for text that merely
+    mentions it.)
+    """
+    page.wait_for_function(
+        """([wantText, wantColumn]) => {
+             const card = [...document.querySelectorAll('#kanban-board .kanban-card')]
+               .find(c => c.textContent.includes(wantText));
+             return !!card && card.dataset.column === wantColumn;
+           }""", arg=[card_text, column], timeout=15000)
+
+
+def moved_out(page, card_text, column):
+    """Wait until a card is NO LONGER in a column -- for a refused move, where nothing
+    changes and there is no positive state to wait for."""
+    page.wait_for_function(
+        """([wantText, unwanted]) => {
+             const card = [...document.querySelectorAll('#kanban-board .kanban-card')]
+               .find(c => c.textContent.includes(wantText));
+             return !!card && card.dataset.column !== unwanted;
+           }""", arg=[card_text, column], timeout=15000)
+
+
 def _reset(server):
     """Put the board back to its seeded state.
 
@@ -294,28 +326,36 @@ def test_a_card_can_be_moved(page, server):
         "the card is in " + repr(card.get_attribute("data-column")) +
         ", not the seeded first column; _reset() should have put it back")
 
-    # The MOVE RESPONSE IS WATCHED, not assumed. A move that 401s renders a perfectly
-    # normal board -- the card stays put, no error is shown unless the reader looks for
-    # one -- so a test that only checks the final DOM cannot tell "refused" from
-    # "never sent". This is the assertion that distinguishes them.
+    # THE MOVE RESPONSE IS WATCHED, not assumed. A move that 401s renders a perfectly
+    # normal board -- the card stays put, no error shows unless the reader looks for one
+    # -- so a test that only checks the final DOM cannot tell "refused" from "never
+    # sent". This is the assertion that distinguishes them, and it is why this suite
+    # needed the token fix at all.
+    #
+    # The listener is attached FIRST. It was registered after select_option in one
+    # version, which meant the PUT had already happened and `seen` was empty: the test
+    # reported "selecting a column issued no PUT at all" about a board that sent one.
     seen = []
-    page.on("response", lambda r: seen.append((r.request.method, r.url.split("/api")[-1],
-                                               r.status)) if "/move" in r.url else None)
+    page.on("response", lambda r: seen.append(r.status) if "/move" in r.url else None)
+
+
     page.locator("#kanban-board select.kanban-card-move").first.select_option("accepted")
-    page.wait_for_timeout(2500)
+
+    # Wait for the RESPONSE, not the DOM: the card landing and the response arriving are
+    # the same event seen from two sides, and asserting on the DOM alone cannot tell a
+    # refusal from a slow success. expect.poll() does not exist in this Playwright
+    # version, so the wait is page.wait_for_function over a plain closure -- the JS list
+    # is not visible to the browser, so the loop lives in Python.
+    deadline = time.time() + 15
+    while not seen and time.time() < deadline:
+        page.wait_for_timeout(50)
     assert seen, "selecting a column issued no PUT at all"
-    assert seen[0][2] < 300, (
-        f"the move was refused with {seen[0][2]}; the commonest cause is a token read "
+    assert seen[0] < 300, (
+        f"the move was refused with {seen[0]}; the commonest cause is a token read "
         f"from the wrong localStorage key, which returns null instead of throwing")
 
     # And it LANDS in the second column, after the board re-reads.
-    page.wait_for_function(
-        """() => {
-             const cols = [...document.querySelectorAll('.kanban-column')];
-             const target = cols.find(c => c.querySelector('.kanban-column-title')
-                                          ?.textContent.trim() === 'accepted');
-             return target && target.textContent.includes('Add a migration check');
-           }""", timeout=15000)
+    settled(page, "Add a migration check", "accepted")
 
 
 def test_the_move_is_persisted_not_just_re_rendered(page, server):
@@ -326,7 +366,7 @@ def test_the_move_is_persisted_not_just_re_rendered(page, server):
     """
     _board(page, server)
     page.locator("#kanban-board select.kanban-card-move").first.select_option("accepted")
-    page.wait_for_timeout(1500)
+    settled(page, "Add a migration check", "accepted")
 
     page.reload()
     page.wait_for_selector("#kanban-board .kanban-card", timeout=15000)
@@ -374,17 +414,27 @@ def test_moving_into_a_full_column_is_refused_with_the_servers_reason(page, serv
     # Take the card out of the full column first so there is one there to move.
     page.locator(".kanban-column.is-at-wip select.kanban-card-move").first.select_option(
         "proposed")
-    page.wait_for_timeout(1500)
+    moved_out(page, "Document the release runbook", "in progress")
 
     _board(page, server)
     # Now put it back into the WIP-limited column, which holds one card already.
     page.locator("#kanban-board select.kanban-card-move").first.select_option(
         "in progress")
-    page.wait_for_timeout(1500)
+    # The refusal APPEARS in a live region; wait for the STATE, not a duration. The
+    # message is the store's own -- column name, current count, permitted count -- so
+    # this waits for the count, which only appears once the server has refused.
+    expect(page.locator("#kanban-board [data-board-live]")).to_contain_text(
+        "of its 1 permitted", timeout=15000)
 
-    body = page.locator("#kanban-board").inner_text().lower()
-    assert ("wip" in body or "limit" in body), (
-        "moving past a WIP limit produced no explanation: " + body[:300])
+    live = page.locator("#kanban-board [data-board-live]")
+    said = live.inner_text().lower()
+    # The COLUMN, the CURRENT count and the PERMITTED count -- not the word "wip",
+    # which the store does not use. The first version asserted on "wip" and failed
+    # against a message that named the column and both counts, which is strictly more
+    # useful. Assert what the reader needs, not a keyword.
+    for want in ("in progress", "1 of its 1 permitted"):
+        assert want in said, (
+            f"moving past a WIP limit did not say {want!r}: " + repr(said))
     assert not page.errors, page.errors
 
 
@@ -398,11 +448,12 @@ def test_a_refused_move_leaves_the_card_where_it_was(page, server):
     _board(page, server)
     page.locator(".kanban-column.is-at-wip select.kanban-card-move").first.select_option(
         "proposed")
-    page.wait_for_timeout(1500)
+    moved_out(page, "Document the release runbook", "in progress")
     _board(page, server)
     page.locator("#kanban-board select.kanban-card-move").first.select_option(
         "in progress")
-    page.wait_for_timeout(2000)
+    expect(page.locator("#kanban-board [data-board-live]")).to_be_attached(
+        timeout=15000)
 
     # Whatever happened, the board and the database must agree.
     page.reload()
@@ -419,7 +470,7 @@ def test_a_refused_move_leaves_the_card_where_it_was(page, server):
 def test_the_board_does_not_console_error(page, server):
     _board(page, server)
     page.locator("#kanban-board select.kanban-card-move").first.select_option("accepted")
-    page.wait_for_timeout(1500)
+    settled(page, "Add a migration check", "accepted")
     assert not page.errors, page.errors
 
 

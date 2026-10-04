@@ -4,7 +4,7 @@ Written 2026-10-05. Every number below is measured, not remembered. The doc-numb
 gate (`scripts/check_doc_numbers.py`, in `make verify`) fails when any of them goes
 stale, so this file cannot quietly become fiction.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · 877 Go tests across
+**Measured state:** schema 25 · 25 migrations · 79 live tables · 882 Go tests across
 9 test-bearing packages · 174 e2e tests in 10 suites · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
@@ -428,7 +428,7 @@ And the seed that proves §16 at all is built so **alphabetical and rating order
 disagree completely** (`aaaa first` is best, `zzzz last` is worst). Without that, an
 unranked implementation and a correctly ranked one render identically.
 
-877 Go tests. `make verify` and `make e2e` green.
+882 Go tests. `make verify` and `make e2e` green.
 
 ---
 
@@ -480,7 +480,7 @@ for both sections while both tabs were correct. The second is the general lesson
 **searching backwards from a label with a character budget is a guess; find the element
 by an attribute and inspect its own tag.**
 
-877 Go tests. `make verify` and `make e2e` green.
+882 Go tests. `make verify` and `make e2e` green.
 
 ---
 
@@ -556,4 +556,46 @@ the request. And one session means one database, so `_reset()` puts the board ba
 each test: the suite is *about* moving cards, and a fixture that cannot be restored makes
 every test after the first order-dependent.
 
-877 Go tests. `make verify` and `make e2e` green.
+882 Go tests. `make verify` and `make e2e` green.
+
+---
+
+## 10. WIP limits were displayed and never enforced
+
+**2026-10-05.** The board e2e seeded a column at its WIP limit, dragged a third card
+into it, and the move **succeeded**. That was not a bug in the new UI.
+
+`wip_limit` was written by `SetBoardColumn`, read by `GetBoard`, and printed by the board
+page as `n / WIP k` — and **nothing consulted it on a write**. `grep -rn wip_limit
+internal/ --include=*.go` returned exactly three hits: the insert, the select, and an
+unrelated comment in `scout/decompose.go`.
+
+So the column header said a limit was in force while the server accepted any number of
+cards into it. **A limit that is only displayed is worse than no limit**: it teaches
+readers that the board is policed, and then lets the board grow.
+
+Now enforced in `checkWIPLimit`, with three cases that are the reason it is a function
+and not a comparison:
+
+| case | rule | why it is separate |
+|---|---|---|
+| `wip_limit IS NULL` | unlimited | NULL scanned as 0 would mean "take none" |
+| card already in this column | allowed | a re-drop does not change the count, and drag-and-drop does it constantly — without this a successful retry reports the column as full |
+| moving in, at or over the limit | refused | with the column name, the current count and the permitted count, because "WIP limit reached" is not something a reader can act on |
+
+`ErrConflict`, so the HTTP layer answers **409** rather than blaming the request with a
+400. The state refuses it; the request is well formed.
+
+Added to **both** move paths, and the mutation run is what proved that matters: removing
+the check from `moveRow` left the suite **green**, because every test seeded and moved
+through `placeFeature`. So `TestTheWipLimitIsEnforcedOnTheCardIdPathToo` moves a card
+that already has a row — which is what a drag on a placed card always does. Five mutants,
+five killed.
+
+Two of my own fixtures were wrong while the code was right, and both failed *before*
+reaching the page: the helper looked up a card id **before creating any card**
+("no rows in result set"), and the spare-card test inserted a feature titled `'four'` and
+then looked it up by title, on a table where `features.title` is not unique. **Name a row
+you just created by the handle the INSERT returned, never by a title.**
+
+882 Go tests. `make verify` and `make e2e` green.
