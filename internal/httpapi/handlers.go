@@ -265,6 +265,52 @@ func (s *Server) handleFeaturePriorities(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, priorities)
 }
 
+// handleListFeatureComplaints returns the validated complaints behind a feature.
+//
+// This is the READ side of linked_complaints, which until now was write-only: the
+// ids were accepted on create and stored in feature_complaints, and no route ever
+// read them back. So the evidence for a feature's rank existed in the database and
+// in no response -- which is why the feature page's complaints section showed
+// nothing and read as "this feature has no pain behind it" rather than as missing.
+//
+// Both checks are load-bearing and neither substitutes for the other:
+//
+//   - requireProjectID, so a caller with no access to the project gets nothing;
+//   - the ownership check, so a feature is not read through another project's URL.
+//     It is the same pair handleGetFeature needs, and the same reason it survived
+//     mutation testing when only the first was present.
+//
+// store.GetFeatureComplaints already existed; only the route and handler did not.
+func (s *Server) handleListFeatureComplaints(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		mapError(w, store.ErrInvalid)
+		return
+	}
+	f, err := s.Store.GetFeature(r.Context(), id)
+	if err != nil {
+		mapError(w, store.ErrNotFound)
+		return
+	}
+	if f.ProjectID != projectID {
+		mapError(w, store.ErrNotFound)
+		return
+	}
+	complaints, err := s.Store.GetFeatureComplaints(r.Context(), id)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	// No nil guard here: store.GetFeatureComplaints returns an empty slice, never
+	// nil, so the response is always a JSON array. The nil-guard that used to be
+	// in this handler was treating a symptom the store now prevents at the source.
+	writeJSON(w, http.StatusOK, complaints)
+}
+
 func (s *Server) handleGetFeature(w http.ResponseWriter, r *http.Request) {
 	projectID, ok := s.requireProjectID(w, r)
 	if !ok {

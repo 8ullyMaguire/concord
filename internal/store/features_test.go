@@ -106,3 +106,60 @@ func TestGetFeaturePrioritiesOrdersByPriorityDesc(t *testing.T) {
 		t.Errorf("priority score is NaN, so the ordering is not deterministic")
 	}
 }
+
+// TestGetFeatureComplaintsReturnsEmptyNotNil pins the empty case that the API
+// cannot reach.
+//
+// §6.2 requires a validated complaint to create a feature, so "a feature with no
+// complaints" is unreachable through the HTTP API -- CreateFeature answers
+// 400 "at least one validated complaint are required". A test written at the API
+// layer for the empty list therefore tests a fiction, and two tests in this repo
+// did exactly that before this one: one seeded elo_r = NULL (impossible: NOT NULL
+// in the schema, non-pointer in Go) and one created a complaint-less feature.
+//
+// At the store layer the state is real: unlinking a complaint, or reading a
+// feature_id orphaned by a migration, both yield no results. A nil slice marshals
+// to `null`, and the handler reading it has to special-case that -- exactly the
+// kind of contract that breaks silently when a client is written against `[]`.
+func TestGetFeatureComplaintsReturnsEmptyNotNil(t *testing.T) {
+	store, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+
+	comp, err := store.CreateComplaint(ctx, pid, uid, "Some pain", "It hurts.", 3, 0.8, 1.0)
+	if err != nil {
+		t.Fatalf("CreateComplaint: %v", err)
+	}
+	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
+		t.Fatalf("ValidateComplaint: %v", err)
+	}
+	f, err := store.CreateFeature(ctx, pid, uid, "Linked", "body", "", nil, nil, []int64{comp.ID})
+	if err != nil {
+		t.Fatalf("CreateFeature: %v", err)
+	}
+
+	got, err := store.GetFeatureComplaints(ctx, f.ID)
+	if err != nil {
+		t.Fatalf("GetFeatureComplaints: %v", err)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected the one linked complaint, got %d", len(got))
+	}
+
+	// Unlink, so the same feature has no complaints. This is the reachable version
+	// of the state CreateFeature refuses to produce.
+	if _, err := store.ExecContext(ctx,
+		`DELETE FROM feature_complaints WHERE feature_id=?`, f.ID); err != nil {
+		t.Fatalf("unlink: %v", err)
+	}
+
+	got, err = store.GetFeatureComplaints(ctx, f.ID)
+	if err != nil {
+		t.Fatalf("GetFeatureComplaints after unlink: %v", err)
+	}
+	// len 0 is not enough: a nil slice also has len 0, and nil marshals to `null`.
+	if got == nil {
+		t.Error("GetFeatureComplaints returned a nil slice for no rows; it must be an " +
+			"empty slice, because nil marshals to null and a client written against " +
+			"[] breaks on it")
+	}
+}

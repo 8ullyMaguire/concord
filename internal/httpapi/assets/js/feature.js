@@ -29,12 +29,21 @@
     });
   }
 
-  function num(slug) {
-    // {slug} and {id} out of /projects/{slug}/features/{id}
+  function where() {
+    // /projects/{slug}/features/{id} splits into FOUR non-empty parts, so the slug
+    // is index 1 and the id is index 3 -- NOT index 2.
+    //
+    // The first version of this read parts[2], which is the literal string
+    // "features", so the page requested /features/features/solutions and got a 400
+    // on all three fetches. It failed as an unhandled error box rather than as a
+    // wrong-feature message, because the 400 was the loudest symptom of a parser
+    // that was off by one segment. No test caught it: the Go tests assert on the
+    // shell and on project.js, and the e2e suite did not exist yet.
     var parts = window.location.pathname.split('/').filter(Boolean);
+    var i = parts.indexOf('features');
     return {
       slug: parts.length >= 2 ? decodeURIComponent(parts[1]) : '',
-      id: parts.length >= 3 ? decodeURIComponent(parts[2]) : ''
+      id: i > 0 && parts.length > i + 1 ? decodeURIComponent(parts[i + 1]) : ''
     };
   }
 
@@ -92,8 +101,8 @@
 
   function complaintRow(c) {
     return '<li class="linked-row">' +
-      '<a href="/projects/' + esc(c.project_slug || '') + '/complaints/' +
-      esc(c.id) + '">' + esc(c.title || 'complaint ' + c.id) + '</a>' +
+      '<span class="badge badge-slate">#' + esc(c.id) + '</span>' +
+      '<span>' + esc(c.title || 'complaint ' + c.id) + '</span>' +
       (c.severity != null
         ? '<span class="badge badge-slate">severity ' + esc(c.severity) + '</span>'
         : '') +
@@ -129,32 +138,48 @@
       '<p class="muted">' + esc(msg) + '</p></div>';
   }
 
-  var where = num();
-  if (!where.slug || !where.id) {
-    root.innerHTML = notFound(where.slug, where.id);
+  var at = where();
+  if (!at.slug || !at.id) {
+    root.innerHTML = notFound(at.slug, at.id);
     done();
     return;
   }
 
-  var base = '/api/v1/projects/' + encodeURIComponent(where.slug);
+  var base = '/api/v1/projects/' + encodeURIComponent(at.slug);
 
   Promise.all([
-    json(base + '/features/' + encodeURIComponent(where.id)),
-    json(base + '/features/' + encodeURIComponent(where.id) + '/solutions'),
-    json(base + '/features/' + encodeURIComponent(where.id) + '/consensus')
+    json(base + '/features/' + encodeURIComponent(at.id)),
+    json(base + '/features/' + encodeURIComponent(at.id) + '/solutions'),
+    json(base + '/features/' + encodeURIComponent(at.id) + '/consensus'),
+    // Complaints come from their OWN endpoint. linked_complaints is write-only, so
+    // the feature object does not carry them and reading f.linked_complaints yields
+    // undefined -- which rendered as "no complaints", the exact opposite of the
+    // truth for a feature whose whole rank rests on a complaint.
+    json(base + '/features/' + encodeURIComponent(at.id) + '/complaints')
   ]).then(function (res) {
     var f = res[0];
     if (!f) {
-      root.innerHTML = notFound(where.slug, where.id);
+      root.innerHTML = notFound(at.slug, at.id);
       done();
       return;
     }
-    var solutions = Array.isArray(res[1]) ? res[1] : [];
-    var call = res[2];
+    // BOTH sibling endpoints wrap their payload, and getting this wrong is silent:
+    // a bare array read off {feature_id, solutions} yields undefined, the solutions
+    // section renders "0", and the page looks like a feature nobody proposed
+    // anything for. Measured against the live server, not assumed:
+    //
+    //   GET .../features/{id}             -> the feature object
+    //   GET .../features/{id}/solutions   -> {feature_id, solutions:[...]}
+    //   GET .../features/{id}/consensus   -> {feature_id, leader_id, runner_up_id,
+    //                                        baseline_id, ready, ...}
+    var solutions = (res[1] && res[1].solutions) || [];
+    if (!Array.isArray(solutions)) solutions = [];
+    var call = res[2] || {};
+    var complaints = Array.isArray(res[3]) ? res[3] : [];
 
     var html = '<div class="page-head"><div>' +
       '<p class="breadcrumb"><a href="/projects">Projects</a> / ' +
-      '<a href="/projects/' + esc(where.slug) + '">' + esc(where.slug) + '</a> / ' +
+      '<a href="/projects/' + esc(at.slug) + '">' + esc(at.slug) + '</a> / ' +
       '<span>Feature</span></p>' +
       '<h1>' + esc(f.title || 'Untitled feature') + ' ' +
       '<span class="badge badge-slate">' + esc(f.status || 'proposed') + '</span></h1>' +
@@ -172,20 +197,33 @@
         ? '<ul class="linked-list">' + solutions.map(solutionRow).join('') + '</ul>'
         : '<p class="muted">No solutions proposed yet.</p>');
 
-    // Consensus is the project-level agenda; this reports whether this feature's
-    // solution arena has a call open. An unauthenticated GET is deliberate and
-    // documented on the handler: the readiness view is public.
-    if (call && (call.call_id || call.status)) {
+    // Consensus here is the SOLUTION ARENA's readiness for this feature, not a call
+    // with an open/closed status: the endpoint returns leader_id, runner_up_id,
+    // baseline_id and a `ready` flag. Rendering a status string for it would
+    // invent a state the API never reported.
+    if (Object.keys(call).length) {
       html += section('Consensus',
-        '<p class="muted">' + esc(call.status || 'a call is open') +
-        (call.opens_at ? ' &middot; opened ' + esc(new Date(call.opens_at * 1000)
-          .toISOString().slice(0, 10)) : '') + '</p>');
+        (call.ready
+          ? '<p class="muted">The solution arena for this feature has a baseline '
+            + 'and enough comparisons to call a result.</p>'
+          : '<p class="muted">The solution arena for this feature has not called a '
+            + 'result yet. A leader and a runner-up mean one comparison is not a '
+            + 'verdict.</p>') +
+        '<p class="muted">' +
+        (call.baseline_id ? 'baseline solution ' + esc(call.baseline_id) : 'no baseline yet') +
+        (call.leader_id ? ' \u00b7 leader ' + esc(call.leader_id) : '') +
+        (call.runner_up_id ? ' \u00b7 runner-up ' + esc(call.runner_up_id) : '') +
+        '</p>');
     }
 
-    if (f.linked_complaints && f.linked_complaints.length) {
-      html += section('Complaints',
-        '<ul class="linked-list">' + f.linked_complaints.map(complaintRow).join('') + '</ul>');
-    }
+    // The complaints section, always rendered: an empty list must SAY it has none,
+    // because "this feature has no validated complaints" is the answer to "why is
+    // this ranked here?" for most features and the reader cannot guess it.
+    html += section('Complaints (' + complaints.length + ')',
+      complaints.length
+        ? '<ul class="linked-list">' + complaints.map(complaintRow).join('') + '</ul>'
+        : '<p class="muted">No validated complaint is linked to this feature, so ' +
+          'its rank rests on comparison alone rather than on reported pain.</p>');
 
     root.innerHTML = html;
     done();

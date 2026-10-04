@@ -283,7 +283,20 @@ func (d *DB) GetFeatureComplaints(ctx context.Context, featureID int64) ([]Compl
 		return nil, err
 	}
 	defer rows.Close()
-	var complaints []Complaint
+
+	// An EMPTY slice, never nil.
+	//
+	// `var complaints []Complaint` starts as nil, and a feature with no linked
+	// complaints returned it unchanged -- so the JSON was `null`, not `[]`. A
+	// client written against an array (`res.map(...)`, `Array.isArray`, a JSON
+	// schema with type: array) then fails, and it fails as a null dereference far
+	// from the store method that produced it.
+	//
+	// The state is reachable even though CreateFeature refuses to create it (§6.2
+	// requires a validated complaint): unlinking, or a migration that orphaned a
+	// feature_complaints row, both land here. Test:
+	// TestGetFeatureComplaintsReturnsEmptyNotNil.
+	complaints := []Complaint{}
 	for rows.Next() {
 		var c Complaint
 		if err := rows.Scan(&c.ID, &c.ProjectID, &c.AuthorID, &c.Title, &c.Body, &c.Severity,

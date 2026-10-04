@@ -44,6 +44,7 @@ e2e: build
 	$(E2E_PYTEST) tests/e2e/consensus_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/feeds_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/audit_e2e.py -q
+	$(E2E_PYTEST) tests/e2e/feature_e2e.py -q
 	# The audit VIEWER's mutants. Not part of `make gates` because it rebuilds
 	# the binary and runs the browser suite seven times, which is a different
 	# cost from the Go mutants: `gates` is a fast inner loop and this is not.

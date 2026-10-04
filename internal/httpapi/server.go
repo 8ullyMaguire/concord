@@ -540,6 +540,21 @@ func (s *Server) Router() http.Handler {
 	//
 	// Reads are unauthenticated on purpose, matching §6.1's duplicate panel and
 	// §2.5's vote log. A ranking nobody can read is not a ranking anybody trusts.
+	// The read side of feature_complaints.
+	//
+	// linked_complaints was WRITE-ONLY: CreateFeature accepted the ids and stored
+	// them in feature_complaints, and nothing ever read the table back. So a
+	// feature's pain evidence existed in the database and in no response -- which is
+	// why the feature page's Complaints section rendered nothing, and why it read as
+	// "no complaints" rather than as missing.
+	//
+	// Without this, "why is this ranked here?" has no answer on the page that claims
+	// to answer it. Spec 3.4 lists linked complaints as required content.
+	//
+	// Unauthenticated on purpose, like the solutions and consensus reads beside it
+	// (§2.5's vote log): the ranking is public, and so is the evidence for it.
+	r.Get("/api/v1/projects/{project_id}/features/{id}/complaints", s.handleListFeatureComplaints)
+
 	r.Route("/api/v1/projects/{project_id}/features/{id}/solutions", func(r chi.Router) {
 		r.Get("/", s.handleListSolutions)
 		r.Post("/", s.handleCreateSolution)
