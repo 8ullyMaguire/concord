@@ -107,14 +107,35 @@ the codebase's oldest recorded trap and `SearchProjects` already carries the exp
 | `TestTheTotalIsTheFilteredTotalNotTheTableTotal` | this is the test that catches "paged correctly, counted wrong", which is the defect that looks correct on page 1 |
 | `TestAPrivateProjectsAuditLogIsNotReadable` | 404, same body as a missing project — the anti-enumeration rule `requireProjectID` already enforces |
 | `TestTheAuditLogCarriesADisplayNameNotAnEmail` | a display name is present, an email is absent, everywhere in the body |
-| `TestAnUnresolvedActorDoesNotBreakTheList` | `actor_id` NULL → `null`, not a failed scan |
+| `TestAnUnresolvedActorLeavesTheNameNullRatherThanFailing` | `actor_id` NULL → `null`, not a failed scan; a dangling id invents no name |
 
-**Mutation-verified.** Two mutants, each killed by a named test:
+**Mutation-verified.** Fourteen mutants in `internal/store/audit_mutants.json`,
+all 14 killed, and seven more in `tests/e2e/audit_ui_mutants.py` for the page,
+all 7 killed. The two this section originally listed were replaced, because
+neither can fail an output-based assertion:
 
-1. `LIKE '%%'` emitted unconditionally → killed by `...SearchesNothingRatherThanEverything`.
-2. `total` counted unfiltered → killed by `...TheFilteredTotalNotTheTableTotal`.
+1. ~~`LIKE '%%'` emitted unconditionally~~ — **unobservable.** On an empty search
+   `LIKE '%%'` returns exactly the rows the unfiltered query returns, so the two
+   queries agree on every output assertion. Replaced by the six filter-removal
+   mutants, which differ in their output.
+2. ~~`total` counted unfiltered~~ — **killed**, and still in the list.
 
 A green run that was never seen red is not evidence.
+
+**This table is the FLOOR, not the whole suite, and two of its names were wrong.**
+As built there are 29 audit tests: `TestTheAuditLogCarriesTheActorsDisplayName`
+and `TestAnAuditRowCarriesADisplayNameNotAnEmail` are the display-name rule at the
+store and HTTP layers, and the row above was renamed to
+`TestAnUnresolvedActorLeavesTheNameNullRatherThanFailing` when it was written.
+`grep 'func TestX('` is the only way to know; a table in a spec is a claim about
+names, not evidence that a rule is tested.
+
+Four more came from the mutation gate reporting them SURVIVED, which is the
+harness stating a fact rather than a defect:
+`TestASearchTreatsWildcardsAsLiteralCharacters`, `TestTheEscapingUsesAnEscapeCharacter`,
+`TestTheSinceFilterDropsOlderRows` and
+`TestASearchTreatsALiteralBackslashAsALiteralCharacter`. The first two found a
+real bug — see the plan's "As built" section.
 
 Playwright, in `tests/e2e/audit_e2e.py`: the page renders, a filter narrows the list,
 and a page with **no** matching rows says so distinctly from "no audit activity".
