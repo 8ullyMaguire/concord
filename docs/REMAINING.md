@@ -4,12 +4,13 @@ Written 2026-10-05. Every number below is measured, not remembered. The doc-numb
 gate (`scripts/check_doc_numbers.py`, in `make verify`) fails when any of them goes
 stale, so this file cannot quietly become fiction.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · 791 Go tests across
-9 test-bearing packages · 155 e2e tests in 9 suites · 7/7 UI mutants killed ·
-HEAD `64703ac` on both remotes.
+**Measured state:** schema 25 · 25 migrations · 79 live tables · 801 Go tests across
+9 test-bearing packages · 162 e2e tests in 9 suites · 7/7 UI mutants killed ·
+HEAD `910da5e` on both remotes. `make verify` exit 0, `make e2e` exit 0.
 
-**Updated 2026-10-05 (feature detail page).** One page built, and three defects it
-exposed that no existing test could see. See §3.
+**Updated 2026-10-05 (feature detail, then complaint detail).** Two pages built,
+and **nine defects** they exposed that no existing test could see — including a
+security hole and a write-only database table. See §3.
 
 ---
 
@@ -45,7 +46,7 @@ Two are built. The rest are the real remaining work, and every one of them has a
 | 1 | Documents | ✅ full read/search | ✅ `documents.html` | ✅ |
 | 2 | Consensus | ✅ full | ✅ `consensus.html` | ✅ |
 | 3 | ~~Feature detail~~ | ✅ built 2026-10-05; **new** `.../features/{id}/complaints` | ✅ `feature.html` | via feature card |
-| 4 | **Complaint detail** | ✅ `GET .../complaints/{id}`, impact, validate, merge | ❌ | — |
+| 4 | ~~Complaint detail~~ | ✅ built 2026-10-05; **new** `.../complaints/{id}/features` | ✅ `complaint.html` | via complaint card |
 | 5 | **Project settings** | ✅ charter, members, invites, tags, languages, visibility | ❌ | — |
 | 6 | **Comments** | ✅ create/list/vote/delete | ❌ | — |
 | 7 | **Merge requests** | ✅ create/approve/execute/reject | ❌ | — |
@@ -122,12 +123,27 @@ confirming it went red.
 
 ---
 
-## 3. What the feature page exposed, 2026-10-05
+## 3. What building two pages exposed, 2026-10-05
 
-Building page 3 turned up four defects that every existing test was blind to.
-They are recorded here because the pattern is the point, not the individual bugs.
+Pages 3 and 4 turned up nine defects that every existing test was blind to. They
+are recorded here because the patterns are the point, not the individual bugs.
 
-### The shape that keeps recurring: a field nobody ever reads
+| # | Defect | Cost if it shipped |
+|---|---|---|
+| 1 | Six endpoints read any row by numeric id | **a private roadmap, enumerable with a loop** |
+| 2 | `feature_complaints` write-only in one direction | feature page's pain evidence rendered nothing |
+| 3 | `complaints/{id}/features` had no reader at all | complaint page could not name the work answering it |
+| 4 | `GetFeatureComplaints` returned nil for no rows | API served `null` where clients expect `[]` |
+| 5 | Feature card title was a plain `<div>` | feature page reachable only by typing a URL |
+| 6 | Complaint card title was a plain `<div>` | complaint page reachable only by typing a URL |
+| 7 | URL parser read `parts[2]`, not `parts[3]` | all three fetches 400'd; page showed an error box |
+| 8 | `/solutions` and `/consensus` are wrapped objects | "0 solutions" on a feature that had some |
+| 9 | `slug` not in scope in `render()` | **ReferenceError killed the whole project page** |
+
+Defects 5, 6 and 9 are the same failure as Finder, Scout, the consensus page and
+the audit log: working code that nothing points at, or that throws when reached.
+
+### 3.1 The shape that keeps recurring: a field nobody ever reads
 
 `feature_complaints` was **write-only for the life of the schema.** `CreateFeature`
 accepted `linked_complaints` and stored the ids; no route read them back. So the
@@ -143,7 +159,7 @@ answer it.
 writes it.** A field with a writer and no reader is not an unfinished feature, it
 is a silent hole.
 
-### Three bugs the Go tests could not see, caught by the first browser test
+### 3.2 Bugs the Go tests could not see, caught by the browser suite
 
 The Go tests assert on the shell and on `project.js`. Only a browser has the DOM,
 and it immediately found three things:
@@ -158,7 +174,7 @@ Both wrappers are silent failures: `Array.isArray({solutions:[]})` is false, the
 code falls back to `[]`, and the page reports the truth about a feature whose
 solutions it simply failed to load.
 
-### Two fixtures wrote states the product forbids
+### 3.3 Two fixtures wrote states the product forbids
 
 Both were written as "the obvious missing case". Neither state exists, so both
 tests were asserting on fiction — and the schema and the API caught them, not review.
@@ -172,7 +188,7 @@ tests were asserting on fiction — and the schema and the API caught them, not 
 draws a **bar** and not a number, and why the e2e fixture seeds a real
 never-compared feature (`elo_r` 1500, `elo_rd` 350) instead of a null one.
 
-### Six endpoints served any row by numeric id
+### 3.4 Six endpoints served any row by numeric id
 
 Found in the same session, before the page work — see `KNOWN-ISSUES.md`. Every one
 was anonymous-reachable and read by sequential integer, so a private roadmap was
@@ -186,19 +202,42 @@ ownership check, a public project in the path serves a private row. Both were
 droppable, and the ownership check survived the entire suite until a test existed
 for it.
 
+### 3.5 A static check on JS proves a string exists, never that the code runs
+
+Defect 9 is the one worth keeping. `complaintCards(complaints)` became
+`complaintCards(complaints, p.slug)` because `render()` receives the project as `p`.
+`slug` was not in scope, so the line threw a ReferenceError, which aborted the whole
+render — the project page showed nothing.
+
+`TestComplaintPageIsLinkedFromTheProject` **passed throughout**, because it checks
+that the link string is present in the source. A page can be entirely broken and
+that gate green.
+
+So both halves are gated now: `node --check` on each script (a syntax error in CI,
+before any browser runs) and the 13 e2e tests for the runtime half. A source gate
+alone would have missed the ReferenceError; a browser gate alone would have needed a
+browser to find a missing brace. Two mutants confirm each can be made to fail.
+
 ---
 
 ## 4. Next, in order
 
-1. **Complaint detail** (§4 of the ranking). Same shape as the feature page, and it
-   reuses the `feature_id` ownership pattern established above.
-2. **Project settings** — charter, members, invites, tags, languages, visibility.
+Two of the eight are built. Both followed the same contract, so the next six have a
+template to copy rather than a shape to discover.
+
+1. **Project settings** — charter, members, invites, tags, languages, visibility.
    The most API surface of any remaining page.
-3. **Requests + answers.** Note `GET /api/v1/requests/{request_id}` has **no
-   project segment**: `requireReadableRequest` resolves the project *through the
-   row*. Any new route shaped like that needs the same helper, not a path-parameter
-   check that cannot exist.
-4. Lists, merge requests, comments, criteria profiles — all API-complete.
+2. **Requests + answers.** `GET /api/v1/requests/{request_id}` has **no project
+   segment**: `requireReadableRequest` resolves the project *through the row*, and
+   both those endpoints were leaking until that helper existed. A page built on them
+   must use the helper, not a path-parameter check that cannot.
+3. **Lists**, **merge requests**, **comments**, **criteria profiles** — all
+   API-complete, all the same three-part contract.
+
+Before building any of them, run the read-side check from §3.1 against the fields
+the page needs: *for every field the UI reads, name the route that writes it.* Two
+of the two pages built today were found by exactly that question, and both had a
+complete-looking page component that rendered empty.
 
 Every page follows the same three-part contract now, from
 `internal/httpapi/feature_page_test.go`: it renders, it is **linked from
