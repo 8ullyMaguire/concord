@@ -197,9 +197,13 @@ func (s *Server) loadTemplates() error {
 	// "scout" is here because finder.html has linked /scout in two places since
 	// before the route existed: every "I know what I want, use Scout instead" was
 	// a 404. A page linked from another page must exist.
+	// "consensus" is here for the same reason as "scout": the project page links it
+	// as the way to see a call's tally, and a page linked from another page must
+	// exist. An unregistered template renders a 500 with the template name in it
+	// (see `render`), which is how a missing entry shows up rather than a blank page.
 	pages := []string{"index", "search", "projects", "project", "board",
 		"login", "register", "rank", "ranking", "documents", "notfound", "finder",
-		"scout"}
+		"scout", "consensus"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -309,6 +313,11 @@ func (s *Server) Router() http.Handler {
 	// and no data in the HTML.
 	r.Get("/finder", s.handleFinderPage)
 	r.Get("/scout", s.handleScoutPage)
+
+	// Consensus (docs/specs/consensus-page-spec.md). `call` is a query parameter,
+	// not a path segment, because there is no endpoint that lists calls and a
+	// path segment would imply an addressable collection that does not exist.
+	r.Get("/projects/{slug}/consensus", s.handleConsensusPage)
 
 	// Finder (docs/specs/finder-spec.md): the question-at-a-time discovery flow.
 	//

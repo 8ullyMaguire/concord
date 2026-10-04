@@ -1,0 +1,103 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <p class="breadcrumb"><a href="/projects">Projects</a> / <span data-slug>{{.Slug}}</span> / <span>Consensus</span></p>
+    <h1>Consensus · <span data-slug>{{.Slug}}</span></h1>
+    <p class="lede">A formal decision, one question at a time. Everyone eligible can
+      record a position, and the tally shows reservations separately from
+      opposition — because they are not the same thing.</p>
+  </div>
+</div>
+
+<!--
+  One call per page, not a list of calls.
+
+  There is no endpoint that lists calls, so there is nothing to list. The page is
+  reached from a feature or a solution, which is why it reads `?call=<id>` rather
+  than taking a path segment.
+
+  The two measures below are shown SEPARATELY and labelled, and the client never
+  derives either one. §6.6 requires two ratios with different denominators:
+
+    support  = consent / (consent + stand_aside + block)   "how many went along,
+                                                           with reservations"
+    decisive = consent / (consent + block)                  "how many took a side
+                                                           against each other"
+
+  4 consent / 3 stand-aside / 0 block is support 0.57 and decisive 1.00. Rendering
+  one of them displays a bug §6.3 already fixed server-side, and a client that
+  recomputes them can be wrong about what consent means without anything looking
+  broken. Both arrive in the response's `tally`; `consensus.js` only formats them.
+-->
+<div id="consensus-root" aria-busy="true" data-project="{{.Slug}}" data-call="{{.CallID}}">
+<script src="{{ asset "/assets/js/skeleton.js" }}"></script>
+<script>
+(function(){var b=document.getElementById("consensus-root");
+if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(4);}})();
+</script>
+
+  <div id="consensus-error" class="error-state" hidden>
+    <p class="error-state-title" id="consensus-error-title"></p>
+    <p class="error-state-description" id="consensus-error-detail"></p>
+    <button type="button" class="btn btn-secondary" id="consensus-retry">Try again</button>
+  </div>
+
+  <article id="consensus-call" hidden>
+    <h2 class="consensus-question" id="consensus-question"></h2>
+    <p class="consensus-meta" id="consensus-meta"></p>
+
+    <!-- Quorum progress: participants against the threshold, before any ratios. -->
+    <p class="consensus-quorum" id="consensus-quorum"></p>
+
+    <div class="consensus-tally">
+      <div class="tally-measure">
+        <span class="tally-label">Support</span>
+        <span class="tally-value" id="tally-support"></span>
+        <span class="tally-detail" id="tally-support-detail"></span>
+      </div>
+      <div class="tally-measure">
+        <span class="tally-label">Decisive</span>
+        <span class="tally-value" id="tally-decisive"></span>
+        <span class="tally-detail" id="tally-decisive-detail"></span>
+      </div>
+    </div>
+
+    <!--
+      Four positions, not three. The `positions` CHECK constraint permits consent,
+      abstain, stand_aside and block, and they are not interchangeable: abstain is
+      neutral in BOTH ratios, stand-aside only in one. Collapsing them loses a
+      distinction the tally is built on.
+
+      Each is a real button as well as a key. The shortcuts are accelerators, never
+      the only route.
+    -->
+    <div class="consensus-positions" id="consensus-positions" hidden>
+      <p class="field-label" id="positions-label">Your position</p>
+      <div class="position-buttons" role="group" aria-labelledby="positions-label">
+        <button type="button" class="btn position-btn" data-position="consent"
+                id="pos-consent">Consent</button>
+        <button type="button" class="btn position-btn" data-position="abstain"
+                id="pos-abstain">Abstain</button>
+        <button type="button" class="btn position-btn" data-position="stand_aside"
+                id="pos-stand-aside">Stand aside</button>
+        <button type="button" class="btn position-btn" data-position="block"
+                id="pos-block">Block</button>
+      </div>
+      <p class="hint" id="positions-hint">Keys: c, a, s, b. Enter records it.</p>
+      <p class="consensus-saved" id="consensus-saved" hidden></p>
+    </div>
+
+    <p class="consensus-signed-out" id="consensus-signed-out" hidden>
+      <a href="/login">Sign in</a> to record a position. You can read this call
+      without an account.
+    </p>
+
+    <section class="consensus-objections" id="consensus-objections" hidden>
+      <h3>Objections</h3>
+      <ul id="objection-list" class="objection-list"></ul>
+    </section>
+  </article>
+</div>
+
+<script src="{{ asset "/assets/js/consensus.js" }}"></script>
+{{end}}

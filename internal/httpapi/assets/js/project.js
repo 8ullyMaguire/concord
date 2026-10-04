@@ -239,7 +239,18 @@
           '<ul class="sol-list">' + rows + '</ul>' + omitted + '</div>';
       }).join('');
 
-      return '<div class="panel-solutions">' + head + tally +
+      // The link to the Consensus page, once there is a call to look at. Only
+      // rendered when the API reports one, because the page takes ?call=<id> and
+      // there is no endpoint that lists calls -- so a link without an id would go
+      // nowhere. A page linked from another page must exist; a link to a call that
+      // does not would be worse than no link.
+      var consensusLink = (data.consensus_calls && data.consensus_calls.length)
+        ? '<p class="panel-consensus-link"><a href="/projects/' +
+          encodeURIComponent(data.slug || '') + '/consensus?call=' +
+          encodeURIComponent(data.consensus_calls[0].id) + '">Open the call</a></p>'
+        : '';
+
+      return '<div class="panel-solutions">' + head + tally + consensusLink +
         '<div class="sol-groups">' + blocks + '</div></div>';
     }
 

@@ -1,0 +1,22 @@
+[
+  {
+    "name": "a reservation counts against consent in the decisive ratio",
+    "old": "\treturn cc.Consent + cc.Block\n",
+    "new": "\treturn cc.Consent + cc.Block + cc.StandAside\n"
+  },
+  {
+    "name": "an abstention counts as a side taken",
+    "old": "\treturn cc.Consent + cc.Block\n",
+    "new": "\treturn cc.Consent + cc.Block + cc.Abstain\n"
+  },
+  {
+    "name": "support ignores the reservations that dilute it",
+    "old": "\t\treturn float64(cc.Consent) / float64(n)\n\t}\n\treturn 0\n}\n\n// DecisiveRatio",
+    "new": "\t\treturn 1.0\n\t}\n\treturn 0\n}\n\n// DecisiveRatio"
+  },
+  {
+    "name": "an empty room reports full support",
+    "old": "func (cc ConsensusCounts) DecisiveRatio() float64 {\n\tif n := cc.Decisive(); n > 0 {",
+    "new": "func (cc ConsensusCounts) DecisiveRatio() float64 {\n\tif true {"
+  }
+]

@@ -1,0 +1,22 @@
+[
+  {
+    "name": "quorum is computed against zero",
+    "old": "\tcounts.Eligible = eligible",
+    "new": "\tcounts.Eligible = 0"
+  },
+  {
+    "name": "an open objection stops being counted",
+    "old": "\t\tif o.Status == \"open\" {\n\t\t\tcounts.OpenObjections++\n\t\t}",
+    "new": "\t\tif false {\n\t\t\tcounts.OpenObjections++\n\t\t}"
+  },
+  {
+    "name": "a stand-aside is not counted at all",
+    "old": "\t\tcase \"stand_aside\":\n\t\t\tcounts.StandAside++",
+    "new": "\t\tcase \"stand_aside\":\n\t\t\t_ = 0"
+  },
+  {
+    "name": "an abstention counts toward quorum",
+    "old": "\t\tcase \"abstain\":\n\t\t\tcounts.Abstain++",
+    "new": "\t\tcase \"abstain\":\n\t\t\tcounts.Abstain++\n\t\t\tcounts.Participants--"
+  }
+]

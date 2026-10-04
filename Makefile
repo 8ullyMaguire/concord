@@ -41,6 +41,7 @@ e2e: build
 	$(E2E_PYTEST) tests/e2e/finder_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/project_panels_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/scout_e2e.py -q
+	$(E2E_PYTEST) tests/e2e/consensus_e2e.py -q
 
 # The mutation gates. Each rewrites one source file per mutant and asserts the
 # suite goes red, so a green run means every mutant was killed. A SURVIVED entry
@@ -53,6 +54,8 @@ gates:
 	python3 internal/mutate.py internal/store/field_reports.go ./internal/store/ internal/store/field_reports_test.go internal/store/field_reports_mutants.json
 	python3 internal/mutate.py internal/store/solutions.go ./internal/store/ internal/store/solutions_test.go,internal/store/solutions_count_test.go internal/store/solutions_mutants.json
 	python3 internal/mutate.py internal/store/arenas.go ./internal/store/ internal/store/arenas_test.go internal/store/arenas_mutants.json
+	python3 internal/mutate.py internal/store/consensus.go ./internal/store/ internal/store/consensus_solutions_test.go,internal/store/consensus_quorum_test.go internal/store/consensus_mutants.json
+	python3 internal/mutate.py internal/governance/governance.go ./internal/governance/ internal/governance/governance_test.go internal/governance/consensus_mutants.json
 
 fmt:
 	gofmt -l -w .

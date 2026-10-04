@@ -1500,3 +1500,118 @@ textarea:focus-visible {
 .scout-save-field .field-label { font-size: 0.8rem; }
 .scout-save-field input { min-width: 12rem; }
 #scout-save-ok { color: #1a7f4b; font-size: 0.85rem; margin: 0; }
+
+/* --- Consensus (docs/specs/consensus-page-spec.md) ------------------------ */
+
+/*
+ * Appended, never a new file (§8 rule 9). The hex values are FALLBACKS on the same
+ * `var(--token, #hex)` form the rest of this file uses, because `--border` and
+ * `--accent` are not defined at the root -- so a fallback is not a raw hex here, it
+ * is the house style. `currentColor` was tried first and is wrong: for a border it
+ * resolves to the text colour, which is a different visual decision from every other
+ * panel on the site.
+ *
+ * The two measures are styled as a PAIR, because they are a pair -- giving one a
+ * highlight and the other a muted treatment would imply they are not equally
+ * required, which is the reading the spec exists to prevent.
+ */
+.consensus-tally {
+  display: flex;
+  gap: var(--space-md, 1rem);
+  flex-wrap: wrap;
+  margin-block: var(--space-md, 1rem);
+}
+
+.tally-measure {
+  flex: 1 1 12rem;
+  padding: var(--space-sm, 0.75rem);
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+}
+
+.tally-label {
+  display: block;
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.tally-value {
+  display: block;
+  font-size: 2rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.tally-detail {
+  display: block;
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.consensus-quorum {
+  font-size: 0.95rem;
+  opacity: 0.85;
+}
+
+.position-buttons {
+  display: flex;
+  gap: var(--space-sm, 0.75rem);
+  flex-wrap: wrap;
+}
+
+/*
+ * aria-pressed rather than a class, so the selected state is the same whether it was
+ * reached by mouse, by keyboard, or by the c/a/s/b shortcuts. `outline` is kept
+ * because the buttons are focusable and §8 rule 5 wants a visible ring on every
+ * control.
+ */
+.position-btn[aria-pressed="true"] {
+  border-color: var(--accent, #6366f1);
+  outline: 2px solid var(--accent, #6366f1);
+  outline-offset: 2px;
+}
+
+.consensus-saved {
+  margin-top: var(--space-sm, 0.75rem);
+  font-size: 0.9rem;
+}
+
+.objection-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.objection {
+  padding: var(--space-sm, 0.75rem);
+  border-left: 3px solid var(--border, #e2e8f0);
+  margin-block: var(--space-sm, 0.75rem);
+}
+
+.objection-resolved {
+  opacity: 0.6;
+}
+
+.objection-principle {
+  font-weight: 600;
+  margin: 0 0 0.25rem;
+}
+
+.objection-violation,
+.objection-remedy,
+.objection-status {
+  margin: 0.25rem 0 0;
+  font-size: 0.92rem;
+}
+
+.objection-status {
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.panel-consensus-link {
+  margin-block: var(--space-sm, 0.75rem);
+}

@@ -4,11 +4,18 @@
 each one is verifiable before the next depends on it. Every step carries the exact
 command and its expected output.
 
+**Status 2026-10-04: C1-C6 are DONE** (`4ce3856` and this commit). C7 and C8 remain.
+Where the plan's own text was wrong about the tree, the step says so -- three times
+it named a file or a mutant that does not exist, which is the useful signal.
+
 **Prerequisite already done:** the quorum defect (spec §2) is fixed in `b8d7b87`.
 
 ---
 
-## Step C1 — Refactor the tally out of `CloseConsensusCall`  [the enabler]
+## Step C1 — Refactor the tally out of `CloseConsensusCall`  [the enabler]  [DONE]
+
+**TallyConsensus extracted; CloseConsensusCall calls it. Full store suite green.**
+
 
 **Why first.** The tally exists only inside `CloseConsensusCall`, so it is unreachable
 for an **open** call — which is exactly when a page needs to show it. Extracting it is
@@ -85,7 +92,10 @@ A survivor here means the refactor changed behaviour. The quorum regression test
 
 ---
 
-## Step C2 — Put `tally` in the read response  [the gap the page would otherwise fill with JS]
+## Step C2 — Put `tally` in the read response  [the gap the page would otherwise fill with JS]  [DONE]
+
+**`tally` in the read response. `handleGetConsensus` was the natural place to find a second bug -- see C3.**
+
 
 **Why this cannot be skipped.** `store.ConsensusThresholdsSummary` already serialises
 the right shape and has **zero callers**. Without C2 the page must compute both ratios
@@ -139,7 +149,10 @@ go build ./... && go test ./internal/httpapi/ -run Consensus
 
 ---
 
-## Step C3 — The API tests, before any UI
+## Step C3 — The API tests, before any UI  [DONE]
+
+**Five tests. They found a live hole: none of the five consensus handlers checked the call belonged to the project in the URL, so a private project's call was readable by anyone who guessed the id, and project A's call was readable through project B's URL. Fixed in `4ce3856` via `requireCallInProject`.**
+
 
 **Files:** `internal/httpapi/consensus_page_test.go` (new)
 
@@ -169,7 +182,10 @@ go test ./internal/httpapi/ -run Consensus -v 2>&1 | grep -E '^(---|ok|FAIL)'
 
 ---
 
-## Step C4 — The page
+## Step C4 — The page  [DONE]
+
+**consensus.html, consensus.js, the handler, the route, the template registration, and CSS appended to style.css. Verified in a browser, which found the bug the unit tests could not: `done()` emptied the root's textContent, destroying the article and every button, so the page rendered nothing at all with no console error to explain it.**
+
 
 **Files:** `internal/httpapi/templates/consensus.html` (new),
 `internal/httpapi/assets/js/consensus.js` (new),
@@ -256,7 +272,10 @@ spinner gone on failure; no console errors.
 
 ---
 
-## Step C5 — Playwright
+## Step C5 — Playwright  [DONE]
+
+**Seven tests. The headline one is verified to fail: collapsing `tally-decisive` to the support ratio fails it with `decisive is 57%, want 100%`.**
+
 
 **Files:** `tests/e2e/consensus_e2e.py` (new), `Makefile` (edit — add the suite)
 
@@ -284,7 +303,10 @@ python3 -m pytest -p no:cacheprovider tests/e2e/consensus_e2e.py -q
 
 ---
 
-## Step C6 — Mutation gate
+## Step C6 — Mutation gate  [DONE]
+
+**Two gates, 4/4 each: `store/consensus.go` and `governance/governance.go`. Two deviations from the plan text, both because it was wrong about the tree: there is no `internal/store/consensus_test.go` (it is `consensus_solutions_test.go`), and one planned mutant -- `Participants += 2` -- is unkillable, because `positions` is keyed on `(call_id, user_id)` so no test can distinguish it. Replaced with the abstention rule, which is observable and which needed a new test.**
+
 
 **Files:** `internal/store/consensus_mutants.json` (new), `Makefile` (edit)
 

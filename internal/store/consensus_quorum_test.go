@@ -164,3 +164,50 @@ func TestTheTallySeparatesReservationsFromOpposition(t *testing.T) {
 			got, sum.Counts.Consent, sum.Counts.Block)
 	}
 }
+
+// An abstention is neutral in BOTH ratios, but it is still a participant: §6.6
+// counts attendance toward quorum, and a member who showed up and declined to take a
+// side has engaged.
+//
+// The mutation this kills is `counts.Participants--` inside the abstain case, which
+// would let a room full of abstentions fail to reach quorum forever -- or, read the
+// other way, would make an abstention invisible to the participation count the page
+// shows. Either way the tally and the quorum decision stop agreeing, and no other
+// test here can see it because they all use consent and stand-aside.
+func TestAnAbstentionCountsAsParticipationButNotAsASide(t *testing.T) {
+	d, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+	voters := eligibleMemberPool(t, d, pid, 3, "abstainer")
+
+	call, err := d.CreateConsensusCall(ctx, pid, 0, uid, "", "")
+	if err != nil {
+		t.Fatalf("CreateConsensusCall: %v", err)
+	}
+	for _, who := range voters {
+		if _, err := d.CastPosition(ctx, call.ID, who, "abstain"); err != nil {
+			t.Fatalf("CastPosition(abstain): %v", err)
+		}
+	}
+
+	counts, err := d.TallyConsensus(ctx, call)
+	if err != nil {
+		t.Fatalf("TallyConsensus: %v", err)
+	}
+	if counts.Abstain != 3 {
+		t.Errorf("abstentions counted as %d, want 3", counts.Abstain)
+	}
+	// Participation: they turned up.
+	if counts.Participants != 3 {
+		t.Errorf("participants=%d, want 3; an abstention is attendance", counts.Participants)
+	}
+	// And neither ratio moves, because nobody took a side.
+	if counts.Decisive() != 0 {
+		t.Errorf("the decisive denominator is %d, want 0", counts.Decisive())
+	}
+	if counts.NonAbstain() != 0 {
+		t.Errorf("non-abstain is %d, want 0", counts.NonAbstain())
+	}
+	if got := counts.DecisiveRatio(); got != 0 {
+		t.Errorf("decisive ratio is %v with no sides taken, want 0", got)
+	}
+}

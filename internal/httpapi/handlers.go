@@ -1473,6 +1473,40 @@ func (s *Server) handleBoardPage(w http.ResponseWriter, r *http.Request) {
 	}{s.page("Board - " + slug), slug})
 }
 
+// handleConsensusPage renders /projects/{slug}/consensus?call=<id>.
+//
+// The same visibility discipline as handleRankPage, and for the same reason: a 200
+// for a private project confirms the slug exists, and the title alone is enough to
+// enumerate. The reason string is identical for "no such project" and "not yours",
+// so the page cannot be used to probe which slugs exist.
+func (s *Server) handleConsensusPage(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+
+	// The call id is read here only so the page can tell the script which call to
+	// fetch. It is NOT validated against the project: the API enforces that
+	// independently (requireCallInProject), and validating it twice would let the
+	// page and the API disagree about which calls exist.
+	callID := r.URL.Query().Get("call")
+
+	// `page`, NOT `pageWithScript`: consensus.html already carries its own <script>
+	// tag, exactly as scout.html does for scout.js. pageWithScript would add a
+	// second tag for the same file and the tally would render twice.
+	s.render(w, http.StatusOK, "consensus", struct {
+		pageData
+		Slug   string
+		CallID string
+	}{s.page("Consensus - " + slug), slug, callID})
+}
+
 // handleRankPage and handleRankingPage render the two halves of the ranking
 // loop: cast a comparison, then read the result. They share a shape and
 // deliberately nothing else — the pair and the order are different questions.
