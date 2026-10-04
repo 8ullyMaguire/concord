@@ -194,8 +194,12 @@ func (s *Server) loadTemplates() error {
 	// looks like a successful load -- which is exactly what happened when
 	// finder.html was first written. The list is the only thing standing
 	// between a new template and that failure.
+	// "scout" is here because finder.html has linked /scout in two places since
+	// before the route existed: every "I know what I want, use Scout instead" was
+	// a 404. A page linked from another page must exist.
 	pages := []string{"index", "search", "projects", "project", "board",
-		"login", "register", "rank", "ranking", "documents", "notfound", "finder"}
+		"login", "register", "rank", "ranking", "documents", "notfound", "finder",
+		"scout"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -304,6 +308,7 @@ func (s *Server) Router() http.Handler {
 	// must 404 for a project the caller cannot see. There is no slug to protect
 	// and no data in the HTML.
 	r.Get("/finder", s.handleFinderPage)
+	r.Get("/scout", s.handleScoutPage)
 
 	// Finder (docs/specs/finder-spec.md): the question-at-a-time discovery flow.
 	//

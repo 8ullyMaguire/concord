@@ -224,3 +224,20 @@ func splitConstraints(raw string) []string {
 	}
 	return out
 }
+
+// handleScoutPage renders the Scout shell.
+//
+// A distinct function from handleScout on purpose, so the page route and the API
+// route cannot drift into each other: they share a name only, which is the
+// cheapest possible reason to confuse them. finder.go uses the same split.
+//
+// The idea is NOT read from the query string here. Finder seeds its input from
+// `?seed=` but has the template's own JS read location.search, precisely so a
+// crafted link cannot inject markup through template interpolation. Scout does the
+// same: the template renders an empty textarea and scout.js fills it.
+func (s *Server) handleScoutPage(w http.ResponseWriter, r *http.Request) {
+	// `page`, NOT `pageWithScript`: scout.html already has a <script> tag for
+	// scout.js, exactly as finder.html does for finder.js. pageWithScript would add
+	// a SECOND tag for the same file and the whole report would render twice.
+	s.render(w, http.StatusOK, "scout", s.page("Scout"))
+}

@@ -31,12 +31,16 @@ test:
 #     recipe's first line and never reached pytest. Not once. The suites now
 #     own distinct ports (8421, 8422) and reap only a server recorded in a
 #     stable pidfile, so no kill is needed and no invocation is self-destructive.
+#
+#  3. Each line is a separate process anyway, so a suite that aborts on a port
+#     clash cannot take the ones after it with it. scout_e2e takes 8423.
 E2E_PYTEST ?= python3 -m pytest -p no:cacheprovider
 e2e: build
 	$(E2E_PYTEST) tests/e2e/harness_selftest_test.py -q
 	$(E2E_PYTEST) tests/e2e/e2e_test.py -q
 	$(E2E_PYTEST) tests/e2e/finder_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/project_panels_e2e.py -q
+	$(E2E_PYTEST) tests/e2e/scout_e2e.py -q
 
 # The mutation gates. Each rewrites one source file per mutant and asserts the
 # suite goes red, so a green run means every mutant was killed. A SURVIVED entry

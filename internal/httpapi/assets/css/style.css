@@ -1410,3 +1410,85 @@ textarea:focus-visible {
 .alt-title { flex: 1; min-width: 0; color: var(--ink-700); text-decoration: none; }
 .alt-title:hover { text-decoration: underline; }
 .alt-rating { color: var(--slate-500); font-size: 0.8125rem; min-width: 2.5rem; text-align: right; }
+
+/* ---- Scout ------------------------------------------------------------
+   Appended rather than interleaved: the panel classes above are grouped by
+   feature and this block is one feature, so it belongs at the end with its own
+   header rather than splitting a block that is already coherent.
+
+   The coverage states carry the same colour vocabulary the capabilities panel
+   uses. That is deliberate — one meaning per colour across the site — and it is
+   why these are named `scout-cap-coverage-*` rather than reusing the panel's
+   class names directly. */
+
+.scout-decomposition { margin: 1.5rem 0; }
+.scout-decomposition h2 { font-size: 1.05rem; margin: 0 0 0.25rem; }
+
+#scout-capabilities { list-style: none; margin: 0.5rem 0 0; padding: 0; }
+.scout-cap {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin: 0 0.4rem 0.4rem 0;
+  padding: 0.2rem 0.55rem;
+  border: 1px solid var(--border, #d8d8d8);
+  border-radius: 999px;
+  font-size: 0.9rem;
+}
+.scout-cap-label { font-weight: 600; }
+
+/* Proposed capabilities are visibly not-scoreable. Dashed border rather than a
+   colour alone: colour is already carrying coverage meaning on this element, and
+   reusing it for "proposed" would make two different things look identical. */
+.scout-cap-proposed { border-style: dashed; opacity: 0.85; }
+.scout-cap-tag { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.04em; }
+
+.scout-cap-coverage { font-size: 0.8rem; }
+.scout-cap-coverage[data-coverage], .scout-cap[data-coverage] .scout-cap-coverage { }
+
+/* Coverage states. `.scout-cap[data-coverage=...]` is the selector that matters:
+   the state lives on the `li` and the label span inherits the colour. */
+.scout-cap[data-coverage="covered"] .scout-cap-coverage { color: #1a7f4b; font-weight: 600; }
+.scout-cap[data-coverage="partial"] .scout-cap-coverage { color: #8a6d1f; }
+.scout-cap[data-coverage="open"] .scout-cap-coverage { color: #777; font-style: italic; }
+
+.scout-verdict {
+  border: 1px solid var(--border, #d8d8d8);
+  border-left-width: 4px;
+  border-radius: 6px;
+  padding: 0.75rem 0.9rem;
+  margin: 0 0 0.7rem;
+}
+.scout-verdict-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+.scout-verdict-name { font-weight: 600; }
+.scout-verdict-reason { margin: 0.4rem 0 0.2rem; }
+
+.scout-verdict-facts { margin: 0.2rem 0; font-size: 0.85rem; color: #555; }
+
+/* Left-border colour is the severity cue, and it is the ONLY place colour means
+   "how bad", so it cannot be confused with the coverage vocabulary above. */
+.scout-verdict-avoid { border-left-color: #b3261e; }
+.scout-verdict-base-on { border-left-color: #1a7f4b; }
+.scout-verdict-extend { border-left-color: #2b6cb0; }
+.scout-verdict-adopt { border-left-color: #4a5568; }
+.scout-verdict-inspire { border-left-color: #8a6d1f; }
+
+.scout-badge {
+  display: inline-block;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  background: #eee;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.scout-badge-lead { background: #e6f0fb; }
+
+.scout-signals { list-style: none; margin: 0.35rem 0 0; padding: 0; font-size: 0.8rem; }
+.scout-signals li { color: #666; font-family: ui-monospace, monospace; }
+
+.scout-pain { margin-top: 0.5rem; font-size: 0.85rem; }
+.scout-pain h3 { font-size: 0.85rem; margin: 0 0 0.2rem; }
+
+.scout-error { color: #b3261e; margin-top: 0.75rem; }
+.scout-empty { color: #666; font-style: italic; }
+.scout-report-actions { margin-bottom: 1rem; }

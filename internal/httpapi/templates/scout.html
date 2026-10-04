@@ -1,0 +1,83 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <p class="breadcrumb"><a href="/">Home</a> / <span>Scout</span></p>
+    <h1>🔭 Scout</h1>
+    <p class="lede">Describe what you want to build. Scout reads it back as a list
+      of capabilities, then says what in the catalog fits — and why.</p>
+  </div>
+</div>
+
+<!--
+  Two states in one page: the idea form and the report. Not two pages because the
+  report is long enough that a back-navigation would cost a re-fetch and a scroll
+  position, and because the decomposition is something the user is meant to argue
+  with in place.
+
+  The empty state carries the report's own vocabulary rather than a generic
+  message, because the most likely first misunderstanding is that Scout searches
+  projects by name. It does not: it maps an idea onto capabilities and reports the
+  coverage of each. Saying so up front is cheaper than leaving a reader to infer
+  it from a bad result.
+-->
+<div id="scout-root" aria-busy="true">
+<script src="{{ asset "/assets/js/skeleton.js" }}"></script>
+<script>
+(function(){var b=document.getElementById("scout-root");
+if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(4);}})();
+</script>
+
+  <!-- Idea -->
+  <section id="scout-seed" hidden>
+    <form id="scout-seed-form">
+      <label class="field">
+        <span class="field-label">What do you want to build?</span>
+        <textarea id="scout-seed-text" name="idea" rows="4"
+                  placeholder="e.g. a note-taking app that works offline and syncs later"
+                  autocomplete="off"></textarea>
+      </label>
+      <p class="hint">Scout reads this as capabilities, not as a search query. Name
+        the things you need — "offline", "self-hosted", "wip limits" — and it will
+        tell you which parts of the catalog already cover them.</p>
+
+      <div class="field">
+        <label class="field-label" for="scout-exclude">Not acceptable licenses (optional)</label>
+        <input type="text" id="scout-exclude" name="exclude_licenses"
+               placeholder="e.g. proprietary, gpl" autocomplete="off">
+        <p class="hint">Comma separated. A project on a listed license is marked
+          <code>avoid</code> no matter how well it fits.</p>
+      </div>
+
+      <div class="actions">
+        <button type="submit" class="btn btn-primary">Scout it →</button>
+        <a class="btn" href="/finder">I'd rather answer questions</a>
+      </div>
+      <p class="scout-error" id="scout-error" role="alert" hidden></p>
+    </form>
+  </section>
+
+  <!-- Report -->
+  <section id="scout-report" hidden>
+    <div class="actions scout-report-actions">
+      <button type="button" class="btn" id="scout-again">← New idea</button>
+    </div>
+
+    <!-- The decomposition, first and always. It is what the user is meant to
+         correct: if Scout read the idea as being about three things when the user
+         meant two, every verdict below is answering the wrong question, and the
+         only way to notice is to see the reading. -->
+    <section class="scout-decomposition" aria-labelledby="scout-decomp-title">
+      <h2 id="scout-decomp-title">What Scout read</h2>
+      <p class="hint" id="scout-decomp-summary"></p>
+      <ul class="chip-row" id="scout-capabilities"></ul>
+    </section>
+
+    <section aria-labelledby="scout-verdicts-title">
+      <h2 id="scout-verdicts-title">The catalog</h2>
+      <p class="hint" id="scout-stats"></p>
+      <div id="scout-verdicts"></div>
+    </section>
+  </section>
+</div>
+<script src="{{ asset "/assets/js/scout.js" }}"></script>
+{{end}}
