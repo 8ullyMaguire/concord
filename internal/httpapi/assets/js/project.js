@@ -559,12 +559,26 @@
       (p.updated_at ? '<span class="meta-item">updated ' + esc(fmtDate(p.updated_at)) + '</span>' : '') +
       '</div>';
 
+    // The title is a LINK to the feature's own page.
+    //
+    // It was a plain div, which is what made the feature detail page unreachable
+    // by clicking -- the same defect as Finder, Scout and the audit log: a route
+    // and a template existed, and nothing pointed at them. A card whose title is
+    // not a link is the most natural place a reader looks for the detail.
+    //
+    // The whole card is not the link: nested interactive elements inside an <a> are
+    // invalid, and the pills below are not actions.
     var featureCards = (features || []).map(function (f) {
       return '<div class="card">' +
-        '<div class="card-title">' + esc(f.title) + '</div>' +
+        '<div class="card-title"><a href="/projects/' + esc(p.slug) + '/features/' +
+          esc(f.id) + '">' + esc(f.title) + '</a></div>' +
         (f.body ? '<p class="card-text">' + esc(f.body) + '</p>' : '') +
-        '<div class="pill-row"><span class="badge badge-purple">rating ' + Math.round(f.elo_r || 0) +
-          (f.elo_rd != null ? ' \u00b1' + Math.round(f.elo_rd) : '') + '</span>' +
+        '<div class="pill-row"><span class="badge badge-purple">rating ' +
+          // A feature that has never been compared has no rating, not a rating of
+          // zero; Math.round(f.elo_r || 0) printed 0 for it, which reads as "lost
+          // every comparison" rather than "not compared yet".
+          (f.elo_r == null ? 'not compared' : 'rating ' + Math.round(f.elo_r)) +
+          (f.elo_rd != null && f.elo_r != null ? ' \u00b1' + Math.round(f.elo_rd) : '') + '</span>' +
         '<span class="badge badge-slate">' + esc(f.status || 'proposed') + '</span></div>' +
         '</div>';
     }).join('');

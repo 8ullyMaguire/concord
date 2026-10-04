@@ -1671,6 +1671,37 @@ func (s *Server) handleAuditPage(w http.ResponseWriter, r *http.Request) {
 	}{s.pageFor(r, "Audit log - "+slug), slug})
 }
 
+// handleFeaturePage renders the feature detail shell for /projects/{slug}/features/{id}.
+//
+// frontend-spec.md 3.1 ranks this third: a feature is what gets ranked, so it is the
+// unit a reader lands on when they ask "why is this first?".
+//
+// The visibility check is not decoration, and it is the same rule the documents and
+// audit pages follow: the shell renders for logged-out visitors, so a 200 for a
+// private project confirms the slug exists and puts it in the title bar. The data
+// behind the page is fetched from the API, which enforces visibility independently.
+//
+// The feature id is NOT looked up here. The page fetches its data client-side, so
+// the server has no reason to load a row just to decide whether to render a shell,
+// and a wrong id in a URL is a reader's typo rather than an attack. feature.js
+// renders the "no such feature" state for it.
+func (s *Server) handleFeaturePage(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	s.render(w, http.StatusOK, "feature", struct {
+		pageData
+		Slug string
+	}{s.pageFor(r, "Feature - "+slug), slug})
+}
+
 func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, "login", s.pageFor(r, "Sign in - Concord"))
 }

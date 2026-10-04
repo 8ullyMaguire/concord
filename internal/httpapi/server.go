@@ -204,7 +204,7 @@ func (s *Server) loadTemplates() error {
 	// (see `render`), which is how a missing entry shows up rather than a blank page.
 	pages := []string{"index", "search", "projects", "project", "board",
 		"login", "register", "rank", "ranking", "documents", "notfound", "finder",
-		"scout", "consensus", "audit"}
+		"scout", "consensus", "audit", "feature"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -696,6 +696,7 @@ func (s *Server) Router() http.Handler {
 	// reader opens, and requireProjectID reads chi's {project_id}, which is empty
 	// on a page route.
 	r.Get("/projects/{slug}/audit", s.handleAuditPage)
+	r.Get("/projects/{slug}/features/{id}", s.handleFeaturePage)
 
 	r.Get("/projects/{slug}/ranking", s.handleRankingPage)
 	r.Get("/projects/{slug}/documents", s.handleDocumentsPage)
