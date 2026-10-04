@@ -336,3 +336,79 @@ def test_every_wait_for_a_loaded_page_uses_one_aria_busy_idiom():
     assert not bad, (
         "these waits can never match one of the two clearing conventions:\n  "
         + "\n  ".join(bad) + '\n  use #root:not([aria-busy="true"])')
+
+
+def _strip_prose(src):
+    """Blank out string literals and comments, preserving line structure.
+
+    A gate that fires on a docstring gets muted, and then it guards nothing.
+    board_e2e.py's fixture docstring opens "A SIGNED-IN page." and the first version
+    of this check read that prose as a real `page.` call -- a false positive on the one
+    suite whose fixtures were already correct.
+    """
+    out, i, n = [], 0, len(src)
+    while i < n:
+        ch = src[i]
+        if ch == "#":
+            while i < n and src[i] != "\n":
+                out.append(" ")
+                i += 1
+        elif ch in ("\"", "'"):
+            three = src[i:i + 3]
+            delim = three if three in (chr(34) * 3, chr(39) * 3) else ch
+            i += len(delim)
+            while i < n:
+                if src[i:i + len(delim)] == delim:
+                    out.append(" " * len(delim))
+                    i += len(delim)
+                    break
+                out.append("\n" if src[i] == "\n" else " ")
+                i += 1
+        else:
+            out.append(ch)
+            i += 1
+    return "".join(out)
+
+
+def _fixture_body(src, name):
+    """Return the fixture `name`'s body, with strings and comments blanked out."""
+    m = re.search(r"\ndef " + re.escape(name) + r"\(([^)]*)\):\n", src)
+    if not m:
+        return ""
+    body = src[m.end():]
+    nxt = re.search(r"\n(?:@|def )", body)
+    body = body[: nxt.start()] if nxt else body
+    return _strip_prose(body)
+
+
+def test_a_fixture_never_uses_its_own_name_in_its_body():
+    """`def page(browser): page.new_page()` errors on EVERY test that uses it.
+
+    A fixture whose body calls its OWN name resolves to the fixture, not the browser,
+    so pytest hands the body a FixtureFunctionDefinition and it raises
+    `AttributeError: ... has no attribute 'new_page'`. requests_e2e.py had exactly
+    that: 12 tests ERRORing in 1.23s.
+
+    The first version of this gate checked the SIGNATURE -- "is the fixture's own name
+    among its arguments" -- and went GREEN on the reintroduced bug, because
+    `def page(browser)` does not take `page`. The shadow is in the BODY. Checking the
+    wrong syntactic position is how a gate passes the defect it was written for.
+    """
+    bad = []
+    for path in sorted(Path(__file__).parent.glob("*_e2e.py")):
+        src = path.read_text()
+        for name in re.findall(r"\ndef (\w+)\(([^)]*)\):\n", src):
+            pass
+        for m in re.finditer(r"\ndef (\w+)\(([^)]*)\):\n", src):
+            name = m.group(1)
+            args = [a.strip() for a in m.group(2).split(",") if a.strip()]
+            if name in args:
+                bad.append(f"{path.name}: def {name}({m.group(2)}) takes its own name")
+            body = _fixture_body(src, name)
+            # `name.something` inside its own body is the shadow.
+            for use in re.findall(rf"\b{re.escape(name)}\s*\.", body):
+                bad.append(f"{path.name}: def {name}(...) calls {name}.<attr> on itself")
+                break
+    assert not bad, (
+        "these fixtures reference their own name, so every test using them errors:\n  "
+        + "\n  ".join(sorted(set(bad))))
