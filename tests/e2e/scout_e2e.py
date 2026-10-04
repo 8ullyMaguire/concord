@@ -39,7 +39,7 @@ from playwright.sync_api import expect, sync_playwright
 
 import harness
 
-PORT = 8423
+PORT = 8486
 BASE = f"http://127.0.0.1:{PORT}"
 
 

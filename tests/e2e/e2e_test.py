@@ -334,10 +334,24 @@ def test_board_renders_columns(server, page):
 
 def test_board_card_in_column(server, page):
     page.goto(BASE + "/projects/governance-lab/board")
-    backlog = page.locator(".kanban-column", has_text="Backlog")
-    expect(backlog.locator(".kanban-card")).to_have_text(["Health dashboard"])
-    consensus = page.locator(".kanban-column", has_text="Consensus")
-    expect(consensus.locator(".kanban-card")).to_have_text(["Quorum calculator"])
+
+    # BY COLUMN TITLE, not has_text="Backlog".
+    #
+    # Each card now carries a per-card <select> whose options name the OTHER columns,
+    # so a column's innerText contains its own name twice -- once as its title and once
+    # as an option in every card's move control. `has_text="Backlog"` therefore matched
+    # EVERY column, and this test failed with 2 cards in "Backlog" on a board that was
+    # correct.
+    #
+    # has_text matches DESCENDANTS' text, so a control that names other columns poisons
+    # any substring locator for those names. Locate the column by its title element.
+    def column(title):
+        return page.locator(".kanban-column").filter(
+            has=page.locator(".kanban-column-title", has_text=title))
+
+    expect(column("Backlog").locator(".kanban-card")).to_have_text(["Health dashboard"])
+    expect(column("Consensus").locator(".kanban-card")).to_have_text(
+        ["Quorum calculator"])
 
 
 def test_board_wip_badge(server, page):

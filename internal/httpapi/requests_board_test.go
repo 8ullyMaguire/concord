@@ -5,6 +5,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -202,4 +203,54 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+// TestEveryWriteSendsTheTokenTheServerReads.
+//
+// The session key is `concord.token` -- session.js, auth.js, consensus.js, finder.js,
+// rank.js and scout_e2e.py all use it. Four scripts written for the comments, requests,
+// lists and board pages read `concord_token`, with an UNDERSCORE.
+//
+// The result is not a crash and not a visible error: getItem returns null, the
+// Authorization header is simply absent, and the endpoint answers 401. The page
+// renders, the button is there, and the write silently never happens -- which is the
+// single most expensive failure mode there is, because it looks like a permissions
+// problem and is a typo.
+//
+// So the check is a cross-file consistency assertion rather than a per-file one: grep
+// for the wrong key ANYWHERE under assets/js.
+func TestEveryWriteSendsTheTokenTheServerReads(t *testing.T) {
+	entries, err := os.ReadDir("assets/js")
+	if err != nil {
+		t.Fatalf("read assets/js: %v", err)
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".js") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join("assets/js", e.Name()))
+		if err != nil {
+			t.Errorf("%s: %v", e.Name(), err)
+			continue
+		}
+		if strings.Contains(string(data), "concord_token") {
+			t.Errorf("%s reads localStorage key \"concord_token\"; the session key "+
+				"is \"concord.token\" (see session.js). A wrong key returns null "+
+				"rather than throwing, so every write on this page silently 401s",
+				e.Name())
+		}
+	}
+}
+
+// TestTheSessionKeyIsTheOneTheServerSets: the positive half, so the gate above cannot
+// be satisfied by deleting every authenticated write.
+func TestTheSessionKeyIsTheOneTheServerSets(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("assets", "js", "session.js"))
+	if err != nil {
+		t.Fatalf("read session.js: %v", err)
+	}
+	if !strings.Contains(string(data), "concord.token") {
+		t.Error("session.js no longer uses concord.token; whatever replaced it must " +
+			"be updated in every page that reads it, and nothing enforces that")
+	}
 }

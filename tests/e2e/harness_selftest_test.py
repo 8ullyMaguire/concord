@@ -15,6 +15,7 @@ preconditions, so a future edit that reintroduces either fails here rather than
 being discovered as a suspiciously round number.
 """
 
+from pathlib import Path
 import ast
 import os
 import re
@@ -266,3 +267,25 @@ def test_the_harness_names_the_port_holder_instead_of_killing_it():
     finally:
         sys.path.remove(E2E)
         sys.modules.pop("harness", None)
+
+
+def test_no_two_suites_claim_the_same_port():
+    """Two suites on one port only work because the Makefile runs them one per line.
+
+    project_panels_e2e.py and scout_e2e.py both claimed 8423 for a while, and the
+    only thing preventing a collision was the run order -- so running either file on
+    its own, or a future parallel runner, produced a confusing "port is held by pid N"
+    error that looks like a leaked process rather than a duplicate constant.
+
+    Asserted as a cross-file check rather than a per-file one for the same reason as
+    the token-key gate: a suite cannot see the others' ports from inside itself.
+    """
+    ports = {}
+    for path in sorted(Path(__file__).parent.glob("*_e2e.py")):
+        for line in path.read_text().splitlines():
+            if line.startswith("PORT = "):
+                port = int(line.split("=", 1)[1])
+                assert port not in ports, (
+                    f"{path.name} and {ports[port]} both claim port {port}")
+                ports[port] = path.name
+                break

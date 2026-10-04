@@ -228,7 +228,7 @@
     if (label) payload.label = label;
 
     var headers = { "Content-Type": "application/json" };
-    var token = localStorage.getItem("concord_token");
+    var token = localStorage.getItem("concord.token");
     if (token) headers.Authorization = "Bearer " + token;
 
     fetch(baseURL(), {
@@ -267,7 +267,7 @@
 
   function load() {
     var headers = {};
-    var token = localStorage.getItem("concord_token");
+    var token = localStorage.getItem("concord.token");
     if (token) headers.Authorization = "Bearer " + token;
     fetch(baseURL(), { headers: headers })
       .then(function (r) {

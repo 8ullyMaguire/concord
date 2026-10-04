@@ -4,7 +4,7 @@ Written 2026-10-05. Every number below is measured, not remembered. The doc-numb
 gate (`scripts/check_doc_numbers.py`, in `make verify`) fails when any of them goes
 stale, so this file cannot quietly become fiction.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · 870 Go tests across
+**Measured state:** schema 25 · 25 migrations · 79 live tables · 877 Go tests across
 9 test-bearing packages · 174 e2e tests in 10 suites · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
@@ -428,7 +428,7 @@ And the seed that proves §16 at all is built so **alphabetical and rating order
 disagree completely** (`aaaa first` is best, `zzzz last` is worst). Without that, an
 unranked implementation and a correctly ranked one render identically.
 
-870 Go tests. `make verify` and `make e2e` green.
+877 Go tests. `make verify` and `make e2e` green.
 
 ---
 
@@ -480,4 +480,80 @@ for both sections while both tabs were correct. The second is the general lesson
 **searching backwards from a label with a character budget is a guess; find the element
 by an attribute and inspect its own tag.**
 
-870 Go tests. `make verify` and `make e2e` green.
+877 Go tests. `make verify` and `make e2e` green.
+
+---
+
+## 9. The board could not be moved on — and a token typo in four files
+
+**2026-10-05.** The fourth time *"for every endpoint the API offers, name the page that
+calls it"* has paid. `handleMoveCard`, `MoveCard` and `PUT .../board/cards/{id}/move`
+existed, were guarded, and were tested at the store layer. `board.js` fetched the board
+and rendered it. **There was no way to move a card.** A kanban board nobody can move a
+card on is a read-only list wearing a board's layout, and §36's "implementation is a
+kanban board with WIP limits, not an infinite backlog" was a list.
+
+Three ways to move, because drag alone is not an interface: drag, a select per card, and
+arrow keys on a focused card. All three post the same request. A card is a `<button>`,
+because a draggable div is not focusable and announces nothing — the arrow-key handlers
+would have had no element to attach to.
+
+### THE BUG THAT MATTERED: `concord_token` vs `concord.token`
+
+The session key is `concord.token` (session.js, auth.js, consensus.js, finder.js, rank.js,
+scout_e2e.py). **Four scripts I wrote this session read `concord_token`, with an
+underscore.**
+
+The failure mode is the worst kind: `getItem` returns `null` instead of throwing, the
+`Authorization` header is simply absent, and every write **silently 401s**. The page
+renders, the control is there, and nothing happens. It presents as a permissions bug and
+is a typo. Four files, found only because the board's e2e watched the response status —
+a move that is refused and a move that is never sent look identical in the DOM.
+
+`TestEveryWriteSendsTheTokenTheServerReads` now greps `assets/js` for the wrong key
+(cross-file, because a file cannot see its siblings), and it has a positive half so it
+cannot be satisfied by deleting every authenticated write.
+
+### Two ids, and the route wanted the other one
+
+`/cards/{card_id}/move` moves a `board_cards` row by its own id; `feature_id` is a
+*query* parameter for placing a feature with no row. The first version put the **feature**
+id in the path, so every move 404'd and the board ignored the drag. The URL looks
+unambiguous and is not.
+
+### Piping a syntax check hides its exit status
+
+`node --check board.js && echo JS_OK` printed **JS_OK for a file that did not parse** —
+one stray `+` from an edit made an unterminated string, and `node --check` exit 1 was
+consumed by the `&&`. I read that as a pass twice. The Go test (`node --check` via
+`exec.Command`, exit code inspected) caught it immediately and had been catching it the
+whole time.
+
+**Never pipe or `&&`-chain a syntax check. Check the exit code.** This is the same
+class as the earlier `git commit … | head` and `pytest … | tail` mistakes in this
+session: the pipe's status is `tail`'s, and it is always 0.
+
+Also: `expect()` rejects a bare string (`ValueError: Unsupported type: <class 'str'>`) —
+it is for auto-retrying locator assertions. And Playwright's `has=` locator resolves
+against the whole document, not the candidate's subtree, so
+`.kanban-column has=<a card>` matched nothing on a correct board. **Read an element's
+position from that element** (`data-column`), never by composing locators.
+
+### What the board now refuses, visibly
+
+A column at its WIP limit is marked `is-at-wip` — the header already rendered
+"n / WIP k", but the reader found out by being refused. And a refusal shows **the store's
+message**, because "that phase has a gate" and "WIP limit reached" are things a reader
+can act on and a generic string discards. The board is **re-read** after a move rather
+than reordered locally, since the move response is `{"status":"moved"}` and says nothing
+about whether a limit or a gate refused it.
+
+### The e2e needs a signed-in page, and a resettable board
+
+`handleMoveCard` requires an actor, so the suite cannot be anonymous — the first version
+moved cards signed-out, got a 401, and failed at the final DOM assertion rather than at
+the request. And one session means one database, so `_reset()` puts the board back before
+each test: the suite is *about* moving cards, and a fixture that cannot be restored makes
+every test after the first order-dependent.
+
+877 Go tests. `make verify` and `make e2e` green.

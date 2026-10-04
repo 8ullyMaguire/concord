@@ -1780,3 +1780,14 @@ textarea:focus-visible {
 .entry-category .count { color: var(--muted); font-weight: 400; font-size: 0.85rem; }
 .entry-category .count::before { content: "("; }
 .entry-category .count::after { content: ")"; }
+
+/* Card moving on the kanban board. A card is a <button>, so it needs the button reset
+   before it can look like the card it replaced. */
+.kanban-card-wrap { display: flex; flex-direction: column; gap: 0.25rem; }
+button.kanban-card { font: inherit; text-align: left; cursor: grab; width: 100%; }
+button.kanban-card:active { cursor: grabbing; }
+.kanban-card.is-dragging { opacity: 0.45; }
+.kanban-column.is-drop-target { outline: 2px dashed var(--accent, #6366f1); outline-offset: 2px; }
+/* At or over the WIP limit, the column says so before a drag is attempted. */
+.kanban-column.is-at-wip .kanban-column-count { color: var(--danger, #b91c1c); font-weight: 600; }
+.kanban-card-move { font-size: 0.75rem; padding: 0.15rem 0.25rem; }

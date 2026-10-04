@@ -210,7 +210,7 @@
       var outcome = form.querySelector("#cmp-outcome").value;
 
       var headers = { "Content-Type": "application/json" };
-      var token = localStorage.getItem("concord_token");
+      var token = localStorage.getItem("concord.token");
       if (token) headers.Authorization = "Bearer " + token;
 
       fetch("/api/v1/projects/" + encodeURIComponent(slug) + "/lists/" +
@@ -250,7 +250,7 @@
 
   function getJSON(url) {
     var headers = {};
-    var token = localStorage.getItem("concord_token");
+    var token = localStorage.getItem("concord.token");
     if (token) headers.Authorization = "Bearer " + token;
     return fetch(url, { headers: headers }).then(function (r) {
       if (!r.ok) throw new Error(r.status);

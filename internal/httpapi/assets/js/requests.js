@@ -331,7 +331,7 @@
 
   function postJSON(url, body, done) {
     var headers = { "Content-Type": "application/json" };
-    var t = localStorage.getItem("concord_token");
+    var t = localStorage.getItem("concord.token");
     if (t) headers["Authorization"] = "Bearer " + t;
     fetch(url, {
       method: "POST",
@@ -356,7 +356,7 @@
 
   function getJSON(url) {
     var headers = {};
-    var t = localStorage.getItem("concord_token");
+    var t = localStorage.getItem("concord.token");
     if (t) headers["Authorization"] = "Bearer " + t;
     return fetch(url, { headers: headers })
       .then(function (r) {
