@@ -452,7 +452,9 @@ func TestLayoutRendersEachPieceOnce(t *testing.T) {
 	if n := strings.Count(body, "<main"); n != 1 {
 		t.Errorf("page contains %d <main> elements, want 1", n)
 	}
-	// Each tab exactly once: seven sections, no repeats.
+	// Each tab exactly once: NINE sections, no repeats. Two more than it was --
+	// Requests and Lists, whose pages existed but had no TAB, so they were reachable
+	// only by scrolling the overview far enough.
 	//
 	// Counted with the trailing quote so the CONTAINER (`class="detail-tabs"`) is
 	// not counted as an eighth tab. Counting `class="detail-tab` reported 8 and
@@ -464,8 +466,8 @@ func TestLayoutRendersEachPieceOnce(t *testing.T) {
 	// 6 or 8 depending which, and both look like a real defect.
 	n := strings.Count(body, `class="detail-tab"`) +
 		strings.Count(body, `class="detail-tab is-active"`)
-	if n != 7 {
-		t.Errorf("page renders %d tabs, want 7", n)
+	if n != 9 {
+		t.Errorf("page renders %d tabs, want 9", n)
 	}
 	// Exactly one lit tab. Two lit tabs means the active state is decorative.
 	if n := strings.Count(body, "is-active"); n != 1 {

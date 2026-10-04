@@ -204,7 +204,7 @@ func (s *Server) loadTemplates() error {
 	// (see `render`), which is how a missing entry shows up rather than a blank page.
 	pages := []string{"index", "search", "projects", "project", "board",
 		"login", "register", "rank", "ranking", "documents", "notfound", "finder",
-		"scout", "consensus", "audit", "feature", "complaint", "requests", "lists", "list"}
+		"scout", "consensus", "audit", "feature", "complaint", "requests-detail", "requests-index", "lists", "list"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -765,6 +765,7 @@ func (s *Server) Router() http.Handler {
 	// (requests.project_id IS NULL), so the {slug} in the path is the browsing
 	// context rather than the request's owner. That is the reason this page resolves
 	// nothing from a project parameter and its JS re-reads the request by id.
+	r.Get("/projects/{slug}/requests", s.handleRequestsPage)
 	r.Get("/projects/{slug}/requests/{id}", s.handleRequestPage)
 
 	r.Get("/projects/{slug}/ranking", s.handleRankingPage)

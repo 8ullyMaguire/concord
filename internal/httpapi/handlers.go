@@ -1917,7 +1917,7 @@ func (s *Server) handleRequestPage(w http.ResponseWriter, r *http.Request) {
 		s.notFoundPage(w, r, "There is no project at this address.")
 		return
 	}
-	s.render(w, http.StatusOK, "requests", struct {
+	s.render(w, http.StatusOK, "requests-detail", struct {
 		pageData
 		Slug string
 	}{s.pageFor(r, "Request - "+slug), slug})
@@ -1969,4 +1969,30 @@ func (s *Server) handleListPage(w http.ResponseWriter, r *http.Request) {
 		Slug string
 		ID   int64
 	}{s.pageFor(r, "List - "+slug), slug, id})
+}
+
+// handleRequestsPage renders 17's request board for a project.
+//
+// The Requests TAB needs this and it did not exist: the only request page was the
+// detail page at /projects/{slug}/requests/{id}, so a reader had no way to discover a
+// request at all. Every id was known only to whoever created it.
+//
+// Instance-wide requests are fetched too, and that is a page-level decision rather
+// than the API's -- the project's own index returns only its own. A question open to
+// the whole instance belongs in everyone's view of it, and the rows are labelled.
+func (s *Server) handleRequestsPage(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	s.render(w, http.StatusOK, "requests-index", struct {
+		pageData
+		Slug string
+	}{s.pageFor(r, "Requests - "+slug), slug})
 }

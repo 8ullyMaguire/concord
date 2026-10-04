@@ -410,3 +410,94 @@ def test_an_instance_wide_request_is_labelled(page, server):
         "Who else runs a forge on a Pi?")
     # Labelled, so a reader knows the comparison is open to every project.
     expect(page.locator("#request-root .badge-instance")).to_have_text("instance-wide")
+
+# ---------------------------------------------------------------------------
+# The request BOARD (/projects/{slug}/requests) and the two tabs.
+#
+# The board is what makes a request DISCOVERABLE. Until it existed the only request
+# page was the detail page at /projects/{slug}/requests/{id}, so a reader had to
+# already know the id -- which is the same defect as a write-only API, one layer up.
+#
+# The tabs are the other half: both pages existed and neither had a tab, so they were
+# reachable only by scrolling the overview.
+
+
+def test_the_board_lists_the_projects_requests(page, server):
+    page.goto(BASE + f"/projects/{SLUG}/requests")
+    page.wait_for_selector("#requests-root .card", timeout=15000)
+    # The seed's THREE requests, asserted by CONTENT rather than by a bare count --
+    # the count was 1 at first and the page was right, because the seed makes three and
+    # an assertion that only checks "there is one card" passes on a page rendering
+    # nothing at all.
+    titles = page.locator("#requests-root .card h3")
+    expect(titles).to_have_count(3)
+    body = page.locator("#requests-root").inner_text()
+    assert "Self-hosted Kanban with WIP limits" in body, body[:300]
+    # And grouped OPEN first: a request board whose settled entries sit above its open
+    # ones is a backlog nobody works.
+    groups = page.locator("#requests-root .entry-category")
+    expect(groups.first).to_contain_text("open")
+
+
+def test_each_request_links_to_its_detail_page(page, server):
+    """The board is a list of NUMBERS unless every row is a link, so a reader with no
+    id has no way in. Asserted by CLICKING, which is the only check that catches an
+    href pointing at a page that renders an error shell."""
+    page.goto(BASE + f"/projects/{SLUG}/requests")
+    link = page.locator(f'#requests-root a[href="/projects/{SLUG}/requests/1"]')
+    expect(link).to_have_count(1)
+    link.click()
+    page.wait_for_selector("#request-root .request-detail", timeout=15000)
+    expect(page.locator("#request-root .request-body h2")).to_contain_text(
+        "Self-hosted Kanban")
+
+
+def test_the_requests_and_lists_tabs_exist_and_are_active(page, server):
+    """Both pages existed with NO tab, so a reader found them by scrolling."""
+    for section, tab in (("requests", "Requests"), ("lists", "Lists")):
+        page.goto(BASE + f"/projects/{SLUG}/{section}")
+        active = page.locator(f'.detail-tab.is-active[href="/projects/{SLUG}/{section}"]')
+        expect(active).to_have_text(tab)
+
+
+def test_a_detail_page_keeps_its_tab_lit(page, server):
+    """.Sub is the THIRD path segment, so /requests/1 must still highlight Requests.
+
+    If the active state were derived from a full-path match, every detail page would
+    light no tab at all -- which looks like a styling bug and is actually a lost
+    position in the section."""
+    page.goto(BASE + f"/projects/{SLUG}/requests/1")
+    page.wait_for_selector("#request-root .request-detail", timeout=15000)
+    expect(page.locator(
+        f'.detail-tab.is-active[href="/projects/{SLUG}/requests"]')).to_have_text(
+        "Requests")
+
+
+def test_an_instance_wide_request_is_labelled_on_the_board(page, server):
+    """17: a request with no project is open to the whole instance.
+
+    store.Request.ProjectID is `json:"project_id,omitempty"`, so an instance-wide
+    request has NO KEY rather than 0. A page testing `=== 0` would never see one and
+    would label a shared question as this project's own."""
+    con = sqlite3.connect(server["db"])
+    cur = con.cursor()
+    cur.execute(
+        "INSERT INTO requests (project_id, author_id, title, body, status, created_at,"
+        " updated_at) VALUES (NULL, 1, 'A question for the whole instance',"
+        " 'Open to everyone.', 'open', ?, ?)", (time.time(), time.time()))
+    instance_id = cur.lastrowid
+    con.commit()
+    con.close()
+
+    page.goto(BASE + f"/projects/{SLUG}/requests")
+    page.wait_for_selector("#requests-root .card", timeout=15000)
+    row = page.locator("#requests-root .card",
+                       has_text="A question for the whole instance")
+    expect(row.locator(".badge-instance")).to_have_text("instance-wide")
+
+
+def test_no_console_errors_on_the_board(page, server):
+    for path in (f"/projects/{SLUG}/requests", f"/projects/{SLUG}/lists"):
+        page.goto(BASE + path)
+        page.wait_for_timeout(1200)
+        assert not page.errors, f"{path}: {page.errors}"

@@ -178,13 +178,19 @@ func TestRequestsPageScriptParses(t *testing.T) {
 
 // TestEveryRenderedScriptIsLoadedBySomePage keeps a new script from being dead weight.
 func TestRequestsPageScriptIsLoadedBySomePage(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("templates", "requests.html"))
+	// requests-detail.html, not requests.html: the two request pages shared one
+	// filename until the INDEX page needed one, and whichever was written last won.
+	// The template name is the ONLY thing distinguishing them at render time, so the
+	// detail handler pointing at the index's old name is a 500 with a clear log and
+	// a blank page for the reader.
+	data, err := os.ReadFile(filepath.Join("templates", "requests-detail.html"))
 	if err != nil {
-		t.Fatalf("read requests.html: %v", err)
+		t.Fatalf("read requests-detail.html: %v", err)
 	}
 	if !strings.Contains(string(data), "/assets/js/requests.js") {
-		t.Error("requests.html does not load requests.js, so the page renders empty " +
-			"without error -- the exact failure mode api_surface.py was written to find")
+		t.Error("requests-detail.html does not load requests.js, so the page renders " +
+			"empty without error -- the exact failure mode api_surface.py was written " +
+			"to find")
 	}
 }
 

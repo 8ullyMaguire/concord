@@ -4,7 +4,7 @@ Written 2026-10-05. Every number below is measured, not remembered. The doc-numb
 gate (`scripts/check_doc_numbers.py`, in `make verify`) fails when any of them goes
 stale, so this file cannot quietly become fiction.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · 863 Go tests across
+**Measured state:** schema 25 · 25 migrations · 79 live tables · 870 Go tests across
 9 test-bearing packages · 174 e2e tests in 10 suites · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
@@ -50,9 +50,10 @@ Two are built. The rest are the real remaining work, and every one of them has a
 | 5 | **Project settings** | ✅ charter, members, invites, tags, languages, visibility | ❌ | — |
 | 6 | ~~Comments~~ | ✅ built 2026-10-05 on the feature + complaint detail pages; **new** thread-ownership guard | ✅ shared `comments.js` | on both detail pages |
 | 6b | ~~Lists (§16)~~ | ✅ built 2026-10-05; **new** pairwise Glicko-2 vote (§16's central claim, previously unbuilt) | ✅ `lists.js` + `list.js` | index + ranking detail |
+| 17 | ~~Requests board~~ | ✅ index added 2026-10-05 (only a DETAIL page existed, so no id was discoverable) | ✅ `requests-index.js` | tab + project overview |
 | 7 | **Merge requests** | ✅ create/approve/execute/reject | ❌ | — |
 | 8 | ~~Requests + answers~~ | ✅ built 2026-10-05; **new** accept-answer, request tags, instance-wide board | ✅ `requests.html` | via request card |
-| 9 | **Lists** | ✅ create/entries | ❌ | — |
+| 9 | ~~Lists~~ | ✅ create/entries **+ §16 pairwise ranking vote (new)** | ✅ `lists.js` + `list.js` | tab + project overview |
 | 10 | **Criteria profiles** | ✅ list/save | ❌ | — |
 
 Build order is the spec's, not mine: **feature detail (#3) and complaint detail (#4)
@@ -427,4 +428,56 @@ And the seed that proves §16 at all is built so **alphabetical and rating order
 disagree completely** (`aaaa first` is best, `zzzz last` is worst). Without that, an
 unranked implementation and a correctly ranked one render identically.
 
-863 Go tests. `make verify` and `make e2e` green.
+870 Go tests. `make verify` and `make e2e` green.
+
+---
+
+## 8. The board, the tabs, and two filenames that had to be split
+
+**2026-10-05.** With lists and requests built, the question became *can a reader reach
+them*, and the answer was worse than "not easily".
+
+**`/projects/{slug}/requests` had no route at all.** The only request page was the
+DETAIL page at `/requests/{id}`. So a reader had no way to discover a request — every id
+was known only to whoever created it, and the request board showed nothing. That is the
+write-only-API defect one layer up: the feature exists, is tested, and is invisible.
+
+**Neither page had a tab.** Both were reachable only by scrolling the overview far
+enough to find a section that mentioned them. The tab bar had seven entries; it now has
+nine, and `TestLayoutRendersEachPieceOnce` counts nine — that gate is a *measured number*
+gate, so it correctly failed when the number moved rather than silently passing.
+
+### The tab bar's active state is derived, so detail pages depend on it
+
+`Sub` is `parts[2]` of the request path, which is why `/lists/2` still highlights
+"Lists". Had it been a full-path match, every detail page would have lit **no** tab —
+which presents as a styling bug and is actually a lost position in the section. Asserted
+in both suites.
+
+### `requests.html` had to become `requests-detail.html`
+
+The board needed a filename and the detail page had the only sensible one. Both were
+`requests.html`, so **whichever was written last won and the other 500'd** with a clear
+log and a blank page. The registered-template list is the only thing that distinguishes
+them at render time.
+
+### A Go sentinel the JSON does not carry
+
+`store.Request.ProjectID` is `json:"project_id,omitempty"`, so an instance-wide request
+has **no key at all** rather than `0`. A page testing `r.project_id === 0` would never
+see one and would label a shared question as this project's own — the `lists.title` /
+`name` mistake one layer down. The board tests `undefined || null || 0`, and the gate
+was verified RED by replacing it with the `=== 0` version alone.
+
+### Three gates, each verified to fail
+
+Deleting the Lists tab, removing the instance-wide fetch, and reducing the sentinel to
+`=== 0` each turn the suite red. **A gate that has never been seen red is a claim.**
+
+Two of the e2e assertions I wrote were also wrong while the code was right: a card count
+of 1 against a seed of 3, and a fixed-width window for finding `is-active` that failed
+for both sections while both tabs were correct. The second is the general lesson —
+**searching backwards from a label with a character budget is a guess; find the element
+by an attribute and inspect its own tag.**
+
+870 Go tests. `make verify` and `make e2e` green.
