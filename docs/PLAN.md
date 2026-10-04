@@ -1,7 +1,7 @@
 # Concord — build plan
 
 This is the working roadmap for the implementing agent (any agent or
-human). Work top to bottom; do not skip ahead. `docs/concord-spec.md` is
+human). Work top to bottom; do not skip ahead. `docs/concord-spec-r4.md` is
 the contract — read §2, §4, §5, §15, §16 before writing code.
 
 ## Ground rules
@@ -13,7 +13,7 @@ the contract — read §2, §4, §5, §15, §16 before writing code.
    "Governance invariants"). If a test seems easier without the quorum
    gate, the test is wrong.
 3. **The spec is a copy, not the master.** Never edit
-   `docs/concord-spec.md`; propose spec changes in `docs/QUESTIONS.md`.
+   `docs/concord-spec-r4.md`; propose spec changes in `docs/QUESTIONS.md`.
 4. **New dependencies require a written justification** in
    `docs/QUESTIONS.md` plus an ARCHITECTURE.md note. stdlib-first. The
    stack contract is chi + database/sql + modernc sqlite; do not add an

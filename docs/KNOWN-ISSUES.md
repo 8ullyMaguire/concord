@@ -141,32 +141,88 @@ replay. Naming the columns instead of `SELECT *` removes the coupling. Recorded
 rather than fixed: the deployed database is past both, and rewriting a
 historical migration changes what a fresh install does.
 
-## An unbuilt embedding index is indistinguishable from working duplicate detection
+## An unindexed row makes duplicate detection fail silently (recurs; guard added 2026-10-05)
 
-Not a bug in the code — every semantic feature was implemented and correct. The
-index had simply never been built: `embedbackfill -status` reported 0.0% on all
-four kinds, 0 vectors for 959 entities.
+**The failure mode.** `/api/v1/similar` answers 200 with an empty list, filing
+returns 201 for a verbatim duplicate, nothing logs, and `healthz` says ok — the
+correct answer to "what matches this?" when you believe the index is populated.
+The first time, the index had never been built: `embedbackfill -status` reported
+0.0% on all four kinds, 0 vectors for 959 entities.
 
-The failure mode is quiet. Filing returned 201 for a verbatim copy of a
-complaint that existed in the same project, with a well-formed
-`{"similar": []}` body and no error. Nothing logs, nothing warns, and
-`/api/v1/similar` answers 200 with an empty result — which is the correct answer
-to "what matches this?" when you believe the index is populated.
+**It recurred, and that is the finding.** With the index built (1,918 rows,
+`nomic`, 768 dims), complaint coverage still sat at **95.5%** — 25 complaints with
+no vector, unfindable by similarity search, unreported by anything. Root cause:
+**nothing in the deploy path or the service ever runs `embedbackfill`**, so the
+gap reopens whenever a row is inserted by a path that skips the embedder. Builds
+always looked fine, because writes embed on write and only *pre-existing* rows
+need a backfill.
 
-Diagnosing it means asking a question the response shape cannot answer: `select
-count(*) from embeddings`. There are now 1918 rows for 959 entities (two fields
-per entity: title and full text), one `model_id`, 768 dims throughout.
+**Guard:** `cmd/concord/main.go` now measures coverage at startup and warns with
+the counts and the exact command. A warning rather than a fatal error, on
+purpose — the index makes duplicate detection work, and refusing to serve because
+a cosine search came back empty would trade a real feature for a cosmetic one.
+Empty kinds are skipped so a fresh install is not scolded for nothing.
 
-Writes are unaffected — a row created after the embedder is configured is
-embedded on write. Only pre-existing rows need the backfill, which is why this
-survived so long in a repo that was being actively developed: new work always
-looked fine.
+Live instance now reads **100.0%** on all four kinds.
 
-## `docs/concord-spec.md` is two revisions stale
+**Reading a coverage number — the trap that cost an hour.** Run
+`embedbackfill` under the same `CONCORD_EMBED_*` environment the service uses.
+The systemd unit sets `CONCORD_EMBED_URL` to ollama (`nomic`); a bare shell falls
+back to `hashed-v1`. Coverage is reported per `model_id`, so the status command
+reported **0.0% on a database that was 95.5% full**. The tool was correct and the
+invocation was wrong, which is the most expensive kind of wrong because every
+reading taken afterwards is also wrong.
 
-It is a verbatim copy of the master, and revision 4 replaced the master. Nothing
-enforces that the copy tracks it, so the file that most readers open first is
-the one that is most wrong. `docs/concord-spec-r4.md` is current.
+**The denominator bug that would have made the guard useless.** Backfill skips a
+row whose text is empty, on purpose; coverage counted those rows. Complaint 24 has
+an empty title AND body, so coverage read 99.8% forever and the new warning would
+have fired on *every deploy* until the operator learned to ignore it. **A warning
+that always fires is worse than no warning, because it teaches the reader that
+warnings here are noise.** `total` now excludes unembeddable rows using the
+writer's own `TrimSpace` predicate, and reports the count as `unembeddable`.
+Gated by a test that can be made to fail (dropping the exclusion, or reporting
+the count as 0, both killed).
+
+**Writes are unaffected** — a row created after the embedder is configured is
+embedded on write. Only pre-existing rows need the backfill.
+
+## Readers were pointed at a superseded spec (fixed 2026-10-05, `scripts/check_spec_drift.py`)
+
+**Was:** `docs/concord-spec.md` is two revisions behind
+`docs/concord-spec-r4.md`, and that was never the real problem. The real problem
+was that **seven other documents cited it as authority**: `frontend-spec.md`
+three times ("`concord-spec.md` §9.4 names ... as the stack"), `PREMISE.md`
+("read `concord-spec.md` and join in"), `PLAN.md` twice, `PLAN-r4.md` and
+`HANDOFF.md` once each. A reader following any of those implements from a spec two
+revisions back and has no way to tell, because the file looks exactly as
+authoritative as its replacement.
+
+KNOWN-ISSUES had carried this for revisions. That is the finding worth keeping:
+**a doc-rot finding that only lives in a markdown list is a note, not a control**,
+because acting on it depends on someone reading that list — which is the same
+dependency the original problem had.
+
+**Now:**
+- `docs/concord-spec.md` opens with a banner naming the replacement, saying not to
+  implement from it, and saying why it is retained rather than deleted (older
+  notes cite it by section number, and silently repointing them would make those
+  citations wrong in a way nothing could detect).
+- All six citations re-pointed at `concord-spec-r4.md`.
+- `scripts/check_spec_drift.py`, wired into `make verify`, fails when a superseded
+  spec has no banner or when any document cites a superseded spec normatively.
+
+**The gate is not idle by default, and says so.** It reports
+`checked 0 normative citation(s)` with an explicit note that if the docs ever stop
+naming the old spec at all, the gate has nothing left to guard. A check that
+silently passes because its search pattern stopped matching is the failure mode
+this repo keeps hitting.
+
+Two mutations of the gate itself were applied and both caught: removing the
+banner, and re-introducing a misdirected citation in `PREMISE.md`.
+
+**Deliberately not done:** rewriting the body of `concord-spec.md`. It is 26KB of
+superseded prose and the honest options are delete-it or leave-it, and deleting it
+would break every historical link. The banner is the reversible choice.
 
 ## `docs/HANDOFF.md` and `docs/PLAN-r4.md` counted work instead of measuring it
 

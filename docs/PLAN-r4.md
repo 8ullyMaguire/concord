@@ -104,7 +104,7 @@ candidates with adopt/extend/build verdicts.
   coverage evidence, and a verdict per candidate.
 
 ### R7 — Documentation sync
-- Replace `docs/concord-spec.md` with the r4 text (it is a copy of the master;
+- DONE: replaced with the r4 text (it had been a copy of the master;
   the master was rewritten, so the copy is now two revisions stale).
 - `docs/PLAN.md`: mark r4 milestones, correct the Current State block.
 - `docs/ARCHITECTURE.md`: the arena abstraction and why.

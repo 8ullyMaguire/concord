@@ -1,3 +1,19 @@
+> **THIS FILE IS SUPERSEDED. DO NOT READ IT AS THE SPEC.**
+>
+> The current product spec is [`concord-spec-r4.md`](concord-spec-r4.md), which
+> replaced this one two revisions ago. This file is kept only so that links from
+> older notes resolve to *something* rather than a 404.
+>
+> It is retained verbatim rather than deleted because `docs/specs/frontend-spec.md`
+> and other documents cite "concord-spec.md §9.4" as authority, and silently
+> changing what that citation resolves to would make those citations wrong in a
+> way nobody could detect. The fix is to re-point them, which is tracked in
+> KNOWN-ISSUES.md; the fix is deliberately NOT done silently here.
+>
+> KNOWN-ISSUES recorded this as "a verbatim copy of the master" — it is not, any
+> more: this copy is itself out of date relative to the master it was copied from.
+> Either way the conclusion is the same. Do not implement from this file.
+
 # Concord — Complaint-Driven, Consensus-Based Forge
 
 > A federated software forge where development is driven by real complaints, prioritized by pairwise Elo, decided through rough consensus, and executed on a kanban board.

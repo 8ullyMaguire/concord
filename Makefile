@@ -70,7 +70,16 @@ fmt:
 vet:
 	go vet ./...
 
-verify: vet test build
+# Documentation drift, in `verify` rather than only in a note, because the
+# failure it catches is entirely invisible to the compiler and to every test: a
+# document that tells a reader to implement from a spec two revisions back reads
+# exactly like one that does not. KNOWN-ISSUES carried that finding for
+# revisions without anyone acting on it, which is the strongest available
+# argument that a finding only in a markdown list is a note, not a control.
+docs-check:
+	python3 scripts/check_spec_drift.py
+
+verify: vet test build docs-check
 
 run:
 	CGO_ENABLED=0 go run $(PKG)

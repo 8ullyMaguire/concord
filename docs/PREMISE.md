@@ -2,7 +2,7 @@
 
 Concord is a forge: a place to host code, discuss changes, and ship software. What makes it different is what it does *between* the code. It turns the messy, political, exhausting job of deciding what to build into something structured, transparent, and shared.
 
-*(This is the short version, written to be shared. The full spec lives in `concord-spec.md` next to this file.)*
+*(This is the short version, written to be shared. The full spec lives in `concord-spec-r4.md` next to this file.)*
 
 ## The problem
 
@@ -40,4 +40,4 @@ It is not a GitHub clone with extra buttons, and it does not replace git. It sta
 
 ## Status
 
-The spec is written and the skeleton exists: Go, chi, SQLite, with the Glicko-2 engine, the consensus rules, the merge gate, and the search surface under test. If this sounds like your kind of forge, read `concord-spec.md` and join in — the whole point is that direction is decided by the people who show up.
+The spec is written and the skeleton exists: Go, chi, SQLite, with the Glicko-2 engine, the consensus rules, the merge gate, and the search surface under test. If this sounds like your kind of forge, read `concord-spec-r4.md` and join in — the whole point is that direction is decided by the people who show up.

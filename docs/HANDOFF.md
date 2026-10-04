@@ -139,7 +139,7 @@ Quick web tour:
 - Will reject: governance simplification (no-quorum shortcuts), silent
   permission widening, search regressions, un-logged privileged actions,
   new heavy dependencies.
-- Keeps `docs/concord-spec.md` byte-identical to the vault master;
+- Keeps `docs/concord-spec-r4.md` byte-identical to the vault master;
   propose spec changes via `docs/QUESTIONS.md` instead.
 
 ## Milestone status

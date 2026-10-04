@@ -4,7 +4,8 @@
 **Date:** 2026-10-02, revised 2026-10-02 with the document viewer built
 **Covers:** every page under `internal/httpapi/templates/` and every script under
 `internal/httpapi/assets/`, and the pages that do not exist yet
-**Companion:** `concord-spec.md` (the product spec). This document does not restate
+**Companion:** `concord-spec-r4.md` (the current product spec; `concord-spec.md`
+is superseded and its section numbers do not match). This document does not restate
 it; where the two disagree about the frontend, this one is correct about what is
 built and the other is aspirational.
 
@@ -321,7 +322,7 @@ evidence a write succeeded.
 
 ### 1.2 Where this contradicts the product spec
 
-`concord-spec.md` §9.4 names "SvelteKit or React, PWA, SSR" as the stack and
+`concord-spec-r4.md` §9.4 names "SvelteKit or React, PWA, SSR" as the stack and
 §10 describes a Complaint Page, Feature Page and Voting UI. That is the intended
 end state, not the current one. **§9.4 is now wrong about the present tense and
 this spec supersedes it on that point.** Three options were available:
@@ -630,7 +631,7 @@ a framework. Two things will threaten them:
 - **No PWA or service worker.** Idea #90 in the ranked 100. Not before the
   consensus page exists; a cached shell serving stale governance state is worse
   than no cache.
-- **No GraphQL client.** `concord-spec.md` §9.4 proposes GraphQL for the UI. The
+- **No GraphQL client.** `concord-spec-r4.md` §9.4 proposes GraphQL for the UI. The
   REST API is what exists and is sufficient; adding a client layer now is a
   second thing to keep in sync with no consumer.
 - **No offline or draft autosave.** Idea #8 from the earlier stash-box list is
