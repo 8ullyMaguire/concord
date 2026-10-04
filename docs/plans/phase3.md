@@ -525,7 +525,30 @@ ssh thinkcentre 'curl -s localhost:8006/api/v1/projects/1/alternatives | head -c
 
 ---
 
-# S3 — Scout
+# S3 — Scout  [DONE]
+
+**Status 2026-10-04: S3 is DONE** (`5425769` engine + endpoint, `edb2083` page and
+18 browser tests, `85fb54e` document kind and FTS coverage, `aec893b` save path and
+8 more browser tests).
+
+Shipped: `internal/scout` (decomposition + classification), `GET /api/v1/scout`,
+the `/scout` page, and saving a report through the documents endpoint as kind
+`scout`. 29 classifier tests, 14 API tests, 26 browser tests; 16 classifier
+mutants and 16 page mutants, every one killed by a named test.
+
+Two deviations from the plan below, both because the plan was wrong about the code:
+
+- **S3.2 named `internal/scout/classify.go`**; there is one file,
+  `internal/scout/scout.go`, plus `decompose.go`. Splitting the classifier from the
+  decomposer by line count would have produced two files that change together.
+- **S3.3's curl is a POST with a JSON body.** The endpoint is a `GET` with `?idea=`,
+  because Scout has no write side: the idea is the whole input and a POST would
+  imply a resource. `POST /api/v1/scout` does not exist and returns 405.
+
+Migration S3.1 applied to a copy of the live DB before anything else, as the plan
+required: 94 indexes before and after, all 18 documents intact, and an insert of
+kind `scout` accepted. The FTS triggers are recreated by the migration and three
+store tests cover insert, update and pre-migration searchability.
 
 The largest of the three, and the one whose honest output on today's catalog is
 a short list with a coverage heatmap and a lot of open gaps. That is correct
