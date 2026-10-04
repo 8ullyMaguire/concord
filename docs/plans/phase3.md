@@ -59,9 +59,21 @@ make verify && echo VERIFY_OK
 
 Three read-only panels on `/projects/{slug}`. The spec's §4.
 
-**Status 2026-10-03: S1.1 and S1.2 are DONE** (`fd2ceae`, `633cdcc`). S1.3 (the
-Solutions panel) is not started. Notes on what the plan got wrong are in each
-commit message and repeated at the step, per ground rule 7.
+**Status 2026-10-04: S1 is DONE** (`fd2ceae`, `633cdcc`, and the Solutions panel
+below). Notes on what the plan got wrong are in each commit message and repeated at
+the step, per ground rule 7.
+
+The earlier marker here said S1.3's Solutions panel was "not started". It ships:
+`solutionsPanel` is defined at `project.js:173` and rendered at `project.js:598`,
+`project_panels_e2e.py` covers it at lines 358 and 509-545 (including the "not
+comparable across features" rule `solutions-panel-spec.md` argues), and a browser
+probe on `panels-confirmed` renders "Solution standings / Ranked proposals per
+feature" with the correct empty state and no console errors.
+
+It was verified in the browser rather than by reading the source, because the panels
+mount into one shared container and so have no per-panel markup in
+`templates/project.html` -- a grep for `solutions` there finds nothing, which reads
+exactly like an unwired panel.
 
 ## Step S1.1 — Read the three data paths and fix what is missing  [DONE]
 
@@ -222,9 +234,9 @@ reasoning `TestProjectPageHasTheForms` already gives.
 go test ./internal/httpapi/ -run 'Capability|FieldReport|Alternative|Private' -v 2>&1 | tail -40
 ```
 
-## Step S1.3 — The panel markup and the script  [DONE for Capabilities and Field reports]
+## Step S1.3 — The panel markup and the script  [DONE]
 
-Solutions is NOT done; see the step.
+All three panels ship; see the S1 status above for how Solutions was confirmed.
 
 **Files:** `internal/httpapi/templates/project.html` (edit — append sections),
 `internal/httpapi/assets/js/project.js` (edit), `internal/httpapi/assets/css/style.css` (edit — append only).
@@ -256,7 +268,7 @@ make verify && echo OK
 # project has more than 10 reports.
 ```
 
-## Step S1.4 — Playwright, then docs  [DONE for Capabilities and Field reports]
+## Step S1.4 — Playwright, then docs  [DONE]
 
 **Files:** `tests/e2e/project_panels_e2e.py` **(new)** — *not*
 `tests/e2e/e2e_test.py`, as the plan below said. Recorded per ground rule 7.
@@ -328,7 +340,26 @@ Docs: `docs/PLAN-r4.md` gets an **R8 Phase-3 close-out** row; `docs/HANDOFF.md`'
 
 ---
 
-# S2 — Alternatives arenas
+# S2 — Alternatives arenas  [DONE]
+
+**Status 2026-10-04: S2 is DONE.** Store, HTTP surface, panel and Playwright all
+ship; the mutation gate specified in step S2.3 had never been built, and building it
+found that `AddArenaCompetitor` — reachable from the API and called by no test in the
+repo — had six rules asserted in comments and proved by nothing (`b8f0de1`, now 6/6
+killed). The live check in S2.6 passes: `GET /projects/test-project/alternatives`
+answers `{"project_id": 1, "arenas": []}`.
+
+Two corrections to this plan's own text, since both would mislead the next reader:
+
+- **step S2.3 names `internal/store/alternatives.go`**; the file is
+  `internal/store/arenas.go`, which also holds feature-priority, solution, use-case,
+  list and request arenas.
+- **the S2.6 curl is wrong twice.** `project_id` in the path is a SLUG, not the
+  numeric id — passing `18` returns a 404 indistinguishable from a missing route.
+  And an instance with no alternatives arenas returns an empty `arenas` array rather
+  than an error, so "expect `arenas`, NOT not-found" only holds against a project the
+  caller can read: `ao3` is private and answers `not found` to a non-member by design.
+
 
 ## Step S2.0 — Fix `baseline_entry_id` before adding an arena type that wants one
 
