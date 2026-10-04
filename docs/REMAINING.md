@@ -4,9 +4,9 @@ Written 2026-10-05. Every number below is measured, not remembered. The doc-numb
 gate (`scripts/check_doc_numbers.py`, in `make verify`) fails when any of them goes
 stale, so this file cannot quietly become fiction.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · 801 Go tests across
-9 test-bearing packages · 162 e2e tests in 9 suites · 7/7 UI mutants killed ·
-HEAD `910da5e` on both remotes. `make verify` exit 0, `make e2e` exit 0.
+**Measured state:** schema 25 · 25 migrations · 79 live tables · 827 Go tests across
+9 test-bearing packages · 174 e2e tests in 10 suites · 7/7 UI mutants killed ·
+`make verify` exit 0, `make e2e` exit 0.
 
 **Updated 2026-10-05 (feature detail, then complaint detail).** Two pages built,
 and **nine defects** they exposed that no existing test could see — including a
@@ -50,7 +50,7 @@ Two are built. The rest are the real remaining work, and every one of them has a
 | 5 | **Project settings** | ✅ charter, members, invites, tags, languages, visibility | ❌ | — |
 | 6 | **Comments** | ✅ create/list/vote/delete | ❌ | — |
 | 7 | **Merge requests** | ✅ create/approve/execute/reject | ❌ | — |
-| 8 | **Requests + answers** | ✅ create/answer/vote | ❌ | — |
+| 8 | ~~Requests + answers~~ | ✅ built 2026-10-05; **new** accept-answer, request tags, instance-wide board | ✅ `requests.html` | via request card |
 | 9 | **Lists** | ✅ create/entries | ❌ | — |
 | 10 | **Criteria profiles** | ✅ list/save | ❌ | — |
 
@@ -243,3 +243,55 @@ Every page follows the same three-part contract now, from
 `internal/httpapi/feature_page_test.go`: it renders, it is **linked from
 somewhere**, and it hides a private project. Plus the browser test that clicks the
 link, which is the part the Go layer cannot substitute for.
+
+---
+
+## 5. Six code-vs-schema mismatches, and what found them
+
+**2026-10-05, requests page (#8).** The new tool is `tests/e2e/api_surface.py`: it
+seeds one project with one of everything and prints the status, shape and first bytes
+of every GET the remaining pages need. It exists because each of the two pages built so
+far turned up the same class of defect on first run — the JS guessed a response shape,
+rendered empty, **and logged no error**. A page reporting "0 answers" for a request
+that has some is worse than a crash, because it is believed.
+
+Every one of the six was Go code that had never been run against the migration that
+creates its table.
+
+| # | Where | Symptom |
+|---|---|---|
+| 1 | `GetRequestAnswers` SELECT | `no such column: author_id` — the column is `proposed_by`, and an answer carries a Glicko rating, not a score |
+| 2 | `AnswerRequest` INSERT | omitted the NOT NULL `project_id`; and the handler passed `getActorID(r)` where a project id belonged, so an answer would have been filed under whichever project shared the caller's user id — a **cross-project write** |
+| 3 | `VoteAnswer` | `no such column: answer_id`. `request_answer_votes` is **pairwise** (`answer_a`, `answer_b`, `outcome`), not per-answer with a `direction`; the old code also summed into a `score` column that does not exist |
+| 4 | `comments.label` | `converting NULL to string is unsupported`. Read side 500'd on any unlabelled comment; write side put `""` where the CHECK wants NULL, so an unlabelled comment could not be **created** either — the ordinary case |
+| 5 | `requests.project_id` | `converting NULL to int64 is unsupported`. The column is nullable and the migration says *"NULL = instance-wide board"*; `CreateRequest` required a project id and every caller passed one, so that board was **unreachable** |
+| 6 | `requireReadableRequest` | called `GetProjectByID(0)` for an instance-wide request. No project has id 0, so the lookup failed and every instance-wide request was **unreadable** — via detail page, answers, tags, accept and vote |
+
+Two read sides simply did not exist: `GET .../merge` was **405**, the only route in
+`server.go` with no read side, so the approve/execute/reject endpoints had no list to
+appear on.
+
+**The generalisable lesson.** Five of the six are one mistake: a nullable column, or a
+column that was renamed, where one caller was updated and the rest were not. Ask of
+every helper on a row *what does the other branch of the nullable column need*, and ask
+of every column *which route writes it*.
+
+**Now measured once, not rediscovered per page.** `api_surface.py` also records that
+`/charter` returns PascalCase keys unlike every other endpoint; that `/tags` wraps as
+`{tags:[]}` while `/members`, `/lists`, `/requests`, `/criteria-profiles` are bare
+arrays; that comments live at `/threads/{kind}/{id}`, not `/comments`; and that
+`request_answers` is `UNIQUE (request_id, project_id)` — so one project states one
+answer, and an answers page must not offer "add another answer" within one project.
+
+**And the instance-wide board works end to end.** `requests.project_id IS NULL` plus a
+pairwise answer vote is the only way two projects' answers meet on one question, and
+`CreateInstanceRequest` + `GET/POST /api/v1/requests` is what makes it reachable.
+
+**§17's accepted-fit badge was storable and unshowable.** `requests.accepted_answer_id`
+arrived with migration 0008 and had **no Go code at all**. It is now
+`AcceptAnswer`/`UnacceptAnswer` + `PUT/DELETE /api/v1/requests/{id}/accept`, and a test
+pins §17's exact clause — the badge is *displayed but does not override the ranking* —
+by seeding the accepted answer with the **lowest** rating and asserting it still sorts
+last. `request_tags` had no store method either, so §17's "requests are taggable"
+constraint had no read side at all.
+

@@ -455,8 +455,26 @@ func (s *Server) requireReadableRequest(w http.ResponseWriter, r *http.Request) 
 		mapError(w, err)
 		return store.Request{}, false
 	}
+
+	// An INSTANCE-WIDE request (requests.project_id IS NULL) belongs to no project,
+	// so there is no project whose visibility could hide it -- it is public by
+	// construction, exactly like the instance-wide board it sits on.
+	//
+	// This branch is the fix for a bug the e2e suite found: the original code called
+	// GetProjectByID(0) unconditionally, which finds no project, and answered 404.
+	// So every instance-wide request was unreadable through every route that uses
+	// this helper -- the detail page, the answers, the tags, accepting and voting.
+	// The feature I had just finished adding was dead on arrival for exactly the
+	// requests it exists to serve.
+	if req.ProjectID == 0 {
+		return req, true
+	}
+
 	proj, err := s.Store.GetProjectByID(r.Context(), req.ProjectID)
 	if err != nil {
+		// A project-scoped request whose project has been deleted is a 404 rather
+		// than a 500: the cascade (migration 0008) should have taken the request with
+		// it, and a row that outlived its project is not a request anybody may read.
 		mapError(w, store.ErrNotFound)
 		return store.Request{}, false
 	}
@@ -544,4 +562,130 @@ func (s *Server) handleListMergeRequests(w http.ResponseWriter, r *http.Request)
 		mrs = []store.MergeRequest{}
 	}
 	writeJSON(w, http.StatusOK, mrs)
+}
+
+// handleGetRequestTags returns a request's tags.
+//
+// A request's tags ARE its constraints, and §8.3 scopes a voter's expertise by tag,
+// so this is the input that decides how much a comparison against these answers is
+// worth.
+func (s *Server) handleGetRequestTags(w http.ResponseWriter, r *http.Request) {
+	id, err := strconv.ParseInt(chi.URLParam(r, "request_id"), 10, 64)
+	if err != nil {
+		mapError(w, store.ErrInvalid)
+		return
+	}
+	if _, ok := s.requireReadableRequest(w, r); !ok {
+		return
+	}
+	tags, err := s.Store.GetRequestTags(r.Context(), id)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if tags == nil {
+		tags = []string{}
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tags": tags})
+}
+
+// handleSetRequestTags replaces a request's tags.
+//
+// Replace, not merge: a request's deal-breakers are its tags, so "this no longer
+// requires self-hosting" has to be expressible and a merge would make it impossible.
+func (s *Server) handleSetRequestTags(w http.ResponseWriter, r *http.Request) {
+	if getActorID(r) == 0 {
+		mapError(w, store.ErrAuth)
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "request_id"), 10, 64)
+	if err != nil {
+		mapError(w, store.ErrInvalid)
+		return
+	}
+	if _, ok := s.requireReadableRequest(w, r); !ok {
+		return
+	}
+	var req struct {
+		Tags []string `json:"tags"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if err := s.Store.SetRequestTags(r.Context(), id, getActorID(r), req.Tags); err != nil {
+		mapError(w, err)
+		return
+	}
+	tags, err := s.Store.GetRequestTags(r.Context(), id)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"tags": tags})
+}
+
+// handleAcceptAnswer marks an answer as the accepted fit.
+//
+// Author-only, enforced in the store against the request's author_id rather than a
+// token claim, and it does NOT touch the rating: §17 says the badge is displayed but
+// does not override the ranking.
+func (s *Server) handleAcceptAnswer(w http.ResponseWriter, r *http.Request) {
+	if getActorID(r) == 0 {
+		mapError(w, store.ErrAuth)
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "request_id"), 10, 64)
+	if err != nil {
+		mapError(w, store.ErrInvalid)
+		return
+	}
+	if _, ok := s.requireReadableRequest(w, r); !ok {
+		return
+	}
+	var req struct {
+		AnswerID int64 `json:"answer_id"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	if err := s.Store.AcceptAnswer(r.Context(), id, req.AnswerID, getActorID(r)); err != nil {
+		mapError(w, err)
+		return
+	}
+	_ = s.Store.AddAudit(r.Context(), 0, getActorID(r), "accept_request_answer",
+		"request_answer", req.AnswerID, fmt.Sprintf("request=%d", id))
+
+	// The updated request back, so the caller sees the badge they just set.
+	updated, err := s.Store.GetRequest(r.Context(), id)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
+}
+
+// handleUnacceptAnswer clears the accepted badge. Same author-only rule.
+func (s *Server) handleUnacceptAnswer(w http.ResponseWriter, r *http.Request) {
+	if getActorID(r) == 0 {
+		mapError(w, store.ErrAuth)
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "request_id"), 10, 64)
+	if err != nil {
+		mapError(w, store.ErrInvalid)
+		return
+	}
+	if _, ok := s.requireReadableRequest(w, r); !ok {
+		return
+	}
+	if err := s.Store.UnacceptAnswer(r.Context(), id, getActorID(r)); err != nil {
+		mapError(w, err)
+		return
+	}
+	updated, err := s.Store.GetRequest(r.Context(), id)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, updated)
 }

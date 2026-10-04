@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"encoding/json"
+	"strings"
 	"testing"
 
 	"git.polarisocial.xyz/concord/concord/internal/governance"
@@ -382,4 +384,207 @@ func featureWithComplaint(t *testing.T, st *DB, projectID, authorID int64, title
 		t.Fatalf("CreateFeature: %v", err)
 	}
 	return f.ID
+}
+
+// TestOnlyTheRequestAuthorMayAcceptAnAnswer is §17's "the request AUTHOR may mark an
+// accepted answer", and the guard that matters most.
+//
+// The tempting shortcut is to trust a token claim or the answer's own proposer. The
+// author is neither: the person who asked the question decides which answer it
+// accepted, and an answer's proposer has no say -- otherwise accepting is just
+// self-promotion with a badge.
+func TestOnlyTheRequestAuthorMayAcceptAnAnswer(t *testing.T) {
+	store, author, pid := setupWithProject(t)
+	ctx := context.Background()
+
+	req, err := store.CreateRequest(ctx, pid, author, "Q?", "b")
+	if err != nil {
+		t.Fatalf("CreateRequest: %v", err)
+	}
+	answer, err := store.AnswerRequest(ctx, req.ID, pid, author, "my project's fit")
+	if err != nil {
+		t.Fatalf("AnswerRequest: %v", err)
+	}
+
+	// The author can.
+	if err := store.AcceptAnswer(ctx, req.ID, answer.ID, author); err != nil {
+		t.Fatalf("the request's author could not accept: %v", err)
+	}
+
+	// Someone else cannot, even a member of the same project.
+	other := secondVoter(t, store)
+	if err := store.AcceptAnswer(ctx, req.ID, answer.ID, other); err == nil {
+		t.Error("a non-author accepted an answer")
+	}
+	if err := store.UnacceptAnswer(ctx, req.ID, other); err == nil {
+		t.Error("a non-author cleared the accepted badge")
+	}
+}
+
+// TestAcceptAnswerDoesNotOverrideTheRanking is §17's exact clause: the badge is
+// DISPLAYED BUT DOES NOT OVERRIDE THE RANKING.
+//
+// This is the test that would fail if someone "helpfully" made accepting also bump
+// elo_r. Accepted and best-ranked are deliberately independent, so an accepted answer
+// can sit last.
+func TestAcceptAnswerDoesNotOverrideTheRanking(t *testing.T) {
+	store, author, pid := setupWithProject(t)
+	ctx := context.Background()
+
+	req, _ := store.CreateRequest(ctx, pid, author, "Q?", "b")
+	answer, err := store.AnswerRequest(ctx, req.ID, pid, author, "fit")
+	if err != nil {
+		t.Fatalf("AnswerRequest: %v", err)
+	}
+	before, _ := store.GetRequestAnswer(ctx, answer.ID)
+
+	if err := store.AcceptAnswer(ctx, req.ID, answer.ID, author); err != nil {
+		t.Fatalf("AcceptAnswer: %v", err)
+	}
+
+	after, _ := store.GetRequestAnswer(ctx, answer.ID)
+	if after.EloR != before.EloR || after.EloRD != before.EloRD {
+		t.Errorf("accepting moved the rating: elo %v->%v rd %v->%v. §17 says the badge "+
+			"is displayed but does not override the ranking",
+			before.EloR, after.EloR, before.EloRD, after.EloRD)
+	}
+
+	// And the badge IS readable on the request.
+	got, err := store.GetRequest(ctx, req.ID)
+	if err != nil {
+		t.Fatalf("GetRequest: %v", err)
+	}
+	if got.AcceptedAnswerID == nil {
+		t.Fatal("the accepted badge was set but reads back as absent")
+	}
+	if *got.AcceptedAnswerID != answer.ID {
+		t.Errorf("accepted_answer_id = %d, want %d", *got.AcceptedAnswerID, answer.ID)
+	}
+}
+
+// TestAnUnacceptedRequestHasNoAcceptedAnswerKey pins the omitempty contract, so the
+// page can tell "no badge" from "badge on answer 0".
+func TestAnUnacceptedRequestHasNoAcceptedAnswerKey(t *testing.T) {
+	store, author, pid := setupWithProject(t)
+	ctx := context.Background()
+
+	req, _ := store.CreateRequest(ctx, pid, author, "Q?", "b")
+	got, err := store.GetRequest(ctx, req.ID)
+	if err != nil {
+		t.Fatalf("GetRequest: %v", err)
+	}
+	if got.AcceptedAnswerID != nil {
+		t.Errorf("accepted_answer_id = %v on a request nobody accepted an answer for", *got.AcceptedAnswerID)
+	}
+	b, _ := json.Marshal(got)
+	if strings.Contains(string(b), "accepted_answer_id") {
+		t.Errorf("an unaccepted request serialises the key: %s", b)
+	}
+}
+
+// TestYouCannotAcceptAnAnswerFromAnotherRequest stops one project's author badging
+// another question's answer -- the class that took six endpoints to find on reads.
+func TestYouCannotAcceptAnAnswerFromAnotherRequest(t *testing.T) {
+	store, author, pid := setupWithProject(t)
+	ctx := context.Background()
+
+	reqA, _ := store.CreateRequest(ctx, pid, author, "Q one", "b")
+	reqB, _ := store.CreateRequest(ctx, pid, author, "Q two", "b")
+	answer, _ := store.AnswerRequest(ctx, reqA.ID, pid, author, "answer to one")
+
+	if err := store.AcceptAnswer(ctx, reqB.ID, answer.ID, author); err == nil {
+		t.Error("an answer to a different request was accepted")
+	}
+}
+
+// TestYouCannotAcceptARemovedAnswer: a removed answer is dead content and badging it
+// would put the badge on something the quorum took down.
+func TestYouCannotAcceptARemovedAnswer(t *testing.T) {
+	store, author, pid := setupWithProject(t)
+	ctx := context.Background()
+
+	req, _ := store.CreateRequest(ctx, pid, author, "Q?", "b")
+	answer, _ := store.AnswerRequest(ctx, req.ID, pid, author, "fit")
+	if _, err := store.ExecContext(ctx,
+		`UPDATE request_answers SET status='removed' WHERE id=?`, answer.ID); err != nil {
+		t.Fatalf("seed removed: %v", err)
+	}
+
+	if err := store.AcceptAnswer(ctx, req.ID, answer.ID, author); err == nil {
+		t.Error("a removed answer was accepted")
+	}
+}
+
+// TestRequestTagsReplaceRatherThanMerge: a request's tags are its deal-breakers, so
+// removing one has to be expressible. A merge would make "this no longer requires
+// self-hosting" impossible, which is the whole point of editing a request.
+func TestRequestTagsReplaceRatherThanMerge(t *testing.T) {
+	store, author, pid := setupWithProject(t)
+	ctx := context.Background()
+
+	req, _ := store.CreateRequest(ctx, pid, author, "Q?", "b")
+	if err := store.SetRequestTags(ctx, req.ID, author, []string{"self-hosting", "MIT"}); err != nil {
+		t.Fatalf("SetRequestTags: %v", err)
+	}
+	got, _ := store.GetRequestTags(ctx, req.ID)
+	if len(got) != 2 {
+		t.Fatalf("got %v, want 2 tags", got)
+	}
+
+	if err := store.SetRequestTags(ctx, req.ID, author, []string{"self-hosting"}); err != nil {
+		t.Fatalf("SetRequestTags replace: %v", err)
+	}
+	got, _ = store.GetRequestTags(ctx, req.ID)
+	if len(got) != 1 || got[0] != "self-hosting" {
+		t.Errorf("after replacing, tags = %v; the set must REPLACE, so removing a "+
+			"deal-breaker has to work", got)
+	}
+}
+
+// TestRequestTagsIgnoreBlankNames: a whitespace-only tag would become a tag named " "
+// that then matches every whitespace query.
+func TestRequestTagsIgnoreBlankNames(t *testing.T) {
+	store, author, pid := setupWithProject(t)
+	ctx := context.Background()
+
+	req, _ := store.CreateRequest(ctx, pid, author, "Q?", "b")
+	if err := store.SetRequestTags(ctx, req.ID, author, []string{"real", "  ", ""}); err != nil {
+		t.Fatalf("SetRequestTags: %v", err)
+	}
+	got, _ := store.GetRequestTags(ctx, req.ID)
+	if len(got) != 1 || got[0] != "real" {
+		t.Errorf("tags = %v, want just [real]", got)
+	}
+}
+
+// TestOnlyTheAuthorMayRetag: same rule as accepting, and the guard that keeps a random
+// member from rewriting a question's constraints.
+func TestOnlyTheAuthorMayRetag(t *testing.T) {
+	store, author, pid := setupWithProject(t)
+	ctx := context.Background()
+
+	req, _ := store.CreateRequest(ctx, pid, author, "Q?", "b")
+	if err := store.SetRequestTags(ctx, req.ID, author, []string{"mine"}); err != nil {
+		t.Fatalf("SetRequestTags by the author: %v", err)
+	}
+	// A DIFFERENT account, which is the entire point of the test.
+	//
+	// This line passed `author` too, for a while: a blanket find-and-replace added
+	// the new actor argument to every SetRequestTags call in the file, including the
+	// one that was supposed to be a stranger. The test still failed -- on the author,
+	// who IS allowed -- so it went red immediately and got fixed. Had the guard also
+	// rejected the author it would have passed while asserting nothing, which is the
+	// failure mode worth guarding against rather than relying on luck.
+	stranger := secondVoter(t, store)
+	if err := store.SetRequestTags(ctx, req.ID, stranger, []string{"theirs"}); err == nil {
+		t.Error("a non-author retagged a request")
+	}
+	// And the tags are still the author's, not the stranger's.
+	got, err := store.GetRequestTags(ctx, req.ID)
+	if err != nil {
+		t.Fatalf("GetRequestTags: %v", err)
+	}
+	if len(got) != 1 || got[0] != "mine" {
+		t.Errorf("tags = %v after a refused retag, want [mine]", got)
+	}
 }

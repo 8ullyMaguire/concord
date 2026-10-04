@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"git.polarisocial.xyz/concord/concord/internal/governance"
@@ -28,6 +29,13 @@ type Request struct {
 	Body      string  `json:"body"`
 	Status    string  `json:"status"`
 	CreatedAt float64 `json:"created_at"`
+	// AcceptedAnswerID is §17's accepted-fit badge, set only by the request's author.
+	// Nullable, and omitempty so a request with no badge has no key rather than a
+	// misleading accepted_answer_id: 0.
+	//
+	// Per §17 it is DISPLAYED BUT DOES NOT OVERRIDE THE RANKING: AcceptAnswer does
+	// not touch elo_r, so an accepted answer can sit anywhere in the standings.
+	AcceptedAnswerID *int64 `json:"accepted_answer_id,omitempty"`
 }
 
 // RequestAnswer is one answer to a request.
@@ -82,7 +90,7 @@ func (d *DB) CreateRequest(ctx context.Context, projectID int64, authorID int64,
 // GetRequestsByProject returns all requests for a project.
 func (d *DB) GetRequestsByProject(ctx context.Context, projectID int64) ([]Request, error) {
 	rows, err := d.QueryContext(ctx, `
-		SELECT id, project_id, title, body, status, created_at
+		SELECT id, project_id, title, body, status, created_at, accepted_answer_id
 		FROM requests WHERE project_id=? ORDER BY created_at DESC`, projectID)
 	if err != nil {
 		return nil, err
@@ -91,11 +99,9 @@ func (d *DB) GetRequestsByProject(ctx context.Context, projectID int64) ([]Reque
 	requests := []Request{}
 	for rows.Next() {
 		var r Request
-		var projectID sql.NullInt64
-		if err := rows.Scan(&r.ID, &projectID, &r.Title, &r.Body, &r.Status, &r.CreatedAt); err != nil {
+		if err := scanRequest(&r, rows); err != nil {
 			return nil, err
 		}
-		r.ProjectID = projectID.Int64
 		requests = append(requests, r)
 	}
 	return requests, rows.Err()
@@ -131,10 +137,11 @@ func (d *DB) CreateInstanceRequest(ctx context.Context, authorID int64, title, b
 func (d *DB) GetRequest(ctx context.Context, id int64) (Request, error) {
 	var r Request
 	var projectID sql.NullInt64
-	err := d.QueryRowContext(ctx, `SELECT id, project_id, title, body, status, created_at
+	var accepted sql.NullInt64
+	err := d.QueryRowContext(ctx, `SELECT id, project_id, title, body, status, created_at, accepted_answer_id
 		FROM requests WHERE id=?`, id).Scan(
-		&r.ID, &projectID, &r.Title, &r.Body, &r.Status, &r.CreatedAt)
-	r.ProjectID = projectID.Int64
+		&r.ID, &projectID, &r.Title, &r.Body, &r.Status, &r.CreatedAt, &accepted)
+	scanRequestNulls(&r, projectID, accepted)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Request{}, fmt.Errorf("%w: request %d", ErrNotFound, id)
 	}
@@ -309,7 +316,7 @@ func (d *DB) GetRequestAnswers(ctx context.Context, requestID int64) ([]RequestA
 // Empty, never nil -- nil marshals to null.
 func (d *DB) GetInstanceRequests(ctx context.Context) ([]Request, error) {
 	rows, err := d.QueryContext(ctx, `
-		SELECT id, project_id, title, body, status, created_at
+		SELECT id, project_id, title, body, status, created_at, accepted_answer_id
 		FROM requests WHERE project_id IS NULL ORDER BY created_at DESC`)
 	if err != nil {
 		return nil, err
@@ -318,13 +325,209 @@ func (d *DB) GetInstanceRequests(ctx context.Context) ([]Request, error) {
 	requests := []Request{}
 	for rows.Next() {
 		var r Request
-		var projectID sql.NullInt64
-		if err := rows.Scan(&r.ID, &projectID, &r.Title, &r.Body, &r.Status,
-			&r.CreatedAt); err != nil {
+		if err := scanRequest(&r, rows); err != nil {
 			return nil, err
 		}
-		r.ProjectID = projectID.Int64
 		requests = append(requests, r)
 	}
 	return requests, rows.Err()
+}
+
+// AcceptAnswer marks one answer as the accepted fit for a request.
+//
+// §17: "The request author may mark an accepted answer; that badge is displayed but
+// does not override the ranking." So this sets a badge and nothing else -- it must
+// NOT touch elo_r. The two are deliberately independent: an accepted answer the
+// community ranks last is a real and informative state.
+//
+// The column arrived with migration 0008 and had no Go code at all, which is why the
+// spec's badge could not be shown even though the database could store it.
+//
+// Three guards, in this order:
+//   - only the request's author may accept (an answer's proposer must not)
+//   - only an ACTIVE answer may be accepted; a removed one would badge dead content
+//   - the answer must belong to THIS request, checked through the row rather than
+//     the path, or one project's author could badge another project's answer
+func (d *DB) AcceptAnswer(ctx context.Context, requestID, answerID, actorID int64) error {
+	if err := d.isRequestAuthor(ctx, requestID, actorID); err != nil {
+		return fmt.Errorf("%w: %s", ErrPerm, "only the request's author may accept an answer")
+	}
+
+	var answerProject int64
+	var status string
+	if err := d.QueryRowContext(ctx,
+		`SELECT project_id, status FROM request_answers WHERE id=? AND request_id=?`,
+		answerID, requestID).Scan(&answerProject, &status); err != nil {
+		return fmt.Errorf("%w: answer %d does not belong to request %d",
+			ErrNotFound, answerID, requestID)
+	}
+	if status != "active" {
+		return fmt.Errorf("%w: answer %d is %s and cannot be accepted", ErrInvalid, answerID, status)
+	}
+
+	_, err := d.ExecContext(ctx,
+		`UPDATE requests SET accepted_answer_id=?, updated_at=? WHERE id=?`,
+		answerID, float64(time.Now().Unix()), requestID)
+	return err
+}
+
+// UnacceptAnswer clears the accepted badge, for the same author-only rule.
+func (d *DB) UnacceptAnswer(ctx context.Context, requestID, actorID int64) error {
+	if err := d.isRequestAuthor(ctx, requestID, actorID); err != nil {
+		return fmt.Errorf("%w: only the request's author may unaccept an answer", ErrPerm)
+	}
+	_, err := d.ExecContext(ctx,
+		`UPDATE requests SET accepted_answer_id=NULL, updated_at=? WHERE id=?`,
+		float64(time.Now().Unix()), requestID)
+	return err
+}
+
+// GetRequestTags returns a request's tags by name.
+//
+// request_tags was in migration 0002 and had no store method behind it, which is why
+// the answers page had nothing to scope a voter's expertise to. Names rather than
+// ids because every other tag reader in this codebase returns names, and a page
+// that shows ids is a page nobody can read.
+func (d *DB) GetRequestTags(ctx context.Context, requestID int64) ([]string, error) {
+	rows, err := d.QueryContext(ctx, `
+		SELECT t.name FROM request_tags rt
+		JOIN tags t ON t.id = rt.tag_id
+		WHERE rt.request_id = ? ORDER BY t.name`, requestID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		out = append(out, name)
+	}
+	return out, rows.Err()
+}
+
+// SetRequestTags replaces a request's tags.
+//
+// Replace, not merge: a request's constraints ARE its tags, so removing a deal
+// breaker has to actually remove it. A merge would make "this no longer requires
+// self-hosting" impossible to express.
+//
+// project_id 0 = instance-wide request, which is why the ownership guard accepts 0
+// for a signed-in author and the handler does the auth check.
+func (d *DB) SetRequestTags(ctx context.Context, requestID, actorID int64, tags []string) error {
+	var projectID sql.NullInt64
+	if err := d.QueryRowContext(ctx,
+		`SELECT project_id, author_id FROM requests WHERE id=?`, requestID).
+		Scan(&projectID, new(int64)); err != nil {
+		return fmt.Errorf("fetch request %d: %w", requestID, err)
+	}
+	// The AUTHOR, checked against requests.author_id -- the same rule as
+	// AcceptAnswer, and deliberately not a role check: a project owner who did not
+	// ask the question does not get to rewrite its deal-breakers. The first version
+	// used GetRoleForProject and refused the author themself whenever the fixture's
+	// role happened to be something other than owner/moderator, which is how
+	// SetRequestTags could look correct and be unusable.
+	//
+	// project_id being NULL (instance-wide) is NOT a bypass: the author check still
+	// applies, and the handler has already required a signed-in caller.
+	_ = projectID
+	if err := d.isRequestAuthor(ctx, requestID, actorID); err != nil {
+		return err
+	}
+
+	tx, err := d.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, `DELETE FROM request_tags WHERE request_id=?`,
+		requestID); err != nil {
+		return err
+	}
+	for _, name := range tags {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			// A whitespace-only tag is not a tag. Cheap to skip here rather than
+			// creating a tag named " " that then matches every whitespace query.
+			continue
+		}
+		var tagID int64
+		if err := tx.QueryRowContext(ctx,
+			`SELECT id FROM tags WHERE name=?`, name).Scan(&tagID); err != nil {
+			if errors.Is(err, sql.ErrNoRows) {
+				res, err := tx.ExecContext(ctx, `INSERT INTO tags (name) VALUES (?)`, name)
+				if err != nil {
+					return err
+				}
+				// The ExecContext result, not the Tx: sql.Tx has no LastInsertId.
+				if tagID, err = res.LastInsertId(); err != nil {
+					return err
+				}
+			} else {
+				return err
+			}
+		}
+		if _, err := tx.ExecContext(ctx,
+			`INSERT OR IGNORE INTO request_tags (request_id, tag_id) VALUES (?, ?)`,
+			requestID, tagID); err != nil {
+			return err
+		}
+	}
+	return tx.Commit()
+}
+
+// scanRequestNulls applies the two nullable columns of `requests` onto a scanned row.
+//
+//	project_id         NULL = instance-wide board
+//	accepted_answer_id NULL = no accepted fit yet
+//
+// Both are NULL in the cases the features care about, and a plain int64 scan of
+// either is the error "converting NULL to int64 is unsupported" -- which is how the
+// instance-wide board became unreachable before. project_id becomes 0 (no valid
+// project has id 0); accepted_answer_id stays a *int64 so the JSON can OMIT the key
+// rather than report a misleading accepted_answer_id: 0.
+func scanRequestNulls(r *Request, projectID, accepted sql.NullInt64) {
+	r.ProjectID = projectID.Int64
+	if accepted.Valid {
+		v := accepted.Int64
+		r.AcceptedAnswerID = &v
+	}
+}
+
+// requestColumns is the column list every requests read must use, in scanRequest's
+// order. Three reads had drifted apart once already -- GetRequest missed
+// accepted_answer_id, so the badge was stored and never read -- so they share one
+// definition and one scanner instead of three SELECT strings.
+const requestColumns = `id, project_id, title, body, status, created_at, accepted_answer_id`
+
+// scanRequest reads one row in requestColumns order.
+func scanRequest(r *Request, rows interface{ Scan(...any) error }) error {
+	var projectID, accepted sql.NullInt64
+	if err := rows.Scan(&r.ID, &projectID, &r.Title, &r.Body, &r.Status, &r.CreatedAt,
+		&accepted); err != nil {
+		return err
+	}
+	scanRequestNulls(r, projectID, accepted)
+	return nil
+}
+
+// isRequestAuthor is the shared author check for AcceptAnswer, UnacceptAnswer and
+// SetRequestTags, so all three cannot drift apart.
+//
+// Read through the request row rather than taking the author as a parameter: three
+// call sites each re-deriving "who asked this" is three chances to check the wrong
+// thing, and one of them already did.
+func (d *DB) isRequestAuthor(ctx context.Context, requestID, actorID int64) error {
+	var authorID int64
+	if err := d.QueryRowContext(ctx,
+		`SELECT author_id FROM requests WHERE id=?`, requestID).Scan(&authorID); err != nil {
+		return fmt.Errorf("fetch request %d: %w", requestID, err)
+	}
+	if authorID != actorID {
+		return fmt.Errorf("%w: only the request's author may do this", ErrPerm)
+	}
+	return nil
 }

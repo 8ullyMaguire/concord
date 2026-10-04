@@ -1879,3 +1879,32 @@ func (s *Server) handleProjectsPage(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleListRequests is in lists.go
+
+// handleRequestPage renders §17's request detail for one request.
+//
+// The {slug} in the path is the browsing context, NOT the request's project: a
+// request's own project_id is nullable, and for an instance-wide request there is
+// none to check. So the guard here is the SLUG's visibility, and the request id is
+// left to the page's own fetch -- which is itself guarded, because
+// handleGetRequest resolves through requireReadableRequest.
+//
+// Checking the slug but not the request would be the defect pattern from
+// id_enumeration_test.go in a new place: a private request's answers reachable
+// through a public project's URL. handleGetRequest is what actually stops that, and
+// that is why this handler does not claim to stop it.
+func (s *Server) handleRequestPage(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	s.render(w, http.StatusOK, "requests", struct {
+		pageData
+		Slug string
+	}{s.pageFor(r, "Request - "+slug), slug})
+}

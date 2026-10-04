@@ -388,6 +388,46 @@
   // The card is NOT the link. There is a Validate BUTTON in the pill row, and nesting
   // an interactive element inside an <a> is invalid HTML and breaks keyboard and
   // screen-reader behaviour in ways the a11y suite would catch late.
+  // requestSection renders §17's request board for one project.
+  //
+  // The link is built from BOTH the slug and the request id, so the reachability gate
+  // in requests_page_test.go cannot be satisfied by a hardcoded path. That gate is
+  // asserted on THIS FILE rather than the server's HTML on purpose: the cards render
+  // client-side, so a server-HTML assertion would pass because the script's own source
+  // contains the path and would keep passing if the link were deleted here.
+  function requestSection(requests, p) {
+    var head =
+      '<div class="section-head" style="margin-top:2rem;">' +
+      '<h2 class="section-title" style="font-size:1.25rem;">Requests</h2>' +
+      '<p class="section-sub">Structured questions, not threads. Projects answer ' +
+      'them with a fit rationale, and the community ranks those answers against ' +
+      'each other.</p></div>';
+
+    if (!requests || !requests.length) {
+      return head +
+        '<div class="empty-state"><div class="empty-state-icon">\u{1F4DC}</div>' +
+        '<p class="empty-state-title">No open requests</p>' +
+        '<p class="empty-state-description">Nothing has been asked here yet.</p>' +
+        '</div>';
+    }
+
+    return head + '<div class="grid-responsive-2">' + requests.map(function (r) {
+      // `p` is the project, a parameter of render(), and `r` is this request. Both
+      // are in scope HERE, which is the whole lesson of complaintCards(list, slug):
+      // an identifier that is not a parameter of the enclosing function throws at
+      // runtime and blanks the entire page, while a source-level gate stays green.
+      var href = '/projects/' + encodeURIComponent(p.slug) + '/requests/' +
+        encodeURIComponent(r.id);
+      return '<article class="card">' +
+        '<h3><a href="' + href + '">' + esc(r.title) + '</a></h3>' +
+        (r.body ? '<p class="card-text">' + esc(r.body) + '</p>' : '') +
+        '<p class="card-meta"><span class="badge ' +
+          (r.status === 'open' ? 'badge-blue' : 'badge-slate') + '">' +
+          esc(r.status || 'open') + '</span></p>' +
+        '</article>';
+    }).join('') + '</div>';
+  }
+
   function complaintCards(list, slug) {
     return (list || []).map(function (c) {
       return '<div class="card">' +
@@ -558,7 +598,7 @@
       });
   }
 
-  function render(p, features, complaints, documents, panels) {
+  function render(p, features, complaints, documents, panels, requests) {
     panels = panels || {};
     var badges = '<div class="pill-row" style="margin-top:0.75rem;">' +
       '<span class="badge badge-indigo">' + esc(p.governance_model || 'governed') + '</span>' +
@@ -632,6 +672,7 @@
       // §4.10's order: capabilities, then field reports, then the standing.
       // Between the header and Complaints, because the capability matrix is what
       // says what the project IS and complaints are what it is trying to fix.
+      requestSection(requests, p) +
       capabilitiesPanel(panels.capabilities) +
       fieldReportsPanel(panels.fieldReports) +
       // §4.10's order puts standings in the roadmap, after field reports.
@@ -704,10 +745,24 @@
           // failure rule: swallow its own failure, resolve to null.
           fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/alternatives')
             .then(function (r) { return r.ok ? r.json() : null; })
-            .catch(function () { return null; })
+            .catch(function () { return null; }),
+          // Requests (17), the same non-fatal shape as complaints: the board is one
+          // of the sections, and a failure here must not cost the features.
+          //
+          // APPENDED, not inserted: this array is read positionally below, so a
+          // fetch added in the middle silently renumbers every later index. The
+          // first version went in after complaints and fed documents to
+          // capabilities, which renders as a panel quietly missing rather than an
+          // error. Anything added here goes LAST, and the mapping below is by index.
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/requests')
+            .then(function (r) { return r.ok ? r.json() : []; })
+            .catch(function () { return []; })
         ])
           .then(function (res) {
+            // Positional, in the order of the Promise.all above. Requests is
+            // last (res[7]) because it was appended last.
             var features = res[0], complaints = res[1], documents = res[2];
+            var requests = res[7];
             // The feature form's select needs the complaint list at render
             // time, so it is stashed rather than threaded through the markup.
             window.__complaints = complaints || [];
@@ -716,7 +771,7 @@
               fieldReports: res[4],
               solutions: res[5],
               alternatives: res[6]
-            });
+            }, requests);
             if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
             wire(box, slug, p.id);
           });

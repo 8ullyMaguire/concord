@@ -204,7 +204,7 @@ func (s *Server) loadTemplates() error {
 	// (see `render`), which is how a missing entry shows up rather than a blank page.
 	pages := []string{"index", "search", "projects", "project", "board",
 		"login", "register", "rank", "ranking", "documents", "notfound", "finder",
-		"scout", "consensus", "audit", "feature", "complaint"}
+		"scout", "consensus", "audit", "feature", "complaint", "requests"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -715,6 +715,16 @@ func (s *Server) Router() http.Handler {
 	})
 	r.Route("/api/v1/requests/{request_id}", func(r chi.Router) {
 		r.Get("/", s.handleGetRequest)
+		// §17: "The request author may mark an accepted answer; that badge is
+		// displayed but does not override the ranking." The column arrived with
+		// migration 0008 and had no Go code at all, so the spec's badge was
+		// unshowable even though the database could store it.
+		r.Put("/accept", s.handleAcceptAnswer)
+		r.Delete("/accept", s.handleUnacceptAnswer)
+	})
+	r.Route("/api/v1/requests/{request_id}/tags", func(r chi.Router) {
+		r.Get("/", s.handleGetRequestTags)
+		r.Put("/", s.handleSetRequestTags)
 	})
 	r.Route("/api/v1/requests/{request_id}/answers", func(r chi.Router) {
 		r.Get("/", s.handleGetRequestAnswers)
@@ -738,6 +748,12 @@ func (s *Server) Router() http.Handler {
 	r.Get("/projects/{slug}/audit", s.handleAuditPage)
 	r.Get("/projects/{slug}/features/{id}", s.handleFeaturePage)
 	r.Get("/projects/{slug}/complaints/{id}", s.handleComplaintPage)
+	// §17's request board detail. Mounted on {slug} with the other detail pages,
+	// NOT on {project_id} like the API: a request may be INSTANCE-WIDE
+	// (requests.project_id IS NULL), so the {slug} in the path is the browsing
+	// context rather than the request's owner. That is the reason this page resolves
+	// nothing from a project parameter and its JS re-reads the request by id.
+	r.Get("/projects/{slug}/requests/{id}", s.handleRequestPage)
 
 	r.Get("/projects/{slug}/ranking", s.handleRankingPage)
 	r.Get("/projects/{slug}/documents", s.handleDocumentsPage)

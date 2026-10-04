@@ -1,0 +1,27 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <p class="breadcrumb"><a href="/projects">Projects</a> / <a href="/projects/{{.Slug}}">{{.Slug}}</a> / <span>Request</span></p>
+    <h1>Request &middot; <span data-slug>{{.Slug}}</span></h1>
+    <p class="lede">A request is a structured question, not a thread: the need, the
+      constraints and the deal-breakers. Answers are
+      <strong>project references</strong> with a fit rationale &mdash; why it fits,
+      where it falls short &mdash; and the community ranks them against each other.
+      One answer per project.</p>
+  </div>
+</div>
+
+<div id="request-root" aria-busy="true">
+<script src="{{ asset "/assets/js/skeleton.js" }}"></script>
+<script>
+(function(){var b=document.getElementById("request-root");
+if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(4);}})();
+</script>
+
+  <div class="empty-state">
+    <p class="empty-state-title">Loading the request&hellip;</p>
+  </div>
+</div>
+
+<script src="{{ asset "/assets/js/requests.js" }}"></script>
+{{end}}
