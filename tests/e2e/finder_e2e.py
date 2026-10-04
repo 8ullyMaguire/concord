@@ -500,14 +500,26 @@ def test_number_keys_select_options(server, page):
 
 def test_escape_goes_back(server, page):
     start(page)
-    before = page.locator("#finder-shortlist-summary").inner_text()
+    summary = page.locator("#finder-shortlist-summary")
+    before = summary.inner_text()
+    count_before = before.split(" matches")[0]
+
+    # Wait for the SHOWN STATE, not for the clock. The old version slept 800ms
+    # and read, which is a race that only loses under load: KNOWN-ISSUES.md
+    # recorded this test failing ~1 run in 3, and it did not reproduce in nine
+    # consecutive runs on an idle machine -- a flake that vanishes when you
+    # measure it is still a race, it just needs the suite busy to show itself.
+    #
+    # expect(...).not_to_have_text() is the fix: it retries until the summary
+    # differs from what a "1" press would leave, so the test cannot pass by
+    # reading the pre-press text and calling it "restored".
     page.keyboard.press("1")
-    page.wait_for_timeout(800)
+    expect(summary).not_to_have_text(re.compile(r"^\s*" + re.escape(count_before) + r" matches"))
+
     page.keyboard.press("Escape")
-    page.wait_for_timeout(800)
-    after = page.locator("#finder-shortlist-summary").inner_text()
-    assert after.split(" matches")[0] == before.split(" matches")[0], \
-        "Escape did not restore the candidate set"
+    # Back to the original count. to_have_text on the exact prefix, anchored, so
+    # "12 matches" cannot satisfy a wait for "2 matches".
+    expect(summary).to_have_text(re.compile(r"^\s*" + re.escape(count_before) + r" matches"))
 
 
 def test_s_skips(server, page):

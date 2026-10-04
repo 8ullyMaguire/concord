@@ -196,7 +196,7 @@ supersedes the narrower one below — same root cause, wider blast radius.
 
 | Test | Symptom | Frequency seen |
 |---|---|---|
-| `test_escape_goes_back` | reads `#finder-shortlist-summary` before it has populated | ~1 run in 3 |
+| `test_escape_goes_back` | **FIXED** — now waits on the summary text, not a sleep; 2/2 mutants killed | was ~1 run in 3, did not reproduce in 9 runs |
 | `test_results_show_the_answers_that_produced_them` | `to_have_count(1)` on `#finder-results-answers li` fails | ~1 run in 5 |
 
 The cause is the same in both: a fixed `page.wait_for_timeout(800)` standing in
@@ -238,26 +238,38 @@ the test reads source that is mid-mutation. It cost a diagnostic cycle on
 2026-10-03 and is the reason the two targets should be run serially, or from
 different working trees.
 
-## `test_escape_goes_back` is flaky — roughly 1 run in 3
+## `test_escape_goes_back` was racy — fixed 2026-10-05 (was "roughly 1 run in 3")
 
-Found 2026-10-03 while verifying the §4.10 project panels. Pre-existing: the file
-is untouched since `51f829a` and the failure reproduces with none of the panel
-work in the tree.
+**Was:** the test read `#finder-shortlist-summary` immediately after a fixed
+`page.wait_for_timeout(800)`. A sleep is not a synchronisation: it passes when the
+machine is fast and fails when it is busy, which is why this presented as an
+intermittent failure and not as a bug.
 
-```bash
-for i in 1 2 3; do python3 -m pytest tests/e2e/finder_e2e.py -q; done
-# 1 failed, 37 passed / 38 passed / 38 passed
-```
+**Measured before changing anything, because the file claimed ~1 run in 3 and I
+had no reason to believe it:** 6/6 passing in isolation, then 3/3 full-suite runs
+of all 38 finder tests green. Nine consecutive clean runs. The claim did not
+reproduce — which is what a load-dependent race looks like on an idle machine, so
+it is not evidence the race was never there.
 
-The cause is in the test, not the finder. It reads
-`#finder-shortlist-summary`'s text immediately after `start(page)`, and `start`
-waits only for `#finder-flow` to be visible — the seed view is `show()`n before
-the short list is populated, which is the same defect class as the `show()`
-without `render()` bug this suite already documents. Pressing `1` then filters,
-and the two reads disagree because the first one caught the short list mid-render.
+**Now:** it waits on the state, not the clock.
+`expect(summary).not_to_have_text(...)` after the `1` press, then
+`expect(summary).to_have_text(...)` after Escape, both anchored on the exact count
+prefix. The second assertion is what stops the test passing vacuously: it waits
+for the ORIGINAL count to come back, so a summary that never changed cannot
+satisfy it.
 
-The fix is a wait on the summary being populated before reading it, not a
-`sleep`. Not applied here because it is the finder suite's own file and fixing it
-belongs with the finder work rather than inside a commit about project panels —
-and a test that only sometimes catches a defect should be fixed by the person who
-owns the flow, not quietly patched by whoever trips over it.
+**And it can fail.** Both ways of breaking Escape were applied to `finder.js` and
+both were caught, which is the only thing that distinguishes this from the sleep
+it replaced:
+
+| mutant | verdict |
+|---|---|
+| Escape does nothing (`goBack` removed from the handler) | KILLED |
+| Escape advances instead of going back | KILLED |
+
+`finder.js` was restored byte-identical and rebuilt afterwards — a mutation run
+that leaves the binary stale makes every later browser test a false PASS.
+
+**Still open, and not fixed here:** 22 other `wait_for_timeout` calls remain in
+the e2e suites. This one was fixed because it was the recorded flake and had a
+cheap, provable state to wait on, not because the pattern is now gone.
