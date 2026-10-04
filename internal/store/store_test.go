@@ -191,7 +191,7 @@ func TestCreateAndGetFeature(t *testing.T) {
 func TestCreateAndGetList(t *testing.T) {
 	store, _, pid := setupWithProject(t)
 	ctx := context.Background()
-	l, err := store.CreateList(ctx, pid, "myslug", "My List", "A list")
+	l, err := store.CreateList(ctx, pid, 1, "myslug", "My List", "A list")
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
@@ -492,10 +492,10 @@ func TestGetFeatureVotes(t *testing.T) {
 func TestGetListsByProject(t *testing.T) {
 	store, _, pid := setupWithProject(t)
 	ctx := context.Background()
-	if _, err := store.CreateList(ctx, pid, "list1", "List 1", "desc"); err != nil {
+	if _, err := store.CreateList(ctx, pid, 1, "list1", "List 1", "desc"); err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}
-	if _, err := store.CreateList(ctx, pid, "list2", "List 2", "desc"); err != nil {
+	if _, err := store.CreateList(ctx, pid, 1, "list2", "List 2", "desc"); err != nil {
 		t.Fatalf("CreateList 2: %v", err)
 	}
 	lists, err := store.GetListsByProject(ctx, pid)
@@ -510,7 +510,7 @@ func TestGetListsByProject(t *testing.T) {
 func TestCreateListEntry(t *testing.T) {
 	store, _, pid := setupWithProject(t)
 	ctx := context.Background()
-	l, err := store.CreateList(ctx, pid, "entry-list", "Entry List", "desc")
+	l, err := store.CreateList(ctx, pid, 1, "entry-list", "Entry List", "desc")
 	if err != nil {
 		t.Fatalf("CreateList: %v", err)
 	}

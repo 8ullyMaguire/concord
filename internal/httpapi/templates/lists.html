@@ -1,0 +1,23 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <p class="breadcrumb"><a href="/projects">Projects</a> / <a href="/projects/{{.Slug}}">{{.Slug}}</a> / <span>Lists</span></p>
+    <h1>Lists &middot; <span data-slug>{{.Slug}}</span></h1>
+    <p class="lede">A list is an object, not a markdown file: entries are proposed, compared against each other and ranked by the community, so &ldquo;best first&rdquo; reflects judgment rather than who edited last.</p>
+  </div>
+</div>
+
+<div id="lists-root" aria-busy="true">
+<script src="{{ asset "/assets/js/skeleton.js" }}"></script>
+<script>
+(function(){var b=document.getElementById("lists-root");
+if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(4);}})();
+</script>
+
+  <div class="empty-state">
+    <p class="empty-state-title">Loading&hellip;</p>
+  </div>
+</div>
+
+<script src="{{ asset "/assets/js/lists.js" }}"></script>
+{{end}}

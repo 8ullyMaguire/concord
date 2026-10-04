@@ -20,24 +20,22 @@ func (s *Server) handleGetList(w http.ResponseWriter, r *http.Request) {
 	// requireProjectID checks the caller's access to the project in the path. It
 	// was missing, so a list belonging to a private project was readable by anyone
 	// who counted to its id.
-	projectID, ok := s.requireProjectID(w, r)
+	//
+	// Its result is now DISCARDED, because requireReadableList makes the same decision
+	// from the list's own project -- and for an instance-wide list that is the correct
+	// authority, since it has none in the path. The call is kept for the access check
+	// it performs on the path's project, which the list's own scope cannot substitute.
+	if _, ok := s.requireProjectID(w, r); !ok {
+		return
+	}
+	// requireReadableList, rather than a second copy of the same decision.
+	//
+	// handleGetList and requireReadableList both answered "may this actor read this
+	// list", and they DISAGREED: one of them accepted an instance-wide list and the
+	// other refused it, because only one was updated when 16's instance-wide scope
+	// was fixed. Two copies of a guard is one copy too many.
+	l, ok := s.requireReadableList(w, r)
 	if !ok {
-		return
-	}
-	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if err != nil {
-		mapError(w, store.ErrInvalid)
-		return
-	}
-	l, err := s.Store.GetList(r.Context(), id)
-	if err != nil {
-		mapError(w, err)
-		return
-	}
-	// And the list must belong to THAT project, or one project's list is served
-	// under another's URL.
-	if l.ProjectID != projectID {
-		mapError(w, store.ErrNotFound)
 		return
 	}
 	writeJSON(w, http.StatusOK, l)
@@ -183,7 +181,7 @@ func (s *Server) handleListLists(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	lists, err := s.Store.GetListsByProject(r.Context(), projectID)
+	lists, err := s.Store.GetListsByProjectForDisplay(r.Context(), projectID)
 	if err != nil {
 		mapError(w, err)
 		return
@@ -208,16 +206,39 @@ func (s *Server) handleCreateList(w http.ResponseWriter, r *http.Request) {
 		Slug        string `json:"slug"`
 		Title       string `json:"title"`
 		Description string `json:"description"`
+		// "instance_wide": true asks for a list with NO project.
+		//
+		// 16: a list is "attachable to a project or instance-wide". The column is
+		// nullable for it and migration 0001 annotates the NULL "NULL =
+		// instance-wide" -- but until this field existed there was NO WAY TO CREATE
+		// ONE OVER HTTP, because the project came from the path unconditionally.
+		//
+		// So the store could do it (after the 0-to-NULL translation), a raw INSERT
+		// could do it, and the API could not. A spec feature reachable only from SQL.
+		//
+		// It is not "no project in the path" as a default, because the path's project
+		// is also the ACCESS CHECK: requireProjectID has already answered "may this
+		// actor write to that project". Defaulting to global would let any project
+		// member mint an instance-wide list, so the scope must be asked for.
+		InstanceWide bool `json:"instance_wide"`
 	}
 	if !readJSON(w, r, &req) {
 		return
 	}
-	l, err := s.Store.CreateList(r.Context(), projectID, req.Slug, req.Title, req.Description)
+	// 0 is the store's spelling of "no project", which CreateList translates to NULL.
+	scope := projectID
+	if req.InstanceWide {
+		scope = 0
+	}
+	l, err := s.Store.CreateList(r.Context(), scope, actorID(r), req.Slug, req.Title, req.Description)
 	if err != nil {
 		mapError(w, err)
 		return
 	}
-	_ = s.Store.AddAudit(r.Context(), projectID, getActorID(r), "create_list", "list", l.ID, req.Slug)
+	// Audited against the project the actor was checked against, which is the
+	// path's -- not the scope written. An instance-wide list has no project to audit
+	// under, and the audit trail is what says who may do this.
+	_ = s.Store.AddAudit(r.Context(), projectID, actorID(r), "create_list", "list", l.ID, req.Slug)
 	writeJSON(w, http.StatusCreated, l)
 }
 
@@ -424,7 +445,17 @@ func (s *Server) requireReadableList(w http.ResponseWriter, r *http.Request) (st
 		mapError(w, err)
 		return store.List{}, false
 	}
-	proj, err := s.Store.GetProjectByID(r.Context(), l.ProjectID)
+	// An instance-wide list has no project to check, and §16 says it is readable from
+	// everywhere -- so it passes here, and the CONTENT is public by definition.
+	//
+	// This nil case is why the function had to change: it used to dereference
+	// l.ProjectID unconditionally, which for a NULL column is a nil pointer panic --
+	// and the only routes that reach here are the ones an instance-wide list must
+	// travel.
+	if l.ProjectID == nil {
+		return l, true
+	}
+	proj, err := s.Store.GetProjectByID(r.Context(), *l.ProjectID)
 	if err != nil {
 		mapError(w, store.ErrNotFound)
 		return store.List{}, false
@@ -688,4 +719,138 @@ func (s *Server) handleUnacceptAnswer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, updated)
+}
+
+// voteListEntryRequest is the pairwise comparison body, matching voteSolutionRequest,
+// the feature vote and the answer vote: two items and an outcome, never a direction.
+//
+// list_entry_votes.outcome is CHECKed to exactly ('a','b','both','neither','skip'), so
+// a {"direction": 1} body would be refused by the database -- and because the UI maps a
+// failed fetch to an empty state, that reads as "no ranking" rather than an error.
+type voteListEntryRequest struct {
+	EntryA  int64  `json:"entry_a"`
+	EntryB  int64  `json:"entry_b"`
+	Outcome string `json:"outcome"`
+	Reason  string `json:"reason"`
+	// Accepted and ignored, for the same reason as everywhere else: §8.3's "money
+	// cannot buy weight". The weight comes from the voter's trust in the project.
+	Weight float64 `json:"weight"`
+}
+
+// handleVoteListEntry records a pairwise comparison between two entries of a list.
+//
+// The list is resolved from the {id} in the path and must belong to the project in the
+// path -- a vote is project-scoped, and the weight formula needs the project. Both
+// checks, because requireProjectID guards the project and the store guards the entries'
+// membership of the list.
+func (s *Server) handleVoteListEntry(w http.ResponseWriter, r *http.Request) {
+	actorID := getActorID(r)
+	if actorID == 0 {
+		mapError(w, store.ErrAuth)
+		return
+	}
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
+	listID, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		mapError(w, store.ErrInvalid)
+		return
+	}
+	list, err := s.Store.GetList(r.Context(), listID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	// A list belongs to a project or is instance-wide (lists.project_id IS NULL). An
+	// instance-wide list cannot be voted on through a project URL, because the weight
+	// formula needs a project and there is none: saying so beats computing a weight
+	// from an unrelated project.
+	if list.ProjectID == nil || *list.ProjectID != projectID {
+		mapError(w, store.ErrNotFound)
+		return
+	}
+
+	var req voteListEntryRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+
+	charter, err := s.Store.GetCharterForProject(r.Context(), projectID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	weight, err := s.entryVoteWeight(r.Context(), projectID, actorID, charter)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+
+	if err := s.Store.VoteListEntry(r.Context(), listID, req.EntryA, req.EntryB, actorID,
+		req.Outcome, weight, charter); err != nil {
+		mapError(w, err)
+		return
+	}
+	_ = s.Store.AddAudit(r.Context(), projectID, actorID, "vote_list_entry", "list",
+		listID, fmt.Sprintf("a=%d b=%d outcome=%s", req.EntryA, req.EntryB, req.Outcome))
+
+	// The entries back, so a vote the caller cannot see take effect is a vote they
+	// cannot trust.
+	entries, err := s.Store.GetListEntries(r.Context(), listID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"status": "voted", "entries": entries})
+}
+
+// entryVoteWeight is this voter's influence on a list entry.
+//
+// §8.3's formula -- reputation and role, capped by the charter -- and NOT the
+// solution vote's, because that one weighs proximity to a FEATURE, which is
+// meaningless for two library URLs. There is no expertise term: list entries carry no
+// tags, so there is nothing for one to be scoped to, and inventing a substitute would
+// apply a multiplier computed from an unrelated subject.
+func (s *Server) entryVoteWeight(ctx context.Context, projectID, actorID int64, charter governance.Charter) (float64, error) {
+	reputation, err := s.Store.GetReputation(ctx, projectID, actorID)
+	if err != nil {
+		return 0, err
+	}
+	role, err := s.Store.GetRoleForProject(ctx, projectID, actorID)
+	if err != nil {
+		return 0, err
+	}
+	weight := ranking.VoteWeight(reputation, ranking.RoleMultiplier(role), charter.VoteWeightCap)
+
+	// The age gate last, for §12.3's Sybil defence: a defence a reputation multiplier
+	// can be cancelled by is not a defence.
+	createdAt, err := s.Store.GetUserCreatedAt(ctx, actorID)
+	if err == nil {
+		weight *= ranking.AgeGateMultiplier(
+			ranking.AccountAgeDays(createdAt, float64(time.Now().Unix())))
+	}
+
+	if weight > charter.VoteWeightCap {
+		weight = charter.VoteWeightCap
+	}
+	if weight < 0 {
+		weight = 0
+	}
+	return weight, nil
+}
+
+// handleListInstanceLists returns every instance-wide list.
+//
+// §16's "attachable to a project or instance-wide" needed a route that did not name a
+// project: the project-scoped index cannot return one (project_id IS NULL matches no
+// ?), so without this the scope was write-only.
+func (s *Server) handleListInstanceLists(w http.ResponseWriter, r *http.Request) {
+	lists, err := s.Store.GetInstanceLists(r.Context())
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, lists)
 }

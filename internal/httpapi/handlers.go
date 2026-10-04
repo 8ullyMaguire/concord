@@ -1922,3 +1922,51 @@ func (s *Server) handleRequestPage(w http.ResponseWriter, r *http.Request) {
 		Slug string
 	}{s.pageFor(r, "Request - "+slug), slug})
 }
+
+// handleListsPage renders §16's list index for a project.
+func (s *Server) handleListsPage(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	s.render(w, http.StatusOK, "lists", struct {
+		pageData
+		Slug string
+	}{s.pageFor(r, "Lists - "+slug), slug})
+}
+
+// handleListPage renders one list and its entries in ranking order.
+//
+// The {slug} here is the BROWSING context, not the list's owner: lists.project_id is
+// nullable and an instance-wide list has none. So the guard is the slug's visibility
+// and the list itself is left to the page's fetch, which is guarded by requireProjectID
+// on the API side. handleListPage does not claim to authorise the list -- asserting
+// that it does would be the "a guard on the path is not a guard on the row" mistake.
+func (s *Server) handleListPage(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		s.notFoundPage(w, r, "There is no list at this address.")
+		return
+	}
+	s.render(w, http.StatusOK, "list", struct {
+		pageData
+		Slug string
+		ID   int64
+	}{s.pageFor(r, "List - "+slug), slug, id})
+}

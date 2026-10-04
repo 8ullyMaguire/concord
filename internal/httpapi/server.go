@@ -204,7 +204,7 @@ func (s *Server) loadTemplates() error {
 	// (see `render`), which is how a missing entry shows up rather than a blank page.
 	pages := []string{"index", "search", "projects", "project", "board",
 		"login", "register", "rank", "ranking", "documents", "notfound", "finder",
-		"scout", "consensus", "audit", "feature", "complaint", "requests"}
+		"scout", "consensus", "audit", "feature", "complaint", "requests", "lists", "list"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -698,6 +698,8 @@ func (s *Server) Router() http.Handler {
 	})
 
 	// Lists
+	// 16: the instance-wide scope, which has no project to hang off.
+	r.Get("/api/v1/lists", s.handleListInstanceLists)
 	r.Route("/api/v1/projects/{project_id}/lists", func(r chi.Router) {
 		r.Get("/", s.handleListLists)
 		r.Post("/", s.handleCreateList)
@@ -705,6 +707,11 @@ func (s *Server) Router() http.Handler {
 			r.Get("/", s.handleGetList)
 			r.Get("/entries", s.handleGetListEntries)
 			r.Post("/entries", s.handleCreateListEntry)
+			// §16: "Entries are ranked, not just listed." list_entry_votes and the
+			// elo columns on list_entries existed from migration 0001 with NO Go code at
+			// all, so every entry read back at its 1500 seed forever and a list was
+			// exactly the alphabetical accident the section says it must not be.
+			r.Post("/entries/vote", s.handleVoteListEntry)
 		})
 	})
 
@@ -748,6 +755,11 @@ func (s *Server) Router() http.Handler {
 	r.Get("/projects/{slug}/audit", s.handleAuditPage)
 	r.Get("/projects/{slug}/features/{id}", s.handleFeaturePage)
 	r.Get("/projects/{slug}/complaints/{id}", s.handleComplaintPage)
+	// §16's lists. Mounted on {slug} with the other detail pages, NOT on {project_id}
+	// like the API: a list can be INSTANCE-WIDE (lists.project_id IS NULL), so the
+	// slug is the browsing context rather than the list's owner.
+	r.Get("/projects/{slug}/lists", s.handleListsPage)
+	r.Get("/projects/{slug}/lists/{id}", s.handleListPage)
 	// §17's request board detail. Mounted on {slug} with the other detail pages,
 	// NOT on {project_id} like the API: a request may be INSTANCE-WIDE
 	// (requests.project_id IS NULL), so the {slug} in the path is the browsing

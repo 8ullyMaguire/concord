@@ -1767,3 +1767,16 @@ textarea:focus-visible {
 .comment-form textarea { width: 100%; margin-bottom: 0.5rem; }
 .comment-form-row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
 .notice-error { color: var(--danger); font-size: 0.9rem; }
+
+/* Lists (spec 16) and their ranked entries. */
+.list-entries { list-style: none; margin: 0; padding: 0; }
+.list-entry { padding: 0.85rem 0; border-top: 1px solid var(--border); }
+.list-entry-head { display: flex; align-items: flex-start; gap: 1rem; flex-wrap: wrap; justify-content: space-between; }
+.list-entry-title { font-weight: 600; overflow-wrap: anywhere; }
+.list-entry-url { font-size: 0.8rem; color: var(--muted); margin: 0.2rem 0 0; overflow-wrap: anywhere; }
+.list-entry-desc { margin: 0.4rem 0 0; }
+.entry-group { margin-top: 1.5rem; }
+.entry-category { font-size: 1rem; text-transform: lowercase; letter-spacing: 0.02em; }
+.entry-category .count { color: var(--muted); font-weight: 400; font-size: 0.85rem; }
+.entry-category .count::before { content: "("; }
+.entry-category .count::after { content: ")"; }

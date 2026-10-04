@@ -395,6 +395,39 @@
   // asserted on THIS FILE rather than the server's HTML on purpose: the cards render
   // client-side, so a server-HTML assertion would pass because the script's own source
   // contains the path and would keep passing if the link were deleted here.
+  // listSection renders §16's lists for one project, linking each to its detail page.
+  //
+  // The link is built from BOTH the slug and the list id.
+  function listSection(lists, p) {
+    var head =
+      '<div class="section-head" style="margin-top:2rem;">' +
+      '<h2 class="section-title" style="font-size:1.25rem;">Lists</h2>' +
+      '<p class="section-sub">Curated collections whose entries are ranked by ' +
+      'pairwise comparison, not by who edited the markdown last.</p></div>';
+
+    if (!lists || !lists.length) {
+      return head +
+        '<div class="empty-state"><div class="empty-state-icon">\u{1F4CB}</div>' +
+        '<p class="empty-state-title">No lists yet</p>' +
+        '<p class="empty-state-description">Nothing has been curated here.</p></div>';
+    }
+
+    return head + '<div class="grid-responsive-2">' + lists.map(function (l) {
+      // `p` is the project, a parameter of render(); `l` is this list. Both in scope
+      // HERE, which is the whole lesson of complaintCards(list, slug).
+      var href = '/projects/' + encodeURIComponent(p.slug) + '/lists/' +
+        encodeURIComponent(l.id);
+      // A LIST has `name`; an entry has `title`. One letter apart, and reading the
+      // wrong one renders a card with an empty heading and no error.
+      return '<article class="card">' +
+        '<h3><a href="' + href + '">' + esc(l.name) + '</a></h3>' +
+        (l.description ? '<p class="card-text">' + esc(l.description) + '</p>' : '') +
+        '<p class="card-meta"><span class="badge ' +
+        (l.status === 'open' ? 'badge-blue' : 'badge-slate') + '">' +
+        esc(l.status) + '</span></p></article>';
+    }).join('') + '</div>';
+  }
+
   function requestSection(requests, p) {
     var head =
       '<div class="section-head" style="margin-top:2rem;">' +
@@ -598,7 +631,7 @@
       });
   }
 
-  function render(p, features, complaints, documents, panels, requests) {
+  function render(p, features, complaints, documents, panels, requests, lists) {
     panels = panels || {};
     var badges = '<div class="pill-row" style="margin-top:0.75rem;">' +
       '<span class="badge badge-indigo">' + esc(p.governance_model || 'governed') + '</span>' +
@@ -673,6 +706,7 @@
       // Between the header and Complaints, because the capability matrix is what
       // says what the project IS and complaints are what it is trying to fix.
       requestSection(requests, p) +
+      listSection(lists, p) +
       capabilitiesPanel(panels.capabilities) +
       fieldReportsPanel(panels.fieldReports) +
       // §4.10's order puts standings in the roadmap, after field reports.
@@ -756,6 +790,11 @@
           // error. Anything added here goes LAST, and the mapping below is by index.
           fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/requests')
             .then(function (r) { return r.ok ? r.json() : []; })
+            .catch(function () { return []; }),
+          // Lists (16), appended last so no existing index shifts. Same non-fatal
+          // shape as complaints and requests.
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/lists')
+            .then(function (r) { return r.ok ? r.json() : []; })
             .catch(function () { return []; })
         ])
           .then(function (res) {
@@ -763,6 +802,8 @@
             // last (res[7]) because it was appended last.
             var features = res[0], complaints = res[1], documents = res[2];
             var requests = res[7];
+            // res[8] for the same reason: appended, so it is last.
+            var lists = res[8];
             // The feature form's select needs the complaint list at render
             // time, so it is stashed rather than threaded through the markup.
             window.__complaints = complaints || [];
@@ -771,7 +812,7 @@
               fieldReports: res[4],
               solutions: res[5],
               alternatives: res[6]
-            }, requests);
+            }, requests, lists);
             if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
             wire(box, slug, p.id);
           });

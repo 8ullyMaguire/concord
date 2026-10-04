@@ -4,7 +4,7 @@ Written 2026-10-05. Every number below is measured, not remembered. The doc-numb
 gate (`scripts/check_doc_numbers.py`, in `make verify`) fails when any of them goes
 stale, so this file cannot quietly become fiction.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · 843 Go tests across
+**Measured state:** schema 25 · 25 migrations · 79 live tables · 863 Go tests across
 9 test-bearing packages · 174 e2e tests in 10 suites · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
@@ -49,6 +49,7 @@ Two are built. The rest are the real remaining work, and every one of them has a
 | 4 | ~~Complaint detail~~ | ✅ built 2026-10-05; **new** `.../complaints/{id}/features` | ✅ `complaint.html` | via complaint card |
 | 5 | **Project settings** | ✅ charter, members, invites, tags, languages, visibility | ❌ | — |
 | 6 | ~~Comments~~ | ✅ built 2026-10-05 on the feature + complaint detail pages; **new** thread-ownership guard | ✅ shared `comments.js` | on both detail pages |
+| 6b | ~~Lists (§16)~~ | ✅ built 2026-10-05; **new** pairwise Glicko-2 vote (§16's central claim, previously unbuilt) | ✅ `lists.js` + `list.js` | index + ranking detail |
 | 7 | **Merge requests** | ✅ create/approve/execute/reject | ❌ | — |
 | 8 | ~~Requests + answers~~ | ✅ built 2026-10-05; **new** accept-answer, request tags, instance-wide board | ✅ `requests.html` | via request card |
 | 9 | **Lists** | ✅ create/entries | ❌ | — |
@@ -356,3 +357,74 @@ And one guard was unreachable through the API: `thread_kind` follows from `threa
 so two comments sharing a thread necessarily share a kind. That term is pinned by a
 direct SQL INSERT instead — the thing the guard exists to survive.
 
+
+---
+
+## 7. Lists: §16 said "ranked, not just listed" and nothing ranked anything
+
+**2026-10-05.** §16's second line is the whole point of the feature: *"Entries are
+ranked, not just listed. Entries compete in pairwise comparisons (the same Glicko-2
+engine as feature priority), so 'best first' reflects community judgment instead of
+alphabetical accident."*
+
+`list_entry_votes` was in migration 0001, `list_entries` carried `elo_r`/`elo_rd`/
+`elo_vol`, and `GetListEntries` already did `ORDER BY elo_r DESC`. **No Go code wrote
+the table.** No route called a vote. So every entry read back at its 1500 seed forever,
+every list was in creation order, and the section's central claim was false in exactly
+the way it named.
+
+### Four defects, and the instance-wide scope was unreachable four ways
+
+The interesting part of this section was not the missing vote. It was that
+**"attachable to a project or instance-wide" (§16, line 437) could not be done at all**:
+
+1. `List.ProjectID` was an `int64`, so `SELECT`ing an instance-wide row failed the
+   scan and the detail route answered **500**. The problem looked like a database
+   error; it was a type.
+2. `GetListsByProject` filtered `project_id=?`, which never matches `NULL`, so no index
+   could return one.
+3. `handleGetList` required `l.ProjectID == projectID` — 0 against a real id — so the
+   only detail route 404'd.
+4. **`CreateList` sent `0` to the column**, which has a `FOREIGN KEY` to `projects(id)`
+   with no row 0. So even the store refused: *"FOREIGN KEY constraint failed"*, naming
+   a constraint when the real fault was 0-versus-NULL.
+
+Each alone would have been a bug. Together: a list created instance-wide was invisible,
+unreadable, and **impossible to create over HTTP** — a spec feature reachable only from
+SQL. There was no `instance_wide` field, because the path's project was the only source
+of scope.
+
+### Two copies of one guard, disagreeing
+
+`handleGetList` and `requireReadableList` both answered "may this actor read this list",
+and they **disagreed**: fixing instance-wide in one left the other refusing it. So
+`handleGetList` now calls `requireReadableList` instead of repeating it. And the nil
+branch inside that function was dead code — only one route used it — which is why
+mutating it away left the suite green until the entries route got its own assertion.
+
+### A gate satisfied by my own comment
+
+The link gate read `project.js` as text and required `listSection(lists, p) +`. It
+passed **while the call was deleted**, because the comment I had written above the
+function quoted the expression back:
+
+```go
+// That gate wants the concatenation `listSection(lists, p) +`,
+```
+
+**A gate satisfied by a comment is worse than no gate, because it is confident.** The
+static half now asserts the call exists by index and the DOM half moved to Playwright,
+where a client-rendered anchor can actually be seen.
+
+### A test that was wrong while the code was right
+
+The ranking assertion compared titles in DOM order against the rating order — and
+failed on **correct** output. Entries are grouped by category (§16), so document order
+is `[runtime group, uncategorised group]`, and the assertion conflated two independent
+claims. It now reads the rank off each row's `data-entry-id`.
+
+And the seed that proves §16 at all is built so **alphabetical and rating order
+disagree completely** (`aaaa first` is best, `zzzz last` is worst). Without that, an
+unranked implementation and a correctly ranked one render identically.
+
+863 Go tests. `make verify` and `make e2e` green.
