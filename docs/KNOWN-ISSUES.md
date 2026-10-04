@@ -125,21 +125,107 @@ reimplemented — against a database holding a real duplicate and real votes.
 **Still true, unchanged:** `git fsck`/`VACUUM` are advisory on this file, and
 the WAL-copy trap below still applies.
 
-## `0008_project_delete_cascade.sql` breaks if applied after a later `ADD COLUMN`
+## Replaying `0008` replaces a newer table shape with an older one (2026-10-05)
 
-`INSERT INTO charters_new SELECT * FROM charters` copies positionally. Once
-`0011` has added `support_ratio_min`, the source has 19 columns and the target
-18, and the migration fails:
+**Symptom.** Replaying 0008 against a live database dropped columns, indexes,
+triggers and foreign keys. All four are fixed. One residue remains, and it is a
+different mechanism from the other four.
+
+### Fixed, and how each was found
+
+Nothing here was found by reading the code. Each was found by **replaying 0008
+against a copy of the live database** and diffing the schema before and after, or
+by a test failing for an unrelated-looking reason:
+
+- **Silent column loss.** 0008 rebuilds 23 tables to shapes written into the
+  file. Nineteen later `ADD COLUMN`s land on five of them. `SELECT *` made that a
+  loud crash; naming the columns made it silent data loss instead. Fixed by
+  widening each rebuilt table from the table it replaces, at an explicit
+  `-- concord:preserve-columns-split` marker.
+- **A later trigger breaking the rebuild.** 0015's `trg_tag_alias_no_shadow` reads
+  `tags`, which 0008 drops, and SQLite revalidates a `WHEN` clause on every write,
+  so the replay died with `no such table: main.tags`. Fixed by dropping dependent
+  triggers first and restoring them after.
+- **Triggers silently removed.** `DROP TABLE` takes a table's own triggers with
+  it. `trg_pairwise_votes_no_update` is `BEFORE UPDATE ON pairwise_votes` — the
+  rebuilt table itself — so the append-only guarantee 0024 added just vanished, with
+  no error. Worse than the crash it replaced: the crash blocked a replay nobody
+  performs, the missing trigger removed an invariant from a database that was
+  running.
+- **Indexes silently removed.** Same mechanism, and `UNIQUE` indexes are
+  invariants, not performance. Seven indexes from 0014/0017/0020 were dropped by
+  `DROP TABLE` without error.
+- **Foreign keys silently removed.** A widened column kept its data and lost its
+  `REFERENCES` clause — so `pairwise_votes.arena_id` survived as a plain integer and
+  `ON DELETE CASCADE` stopped working. SQLite has no per-column FK in
+  `PRAGMA table_info`, so the clause is recovered from the DDL in `sqlite_master`.
+
+### Two of my own claims were wrong, and measuring caught both
+
+- **"NOT NULL columns are skipped" was wrong** in a way that *lost data*. The
+  original reasoning was "SQLite refuses `ADD COLUMN NOT NULL` on a non-empty
+  table", which is only true **without a default**. Skipping NOT NULL therefore
+  dropped `charters.support_ratio_min` (0011, `NOT NULL DEFAULT 0.5`) and
+  `tags.suggested` (0015, `NOT NULL DEFAULT 0`) in a replay that otherwise
+  reported success. A guard that discards a column to avoid an error it would
+  never have hit is the guard causing the damage.
+- **A fallback that relaxed NOT NULL was dead code.** It existed because I had
+  reasoned about the *source* table, which has rows, rather than the *target*,
+  which is empty at widening time. SQLite refuses the strict form only on a
+  non-empty table, so it always succeeds and NOT NULL is in fact reproduced
+  **exactly**. The mutation was what proved it: replacing the fallback with
+  `continue` changed nothing observable, because no fixture can make a rebuilt
+  table non-empty before the copy.
+
+### The residue: a replay re-applies the OLD shape
+
+`features` is rebuilt by **both 0008 and 0010**. 0010 declares
+`body TEXT NOT NULL DEFAULT ''` and adds `effort`, `impact_ratio` and a CHECK; 0008
+declares `body TEXT DEFAULT ''` and has none of them. On a fresh install 0010 runs
+last and wins. Replay 0008 alone and 0008's older, weaker shape wins instead:
 
 ```
-table charters_new has 18 columns but 19 values were supplied
+features  lost NOT NULL ['body', 'effort']
 ```
 
-The runner applies migrations in version order, so this only bites when a
-database is caught between the two — a partially-migrated backup, or a manual
-replay. Naming the columns instead of `SELECT *` removes the coupling. Recorded
-rather than fixed: the deployed database is past both, and rewriting a
-historical migration changes what a fresh install does.
+Widening cannot fix this. Adding a column is `ALTER TABLE ADD COLUMN`; **removing a
+NOT NULL, or restoring a CHECK constraint, is not expressible** — SQLite has no
+`ALTER COLUMN`. So for a column 0008 *already declares*, widening has nothing to
+do; the weakened constraint simply survives.
+
+Fixing it means deriving each rebuilt shape from the source table rather than
+widening a declared one. That rewrites how all 23 tables are built and wants its
+own review, so it is recorded here rather than done in a verification pass.
+
+Measured on a replay of the live database (79 tables, 1806 audit rows, 437
+features): **everything else is lossless** — rows, columns, NOT NULL, foreign
+keys, 55 named indexes, 10 triggers, `integrity_check ok`. Only this one
+constraint discrepancy remains.
+
+### The honest measure of the fix
+
+The replay test is a diff of 79 tables before and after — rows, columns, NOT NULL
+flags, foreign keys, named indexes, triggers — against a copy of the live database.
+It is the only thing here that found these defects, and four of the five were
+invisible to the unit tests.
+
+Two gates, both of which were **wrong first**:
+
+- `TestMigration8SurvivesALaterAddColumn` passed with every one of 23 tables
+  reverted to `SELECT *`. `migrateFS` skips versions already in
+  `schema_migrations`, so the "replay" re-ran nothing. Clearing the version row
+  first is both the fix and the honest model of a restored backup. It also widened
+  only `charters`, so reverting any of the other 22 was invisible; it now derives
+  the table set from the migration's own `CREATE TABLE x_new` lines.
+- `TestNoMigrationCopiesRowsWithSelectStar` asserts the class across all 24 files,
+  because a test aimed at one file cannot catch the next one written that way.
+
+**Every marker and helper was mutation-checked**, and two were wrong in a way only
+the revert showed: removing `-- concord:preserve-columns-split` from 0008 leaves
+the runner's other marker in place, so the file looks opted-in while no widening
+runs — killed only by reverting the split marker itself. And
+`TestTheHatchSignalIsCheckedNotAnyValue`, a test about a vote log, is what caught
+the index-restore collision. Nobody would have looked there.
 
 ## An unindexed row makes duplicate detection fail silently (recurs; guard added 2026-10-05)
 
@@ -245,54 +331,23 @@ by nothing yet; it was the reason the `neither` outcome silently scored as a
 draw before 2026-10-02. One representation should be authoritative and
 constrained, not two with one unwritten.
 
-## The finder suite has a class of `wait_for_timeout` races, not one flaky test
+## The finder suite's wait_for_timeout races — SUPERSEDED, see the section below
 
-Recorded after the third instance appeared on 2026-10-03, and this entry
-supersedes the narrower one below — same root cause, wider blast radius.
+**Closed.** This entry recorded the third instance of one class (recorded
+2026-10-03) and listed two concrete fixes, with the note that they were
+"deliberately not applied" because a suite whose flakes get patched by whoever
+happened to run them last stops being one person's problem and becomes everyone's.
 
-| Test | Symptom | Frequency seen |
-|---|---|---|
-| `test_escape_goes_back` | **FIXED** — now waits on the summary text, not a sleep; 2/2 mutants killed | was ~1 run in 3, did not reproduce in 9 runs |
-| `test_results_show_the_answers_that_produced_them` | `to_have_count(1)` on `#finder-results-answers li` fails | ~1 run in 5 |
+That reasoning was right about ownership and wrong about the work: the fixes were
+applied as one sweep against the whole class on 2026-10-05, not as two
+drive-by patches. **22 sleeps -> 3, all three justified, 0 racy**, plus
+`scripts/check_e2e_sync.py` in `make verify` so the class cannot regrow
+unnoticed. `finder_e2e.py` also went 43s -> 9s.
 
-The cause is the same in both: a fixed `page.wait_for_timeout(800)` standing in
-for a wait on the thing the test actually asserts. The finder is a mount point
-that paints instantly and fills in after fetches, so 800ms is a guess about
-network latency, and every such guess is a flake waiting for a slow run.
+Both fixes proposed here were the right ones. Kept because the reasoning about
+*why* it was deferred is the part worth not losing: a flake fix belongs with the
+work that caused the flake, not with the run that happened to trip over it.
 
-The fix is a wait on the element or its content, not a longer sleep. Two
-concretely:
-
-```python
-# before
-page.wait_for_timeout(800)
-before = page.locator("#finder-shortlist-summary").inner_text()
-
-# after
-expect(page.locator("#finder-shortlist-summary")).to_contain_text("matches")
-before = page.locator("#finder-shortlist-summary").inner_text()
-```
-
-and for the answers list, wait for the first `li` to exist rather than for a
-count to settle:
-
-```python
-expect(page.locator("#finder-results-answers li").first).to_be_visible(timeout=10000)
-```
-
-Deliberately not applied in the commits that tripped over these. Both are the
-finder's own tests, both were green on the runs that followed, and a suite that
-gets its flakes patched by whoever happened to run them last stops being the
-finder's problem and starts being everyone's. It belongs with the finder work.
-
-### A note on running `make verify` and `make gates` together
-
-`make gates` mutates `internal/httpapi/finder.go` in place while it runs. Running
-it in the same shell as `make verify` produces a `TestWhyThisQuestionDescribes-
-TheSplitNotOneOption` failure that does not reproduce when either runs alone:
-the test reads source that is mid-mutation. It cost a diagnostic cycle on
-2026-10-03 and is the reason the two targets should be run serially, or from
-different working trees.
 
 ## The e2e suites synchronised on a clock, not on state (fixed 2026-10-05)
 

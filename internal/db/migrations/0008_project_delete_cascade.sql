@@ -50,6 +50,22 @@
 --   were counted before the migration ran.
 
 -- concord:requires-foreign-keys-off
+
+-- concord:rebuild-preserve-columns
+--
+-- This migration rebuilds 21 tables to SHAPES WRITTEN HERE, and those shapes are a
+-- snapshot of the tables as they were when this file was written. Nineteen later
+-- migrations ADD a column to five of them (0010 features, 0011 charters, 0014
+-- consensus_calls, 0015 tags, 0018/0019 charters and consensus_calls), so a REPLAY
+-- of this file against such a database -- a restored backup, a partially
+-- migrated one, a manual re-run -- rebuilds a table without those columns and
+-- the data in them is gone from the table that replaces it.
+--
+-- The copy statements below name their columns, which is what makes the widening
+-- safe: an INSERT with an explicit column list is unaffected by extra columns on
+-- the target. The two changes belong together, and the runner marker is what ties
+-- them: it inserts the widening between the shapes being created and the rows
+-- being copied, which a single executescript cannot express.
 --
 -- The marker above is read by internal/db/migrate.go. It is required, not
 -- decorative. This file rebuilds 21 tables, and PRAGMA foreign_keys is a
@@ -93,7 +109,25 @@ CREATE TABLE charters_new (
     glicko_tau                REAL NOT NULL DEFAULT 0.5,
     vote_weight_cap           REAL NOT NULL DEFAULT 3.0
 );
-INSERT INTO charters_new SELECT * FROM charters;
+--
+-- Everything ABOVE this line creates the rebuilt shapes; everything below it
+-- copies rows into them. The runner widens each `<name>_new` from the table it
+-- replaces at exactly this boundary, so a column added by a later migration
+-- survives a replay instead of being dropped on the floor. See
+-- internal/db/rebuild_preserve.go.
+
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO charters_new (project_id, quorum_ratio, quorum_min, consent_ratio, override_ratio, vote_window_days, merge_requires_quorum, merge_quorum_min, merge_quorum_ratio, require_reviewer_approval, wip_in_progress, wip_review, lam, mu, pain_halflife_days, rep_halflife_days, glicko_tau, vote_weight_cap)
+SELECT project_id, quorum_ratio, quorum_min, consent_ratio, override_ratio, vote_window_days, merge_requires_quorum, merge_quorum_min, merge_quorum_ratio, require_reviewer_approval, wip_in_progress, wip_review, lam, mu, pain_halflife_days, rep_halflife_days, glicko_tau, vote_weight_cap FROM charters;
 DROP TABLE charters;
 ALTER TABLE charters_new RENAME TO charters;
 CREATE TABLE members_new (
@@ -105,7 +139,18 @@ CREATE TABLE members_new (
     joined_at    REAL NOT NULL,
     PRIMARY KEY (project_id, user_id)
 );
-INSERT INTO members_new SELECT * FROM members;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO members_new (project_id, user_id, role, is_moderator, joined_at)
+SELECT project_id, user_id, role, is_moderator, joined_at FROM members;
 DROP TABLE members;
 ALTER TABLE members_new RENAME TO members;
 CREATE TABLE project_tags_new (
@@ -115,7 +160,18 @@ CREATE TABLE project_tags_new (
     created_at REAL NOT NULL,
     PRIMARY KEY (project_id, tag_id)
 );
-INSERT INTO project_tags_new SELECT * FROM project_tags;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO project_tags_new (project_id, tag_id, applied_by, created_at)
+SELECT project_id, tag_id, applied_by, created_at FROM project_tags;
 DROP TABLE project_tags;
 ALTER TABLE project_tags_new RENAME TO project_tags;
 CREATE INDEX idx_project_tags   ON project_tags(tag_id);
@@ -126,7 +182,18 @@ CREATE TABLE project_languages_new (
     pct        REAL NOT NULL CHECK (pct >= 0 AND pct <= 100),
     PRIMARY KEY (project_id, language)
 );
-INSERT INTO project_languages_new SELECT * FROM project_languages;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO project_languages_new (project_id, language, pct)
+SELECT project_id, language, pct FROM project_languages;
 DROP TABLE project_languages;
 ALTER TABLE project_languages_new RENAME TO project_languages;
 CREATE INDEX idx_plangs_project ON project_languages(project_id);
@@ -143,7 +210,18 @@ CREATE TABLE project_metrics_new (
     health_score        REAL,
     computed_at         REAL
 );
-INSERT INTO project_metrics_new SELECT * FROM project_metrics;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO project_metrics_new (project_id, stars, forks, open_issues, commit_count, contributors, last_commit_at, median_review_hours, releases_90d, health_score, computed_at)
+SELECT project_id, stars, forks, open_issues, commit_count, contributors, last_commit_at, median_review_hours, releases_90d, health_score, computed_at FROM project_metrics;
 DROP TABLE project_metrics;
 ALTER TABLE project_metrics_new RENAME TO project_metrics;
 CREATE TABLE complaints_new (
@@ -161,7 +239,18 @@ CREATE TABLE complaints_new (
     created_at          REAL NOT NULL,
     updated_at          REAL NOT NULL
 );
-INSERT INTO complaints_new SELECT * FROM complaints;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO complaints_new (id, project_id, author_id, title, body, severity, frequency, strategic_multiplier, status, merged_into, created_at, updated_at)
+SELECT id, project_id, author_id, title, body, severity, frequency, strategic_multiplier, status, merged_into, created_at, updated_at FROM complaints;
 DROP TABLE complaints;
 ALTER TABLE complaints_new RENAME TO complaints;
 CREATE INDEX idx_complaints     ON complaints(project_id, status);
@@ -182,7 +271,18 @@ CREATE TABLE features_new (
     created_at       REAL NOT NULL,
     updated_at       REAL NOT NULL
 );
-INSERT INTO features_new SELECT * FROM features;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO features_new (id, project_id, author_id, title, body, effort, status, elo_r, elo_rd, elo_vol, strategic_weight, created_at, updated_at)
+SELECT id, project_id, author_id, title, body, effort, status, elo_r, elo_rd, elo_vol, strategic_weight, created_at, updated_at FROM features;
 DROP TABLE features;
 ALTER TABLE features_new RENAME TO features;
 CREATE INDEX idx_features       ON features(project_id, status);
@@ -196,7 +296,18 @@ CREATE TABLE pairwise_votes_new (
     weight     REAL NOT NULL DEFAULT 1.0,
     created_at REAL NOT NULL
 );
-INSERT INTO pairwise_votes_new SELECT * FROM pairwise_votes;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO pairwise_votes_new (id, project_id, feature_a, feature_b, voter_id, outcome, weight, created_at)
+SELECT id, project_id, feature_a, feature_b, voter_id, outcome, weight, created_at FROM pairwise_votes;
 DROP TABLE pairwise_votes;
 ALTER TABLE pairwise_votes_new RENAME TO pairwise_votes;
 CREATE INDEX idx_votes_project  ON pairwise_votes(project_id, voter_id);
@@ -211,7 +322,18 @@ CREATE TABLE consensus_calls_new (
     result     TEXT,
     summary    TEXT
 , extensions INTEGER NOT NULL DEFAULT 0);
-INSERT INTO consensus_calls_new SELECT * FROM consensus_calls;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO consensus_calls_new (id, project_id, feature_id, opened_by, opens_at, closes_at, status, result, summary, extensions)
+SELECT id, project_id, feature_id, opened_by, opens_at, closes_at, status, result, summary, extensions FROM consensus_calls;
 DROP TABLE consensus_calls;
 ALTER TABLE consensus_calls_new RENAME TO consensus_calls;
 CREATE TABLE board_columns_new (
@@ -222,7 +344,18 @@ CREATE TABLE board_columns_new (
     wip_limit  INTEGER,
     UNIQUE (project_id, phase)
 );
-INSERT INTO board_columns_new SELECT * FROM board_columns;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO board_columns_new (id, project_id, phase, position, wip_limit)
+SELECT id, project_id, phase, position, wip_limit FROM board_columns;
 DROP TABLE board_columns;
 ALTER TABLE board_columns_new RENAME TO board_columns;
 CREATE TABLE board_cards_new (
@@ -234,7 +367,18 @@ CREATE TABLE board_cards_new (
     column_id    INTEGER NOT NULL REFERENCES board_columns(id),
     entered_at   REAL NOT NULL
 );
-INSERT INTO board_cards_new SELECT * FROM board_cards;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO board_cards_new (id, project_id, kind, complaint_id, feature_id, column_id, entered_at)
+SELECT id, project_id, kind, complaint_id, feature_id, column_id, entered_at FROM board_cards;
 DROP TABLE board_cards;
 ALTER TABLE board_cards_new RENAME TO board_cards;
 CREATE TABLE comments_new (
@@ -252,7 +396,18 @@ CREATE TABLE comments_new (
     deleted_at  REAL,
     created_at  REAL NOT NULL
 );
-INSERT INTO comments_new SELECT * FROM comments;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO comments_new (id, project_id, thread_kind, thread_id, author_id, parent_id, body, label, score, deleted_at, created_at)
+SELECT id, project_id, thread_kind, thread_id, author_id, parent_id, body, label, score, deleted_at, created_at FROM comments;
 DROP TABLE comments;
 ALTER TABLE comments_new RENAME TO comments;
 CREATE TABLE merge_requests_new (
@@ -268,7 +423,18 @@ CREATE TABLE merge_requests_new (
     closed_at    REAL,
     closed_by    INTEGER REFERENCES users(id)
 );
-INSERT INTO merge_requests_new SELECT * FROM merge_requests;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO merge_requests_new (id, project_id, feature_id, author_id, title, external_ref, status, opened_at, closed_at, closed_by)
+SELECT id, project_id, feature_id, author_id, title, external_ref, status, opened_at, closed_at, closed_by FROM merge_requests;
 DROP TABLE merge_requests;
 ALTER TABLE merge_requests_new RENAME TO merge_requests;
 CREATE TABLE lists_new (
@@ -283,7 +449,18 @@ CREATE TABLE lists_new (
     created_at  REAL NOT NULL,
     updated_at  REAL NOT NULL
 );
-INSERT INTO lists_new SELECT * FROM lists;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO lists_new (id, project_id, slug, title, description, status, created_by, created_at, updated_at)
+SELECT id, project_id, slug, title, description, status, created_by, created_at, updated_at FROM lists;
 DROP TABLE lists;
 ALTER TABLE lists_new RENAME TO lists;
 CREATE INDEX idx_lists_project ON lists(project_id);
@@ -295,7 +472,18 @@ CREATE TABLE reputation_events_new (
     points     REAL NOT NULL,
     created_at REAL NOT NULL
 );
-INSERT INTO reputation_events_new SELECT * FROM reputation_events;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO reputation_events_new (id, project_id, user_id, kind, points, created_at)
+SELECT id, project_id, user_id, kind, points, created_at FROM reputation_events;
 DROP TABLE reputation_events;
 ALTER TABLE reputation_events_new RENAME TO reputation_events;
 CREATE INDEX idx_rep            ON reputation_events(project_id, user_id);
@@ -310,7 +498,18 @@ CREATE TABLE requests_new (
     created_at REAL NOT NULL,
     updated_at REAL NOT NULL
 , accepted_answer_id INTEGER REFERENCES request_answers(id));
-INSERT INTO requests_new SELECT * FROM requests;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO requests_new (id, project_id, author_id, title, body, status, created_at, updated_at, accepted_answer_id)
+SELECT id, project_id, author_id, title, body, status, created_at, updated_at, accepted_answer_id FROM requests;
 DROP TABLE requests;
 ALTER TABLE requests_new RENAME TO requests;
 CREATE INDEX idx_requests_status ON requests(status, created_at);
@@ -329,7 +528,18 @@ CREATE TABLE request_answers_new (
     updated_at  REAL NOT NULL,
     UNIQUE (request_id, project_id)
 );
-INSERT INTO request_answers_new SELECT * FROM request_answers;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO request_answers_new (id, request_id, project_id, body, status, elo_r, elo_rd, elo_vol, proposed_by, created_at, updated_at)
+SELECT id, request_id, project_id, body, status, elo_r, elo_rd, elo_vol, proposed_by, created_at, updated_at FROM request_answers;
 DROP TABLE request_answers;
 ALTER TABLE request_answers_new RENAME TO request_answers;
 CREATE INDEX idx_answers_request ON request_answers(request_id, status);
@@ -348,7 +558,18 @@ CREATE TABLE criteria_new (
     updated_at  REAL    NOT NULL,
     UNIQUE (project_id, slug)
 );
-INSERT INTO criteria_new SELECT * FROM criteria;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO criteria_new (id, project_id, slug, name, description, direction, default_weight, active, created_by, created_at, updated_at)
+SELECT id, project_id, slug, name, description, direction, default_weight, active, created_by, created_at, updated_at FROM criteria;
 DROP TABLE criteria;
 ALTER TABLE criteria_new RENAME TO criteria;
 CREATE INDEX idx_criteria_project ON criteria(project_id, active);
@@ -363,7 +584,18 @@ CREATE TABLE criterion_votes_new (
     weight       REAL    NOT NULL DEFAULT 1.0,
     created_at   REAL    NOT NULL
 );
-INSERT INTO criterion_votes_new SELECT * FROM criterion_votes;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO criterion_votes_new (id, criterion_id, project_id, feature_a, feature_b, voter_id, outcome, weight, created_at)
+SELECT id, criterion_id, project_id, feature_a, feature_b, voter_id, outcome, weight, created_at FROM criterion_votes;
 DROP TABLE criterion_votes;
 ALTER TABLE criterion_votes_new RENAME TO criterion_votes;
 CREATE INDEX idx_criterion_votes_criterion ON criterion_votes(criterion_id, created_at);
@@ -379,7 +611,18 @@ CREATE TABLE criteria_profiles_new (
     updated_at REAL    NOT NULL,
     UNIQUE (project_id, slug)
 );
-INSERT INTO criteria_profiles_new SELECT * FROM criteria_profiles;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO criteria_profiles_new (id, project_id, slug, name, created_by, created_at, updated_at)
+SELECT id, project_id, slug, name, created_by, created_at, updated_at FROM criteria_profiles;
 DROP TABLE criteria_profiles;
 ALTER TABLE criteria_profiles_new RENAME TO criteria_profiles;
 CREATE TABLE tags_new (
@@ -388,6 +631,17 @@ CREATE TABLE tags_new (
     name       TEXT NOT NULL,
     UNIQUE (project_id, name)
 );
-INSERT INTO tags_new SELECT * FROM tags;
+-- concord:preserve-columns-split
+--
+-- Everything ABOVE this line creates this table's rebuilt shape; everything
+-- below it copies rows in and drops the original. The runner widens the
+-- rebuilt table from the table it replaces at exactly this boundary, so a column
+-- a later migration added survives a replay instead of being dropped with the
+-- table it was in. One marker per rebuilt table, because 0008 interleaves its
+-- statements per table rather than creating all shapes up front.
+-- See internal/db/rebuild_preserve.go.
+
+INSERT INTO tags_new (id, project_id, name)
+SELECT id, project_id, name FROM tags;
 DROP TABLE tags;
 ALTER TABLE tags_new RENAME TO tags;

@@ -120,7 +120,66 @@ func migrateFS(ctx context.Context, d *sql.DB, fsys fs.FS, dir string) error {
 			if err != nil {
 				return err
 			}
-			if _, err := tx.ExecContext(ctx, string(body)); err != nil {
+			if points := preserveSplitPoints(body); len(points) > 0 {
+				// Executed in segments, widening after each one.
+				//
+				// A rebuild migration interleaves create/copy/drop PER TABLE, so
+				// there is one split marker before each table's INSERT. After every
+				// chunk, the tables created so far are widened from the tables they
+				// replace -- before the next DROP can invalidate a trigger that
+				// mentions one. A single split point would cover only the first
+				// table; see preserveSplitPoints.
+				prev := 0
+				var savedTriggers []droppedTrigger
+				var savedIndexes []droppedIndex
+				for _, point := range points {
+					if point < prev {
+						continue
+					}
+					if _, err := tx.ExecContext(ctx, string(body[prev:point])); err != nil {
+						tx.Rollback()
+						return fmt.Errorf("apply %s: %w", name, err)
+					}
+					// Triggers referencing a table this chunk is about to drop must
+					// go first: SQLite revalidates a WHEN clause on every write, so
+					// one mentioning the half-dropped table fails the rebuild.
+					dropped, err := dropAndRememberTriggers(ctx, tx, body[prev:point])
+					if err != nil {
+						tx.Rollback()
+						return fmt.Errorf("apply %s: %w", name, err)
+					}
+					savedTriggers = append(savedTriggers, dropped...)
+					// Indexes go with the DROP TABLE, and a UNIQUE index is an
+					// invariant rather than a performance detail.
+					savedIdx, err := saveIndexesOnRebuiltTables(ctx, tx, rebuiltTablesIn(body[prev:point]))
+					if err != nil {
+						tx.Rollback()
+						return fmt.Errorf("apply %s: %w", name, err)
+					}
+					savedIndexes = append(savedIndexes, savedIdx...)
+					if err := widenRebuiltTables(ctx, tx, body[prev:point]); err != nil {
+						tx.Rollback()
+						return fmt.Errorf("apply %s: %w", name, err)
+					}
+					prev = point
+				}
+				if _, err := tx.ExecContext(ctx, string(body[prev:])); err != nil {
+					tx.Rollback()
+					return fmt.Errorf("apply %s: %w", name, err)
+				}
+				// Restore the triggers whose definitions were saved, now that every
+				// table is back in place. Left unrestored, a replay would leave a
+				// running database silently not enforcing an invariant -- worse than
+				// the crash that dropping them avoided, because nobody would see it.
+				if err := recreateDroppedTriggers(ctx, tx, savedTriggers); err != nil {
+					tx.Rollback()
+					return fmt.Errorf("apply %s: %w", name, err)
+				}
+				if err := recreateSavedIndexes(ctx, tx, savedIndexes); err != nil {
+					tx.Rollback()
+					return fmt.Errorf("apply %s: %w", name, err)
+				}
+			} else if _, err := tx.ExecContext(ctx, string(body)); err != nil {
 				tx.Rollback()
 				return fmt.Errorf("apply %s: %w", name, err)
 			}
