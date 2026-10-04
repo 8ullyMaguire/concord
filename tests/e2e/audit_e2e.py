@@ -176,6 +176,10 @@ def apply_filter(pg, action=None, q=None, expect_rows=None):
         pg.fill("#audit-q", q)
     pg.click("#audit-apply")
     if expect_rows is None:
+        # The caller asserts nothing afterwards, so there is no state to wait for
+        # -- this only keeps the click from overlapping the next action. Every path
+        # that DOES assert goes through wait_for_function below, which is the real
+        # synchronisation.
         pg.wait_for_timeout(300)
         return
     pg.wait_for_function(

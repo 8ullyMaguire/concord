@@ -424,6 +424,11 @@ def testAnEmptyIdeaMakesNoRequest(page):
     page.fill("#scout-seed-text", "   ")
     page.click("#scout-seed-form button[type=submit]")
     expect(page.locator("#scout-error")).to_be_visible(timeout=5000)
+    # A settle window, and a NECESSARY one: this test asserts the ABSENCE of a
+    # request, so there is no state to wait for -- "no fetch has arrived yet" and
+    # "no fetch will ever arrive" look identical until time passes. Removing this
+    # sleep would make the test pass more reliably while checking less, which is
+    # the trade this whole pass refused to make.
     page.wait_for_timeout(400)  # give any stray fetch time to arrive
     assert asked == [], (
         f"an empty idea still asked the server: {asked}. The client guard exists so "

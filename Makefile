@@ -79,7 +79,15 @@ vet:
 docs-check:
 	python3 scripts/check_spec_drift.py
 
-verify: vet test build docs-check
+# E2E synchronisation. In `verify` because the pattern it bans is invisible to
+# every other check: a sleep-then-read test passes on a fast machine and fails on
+# a busy one, so it is green in CI and broken for whoever runs it locally. The
+# finder suite had twenty of them and the recorded symptom was a flake that could
+# not be reproduced in nine consecutive runs.
+e2e-sync-check:
+	python3 scripts/check_e2e_sync.py
+
+verify: vet test build docs-check e2e-sync-check
 
 run:
 	CGO_ENABLED=0 go run $(PKG)

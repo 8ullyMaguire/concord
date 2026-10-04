@@ -294,38 +294,59 @@ the test reads source that is mid-mutation. It cost a diagnostic cycle on
 2026-10-03 and is the reason the two targets should be run serially, or from
 different working trees.
 
-## `test_escape_goes_back` was racy — fixed 2026-10-05 (was "roughly 1 run in 3")
+## The e2e suites synchronised on a clock, not on state (fixed 2026-10-05)
 
-**Was:** the test read `#finder-shortlist-summary` immediately after a fixed
-`page.wait_for_timeout(800)`. A sleep is not a synchronisation: it passes when the
-machine is fast and fails when it is busy, which is why this presented as an
-intermittent failure and not as a bug.
+**Was:** 22 `page.wait_for_timeout(...)` calls standing in for
+synchronisation. Twenty were in `finder_e2e.py`. The pattern is: act, sleep,
+read, assert on the read.
 
-**Measured before changing anything, because the file claimed ~1 run in 3 and I
-had no reason to believe it:** 6/6 passing in isolation, then 3/3 full-suite runs
-of all 38 finder tests green. Nine consecutive clean runs. The claim did not
-reproduce — which is what a load-dependent race looks like on an idle machine, so
-it is not evidence the race was never there.
+**Why that is a bug and not a style preference.** A sleep passes when the machine
+is fast and fails when it is busy. That is precisely why it presents as an
+intermittent flake nobody can reproduce — `test_escape_goes_back` was recorded
+here as "fails ~1 run in 3" and did not reproduce in nine consecutive runs, nor
+under 8x artificial CPU load. A race that vanishes when you measure it on an idle
+box is still a race; it just needs the suite busy to show itself.
 
-**Now:** it waits on the state, not the clock.
-`expect(summary).not_to_have_text(...)` after the `1` press, then
-`expect(summary).to_have_text(...)` after Escape, both anchored on the exact count
-prefix. The second assertion is what stops the test passing vacuously: it waits
-for the ORIGINAL count to come back, so a summary that never changed cannot
-satisfy it.
+**Now: 3 sleeps remain, all justified, and 0 racy.**
 
-**And it can fail.** Both ways of breaking Escape were applied to `finder.js` and
-both were caught, which is the only thing that distinguishes this from the sleep
-it replaced:
-
-| mutant | verdict |
+| was | now |
 |---|---|
-| Escape does nothing (`goBack` removed from the handler) | KILLED |
-| Escape advances instead of going back | KILLED |
+| `answer_first()` slept 900ms after clicking an option | waits for the next question to render — and it is the shared helper most of the suite builds on, so its wait was load-bearing |
+| 6 tests each did click-stop-then-sleep | one `show_results(page)` helper waiting for `#finder-results` visible **and** a ranked row present |
+| `test_back_restores...` slept then read | waits for the summary to BE the original count, anchored so `12 matches` cannot satisfy a wait for `2 matches` |
+| `.first.inner_text()` after a sleep | waits for the element to be visible first, so a too-early read cannot report "no fit percentage" when nothing had rendered |
 
-`finder.js` was restored byte-identical and rebuilt afterwards — a mutation run
-that leaves the binary stale makes every later browser test a false PASS.
+**Two of the fixes would have passed vacuously, and that is why they are shaped
+the way they are.** `test_back_restores...` waits for the *original* count to
+return, not merely for a change — a summary that never moved cannot satisfy it.
+And `test_no_fit_percentage_before_answers` now asserts `fits` is non-empty: it
+reads via `all_inner_texts()`, which has no retry, so on an empty region it
+returned `[]` and the loop passed over nothing.
 
-**Still open, and not fixed here:** 22 other `wait_for_timeout` calls remain in
-the e2e suites. This one was fixed because it was the recorded flake and had a
-cheap, provable state to wait on, not because the pattern is now gone.
+**The three survivors are correct, and saying so matters:**
+
+- `audit_e2e.py` — in a branch where the caller asserts nothing afterwards; every
+  path that does assert goes through `wait_for_function`.
+- `scout_e2e.py` — asserts the **absence** of a request. There is no state to
+  wait for: "no fetch has arrived yet" and "no fetch will arrive" are identical
+  until time passes. Removing this sleep would make the test pass more reliably
+  while checking less.
+- `finder_e2e.py` — the no-JS-errors test, where the same argument applies (an
+  exception in a promise chain arrives after the DOM is already correct), plus a
+  bounded 300ms.
+
+**Gated, because a fix that lasts until the next person copies the pattern is not
+a fix:** `scripts/check_e2e_sync.py`, in `make verify`. It classifies each sleep
+as RACY / BOUNDED / IDLE rather than banning the call, so a justified exception
+is a visible comment rather than a workaround, and it reports its own idleness.
+Two mutations applied and caught: the original racy pattern reintroduced, and a
+fresh unjustified sleep-then-read-then-assert.
+
+**Proof the new waits still detect real breakage** — three mutations of
+`finder.js`, all caught: answering does not record, the short-list count never
+updates, and back does not restore.
+
+**Side effect worth having:** `finder_e2e.py` went from 43s to 9s, because waits
+are now on state rather than on a fixed delay. Fixing a race made the suite
+nearly 5x faster.
+

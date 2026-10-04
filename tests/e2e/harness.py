@@ -191,3 +191,44 @@ def api(base, method, path, body=None, token=None):
     with urllib.request.urlopen(req, timeout=5) as resp:
         raw = resp.read()
         return json.loads(raw) if raw else None
+
+
+# ---------------------------------------------------------------- synchronising
+#
+# WHY THESE EXIST. The suites were written with `page.wait_for_timeout(800)`
+# between an action and the read that checks it. A sleep is not a
+# synchronisation: it passes when the machine is fast and fails when it is busy,
+# which is how a test becomes a flake that nobody can reproduce on an idle box.
+#
+# So the correct pattern gets a NAME here, and the call sites below read as
+# "wait for the results" rather than as "hope 800ms was enough". Two rules make it
+# correct rather than merely different:
+#
+#   1. `settled` waits for an observable STATE (an element visible, a count
+#      reached), not for a duration. Playwright's expect() already retries, so
+#      the actual wait is in the assertion.
+#   2. `settled_text` takes the text to wait FOR, so a caller cannot accidentally
+#      assert against a value it read before the action -- which is the specific
+#      way the old sleep-based version passed vacuously.
+
+DEFAULT_SYNC_TIMEOUT = 10000
+
+
+def settled(expect, locator, timeout=DEFAULT_SYNC_TIMEOUT):
+    """Wait for `locator` to satisfy `expect`, e.g. settled(expect, x).to_be_visible()."""
+    return expect(locator).to_be_visible(timeout=timeout)
+
+
+def settled_count(expect, locator, n, timeout=DEFAULT_SYNC_TIMEOUT):
+    """Wait for `locator` to hold exactly `n` elements."""
+    return expect(locator).to_have_count(n, timeout=timeout)
+
+
+def settled_text(expect, locator, pattern, timeout=DEFAULT_SYNC_TIMEOUT):
+    """Wait until `locator`'s text matches `pattern` (a str, or a compiled regex)."""
+    return expect(locator).to_have_text(pattern, timeout=timeout)
+
+
+def settled_attr(expect, locator, name, pattern, timeout=DEFAULT_SYNC_TIMEOUT):
+    """Wait until `locator`'s attribute `name` matches `pattern`."""
+    return expect(locator).to_have_attribute(name, pattern, timeout=timeout)

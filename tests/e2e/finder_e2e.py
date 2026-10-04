@@ -195,17 +195,45 @@ def first_option(page):
 
 
 def answer_first(page):
-    """Answer with a real value and wait for the state to settle."""
+    """Answer with a real value and wait for the NEXT question to be rendered.
+
+    This is the shared helper most of the suite builds on, so its wait was the
+    load-bearing one: every test that answers and then reads was reading against
+    whatever a 900ms sleep happened to leave behind. The next question appearing is
+    the proof the answer was recorded and the view advanced, and `expect()`
+    retries until that is true.
+
+    The old `before = window.__state.n` read is deliberately gone. It was dead
+    weight -- never compared against anything here -- but it made the function
+    look like it was waiting for a state transition it was not actually checking.
+    """
     require_question(page)
     opt = first_option(page)
     assert opt, "no concrete option was offered"
-    before = page.evaluate("() => window.__state && window.__state.n")
     page.click(f"#finder-options [data-option='{opt}']")
-    page.wait_for_timeout(900)
+    expect(page.locator("#finder-answers li")).to_have_count(1)
     return opt
 
 
 # ------------------------------------------------------------- the seed view
+
+def show_results(page):
+    """Stop the flow and wait for the ranked results to actually render.
+
+    Six tests open with `answer_first` + click #finder-stop + an 800ms sleep, and
+    the sleep is what each one then reads against. So the race lived in six
+    places, identically, and fixing them one at a time would have left the next
+    author's copy of the pattern racy again.
+
+    The wait is for `#finder-results` being VISIBLE plus at least one ranked row,
+    which is the state every one of those tests depends on. Once this returns, the
+    DOM is populated and a subsequent `inner_text()` reads real content rather
+    than whatever was there a moment ago.
+    """
+    page.click("#finder-stop")
+    expect(page.locator("#finder-results")).to_be_visible(timeout=10000)
+    expect(page.locator("#finder-ranked li")).not_to_have_count(0, timeout=10000)
+
 
 def test_finder_page_renders(server, page):
     page.goto(BASE + "/finder")
@@ -331,12 +359,14 @@ def test_skip_does_not_filter(server, page):
     start(page)
     before = page.locator("#finder-shortlist-summary").inner_text()
     page.click("#finder-flow [data-mode='skip']")
-    page.wait_for_timeout(900)
+    # Wait for the skip to be RECORDED, not for 900ms. The answers row appearing
+    # is the observable proof the click took effect; reading the summary after a
+    # sleep and comparing was a race that could read the pre-click value and
+    # report "skip changed nothing" when skip had not run yet.
+    expect(page.locator("#finder-answers li")).to_have_count(1)
     after = page.locator("#finder-shortlist-summary").inner_text()
     assert before.split(" matches")[0] == after.split(" matches")[0], \
         f"skip changed the candidate count: {before!r} -> {after!r}"
-    # Recorded, and visibly marked as skipped rather than answered.
-    expect(page.locator("#finder-answers li")).to_have_count(1)
     expect(page.locator("#finder-answers li").first).to_contain_text("skip")
 
 
@@ -344,11 +374,12 @@ def test_doesnt_matter_does_not_filter(server, page):
     start(page)
     before = page.locator("#finder-shortlist-summary").inner_text()
     page.click("#finder-options [data-option='any']")
-    page.wait_for_timeout(900)
+    # Wait for the option to be marked on the question, which is the state the
+    # click produces, instead of sleeping and hoping the summary had settled.
+    expect(page.locator("#finder-answers li").first).to_contain_text("doesnt-matter")
     after = page.locator("#finder-shortlist-summary").inner_text()
     assert before.split(" matches")[0] == after.split(" matches")[0], \
         f"doesn't matter changed the count: {before!r} -> {after!r}"
-    expect(page.locator("#finder-answers li").first).to_contain_text("doesnt-matter")
 
 
 def test_back_restores_the_candidate_set(server, page):
@@ -360,7 +391,13 @@ def test_back_restores_the_candidate_set(server, page):
     assert narrowed != before
 
     page.click("#finder-back")
-    page.wait_for_timeout(800)
+    # Wait for the summary to BE the original count rather than sleep and read.
+    # Anchored on the count with " matches" after it, so "12 matches" cannot
+    # satisfy a wait for "2 matches" -- and so a summary that never changed
+    # cannot pass as "restored", which is how the sleep version passed vacuously.
+    harness.settled_text(
+        expect, page.locator("#finder-shortlist-summary"),
+        re.compile(r"^\s*" + re.escape(before.split(" matches")[0]) + r" matches"))
     restored = page.locator("#finder-shortlist-summary").inner_text()
     assert restored.split(" matches")[0] == before.split(" matches")[0], \
         f"back did not restore the count: {narrowed!r} -> {restored!r}"
@@ -416,8 +453,9 @@ def test_keep_narrowing_is_hidden_with_no_question(server, page):
 def test_stop_and_see_results_shows_the_ranked_list(server, page):
     start(page)
     answer_first(page)
-    page.click("#finder-stop")
-    page.wait_for_timeout(800)
+    # show_results waits for BOTH of these, so the old sleep plus two expects is
+    # one race removed rather than three assertions kept.
+    show_results(page)
     expect(page.locator("#finder-results")).to_be_visible()
     expect(page.locator("#finder-ranked li")).not_to_have_count(0)
 
@@ -425,8 +463,11 @@ def test_stop_and_see_results_shows_the_ranked_list(server, page):
 def test_results_show_the_answers_that_produced_them(server, page):
     start(page)
     answer_first(page)
-    page.click("#finder-stop")
-    page.wait_for_timeout(800)
+    # The results view must exist before the answers region can be counted, so
+    # wait for the view rather than sleeping and then counting a region that may
+    # not be there yet -- a count of 0 in a missing region reads as a failure
+    # with no cause, which is the worst kind.
+    show_results(page)
     expect(page.locator("#finder-results-answers li")).to_have_count(1)
 
 
@@ -439,8 +480,7 @@ def test_the_ranked_list_agrees_with_the_candidate_count(server, page):
     """
     start(page)
     answer_first(page)
-    page.click("#finder-stop")
-    page.wait_for_timeout(800)
+    show_results(page)
 
     header = page.locator("#finder-ranked-heading").inner_text()
     m = re.search(r"\((\d+)\)", header)
@@ -453,8 +493,7 @@ def test_the_ranked_list_agrees_with_the_candidate_count(server, page):
 def test_every_ranked_entry_reports_a_fit_and_a_link(server, page):
     start(page)
     answer_first(page)
-    page.click("#finder-stop")
-    page.wait_for_timeout(800)
+    show_results(page)
     first = page.locator("#finder-ranked li").first
     expect(first.locator("a")).to_have_attribute("href", re.compile(r"^/projects/"))
     expect(first.locator(".finder-fit")).to_contain_text("%")
@@ -464,8 +503,9 @@ def test_a_fit_score_is_not_zero_for_a_match(server, page):
     """The regression from the live run: 0% fit for a well-ranked candidate."""
     start(page)
     answer_first(page)
-    page.click("#finder-stop")
-    page.wait_for_timeout(800)
+    show_results(page)
+    # The fit text is only meaningful once a row exists, which show_results
+    # guarantees -- so inner_text() here cannot read an empty element.
     text = page.locator("#finder-ranked li").first.locator(".finder-fit").inner_text()
     pct = int(re.search(r"(\d+)%", text).group(1))
     assert pct > 0, f"the top-ranked candidate shows {pct}% fit"
@@ -474,8 +514,7 @@ def test_a_fit_score_is_not_zero_for_a_match(server, page):
 def test_the_export_link_points_at_the_session(server, page):
     start(page)
     answer_first(page)
-    page.click("#finder-stop")
-    page.wait_for_timeout(800)
+    show_results(page)
     href = page.locator("#finder-export-json").get_attribute("href")
     assert re.match(r"^/api/v1/finder/sessions/[^/]+/results$", href), href
 
@@ -483,8 +522,7 @@ def test_the_export_link_points_at_the_session(server, page):
 def test_a_ranked_entry_links_to_its_project_page(server, page):
     start(page)
     answer_first(page)
-    page.click("#finder-stop")
-    page.wait_for_timeout(800)
+    show_results(page)
     page.locator("#finder-ranked li a").first.click()
     expect(page).to_have_url(re.compile(r"/projects/"))
 
@@ -494,7 +532,6 @@ def test_a_ranked_entry_links_to_its_project_page(server, page):
 def test_number_keys_select_options(server, page):
     start(page)
     page.keyboard.press("1")
-    page.wait_for_timeout(800)
     expect(page.locator("#finder-answers li")).to_have_count(1)
 
 
@@ -526,7 +563,8 @@ def test_s_skips(server, page):
     start(page)
     before = page.locator("#finder-shortlist-summary").inner_text()
     page.keyboard.press("s")
-    page.wait_for_timeout(800)
+    # The recorded skip is the observable effect; wait for it.
+    expect(page.locator("#finder-answers li")).to_have_count(1)
     after = page.locator("#finder-shortlist-summary").inner_text()
     assert before.split(" matches")[0] == after.split(" matches")[0], \
         "S did not skip without filtering"
@@ -542,8 +580,7 @@ def test_r_reveals_the_why(server, page):
 def test_v_jumps_to_results(server, page):
     start(page)
     page.keyboard.press("v")
-    page.wait_for_timeout(800)
-    expect(page.locator("#finder-results")).to_be_visible()
+    expect(page.locator("#finder-results")).to_be_visible(timeout=10000)
 
 
 # --------------------------------------------------------------- deep link
@@ -585,8 +622,9 @@ def test_a_narrow_deep_linked_seed_explains_itself(server, page):
     expect(page.locator("#finder-stop-reason")).to_contain_text("handful")
     # And the results are reachable from there, with a count.
     page.click("#finder-stop-go")
-    page.wait_for_timeout(800)
-    expect(page.locator("#finder-ranked-heading")).to_contain_text("(")
+    # The heading carrying a count is the state this test asserts on, so wait for
+    # it rather than sleeping first and hoping the render landed.
+    expect(page.locator("#finder-ranked-heading")).to_contain_text("(", timeout=10000)
 
 
 # ------------------------------------------------------- no JS errors
@@ -600,11 +638,17 @@ def test_the_flow_raises_no_javascript_errors(server, page):
     """
     start(page)
     page.keyboard.press("1")
-    page.wait_for_timeout(600)
+    expect(page.locator("#finder-answers li")).to_have_count(1)
     page.click("#finder-stop")
-    page.wait_for_timeout(600)
+    expect(page.locator("#finder-results")).to_be_visible(timeout=10000)
     page.keyboard.press("Escape")
-    page.wait_for_timeout(600)
+    expect(page.locator("#finder-flow")).to_be_visible(timeout=10000)
+    # A bounded settle before asserting no errors. This is the ONE place a sleep
+    # is right, and the difference is that it is not standing in for a state: an
+    # exception raised in a promise chain or a debounced handler arrives after
+    # the DOM is already correct, so there is nothing to wait FOR. It is also
+    # bounded and short, and the assertion above it is what the test is about.
+    page.wait_for_timeout(300)
     assert not page.errors, f"javascript errors during the flow: {page.errors}"
 
 
@@ -626,8 +670,14 @@ def test_no_fit_percentage_before_any_question_is_answered(server, page):
     expect(page.locator("#finder-flow")).to_be_visible(timeout=10000)
     expect(page.locator("#finder-stop-prompt")).to_be_visible(timeout=10000)
     page.click("#finder-stop-go")
-    page.wait_for_timeout(800)
+    # Wait for the results view itself. `all_inner_texts()` is a snapshot with no
+    # retry, so reading it before the rows exist returns [] -- and an empty list
+    # makes the loop below pass vacuously, which is precisely the assertion that
+    # is supposed to catch a fit percentage shown too early.
+    expect(page.locator("#finder-results")).to_be_visible(timeout=10000)
+    expect(page.locator("#finder-ranked-heading")).to_contain_text("(", timeout=10000)
     fits = page.locator("#finder-ranked .finder-fit").all_inner_texts()
+    assert fits, "no ranked rows rendered, so this test asserted nothing"
     for t in fits:
         assert "%" not in t, f"a fit percentage is shown before any answer: {t!r}"
 
@@ -636,7 +686,10 @@ def test_a_fit_percentage_appears_once_answered(server, page):
     start(page)
     answer_first(page)
     page.click("#finder-stop-go")
-    page.wait_for_timeout(800)
+    # Wait for the rows to exist: `.first.inner_text()` has no retry, so read too
+    # early it returns "" and the assertion below reports "no fit percentage"
+    # when the real problem is that nothing had rendered.
+    expect(page.locator("#finder-ranked .finder-fit").first).to_be_visible(timeout=10000)
     first = page.locator("#finder-ranked .finder-fit").first.inner_text()
     assert "%" in first, f"no fit percentage after answering: {first!r}"
 
