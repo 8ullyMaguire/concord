@@ -319,6 +319,30 @@ func (s *Server) Router() http.Handler {
 	// path segment would imply an addressable collection that does not exist.
 	r.Get("/projects/{slug}/consensus", s.handleConsensusPage)
 
+	// Feeds (docs/specs/feeds-spec.md). Mounted on {slug} like the pages, NOT on
+	// {project_id} like the API: these are documents a reader opens, and they belong
+	// with the pages. The handlers resolve the slug themselves for the same reason the
+	// page handlers do -- requireProjectID reads chi's {project_id}, which is empty here.
+	//
+	// .xml and ?format= are both accepted because they are both what people type:
+	// /feed.xml in a reader's UI, ?format=atom in a link. /atom.xml is separate rather
+	// than a query parameter on the same path because a reader's "add feed" box wants
+	// a URL it can fetch without a query string. No wrapper closures: each handler reads
+	// the serialisation from its own path via feedSuffix, so /atom.xml and /feed.xml
+	// are the same handler and a wrapper would only hide that.
+	r.Get("/feed.xml", s.handleProjectsFeed)
+	r.Get("/rss.xml", s.handleProjectsFeed)
+	r.Get("/atom.xml", s.handleProjectsFeed)
+	r.Get("/projects/{slug}/feed.xml", s.handleProjectFeed)
+	r.Get("/projects/{slug}/rss.xml", s.handleProjectFeed)
+	r.Get("/projects/{slug}/atom.xml", s.handleProjectFeed)
+	r.Get("/projects/{slug}/board/feed.xml", s.handleBoardFeed)
+	r.Get("/projects/{slug}/board/atom.xml", s.handleBoardFeed)
+	r.Get("/projects/{slug}/consensus/feed.xml", s.handleConsensusFeed)
+	r.Get("/projects/{slug}/consensus/atom.xml", s.handleConsensusFeed)
+	r.Get("/projects/{slug}/documents/feed.xml", s.handleDocumentsFeed)
+	r.Get("/projects/{slug}/documents/atom.xml", s.handleDocumentsFeed)
+
 	// Finder (docs/specs/finder-spec.md): the question-at-a-time discovery flow.
 	//
 	// All of it read- and session-scoped: answering a Finder question writes to

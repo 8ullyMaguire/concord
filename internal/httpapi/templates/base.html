@@ -6,6 +6,21 @@
 <title>{{.Title}} — Concord</title>
 <link rel="stylesheet" href="{{ asset "/assets/css/style.css" }}">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect fill='%236366f1' rx='20' width='100' height='100'/><text x='50' y='68' font-size='55' text-anchor='middle' fill='white' font-family='system-ui'>C</text></svg>">
+<!-- Feeds (docs/specs/feeds-spec.md).
+     rel=alternate is how a reader discovers a feed without being told, so the link is on
+     every page rather than one.
+
+     A plain path, deliberately NOT the asset helper: that appends a content-hash query
+     string for cache-busting static files, and there is no hashed route behind it, so it
+     would have produced a 404 that looks like a missing route.
+
+     When CONCORD_BASE_URL is unset the feed answers 503. It is advertised anyway: the
+     thing to notice is the operator's missing setting, not the reader's broken link.
+
+     Do NOT quote the element below inside this comment. Writing the tag itself in the
+     comment made go's html/template treat it as live markup and truncate the whole
+     document at exactly that point -- a 506-byte page ending mid-head, with a 200. -->
+<link rel="alternate" type="application/atom+xml" title="Concord projects" href="/atom.xml">
 </head>
 <body>
 <header class="site-header">
