@@ -347,6 +347,26 @@ func (d *DB) CloseConsensusCall(ctx context.Context, callID int64) (ConsensusSum
 		}
 	}
 	counts.OpenObjections = openObj
+
+	// Eligible must be set before EvaluateConsensus, or quorum is vacuous.
+	//
+	// QuorumThreshold(eligible<=0) returns 0, and EvaluateConsensus's first check is
+	// `Participants < QuorumThreshold(...)`, so an unset Eligible makes every call
+	// satisfy quorum by definition: one member consenting to their own call was
+	// enough to accept it, in a project with three members eligible to vote. Probed
+	// with a real fixture (see TestAClosedCallCountsTheEligiblePopulationForQuorum),
+	// which is why this was caught: the ratios and every other branch were correct,
+	// so no test that asserted on a ratio or a threshold could see it.
+	//
+	// §8.2's conjunction -- role AND a qualifying contribution inside the activity
+	// window -- is what EligibleCollaboratorCount already computes, so the threshold
+	// the page will show and the threshold enforced here are the same number.
+	eligible, err := d.EligibleCollaboratorCount(ctx, c.ProjectID)
+	if err != nil {
+		return ConsensusSummary{}, fmt.Errorf("eligible collaborators: %w", err)
+	}
+	counts.Eligible = eligible
+
 	var modelStr string
 	err = d.QueryRowContext(ctx,
 		`SELECT governance_model FROM projects WHERE id = ?`, c.ProjectID).Scan(&modelStr)
