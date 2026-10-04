@@ -1606,6 +1606,27 @@ func (s *Server) handleRankingPage(w http.ResponseWriter, r *http.Request) {
 	}{s.page("Ranking - " + slug), slug})
 }
 
+func (s *Server) handleAuditPage(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	// The page is a template shell, but it still must not render for a project
+	// the caller cannot see: a 200 for a private project confirms the slug
+	// exists, and the title alone is enough to enumerate. The data behind it is
+	// fetched from the API, which enforces visibility independently.
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	s.render(w, http.StatusOK, "audit", struct {
+		pageData
+		Slug string
+	}{s.page("Audit log - " + slug), slug})
+}
+
 func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, "login", s.page("Sign in - Concord"))
 }

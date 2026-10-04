@@ -165,6 +165,7 @@ func TestEveryPageShowsASkeletonNotABlockingSpinner(t *testing.T) {
 		"board":     "/projects/a11y-probe/board",
 		"project":   "/projects/a11y-probe",
 		"documents": "/projects/a11y-probe/documents",
+		"audit":     "/projects/a11y-probe/audit",
 	} {
 		body := htmlBody(t, ts, url)
 		if !strings.Contains(body, "<html") {

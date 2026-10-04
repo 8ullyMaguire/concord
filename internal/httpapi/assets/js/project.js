@@ -577,6 +577,7 @@
       '<a class="btn" href="/projects/' + esc(p.slug) + '/documents">Documents' +
       (documents ? ' <span class="badge badge-slate">' + documents.length + '</span>' : '') +
       '</a>' +
+      '<a class="btn btn-secondary" href="/projects/' + esc(p.slug) + '/audit">Audit log</a>' +
       '<a class="btn btn-secondary" href="/projects">Back</a>' +
       '</div></div>' +
       '<div class="card mb-6">' + badges + healthBar(p.health_score) + meta + '</div>' +

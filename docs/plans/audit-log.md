@@ -312,3 +312,85 @@ git status --short
 One per step, `domain: summary`, `make verify` green before each. `git add -A` is
 **not** run while `make gates` is executing — the Scout notes record a stale tree
 produced by exactly that.
+
+---
+
+## As built — what the plan got wrong (2026-10-05)
+
+The plan was written before any code. These are the places it was wrong, kept
+because a plan that is only right when it is followed is not evidence of
+anything.
+
+1. **The LIKE escaping it specified does not work.** The plan's `ListAudit`
+   escapes `%` and `_` with a backslash and emits
+   `(detail LIKE ? OR action LIKE ?)` — with **no ESCAPE clause**. SQLite reads a
+   backslash in a LIKE pattern as an ordinary character unless the pattern
+   declares ESCAPE, so `\%` is a backslash followed by a LIVE wildcard. Every
+   search containing `%` or `_` therefore returned **nothing at all**, as HTTP
+   200 with an empty list — indistinguishable from "this project has no such
+   history". Confirmed against raw `sqlite3` independently of the suite: with
+   `ESCAPE '\'` both searches return exactly the literal rows, without it
+   neither returns a row.
+
+   The fix is `ESCAPE '\'` on both patterns, and the escape character must be
+   doubled **first**; doubling it last re-escapes the backslashes just inserted
+   in front of `%` and `_`, which is the same bug in a new costume.
+
+2. **The two mutation gates it specifies for the tiebreak and the empty LIKE are
+   unobservable, and so are worthless as gates.** `ORDER BY created_at DESC`
+   without the id tiebreak is indistinguishable from the correct query in
+   SQLite, which returns equal-key rows in rowid order — i.e. already `id DESC`.
+   And `LIKE '%%'` on an empty search returns exactly the rows the unfiltered
+   query returns, so the two queries agree on every assertion an output-based
+   test can make. Both were reported SURVIVED on the first run, which is the
+   harness stating a fact rather than a defect. Replaced with thirteen mutants
+   that differ in their OUTPUT, all 14 of which now die.
+
+3. **A page route cannot use `requireProjectID`.** It reads chi's
+   `{project_id}`, which is empty on `/projects/{slug}/...`, so the page handler
+   resolves the slug itself — the same thing `handleRankingPage` does. The plan
+   mounted the API route correctly but implied the page could share the helper.
+
+4. **`/audit/actions` was never specified, and the page's filter dropdown needs
+   it.** `AuditActions` existed in the store from step A1 and was reached by
+   nothing, so the `<select>` would have fetched a 404 and fallen back to an
+   empty list — which looks identical to a project with one action.
+
+5. **The count line needs the UNFILTERED total, which the envelope does not
+   contain.** `total` is `COUNT(*)` over the FILTERED set (spec §4), so a page
+   comparing shown-against-`total` always reads "Showing all N entries" — over a
+   list of 1, claiming the filter excluded nothing when it excluded six. The
+   page fetches `/audit?limit=1` for the unfiltered total when, and only when, a
+   filter is active. This was the one UI bug the browser tests caught that the
+   plan had not anticipated.
+
+6. **Step A5's `python_files` advice was incomplete in the same way the plan
+   complained about.** `scout_e2e.py`, `consensus_e2e.py` and `feeds_e2e.py` were
+   each run by an explicit path in the Makefile while matching none of
+   pytest's patterns, so a bare `pytest tests/e2e` collected 35 of 149 tests and
+   reported a pass. All seven suites are now listed.
+
+### Verified
+
+```
+go vet ./...                          clean
+go test ./...                         9 packages, 747 top-level tests, 0 failed, exit 0
+python3 -m pytest tests/e2e --collect-only   149 tests collected (was 35)
+make e2e                              7 suites: 38+20+26+9+4+9 passed
+tests/e2e/audit_ui_mutants.py         7/7 killed, 0 survived, source restored byte-identical
+internal/mutate.py ... audit.go       14/14 killed, 0 survived, 0 not applicable
+```
+
+### What each gate is actually guarding
+
+Three of the seven UI mutants SURVIVED their first run, and in all three cases
+the correct reading was **the fixture was inert, not that the mutant was
+unnecessary**: `esc()` and no `esc()` render `Olive Owner` identically, so an
+unescaped display name cannot be seen until a display name carries HTML. The
+same trap the Go harness calls a tautology, in a different costume: a test
+whose fixture cannot distinguish the correct code from the broken one.
+
+So the rule recorded here is narrow and load-bearing: **a mutation gate against
+a viewer needs hostile INPUT, not just a strict assertion.** A strict assertion
+proves the output matches; only data carrying the thing being escaped can prove
+the escaping ran.

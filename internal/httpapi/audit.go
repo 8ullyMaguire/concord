@@ -71,3 +71,29 @@ func (s *Server) handleListProjectAudit(w http.ResponseWriter, r *http.Request) 
 	}
 	writeJSON(w, http.StatusOK, page)
 }
+
+// handleListProjectAuditActions serves the distinct action names in a project's
+// log, for the viewer's filter control.
+//
+// It exists because AuditActions was written in step A1 and then reached by
+// nothing: the store had a method to enumerate filterable actions and no route
+// to call it with, so the page's <select> was going to fetch a 404 and fall back
+// to an empty list. A filter that cannot be populated looks identical to a
+// project with one action, which is the same "silently shows everything" failure
+// class as the wrong parameter name.
+//
+// The visibility gate is requireProjectID again, not a weaker check: this
+// endpoint enumerates the action NAMES of a log, which for a private project is
+// itself information about what happened inside it.
+func (s *Server) handleListProjectAuditActions(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
+	actions, err := s.Store.AuditActions(r.Context(), projectID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, actions)
+}

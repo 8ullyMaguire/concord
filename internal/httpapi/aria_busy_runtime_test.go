@@ -219,6 +219,7 @@ func TestPageScriptsClearAriaBusyWhenTheFetchFails(t *testing.T) {
 		{"search.js", "search-results", "/search?q=kanban", "/search?q=kanban"},
 		{"rank.js", "rank-root", "/projects/probe/rank", "/projects/a11y-probe/rank"},
 		{"ranking.js", "ranking-root", "/projects/probe/ranking", "/projects/a11y-probe/ranking"},
+		{"audit.js", "audit-root", "/projects/probe/audit", "/projects/a11y-probe/audit"},
 	}
 
 	for _, tc := range cases {

@@ -383,3 +383,95 @@ func TestPagingDoesNotRepeatARowWhenTwoEntriesShareATimestamp(t *testing.T) {
 		t.Errorf("paging yielded %d distinct rows, want 3", len(ids))
 	}
 }
+
+// TestTheActionsEndpointListsWhatThePageOffersToFilterOn covers the filter
+// dropdown's data source.
+//
+// This endpoint is what stops the page's <select> being empty. Without it the
+// viewer still renders every row -- the fetch falls back to [] -- so a project
+// with nine distinct actions and one with a single action look identical, and
+// "you cannot filter here" is indistinguishable from "there is nothing to
+// filter".
+func TestTheActionsEndpointListsWhatThePageOffersToFilterOn(t *testing.T) {
+	ts, st := newTestServerWithStore(t)
+
+	p := seedAuditProject(t, st, "audit-actions")
+	owner := auditOwnerID(t, st)
+	for _, a := range []string{"create_invite", "set_visibility", "create_invite", "merge"} {
+		if err := st.AddAudit(t.Context(), p.ID, owner, a, "project", 1, "d"); err != nil {
+			t.Fatalf("add audit %s: %v", a, err)
+		}
+	}
+
+	code, raw := authGet(t, ts, "/api/v1/projects/audit-actions/audit/actions", "")
+	if code != http.StatusOK {
+		t.Fatalf("GET audit/actions: status %d, body %s", code, raw)
+	}
+	var actions []string
+	if err := json.Unmarshal(raw, &actions); err != nil {
+		t.Fatalf("bad JSON %v, body %s", err, raw)
+	}
+	// Distinct and sorted, not one entry per row: a dropdown listing
+	// "create_invite" three times is a different control, and the store sorts so
+	// the order does not shift every time a vote lands.
+	want := []string{"create_invite", "merge", "set_visibility"}
+	if len(actions) != len(want) {
+		t.Fatalf("got %d actions %v, want %d %v", len(actions), actions, len(want), want)
+	}
+	for i := range want {
+		if actions[i] != want[i] {
+			t.Errorf("actions[%d] = %q, want %q (full list %v)", i, actions[i], want[i], actions)
+		}
+	}
+}
+
+// TestTheActionsEndpointIsGatedLikeTheLogItDescribes: the action names of a
+// private project's log are themselves information about what happened inside
+// it, so this must 404 exactly as the log does -- and with the same body.
+func TestTheActionsEndpointIsGatedLikeTheLogItDescribes(t *testing.T) {
+	ts, st := newTestServerWithStore(t)
+
+	seedAuditProject(t, st, "audit-actions-private")
+	if _, err := st.SetProjectVisibility(t.Context(), "audit-actions-private", "private"); err != nil {
+		t.Fatalf("set visibility: %v", err)
+	}
+
+	_, missing := authGet(t, ts, "/api/v1/projects/nope/audit/actions", "")
+	_, private := authGet(t, ts, "/api/v1/projects/audit-actions-private/audit/actions", "")
+	if string(private) != string(missing) {
+		t.Fatalf("private project's action list differs from a missing project's:\n private: %s\n missing: %s", private, missing)
+	}
+}
+
+// TestTheAuditPageRendersForAReadableProjectAndOnlyThat guards the page route,
+// which resolves the slug ITSELF rather than through requireProjectID (that
+// helper reads chi's {project_id}, which is empty on a page route).
+func TestTheAuditPageRendersForAReadableProjectAndOnlyThat(t *testing.T) {
+	ts, st := newTestServerWithStore(t)
+
+	seedAuditProject(t, st, "audit-page")
+	seedAuditProject(t, st, "audit-page-private")
+	if _, err := st.SetProjectVisibility(t.Context(), "audit-page-private", "private"); err != nil {
+		t.Fatalf("set visibility: %v", err)
+	}
+
+	code, body := authGet(t, ts, "/projects/audit-page/audit", "")
+	if code != http.StatusOK {
+		t.Fatalf("a readable project's audit page answered %d, want 200", code)
+	}
+	// The mount point, not the rows: the rows come from the API over fetch, and
+	// a template that inlined them would be asserting on the wrong layer.
+	if !strings.Contains(string(body), "audit-root") {
+		t.Errorf("the audit page rendered without its mount point:\n%s", body)
+	}
+
+	goneCode, _ := authGet(t, ts, "/projects/no-such-project/audit", "")
+	if goneCode != http.StatusNotFound {
+		t.Errorf("a missing project's audit page answered %d, want 404", goneCode)
+	}
+
+	privCode, _ := authGet(t, ts, "/projects/audit-page-private/audit", "")
+	if privCode != http.StatusNotFound {
+		t.Errorf("a private project's audit page answered %d, want 404: the shell alone confirms the slug exists", privCode)
+	}
+}

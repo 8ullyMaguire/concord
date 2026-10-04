@@ -203,7 +203,7 @@ func (s *Server) loadTemplates() error {
 	// (see `render`), which is how a missing entry shows up rather than a blank page.
 	pages := []string{"index", "search", "projects", "project", "board",
 		"login", "register", "rank", "ranking", "documents", "notfound", "finder",
-		"scout", "consensus"}
+		"scout", "consensus", "audit"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -512,6 +512,10 @@ func (s *Server) Router() http.Handler {
 	// every real URL while its own test, which passed the id, stayed green.
 	r.Route("/api/v1/projects/{project_id}/audit", func(r chi.Router) {
 		r.Get("/", s.handleListProjectAudit)
+		// Registered before the wildcard, and it matters that it is a literal
+		// segment rather than a {id}: the filter dropdown has to be able to ask
+		// "what can I filter by" without inheriting the audit handler.
+		r.Get("/actions", s.handleListProjectAuditActions)
 	})
 
 	// Solutions (§6.3-6.4). Nested under a feature because a solution has no
@@ -671,6 +675,12 @@ func (s *Server) Router() http.Handler {
 	r.Get("/projects/{slug}", s.handleProjectPage)
 	r.Get("/projects/{slug}/board", s.handleBoardPage)
 	r.Get("/projects/{slug}/rank", s.handleRankPage)
+	// Audit log (idea #25, docs/plans/audit-log.md step A4). Mounted on {slug}
+	// with the page routes, NOT on {project_id} with the API: this is a document a
+	// reader opens, and requireProjectID reads chi's {project_id}, which is empty
+	// on a page route.
+	r.Get("/projects/{slug}/audit", s.handleAuditPage)
+
 	r.Get("/projects/{slug}/ranking", s.handleRankingPage)
 	r.Get("/projects/{slug}/documents", s.handleDocumentsPage)
 	r.Get("/login", s.handleLoginPage)
