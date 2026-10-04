@@ -262,7 +262,6 @@ func (s *Server) handleVoteAnswer(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, map[string]string{"status": "voted"})
 }
 
-
 // requireReadableList loads the list named in {id} and confirms the caller may
 // read it, answering the request itself when they may not.
 //

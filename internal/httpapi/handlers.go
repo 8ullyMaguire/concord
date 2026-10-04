@@ -281,6 +281,42 @@ func (s *Server) handleFeaturePriorities(w http.ResponseWriter, r *http.Request)
 //     mutation testing when only the first was present.
 //
 // store.GetFeatureComplaints already existed; only the route and handler did not.
+// handleListComplaintFeatures returns the features linked to a complaint.
+//
+// Both checks are required and neither substitutes for the other -- the same pair,
+// and the same reason, as handleGetFeature and handleListFeatureComplaints:
+//
+//   - requireProjectID covers the caller's access to the project in the PATH;
+//   - the ownership check stops a public project's URL serving a private
+//     complaint's features. Without it, the ownership checks across this package
+//     would be a pattern that survives mutation testing by never being exercised.
+func (s *Server) handleListComplaintFeatures(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
+	id, err := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
+	if err != nil {
+		mapError(w, store.ErrInvalid)
+		return
+	}
+	c, err := s.Store.GetComplaint(r.Context(), id)
+	if err != nil {
+		mapError(w, store.ErrNotFound)
+		return
+	}
+	if c.ProjectID != projectID {
+		mapError(w, store.ErrNotFound)
+		return
+	}
+	features, err := s.Store.GetComplaintFeatures(r.Context(), id)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, features)
+}
+
 func (s *Server) handleListFeatureComplaints(w http.ResponseWriter, r *http.Request) {
 	projectID, ok := s.requireProjectID(w, r)
 	if !ok {
@@ -1731,6 +1767,33 @@ func (s *Server) handleAuditPage(w http.ResponseWriter, r *http.Request) {
 // the server has no reason to load a row just to decide whether to render a shell,
 // and a wrong id in a URL is a reader's typo rather than an attack. feature.js
 // renders the "no such feature" state for it.
+// handleComplaintPage renders the complaint detail shell for
+// /projects/{slug}/complaints/{id}.
+//
+// frontend-spec.md's page ranking puts this fourth: "Carries impact meter, linked
+// features, status."
+//
+// Same visibility rule as the feature page and for the same reason -- the shell
+// renders for logged-out visitors, so a 200 would confirm the slug exists and put
+// it in the title bar. The complaint id is deliberately NOT looked up here; the page
+// fetches its data client-side and complaint.js renders the missing state.
+func (s *Server) handleComplaintPage(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	s.render(w, http.StatusOK, "complaint", struct {
+		pageData
+		Slug string
+	}{s.pageFor(r, "Complaint - "+slug), slug})
+}
+
 func (s *Server) handleFeaturePage(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	proj, err := s.Store.GetProject(r.Context(), slug)

@@ -163,3 +163,54 @@ func TestGetFeatureComplaintsReturnsEmptyNotNil(t *testing.T) {
 			"[] breaks on it")
 	}
 }
+
+// TestGetComplaintFeaturesReturnsEmptyNotNil is the mirror of
+// TestGetFeatureComplaintsReturnsEmptyNotNil.
+//
+// The reverse direction had no read side at all: nothing joined complaints to
+// features from the complaint's side, so a complaint page could not list the
+// features built to answer it -- and spec's page ranking asks for exactly that
+// ("Carries impact meter, linked features, status").
+//
+// Same empty-slice contract, same reason: a nil slice marshals to `null` and the
+// client breaks on it far from the cause. Reached here by UNLINKING, because
+// §6.2 requires a validated complaint to create a feature but nothing requires a
+// feature to be linked.
+func TestGetComplaintFeaturesReturnsEmptyNotNil(t *testing.T) {
+	store, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+
+	comp, err := store.CreateComplaint(ctx, pid, uid, "Some pain", "It hurts.", 3, 0.8, 1.0)
+	if err != nil {
+		t.Fatalf("CreateComplaint: %v", err)
+	}
+	if err := store.ValidateComplaint(ctx, comp.ID); err != nil {
+		t.Fatalf("ValidateComplaint: %v", err)
+	}
+	f, err := store.CreateFeature(ctx, pid, uid, "Linked", "body", "", nil, nil, []int64{comp.ID})
+	if err != nil {
+		t.Fatalf("CreateFeature: %v", err)
+	}
+
+	got, err := store.GetComplaintFeatures(ctx, comp.ID)
+	if err != nil {
+		t.Fatalf("GetComplaintFeatures: %v", err)
+	}
+	if len(got) != 1 || got[0].ID != f.ID {
+		t.Fatalf("expected the one linked feature %d, got %+v", f.ID, got)
+	}
+
+	if _, err := store.ExecContext(ctx,
+		`DELETE FROM feature_complaints WHERE complaint_id=?`, comp.ID); err != nil {
+		t.Fatalf("unlink: %v", err)
+	}
+
+	got, err = store.GetComplaintFeatures(ctx, comp.ID)
+	if err != nil {
+		t.Fatalf("GetComplaintFeatures after unlink: %v", err)
+	}
+	if got == nil {
+		t.Error("GetComplaintFeatures returned a nil slice for no rows; it must be an " +
+			"empty slice, because nil marshals to null")
+	}
+}

@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -157,4 +159,58 @@ func seedFeatureForPage(t *testing.T, ts *httptest.Server) string {
 		t.Fatalf("feature: %d %s", code, f)
 	}
 	return owner
+}
+
+// TestTheProjectPagesJavaScriptHasNoUndefinedReferences is the gate the reachability
+// check turned out to need.
+//
+// The complaint-page work changed one call: complaintCards(complaints) became
+// complaintCards(complaints, p.slug), because render() receives the PROJECT as `p`
+// and `slug` was not in scope. `slug` threw a ReferenceError on that line, which
+// aborted the whole project-page render -- and TestComplaintPageIsLinkedFromThe
+// Project PASSED throughout, because it only checks that the link string exists in
+// the source. The page was completely broken and the gate was green.
+//
+// This is the general shape of that failure: a static check on a JS source proves a
+// string is present, never that the code around it runs. Only executing it does.
+//
+// So it is executed here, through the same e2e path that already found it. What
+// this Go test adds is the assertion that the JS PARSES at all -- `node --check`
+// catches an unbalanced brace in CI, before the browser suite is ever run -- and
+// the e2e suite's 13 tests cover the runtime half. A source-level gate alone would
+// have missed the ReferenceError; a runtime gate alone would have needed a browser
+// to find a syntax error. Both, or neither.
+func TestTheProjectPagesJavaScriptHasNoUndefinedReferences(t *testing.T) {
+	node, err := exec.LookPath("node")
+	if err != nil {
+		t.Skip("node is not on PATH; the e2e suite exercises these scripts in a browser")
+	}
+	for _, name := range []string{"project.js", "feature.js", "complaint.js"} {
+		out, err := exec.Command(node, "--check", filepath.Join("assets", "js", name)).CombinedOutput()
+		if err != nil {
+			t.Errorf("%s does not parse: %v\n%s", name, err, out)
+		}
+	}
+}
+
+// TestEveryRenderedScriptIsLoadedBySomePage keeps the asset list honest.
+//
+// A script nothing loads is a page that silently does nothing. The list is
+// asserted in a11y_test.go; this asserts the direction that matters -- that the
+// templates actually reference the script they need.
+func TestEveryRenderedScriptIsLoadedBySomePage(t *testing.T) {
+	pairs := map[string]string{
+		"feature.html":   "feature.js",
+		"complaint.html": "complaint.js",
+	}
+	for tmpl, script := range pairs {
+		body, err := os.ReadFile(filepath.Join("templates", tmpl))
+		if err != nil {
+			t.Fatalf("read %s: %v", tmpl, err)
+		}
+		if !strings.Contains(string(body), script) {
+			t.Errorf("%s does not load %s, so its page renders a permanent skeleton",
+				tmpl, script)
+		}
+	}
 }

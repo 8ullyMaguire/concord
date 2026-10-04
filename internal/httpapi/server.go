@@ -204,7 +204,7 @@ func (s *Server) loadTemplates() error {
 	// (see `render`), which is how a missing entry shows up rather than a blank page.
 	pages := []string{"index", "search", "projects", "project", "board",
 		"login", "register", "rank", "ranking", "documents", "notfound", "finder",
-		"scout", "consensus", "audit", "feature"}
+		"scout", "consensus", "audit", "feature", "complaint"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -502,6 +502,11 @@ func (s *Server) Router() http.Handler {
 		r.Post("/", s.handleCreateComplaint)
 		r.Route("/{id}", func(r chi.Router) {
 			r.Get("/", s.handleGetComplaint)
+			// The read side of the complaint -> features direction, mirroring
+			// .../features/{id}/complaints. One direction was write-only for the
+			// life of the schema and the other had no reader at all, so a
+			// complaint could not name the work built to answer it.
+			r.Get("/features", s.handleListComplaintFeatures)
 			r.Post("/impact", s.handleAddImpact)
 			r.Post("/validate", s.handleValidateComplaint)
 			r.Post("/merge/{target_id}", s.handleMergeComplaints)
@@ -712,6 +717,7 @@ func (s *Server) Router() http.Handler {
 	// on a page route.
 	r.Get("/projects/{slug}/audit", s.handleAuditPage)
 	r.Get("/projects/{slug}/features/{id}", s.handleFeaturePage)
+	r.Get("/projects/{slug}/complaints/{id}", s.handleComplaintPage)
 
 	r.Get("/projects/{slug}/ranking", s.handleRankingPage)
 	r.Get("/projects/{slug}/documents", s.handleDocumentsPage)

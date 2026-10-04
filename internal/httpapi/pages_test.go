@@ -282,7 +282,15 @@ func TestProjectPageRendersComplaintsTheServerActuallyHas(t *testing.T) {
 	js := assetBody(t, ts, "/assets/js/project.js")
 	// The render function must actually invoke the card builder, and must be
 	// handed the complaint list it fetched.
-	if !strings.Contains(js, "complaintCards(complaints)") {
+	//
+	// Matched on the PREFIX, without the closing paren, because the call gained a
+	// second argument on 2026-10-05: complaintCards(list, slug), so each card can
+	// link to its detail page. Pinning the full `complaintCards(complaints)` broke
+	// on a correct change -- the same failure mode this file's own comment below
+	// describes for render(), which had to be relaxed twice for the same reason.
+	// The intent is "the list reaches the builder", not "the call has one argument".
+	if !strings.Contains(js, "complaintCards(complaints,") &&
+		!strings.Contains(js, "complaintCards(complaints)") {
 		t.Error("render does not call complaintCards with the complaint list")
 	}
 	// render now takes documents as a fourth argument (2026-10-02, the document

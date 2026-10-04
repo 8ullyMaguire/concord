@@ -4,9 +4,12 @@ Written 2026-10-05. Every number below is measured, not remembered. The doc-numb
 gate (`scripts/check_doc_numbers.py`, in `make verify`) fails when any of them goes
 stale, so this file cannot quietly become fiction.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · 776 Go tests across
-9 test-bearing packages · 149 e2e tests in 8 suites · 7/7 UI mutants killed ·
-HEAD `7114a54` on both remotes.
+**Measured state:** schema 25 · 25 migrations · 79 live tables · 791 Go tests across
+9 test-bearing packages · 155 e2e tests in 9 suites · 7/7 UI mutants killed ·
+HEAD `64703ac` on both remotes.
+
+**Updated 2026-10-05 (feature detail page).** One page built, and three defects it
+exposed that no existing test could see. See §3.
 
 ---
 
@@ -41,7 +44,7 @@ Two are built. The rest are the real remaining work, and every one of them has a
 |---|---|---|---|---|
 | 1 | Documents | ✅ full read/search | ✅ `documents.html` | ✅ |
 | 2 | Consensus | ✅ full | ✅ `consensus.html` | ✅ |
-| 3 | **Feature detail** | ✅ `GET .../features/{id}`, votes, complaints, solutions | ❌ | — |
+| 3 | ~~Feature detail~~ | ✅ built 2026-10-05; **new** `.../features/{id}/complaints` | ✅ `feature.html` | via feature card |
 | 4 | **Complaint detail** | ✅ `GET .../complaints/{id}`, impact, validate, merge | ❌ | — |
 | 5 | **Project settings** | ✅ charter, members, invites, tags, languages, visibility | ❌ | — |
 | 6 | **Comments** | ✅ create/list/vote/delete | ❌ | — |
@@ -116,3 +119,88 @@ make e2e      # 8 Playwright suites + the audit UI mutation gate
 shipped were green: unreachable pages, a truncated 200, a slug leak on a 404, a
 14-times-duplicated document. Each was found by mutating the thing a gate guarded and
 confirming it went red.
+
+---
+
+## 3. What the feature page exposed, 2026-10-05
+
+Building page 3 turned up four defects that every existing test was blind to.
+They are recorded here because the pattern is the point, not the individual bugs.
+
+### The shape that keeps recurring: a field nobody ever reads
+
+`feature_complaints` was **write-only for the life of the schema.** `CreateFeature`
+accepted `linked_complaints` and stored the ids; no route read them back. So the
+evidence for a feature's rank was in the database and in no response.
+
+It survived because it *looked* finished: `feature.js` had a Complaints section
+reading `f.linked_complaints`, a field that is never populated on a read. The
+section was implemented, the field was write-only, and the page rendered empty —
+so spec §3.4's "why is this ranked here?" had no answer on the page that claims to
+answer it.
+
+**The check that catches it: for every field the UI reads, name the route that
+writes it.** A field with a writer and no reader is not an unfinished feature, it
+is a silent hole.
+
+### Three bugs the Go tests could not see, caught by the first browser test
+
+The Go tests assert on the shell and on `project.js`. Only a browser has the DOM,
+and it immediately found three things:
+
+| Bug | Symptom | Why Go could not see it |
+|---|---|---|
+| URL parser read `parts[2]` | all three fetches `400` | no Go test executes the JS |
+| `/solutions` and `/consensus` are **wrapped** objects | "0 solutions" on a feature with none | the Go tests never read the response |
+| the project card's `.card-title` is deliberately not a link | a too-broad reachability assertion reported 1 spurious difference | no Go test counts DOM nodes |
+
+Both wrappers are silent failures: `Array.isArray({solutions:[]})` is false, the
+code falls back to `[]`, and the page reports the truth about a feature whose
+solutions it simply failed to load.
+
+### Two fixtures wrote states the product forbids
+
+Both were written as "the obvious missing case". Neither state exists, so both
+tests were asserting on fiction — and the schema and the API caught them, not review.
+
+| Fixture | Why it is impossible | What actually signals the real state |
+|---|---|---|
+| `elo_r = NULL` | `NOT NULL` in the schema; `EloR` is a non-pointer `float64` in Go | `elo_rd == 350`, the starting deviation |
+| a feature with no complaints | §6.2: `400 "at least one validated complaint are required"` | unlink a complaint (store-level only) |
+
+"New and unsure" is `elo_rd == 350`, not a missing rating. That is why the page
+draws a **bar** and not a number, and why the e2e fixture seeds a real
+never-compared feature (`elo_r` 1500, `elo_rd` 350) instead of a null one.
+
+### Six endpoints served any row by numeric id
+
+Found in the same session, before the page work — see `KNOWN-ISSUES.md`. Every one
+was anonymous-reachable and read by sequential integer, so a private roadmap was
+one `for` loop. The list endpoint beside them was already guarded, so the API
+answered `404` for a private project's feature *list* and `200` for feature 1 of
+the same project.
+
+**The check that catches it: a guard on a `{slug}` route is not a guard on the
+row.** `requireProjectID` passes on the project *named in the path*; without an
+ownership check, a public project in the path serves a private row. Both were
+droppable, and the ownership check survived the entire suite until a test existed
+for it.
+
+---
+
+## 4. Next, in order
+
+1. **Complaint detail** (§4 of the ranking). Same shape as the feature page, and it
+   reuses the `feature_id` ownership pattern established above.
+2. **Project settings** — charter, members, invites, tags, languages, visibility.
+   The most API surface of any remaining page.
+3. **Requests + answers.** Note `GET /api/v1/requests/{request_id}` has **no
+   project segment**: `requireReadableRequest` resolves the project *through the
+   row*. Any new route shaped like that needs the same helper, not a path-parameter
+   check that cannot exist.
+4. Lists, merge requests, comments, criteria profiles — all API-complete.
+
+Every page follows the same three-part contract now, from
+`internal/httpapi/feature_page_test.go`: it renders, it is **linked from
+somewhere**, and it hides a private project. Plus the browser test that clicks the
+link, which is the part the Go layer cannot substitute for.

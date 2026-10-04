@@ -120,7 +120,7 @@ be rewritten. Federation and MCP are listed in the plan for later.
 
 ## Status
 
-Measured against the running instance (schema 25, 79 tables, 787 tests,
+Measured against the running instance (schema 25, 79 tables, 801 tests,
 `v0.4.0-voting-90-g6b9bb17`), not against the plan's own history. "Shipped"
 means there is code, a migration and a test -- not that the surface is complete.
 

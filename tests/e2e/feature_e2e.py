@@ -73,7 +73,7 @@ def seed(db):
         " frequency, strategic_multiplier, status, created_at, updated_at)"
         " VALUES (?,?,?,?,?,?,?,?,?,?)",
         (pid, owner, "Export drops the last row", "reproducible on 10k rows",
-         4, 2.0, 1.0, "validated", now, now)).lastrowid
+         4, 2.0, 1.5, "validated", now, now)).lastrowid
 
     # 1. COMPARED: a real rank, narrow uncertainty. This is the row where showing a
     #    bare number would be most defensible and least misleading.
@@ -117,6 +117,28 @@ def seed(db):
         " created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
         (pid, owner, "Never compared feature", "submitted this morning", "L",
          "draft", 1500.0, 350.0, 0.06, 1.0, None, None, now, now))
+
+    # Two more complaints, for the complaint page's own cases:
+    #
+    #   NOT VALIDATED  §6.2 requires a validated complaint before a feature can be
+    #                  built from it, so "open" is a state with real consequences and
+    #                  the page has to SAY it rather than render a severity badge.
+    #   NO LINKS       a complaint nothing is linked to, which is the ordinary state
+    #                  for a validated complaint. If the empty case renders blank
+    #                  it is indistinguishable from "the list failed to load" -- the
+    #                  exact silent failure this endpoint was written to fix.
+    cur.execute(
+        "INSERT INTO complaints (project_id, author_id, title, body, severity,"
+        " frequency, strategic_multiplier, status, created_at, updated_at)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (pid, owner, "Not validated yet", "needs a second opinion", 2, 1.0,
+         1.0, "open", now, now))
+    cur.execute(
+        "INSERT INTO complaints (project_id, author_id, title, body, severity,"
+        " frequency, strategic_multiplier, status, created_at, updated_at)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?)",
+        (pid, owner, "Nothing linked to this one", "nobody has proposed work yet",
+         3, 0.0, 1.0, "validated", now, now))
 
     # The private project, holding a copy of the compared feature. Its page must 404
     # for a logged-out reader: the shell renders for anonymous visitors, so a 200
@@ -183,11 +205,33 @@ def open_feature(pg, fid, slug=SLUG):
     expect(pg.locator("#feature-root")).to_have_attribute("aria-busy", "false", timeout=15000)
 
 
+def open_complaint(pg, cid, slug=SLUG):
+    pg.goto(f"{BASE}/projects/{slug}/complaints/{cid}")
+    expect(pg.locator("#complaint-root")).to_have_attribute("aria-busy", "false", timeout=15000)
+
+
 def feature_ids(db):
     """Map title -> id, so the tests never hardcode a sequence number."""
     con = sqlite3.connect(db)
     rows = dict(con.execute(
         "SELECT f.title, f.id FROM features f JOIN projects p ON p.id = f.project_id"
+        " WHERE p.slug = ?", (SLUG,)).fetchall())
+    con.close()
+    return rows
+
+
+def complaint_ids(db):
+    """Map title -> id for COMPLAINTS.
+
+    A separate function from feature_ids rather than one that takes a table name:
+    the two SELECTs differ in more than the table (the join column, the f. alias), and
+    a parameterised version invites the ambiguous-`id` bug that actually happened
+    here -- `SELECT title, id FROM features f JOIN projects p ...` is valid SQL and
+    fails at runtime with "ambiguous column name: id".
+    """
+    con = sqlite3.connect(db)
+    rows = dict(con.execute(
+        "SELECT c.title, c.id FROM complaints c JOIN projects p ON p.id = c.project_id"
         " WHERE p.slug = ?", (SLUG,)).fetchall())
     con.close()
     return rows
@@ -349,4 +393,153 @@ def test_a_bogus_feature_id_says_so_instead_of_spinning(server, page):
     root = page.locator("#feature-root")
     expect(root).to_contain_text("No such feature")
     assert root.locator(".rating-value").count() == 0
+    assert not page.errors, page.errors
+
+
+# ---------------------------------------------------------------------------
+# COMPLAINT DETAIL
+# ---------------------------------------------------------------------------
+# The complaint page's requirements are "impact meter, linked features, status"
+# (frontend-spec.md's page ranking, item 4), and each has a way of being wrong
+# that looks right:
+#
+#   - the linked-features list must come from a real endpoint. /complaints/{id}
+#     does not carry them, and neither direction of the link had a reader until
+#     this page forced one into existence;
+#   - the impact meter must show its ARITHMETIC. A bare number is unreadable, and
+#     severity (1-5) and frequency (a report count) are not on one scale, so
+#     presenting them as if they were would misstate what was measured;
+#   - a complaint that has NOT been validated says so, because §6.2 requires
+#     validation before a feature can be built from it -- so status is load-bearing
+#     text, not a badge.
+
+
+def complaint_ids(db):
+    con = sqlite3.connect(db)
+    rows = dict(con.execute(
+        "SELECT c.title, c.id FROM complaints c JOIN projects p ON p.id = c.project_id"
+        " WHERE p.slug = ?", (SLUG,)).fetchall())
+    con.close()
+    return rows
+
+
+def test_the_complaint_card_on_the_project_is_a_working_link(server, page):
+    """THE REACHABILITY TEST, for the complaint page.
+
+    Same contract as the feature card, and the same reason it is a browser test:
+    the Go gate asserts the link is BUILT in project.js and says in its comment
+    that only this can prove the rendered DOM has something clickable.
+    """
+    ids = complaint_ids(server["db"])
+    page.goto(f"{BASE}/projects/{SLUG}")
+    expect(page.locator("#project-detail")).to_have_attribute("aria-busy", "false", timeout=15000)
+
+    link = page.locator("#project-detail .card-title a", has_text="Export drops the last row")
+    expect(link).to_have_count(1)
+    expect(link).to_have_attribute("href", f"/projects/{SLUG}/complaints/{ids['Export drops the last row']}")
+
+    link.click()
+    expect(page).to_have_url(f"{BASE}/projects/{SLUG}/complaints/{ids['Export drops the last row']}")
+    expect(page.locator("#complaint-root h1")).to_contain_text("Export drops the last row")
+    assert not page.errors, page.errors
+
+
+def test_a_complaint_shows_its_status_and_the_features_answering_it(server, page):
+    """Status badge, the linked feature, and the validated note.
+
+    The link is the part that cannot be asserted from the Go layer: the complaint
+    OBJECT carries no linked features, so a page reading that field renders an empty
+    list and looks like a complaint nobody has built anything for.
+    """
+    ids = complaint_ids(server["db"])
+    open_complaint(page, ids["Export drops the last row"])
+    root = page.locator("#complaint-root")
+
+    expect(root.locator("h1")).to_contain_text("Export drops the last row")
+    expect(root.locator("h1")).to_contain_text("validated")
+    # The linked feature, from its own endpoint.
+    expect(root).to_contain_text("Features answering this (1)")
+    expect(root.locator(".linked-row a")).to_have_count(1)
+    expect(root.locator(".linked-row a")).to_have_text("Export must be lossless")
+    # And it is a link to that feature's own page, built from the slug.
+    expect(root.locator(".linked-row a")).to_have_attribute(
+        "href", f"/projects/{SLUG}/features/{1}")
+    assert not page.errors, page.errors
+
+
+def test_the_impact_meter_shows_its_arithmetic(server, page):
+    """severity 4, frequency 2.0, multiplier 1.5: the score AND its inputs.
+
+    The inputs are the assertion. A meter bar whose number cannot be checked is a
+    decoration, and severity (1-5) and frequency (a report count) are different
+    scales -- so the page must show them separately rather than as one total that
+    looks like a unit.
+    """
+    ids = complaint_ids(server["db"])
+    open_complaint(page, ids["Export drops the last row"])
+    root = page.locator("#complaint-root")
+
+    expect(root.locator(".impact-value")).to_have_text("10")   # 4*2 + 2
+    expect(root.locator(".impact")).to_contain_text("severity 4 of 5")
+    expect(root.locator(".impact")).to_contain_text("2 reports")
+    expect(root.locator(".impact")).to_contain_text("strategic multiplier 1.5")
+    # The bar is width-carrying, and its aria-label carries the same claim for a
+    # reader who cannot see it.
+    fill = root.locator(".impact-fill")
+    expect(fill).to_have_attribute("style", "width:50%")
+    expect(root.locator(".impact-track")).to_have_attribute(
+        "aria-label", "impact 10 out of 20, 50 percent of the maximum")
+    assert not page.errors, page.errors
+
+
+def test_an_unvalidated_complaint_says_it_is_not_validated(server, page):
+    """§6.2 makes validation load-bearing, so the page must say it out loud.
+
+    Without this the page is a complaint with a severity badge and no indication
+    that nothing can be built from it yet -- and "not validated" and "validated"
+    are the two states that decide whether a feature may exist.
+    """
+    ids = complaint_ids(server["db"])
+    open_complaint(page, ids["Not validated yet"])
+    root = page.locator("#complaint-root")
+
+    expect(root.locator("h1")).to_contain_text("open")
+    expect(root).to_contain_text("Not yet validated")
+    expect(root).to_contain_text("until this reaches validated it ranks nothing")
+    assert not page.errors, page.errors
+
+
+def test_a_complaint_with_no_linked_features_says_so_rather_than_going_blank(server, page):
+    """The empty case must SAY it. "No feature is linked" and "the list failed to
+    load" render identically if the empty state is silent -- and the whole reason
+    this endpoint was written is that the failure mode was silent."""
+    ids = complaint_ids(server["db"])
+    open_complaint(page, ids["Not validated yet"])
+    root = page.locator("#complaint-root")
+
+    expect(root).to_contain_text("Features answering this (0)")
+    expect(root).to_contain_text("No feature is linked to this complaint yet")
+    assert not page.errors, page.errors
+
+
+def test_a_private_projects_complaint_page_is_not_reachable(server, page):
+    """404, and the body must not name the slug."""
+    ids = complaint_ids(server["db"])
+    page.goto(f"{BASE}/projects/{PRIVATE}/complaints/1")
+    expect(page.locator("body")).to_contain_text("no project at this address", timeout=15000)
+    assert PRIVATE not in page.content()
+    assert "SECRET internal roadmap item" not in page.content()
+
+
+def test_a_bogus_complaint_id_says_so_instead_of_spinning(server, page):
+    """aria-busy must be cleared on the error path too.
+
+    A skeleton that spins forever over an error message reads as "still loading",
+    and the handler deliberately does not look the complaint up -- so the client is
+    the only place this can be reported, which makes the client reporting it exactly
+    what has to be tested.
+    """
+    open_complaint(page, 999999)
+    root = page.locator("#complaint-root")
+    expect(root).to_contain_text("No such complaint")
     assert not page.errors, page.errors

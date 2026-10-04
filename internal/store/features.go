@@ -308,3 +308,42 @@ func (d *DB) GetFeatureComplaints(ctx context.Context, featureID int64) ([]Compl
 	}
 	return complaints, rows.Err()
 }
+
+// GetComplaintFeatures returns the features linked to a complaint.
+//
+// The mirror of GetFeatureComplaints, which until this commit was the only
+// direction with a read side. So a complaint could be linked to features and no
+// response anywhere could say so -- the same write-only hole, in the direction
+// spec's page ranking actually asks for ("Carries impact meter, linked features,
+// status").
+//
+// Ordering is by the FEATURE's rating, not by link order or by id: this list is
+// "which work answers this pain, best first", and a reader comparing three
+// features wants the strongest one at the top. elo_rd travels with it for the same
+// uncertainty reason as everywhere else -- a 1500 that has never been compared and
+// a settled 1500 are not the same claim.
+func (d *DB) GetComplaintFeatures(ctx context.Context, complaintID int64) ([]Feature, error) {
+	rows, err := d.QueryContext(ctx, `SELECT f.id, f.project_id, f.author_id, f.title, f.body,
+		f.effort, f.impact, f.effort_score, f.impact_ratio, f.status,
+		f.elo_r, f.elo_rd, f.elo_vol, f.strategic_weight, f.created_at, f.updated_at
+		FROM feature_complaints fc JOIN features f ON f.id = fc.feature_id
+		WHERE fc.complaint_id=? ORDER BY f.elo_r DESC, f.id`, complaintID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	// An empty slice, never nil: nil marshals to null. See GetFeatureComplaints.
+	features := []Feature{}
+	for rows.Next() {
+		var f Feature
+		if err := rows.Scan(&f.ID, &f.ProjectID, &f.AuthorID, &f.Title, &f.Body, &f.Effort,
+			&f.Impact, &f.EffortScore, &f.ImpactRatio,
+			&f.Status, &f.EloR, &f.EloRD, &f.EloVol, &f.StrategicWeight,
+			&f.CreatedAt, &f.UpdatedAt); err != nil {
+			return nil, err
+		}
+		features = append(features, f)
+	}
+	return features, rows.Err()
+}

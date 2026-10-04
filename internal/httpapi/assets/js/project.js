@@ -378,10 +378,21 @@
       '<a class="btn btn-primary" href="/projects">Browse projects</a></div>';
   }
 
-  function complaintCards(list) {
+  // complaintCards renders one card per complaint, the title linked to its detail
+  // page.
+  //
+  // The title was a plain div, which is the same defect the feature cards had: the
+  // route and the template existed and nothing pointed at them. It is also the most
+  // natural place a reader looks for the detail.
+  //
+  // The card is NOT the link. There is a Validate BUTTON in the pill row, and nesting
+  // an interactive element inside an <a> is invalid HTML and breaks keyboard and
+  // screen-reader behaviour in ways the a11y suite would catch late.
+  function complaintCards(list, slug) {
     return (list || []).map(function (c) {
       return '<div class="card">' +
-        '<div class="card-title">' + esc(c.title) + '</div>' +
+        '<div class="card-title"><a href="/projects/' + esc(slug) + '/complaints/' +
+          esc(c.id) + '">' + esc(c.title) + '</a></div>' +
         (c.body ? '<p class="card-text">' + esc(c.body) + '</p>' : '') +
         '<div class="pill-row">' +
         '<span class="badge ' + (c.status === 'validated' ? 'badge-green' : 'badge-slate') + '">' +
@@ -602,7 +613,7 @@
       '<p class="section-sub">The problems being solved. A feature needs at least one ' +
       'validated complaint behind it before it is a candidate for anything.</p></div>' +
       (complaints && complaints.length
-        ? '<div class="grid-responsive-2">' + complaintCards(complaints) + '</div>'
+        ? '<div class="grid-responsive-2">' + complaintCards(complaints, p.slug) + '</div>'
         : '<div class="empty-state"><div class="empty-state-icon">\u{1F4CC}</div>' +
           '<p class="empty-state-title">No complaints filed</p>' +
           '<p class="empty-state-description">Nothing has been reported yet. ' +

@@ -167,6 +167,7 @@ func TestEveryPageShowsASkeletonNotABlockingSpinner(t *testing.T) {
 		"documents": "/projects/a11y-probe/documents",
 		"audit":     "/projects/a11y-probe/audit",
 		"feature":   "/projects/a11y-probe/features/1",
+		"complaint": "/projects/a11y-probe/complaints/1",
 	} {
 		body := htmlBody(t, ts, url)
 		if !strings.Contains(body, "<html") {
@@ -252,7 +253,7 @@ func TestEveryPageShowsASkeletonNotABlockingSpinner(t *testing.T) {
 func TestAriaBusyIsClearedWhenContentArrives(t *testing.T) {
 	ts := newTestServer(t)
 
-	for _, script := range []string{"project.js", "board.js", "documents.js", "search.js", "projects.js", "feature.js"} {
+	for _, script := range []string{"project.js", "board.js", "documents.js", "search.js", "projects.js", "feature.js", "complaint.js"} {
 		js := assetBody(t, ts, "/assets/js/"+script)
 		if !strings.Contains(js, "aria-busy") && !strings.Contains(js, "ConcordSkeleton.done") {
 			t.Errorf("%s never sets or clears aria-busy", script)

@@ -59,7 +59,18 @@
       });
   }
 
-  function done() { root.setAttribute('aria-busy', 'false'); }
+  // aria-busy is cleared through the house helper, not by setting the attribute.
+  //
+  // The a11y suite rejects a page that does the latter
+  // (TestAriaBusyIsClearedWhenContentArrives): done() is the single place that knows
+  // what else has to change when a region stops loading, and a page that sets the
+  // attribute itself announces results while still looking unfinished. It also keeps
+  // this page correct if the helper grows -- the first version here set the attribute
+  // and failed the gate.
+  function done() {
+    if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);
+    else root.setAttribute('aria-busy', 'false');
+  }
 
   // A rating that has never been compared is not zero. Zero is a real rating that
   // lost every comparison, and the two must not look alike.
