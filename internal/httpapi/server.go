@@ -506,6 +506,14 @@ func (s *Server) Router() http.Handler {
 		})
 	})
 
+	// Audit log (idea #25). Top-level, with its own {project_id} param, and
+	// that param is a SLUG resolved by requireProjectID -- not a numeric id.
+	// phase3.md S1.1 records a handler that assumed the latter and 404'd on
+	// every real URL while its own test, which passed the id, stayed green.
+	r.Route("/api/v1/projects/{project_id}/audit", func(r chi.Router) {
+		r.Get("/", s.handleListProjectAudit)
+	})
+
 	// Solutions (§6.3-6.4). Nested under a feature because a solution has no
 	// meaning without the outcome it is a way of delivering: "which approach
 	// should we build?" is a question about a specific feature.

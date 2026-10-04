@@ -1,0 +1,72 @@
+[
+  {
+    "name": "the total is counted unfiltered",
+    "old": "`SELECT COUNT(*) FROM audit_log`+clause",
+    "new": "`SELECT COUNT(*) FROM audit_log`"
+  },
+  {
+    "name": "the limit clamps above and below fold into one branch, so an explicit ceiling becomes the default",
+    "old": "if f.Limit <= 0 {\n\t\tf.Limit = AuditDefaultLimit\n\t}\n\tif f.Limit > AuditMaxLimit {\n\t\tf.Limit = AuditMaxLimit\n\t}",
+    "new": "if f.Limit <= 0 || f.Limit > AuditMaxLimit {\n\t\tf.Limit = AuditDefaultLimit\n\t}"
+  },
+  {
+    "name": "the project filter is dropped, so one project's log leaks another's",
+    "old": "where := []string{\"project_id = ?\"}",
+    "new": "where := []string{\"1=1\"}"
+  },
+  {
+    "name": "the action filter is dropped",
+    "old": "where = append(where, \"action = ?\")",
+    "new": "where = append(where, \"1=1\")"
+  },
+  {
+    "name": "the entity filter is dropped",
+    "old": "where = append(where, \"entity = ?\")",
+    "new": "where = append(where, \"1=1\")"
+  },
+  {
+    "name": "the actor filter is dropped",
+    "old": "where = append(where, \"actor_id = ?\")",
+    "new": "where = append(where, \"1=1\")"
+  },
+  {
+    "name": "the since filter is dropped",
+    "old": "where = append(where, \"created_at >= ?\")",
+    "new": "where = append(where, \"1=1\")"
+  },
+  {
+    "name": "the text filter searches detail but not action",
+    "old": "where = append(where, \"(detail LIKE ? ESCAPE '\\\\' OR action LIKE ? ESCAPE '\\\\')\")\n\t\targs = append(args, \"%\"+escaped+\"%\", \"%\"+escaped+\"%\")",
+    "new": "where = append(where, \"detail LIKE ? ESCAPE '\\\\'\")\n\t\targs = append(args, \"%\"+escaped+\"%\")"
+  },
+  {
+    "name": "the text filter ANDs detail and action instead of ORing them",
+    "old": "where = append(where, \"(detail LIKE ? ESCAPE '\\\\' OR action LIKE ? ESCAPE '\\\\')\")",
+    "new": "where = append(where, \"(detail LIKE ? ESCAPE '\\\\' AND action LIKE ? ESCAPE '\\\\')\")"
+  },
+  {
+    "name": "the ESCAPE clause is dropped, so every search containing a wildcard silently matches nothing",
+    "old": "(detail LIKE ? ESCAPE '\\\\' OR action LIKE ? ESCAPE '\\\\')",
+    "new": "(detail LIKE ? OR action LIKE ?)"
+  },
+  {
+    "name": "wildcards in the search text are no longer escaped",
+    "old": "escaped = strings.ReplaceAll(escaped, \"%\", \"\\\\%\")\n\t\tescaped = strings.ReplaceAll(escaped, \"_\", \"\\\\_\")",
+    "new": "escaped = strings.ReplaceAll(escaped, \"%\", \"%\")"
+  },
+  {
+    "name": "the escape character is not doubled before the wildcards are escaped",
+    "old": "escaped := strings.ReplaceAll(f.Text, \"\\\\\", \"\\\\\\\\\")\n\t\tescaped = strings.ReplaceAll(escaped, \"%\", \"\\\\%\")",
+    "new": "escaped := strings.ReplaceAll(f.Text, \"%\", \"\\\\%\")"
+  },
+  {
+    "name": "the unresolved-actor name is invented instead of left null",
+    "old": "if n, ok := names[*e.ActorID]; ok {",
+    "new": "if n, ok := names[*e.ActorID]; ok || true {"
+  },
+  {
+    "name": "actor names are never resolved, so the viewer shows ids nobody can act on",
+    "old": "names, err = d.DisplayNamesFor(ctx, actorIDs)",
+    "new": "names = map[int64]string{}"
+  }
+]

@@ -227,17 +227,8 @@ func (d *DB) GetComplaintPain(ctx context.Context, complaintID int64) (float64, 
 	return ranking.PainScore(c.Severity, c.Frequency, c.StrategicMultiplier, affected, ageDays, charter.PainHalflifeDays), nil
 }
 
-// AuditLogEntry represents an entry in the audit log.
-type AuditLogEntry struct {
-	ID        int64   `json:"id"`
-	ProjectID *int64  `json:"project_id,omitempty"`
-	ActorID   *int64  `json:"actor_id,omitempty"`
-	Action    string  `json:"action"`
-	Entity    string  `json:"entity"`
-	EntityID  *int64  `json:"entity_id,omitempty"`
-	Detail    string  `json:"detail"`
-	CreatedAt float64 `json:"created_at"`
-}
+// AuditLogEntry is declared in audit.go, with the reader that fills it in.
+// AddAudit, below, writes its rows.
 
 // AddAudit inserts an audit log entry.
 func (d *DB) AddAudit(ctx context.Context, projectID int64, actorID int64, action, entity string, entityID int64, detail string) error {
@@ -247,33 +238,12 @@ func (d *DB) AddAudit(ctx context.Context, projectID int64, actorID int64, actio
 	return err
 }
 
-// GetAuditLog returns audit entries for a project.
-func (d *DB) GetAuditLog(ctx context.Context, projectID int64) ([]AuditLogEntry, error) {
-	rows, err := d.QueryContext(ctx, `SELECT id, project_id, actor_id, action, entity, entity_id, detail, created_at
-		FROM audit_log WHERE project_id=? ORDER BY created_at DESC LIMIT 100`, projectID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var entries []AuditLogEntry
-	for rows.Next() {
-		var e AuditLogEntry
-		var pid sql.NullInt64
-		var aid sql.NullInt64
-		var eid sql.NullInt64
-		if err := rows.Scan(&e.ID, &pid, &aid, &e.Action, &e.Entity, &eid, &e.Detail, &e.CreatedAt); err != nil {
-			return nil, err
-		}
-		if pid.Valid {
-			e.ProjectID = &pid.Int64
-		}
-		if aid.Valid {
-			e.ActorID = &aid.Int64
-		}
-		if eid.Valid {
-			e.EntityID = &eid.Int64
-		}
-		entries = append(entries, e)
-	}
-	return entries, rows.Err()
-}
+// GetAuditLog is gone. It had zero callers, and it could not have served a
+// caller correctly anyway: it scanned `detail` — a nullable TEXT — straight into
+// a bare string, so a single row written by any of the ~20 AddAudit call sites
+// that passes no detail took the whole read down. It also hard-coded LIMIT 100
+// with no filters and no total, which cannot express a viewer.
+//
+// ListAudit in audit.go replaces it, and the type it returned now lives there
+// too, next to the code that fills it in rather than across the file from the
+// twenty-odd writers that produce its rows.
