@@ -1747,3 +1747,23 @@ textarea:focus-visible {
   padding: 0.5rem 0; border-bottom: 1px solid var(--color-border, rgba(127,127,127,0.2));
 }
 .linked-row:last-child { border-bottom: 0; }
+
+
+/* Comment thread (shared by the feature and complaint detail pages). */
+.comment-thread { margin-top: 2rem; }
+.comment-thread .count { color: var(--muted); font-size: 0.9rem; font-weight: 400; }
+.comment-list, .comment-replies { list-style: none; margin: 0; padding: 0; }
+.comment { padding: 0.75rem 0; border-top: 1px solid var(--border); }
+.comment-replies { margin-left: 1.5rem; padding-left: 0.75rem; border-left: 2px solid var(--border); }
+.comment-head { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; font-size: 0.85rem; }
+.comment-author { font-weight: 600; }
+.comment-time { color: var(--muted); }
+/* A reply is visibly a reply: the indent plus the left rule, so the nesting survives
+   even when the thread is long. */
+.comment[data-parent-id] > .comment-body { color: var(--text); }
+.comment-body { margin: 0.35rem 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.comment-actions { display: flex; align-items: center; gap: 0.75rem; font-size: 0.85rem; }
+.comment-score { font-variant-numeric: tabular-nums; }
+.comment-form textarea { width: 100%; margin-bottom: 0.5rem; }
+.comment-form-row { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+.notice-error { color: var(--danger); font-size: 0.9rem; }

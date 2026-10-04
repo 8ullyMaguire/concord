@@ -4,7 +4,7 @@ Written 2026-10-05. Every number below is measured, not remembered. The doc-numb
 gate (`scripts/check_doc_numbers.py`, in `make verify`) fails when any of them goes
 stale, so this file cannot quietly become fiction.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · 827 Go tests across
+**Measured state:** schema 25 · 25 migrations · 79 live tables · 843 Go tests across
 9 test-bearing packages · 174 e2e tests in 10 suites · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
@@ -48,7 +48,7 @@ Two are built. The rest are the real remaining work, and every one of them has a
 | 3 | ~~Feature detail~~ | ✅ built 2026-10-05; **new** `.../features/{id}/complaints` | ✅ `feature.html` | via feature card |
 | 4 | ~~Complaint detail~~ | ✅ built 2026-10-05; **new** `.../complaints/{id}/features` | ✅ `complaint.html` | via complaint card |
 | 5 | **Project settings** | ✅ charter, members, invites, tags, languages, visibility | ❌ | — |
-| 6 | **Comments** | ✅ create/list/vote/delete | ❌ | — |
+| 6 | ~~Comments~~ | ✅ built 2026-10-05 on the feature + complaint detail pages; **new** thread-ownership guard | ✅ shared `comments.js` | on both detail pages |
 | 7 | **Merge requests** | ✅ create/approve/execute/reject | ❌ | — |
 | 8 | ~~Requests + answers~~ | ✅ built 2026-10-05; **new** accept-answer, request tags, instance-wide board | ✅ `requests.html` | via request card |
 | 9 | **Lists** | ✅ create/entries | ❌ | — |
@@ -294,4 +294,65 @@ pins §17's exact clause — the badge is *displayed but does not override the r
 by seeding the accepted answer with the **lowest** rating and asserting it still sorts
 last. `request_tags` had no store method either, so §17's "requests are taggable"
 constraint had no read side at all.
+
+
+---
+
+## 6. Comments were a write-only surface, and writing the tests found two more defects
+
+**2026-10-05.** Four working endpoints — create, list, vote, delete — and a grep for
+`threads/` across `internal/httpapi/assets/js/` returned **nothing**. Not an unfinished
+page this time but a missing one: the API is thread-shaped
+(`/api/v1/projects/{id}/threads/{kind}/{thread_id}`) and fully tested at the store
+layer, and no user could reach it. The same shape as `feature_complaints`, found by the
+same question: *for every field the UI reads, name the route that writes it* — and its
+inverse, which is the one that bites: *for every endpoint the API offers, name the page
+that calls it.*
+
+One `comments.js`, mounted by both the feature and the complaint detail page with the
+kind and id in `data-thread-kind` / `data-thread-id`. Two copies of the same renderer
+drift, and then one page keeps a bug the other has fixed.
+
+### Three defects the new tests found, all in the store
+
+1. **A blank comment was accepted.** `comments.body` is `TEXT NOT NULL` and nothing
+   else, so SQLite took both `''` and `'   '` and the endpoint returned **201**. A
+   thread then carries a row that renders as nothing, and a reader cannot tell an empty
+   comment from one that failed to load.
+
+2. **Comments crossed project boundaries.** `comments.thread_id` is a bare `INTEGER`
+   with **no foreign key** — the one column in that table that references something and
+   does not check it. A comment could name a feature in another project and be filed
+   under this one: a cross-project *write*, and a read of another project's discussion
+   through the wrong URL. That is the write side of the defect
+   `id_enumeration_test.go` fixed on the read side.
+
+3. **`thread_kind='release'` is in the CHECK list and there is no `releases` table.** A
+   comment on a release could never resolve a project, so the ownership query would be a
+   **500** on a valid-looking kind. And `projects` has no `project_id` column — a project
+   is its own owner — so kind `project` is answered by comparing ids, with no query at
+   all. Both found by asking what table each `CHECK`ed kind points at.
+
+Plus: a reply's parent is checked on **all three** axes, and each was made
+individually load-bearing. `parentThread` alone caught everything at first, so the kind
+and project terms were never exercised — and mutation proved it: dropping either one
+left the suite green.
+
+**Every one of the seven existing comment tests used the literal `1` as the thread id**,
+with no such feature. They worked *only* because the foreign key was missing. Fixing the
+fixtures rather than weakening the guard is the point: a fixture that only passes because
+a constraint is absent is a fixture asserting fiction.
+
+### The mutation lesson, written into the skill
+
+Two of the survivors were **not missing guards**:
+
+- a `-run Comment` filter that did not match the two tests written to kill them, so the
+  gate never ran and every mutant "survived" — indistinguishable from a real gap
+- a loop without a `finally` that wrote a mutant over the source and lost 163
+  uncommitted lines. The file now has a `/tmp` backup and an unconditional restore.
+
+And one guard was unreachable through the API: `thread_kind` follows from `thread_id`,
+so two comments sharing a thread necessarily share a kind. That term is pinned by a
+direct SQL INSERT instead — the thing the guard exists to survive.
 

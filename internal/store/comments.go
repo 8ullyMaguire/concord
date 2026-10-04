@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -56,6 +57,54 @@ func (d *DB) CreateComment(ctx context.Context, projectID, threadID int64, threa
 	}
 	if !isValidLabel(label) {
 		return Comment{}, fmt.Errorf("%w: invalid label %q", ErrInvalid, label)
+	}
+
+	// A blank comment is not a comment.
+	//
+	// comments.body is `TEXT NOT NULL` and nothing else: SQLite accepts both '' and
+	// '   ', so the constraint never fired and the endpoint returned 201 for an empty
+	// body. That is worse than rejecting it, because a thread then carries a row that
+	// renders as nothing -- and a reader cannot tell an empty comment from a comment
+	// that failed to load.
+	//
+	// strings.TrimSpace, not a length check: a body of spaces is the same empty
+	// comment with more effort behind it.
+	if strings.TrimSpace(body) == "" {
+		return Comment{}, fmt.Errorf("%w: a comment needs a body", ErrInvalid)
+	}
+
+	// The thread must belong to THIS project, and a reply must belong to the SAME
+	// thread. Both are checks the schema cannot do for us:
+	//
+	//   - comments.thread_id is a bare INTEGER with no FOREIGN KEY, the one column in
+	//     this table that references something and does not check it. So a comment
+	//     could name a feature in ANOTHER project and be filed under this one.
+	//   - parent_id IS a real FK, to comments, so it points at a real row -- but not
+	//     necessarily one in this thread. A reply whose parent sits on another feature
+	//     would render nested under an unrelated comment.
+	//
+	// This is the "a guard on the path is not a guard on the row" defect
+	// (id_enumeration_test.go) on the WRITE side, where nothing else catches it.
+	if err := d.threadBelongsToProject(ctx, threadKind, threadID, projectID); err != nil {
+		return Comment{}, err
+	}
+
+	if parentID != nil {
+		var parentThread int64
+		var parentKind string
+		var parentProject int64
+		if err := d.QueryRowContext(ctx,
+			`SELECT thread_id, thread_kind, project_id FROM comments WHERE id=?`, *parentID).
+			Scan(&parentThread, &parentKind, &parentProject); err != nil {
+			return Comment{}, fmt.Errorf("%w: parent comment %d does not exist",
+				ErrNotFound, *parentID)
+		}
+		if parentThread != threadID || parentKind != threadKind || parentProject != projectID {
+			return Comment{}, fmt.Errorf(
+				"%w: parent comment %d is on %s/%d in project %d, not %s/%d in project %d",
+				ErrInvalid, *parentID, parentKind, parentThread, parentProject,
+				threadKind, threadID, projectID)
+		}
 	}
 
 	// An empty label is stored as NULL, not "".
@@ -160,4 +209,69 @@ func (d *DB) UpdateCommentScore(ctx context.Context, commentID int64) error {
 		UPDATE comments SET score = (SELECT COALESCE(SUM(value), 0) FROM comment_votes WHERE comment_id=?)
 		WHERE id=?`, commentID, commentID)
 	return err
+}
+
+// threadBelongsToProject checks that a thread id names a row in THIS project.
+//
+// ONE table per thread kind, and the mapping lives here and nowhere else:
+//
+//	complaint     -> complaints
+//	feature       -> features
+//	merge_request -> merge_requests
+//	project       -> (no table -- see below)
+//	release       -> (NO TABLE -- see below)
+//
+// A switch, not string concatenation on the table name: building
+// "SELECT project_id FROM " + threadKind would be shorter and would put a value from a
+// URL into SQL. isValidThreadKind above is the gate on the value itself.
+//
+// Two kinds are not table lookups:
+//
+//   - 'release' is in the CHECK list and there is NO releases table. Querying a missing
+//     table is a 500, and a 500 on a valid-looking kind is the "empty result that is not
+//     an error" failure this codebase keeps finding. So it is refused here, with a
+//     message that says why.
+//   - 'project' has no project_id column: a project IS its own owner, so the ownership
+//     question is "is this the project", answered without a query. (Selecting
+//     project_id from projects 500s with "no such column".)
+//
+// ErrInvalid for a row in ANOTHER project, ErrNotFound for one that does not exist: a
+// client can only tell "not yours" from "no such thing" if they are different.
+func (d *DB) threadBelongsToProject(ctx context.Context, threadKind string, threadID, projectID int64) error {
+	var table string
+	switch threadKind {
+	case "complaint":
+		table = "complaints"
+	case "feature":
+		table = "features"
+	case "merge_request":
+		table = "merge_requests"
+	case "project":
+		if threadID != projectID {
+			return fmt.Errorf("%w: project %d does not thread on itself; comment "+
+				"kind 'project' uses the project's own id, not %d",
+				ErrInvalid, projectID, threadID)
+		}
+		return nil
+	case "release":
+		return fmt.Errorf("%w: thread_kind 'release' has no releases table to "+
+			"comment on; comments on a release are not implemented", ErrInvalid)
+	default:
+		return fmt.Errorf("%w: invalid thread_kind %q", ErrInvalid, threadKind)
+	}
+
+	var owner int64
+	err := d.QueryRowContext(ctx,
+		"SELECT project_id FROM "+table+" WHERE id=?", threadID).Scan(&owner)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return fmt.Errorf("%w: no %s %d", ErrNotFound, threadKind, threadID)
+		}
+		return err
+	}
+	if owner != projectID {
+		return fmt.Errorf("%w: %s %d belongs to project %d, not %d",
+			ErrInvalid, threadKind, threadID, owner, projectID)
+	}
+	return nil
 }

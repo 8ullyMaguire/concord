@@ -21,5 +21,12 @@ if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(4);}})();
   </div>
 </div>
 
+<section id="comment-thread" class="comment-thread" data-thread-kind="feature" data-thread-id="{{.ID}}" aria-live="polite">
+  <h2>Discussion</h2>
+  <p class="note">Loading comments&hellip;</p>
+</section>
+
+<script src="{{ asset "/assets/js/comments.js" }}"></script>
+
 <script src="{{ asset "/assets/js/feature.js" }}"></script>
 {{end}}

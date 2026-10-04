@@ -1788,10 +1788,17 @@ func (s *Server) handleComplaintPage(w http.ResponseWriter, r *http.Request) {
 		s.notFoundPage(w, r, "There is no project at this address.")
 		return
 	}
+	// ID is the complaint id from the path, for the comment thread's data-thread-id.
+	// The comment script needs it to build
+	// /api/v1/projects/{slug}/threads/{kind}/{id}, and without it the mount
+	// renders "Discussion unavailable" -- a working API with a page that says nothing
+	// is why this endpoint looked write-only.
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	s.render(w, http.StatusOK, "complaint", struct {
 		pageData
 		Slug string
-	}{s.pageFor(r, "Complaint - "+slug), slug})
+		ID   int64
+	}{s.pageFor(r, "Complaint - "+slug), slug, id})
 }
 
 func (s *Server) handleFeaturePage(w http.ResponseWriter, r *http.Request) {
@@ -1805,10 +1812,17 @@ func (s *Server) handleFeaturePage(w http.ResponseWriter, r *http.Request) {
 		s.notFoundPage(w, r, "There is no project at this address.")
 		return
 	}
+	// ID is the feature id from the path, for the comment thread's data-thread-id.
+	// The comment script needs it to build
+	// /api/v1/projects/{slug}/threads/{kind}/{id}, and without it the mount
+	// renders "Discussion unavailable" -- a working API with a page that says nothing
+	// is why this endpoint looked write-only.
+	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	s.render(w, http.StatusOK, "feature", struct {
 		pageData
 		Slug string
-	}{s.pageFor(r, "Feature - "+slug), slug})
+		ID   int64
+	}{s.pageFor(r, "Feature - "+slug), slug, id})
 }
 
 func (s *Server) handleLoginPage(w http.ResponseWriter, r *http.Request) {
