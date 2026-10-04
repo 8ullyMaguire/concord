@@ -497,10 +497,32 @@ def test_an_instance_wide_request_is_labelled_on_the_board(page, server):
 
 
 def test_no_console_errors_on_the_board(page, server):
-    for path in (f"/projects/{SLUG}/requests", f"/projects/{SLUG}/lists"):
+    # Each page with its own root id: the index is #requests-root / #lists-root, and a
+    # detail page is #request-root / #list-root.
+    for path, root in (
+        (f"/projects/{SLUG}/requests", "requests-root"),
+        (f"/projects/{SLUG}/lists", "lists-root"),
+    ):
         page.goto(BASE + path)
-        # Wait for the section the assertions are about rather than for a duration.
-        page.wait_for_selector("#lists-root .card, #lists-root .empty-state",
-                               timeout=15000)
-        page.wait_for_selector("#list-root .list-detail", timeout=15000)
+        _settled(page, root)
         assert not page.errors, f"{path}: {page.errors}"
+
+
+def _settled(page, root):
+    """Wait for a page section to finish fetching, by its OWN signal.
+
+    The root carries aria-busy until its fetches resolve, and this codebase uses TWO
+    conventions for clearing it: ConcordSkeleton.done() SETS it to the string "false",
+    while lists.js and requests.js REMOVE the attribute. So the wait is
+    `#root:not([aria-busy="true"])`, which accepts both.
+
+    `#root:not([aria-busy])` never matches the first convention -- an attribute whose
+    value is "false" is still an attribute -- and `[aria-busy="false"]` never matches the
+    second. Each was tried, and each timed out on a correct page.
+
+    Waiting on content (`.card`, `.list-detail`) was wrong twice over: the index page
+    renders `#lists-root` and the detail page `#list-root`, so one selector cannot cover
+    both -- and a detail element times out on a page that legitimately has none.
+    """
+    page.wait_for_selector(f'#{root}:not([aria-busy="true"])',
+                               timeout=15000)

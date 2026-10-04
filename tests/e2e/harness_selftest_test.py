@@ -289,3 +289,50 @@ def test_no_two_suites_claim_the_same_port():
                     f"{path.name} and {ports[port]} both claim port {port}")
                 ports[port] = path.name
                 break
+
+def _waits(src):
+    """Yield each complete wait_for_selector(...) call, multi-line ones joined."""
+    lines = src.splitlines()
+    i = 0
+    while i < len(lines):
+        if "wait_for_selector(" in lines[i]:
+            stmt = lines[i]
+            while stmt.count("(") > stmt.count(")"):
+                i += 1
+                stmt += " " + lines[i].strip()
+            yield stmt
+        i += 1
+
+
+def test_every_wait_for_a_loaded_page_uses_one_aria_busy_idiom():
+    """`:not([aria-busy])` and `[aria-busy="false"]` both time out here, for good reasons.
+
+    This codebase clears the flag TWO ways, and both are ARIA-correct:
+
+      - ConcordSkeleton.done() SETS aria-busy="false"  (the spec form)
+      - lists.js / requests.js REMOVE the attribute
+
+    So a test waiting on `#root:not([aria-busy])` never matches the first -- an
+    attribute whose value is "false" is still an attribute -- and one waiting on
+    `#root[aria-busy="false"]` never matches the second. Each was written, each timed out
+    on a correct page, and the symptom was a timeout that pointed at the page rather
+    than at the selector.
+
+    `#root:not([aria-busy="true"])` is the one form that accepts both, so it is the only
+    one allowed. Asserted across the whole directory for the same reason the token-key
+    gate is: a file cannot see its siblings' selectors.
+    """
+    # Check the WHOLE wait, not one line: the selector is usually wrapped, so
+    # `wait_for_selector(f'#{root}:not([aria-busy="true"])',` is on one line and
+    # `timeout=15000)` on the next. A line-at-a-time check flagged the CORRECT form,
+    # because the line holding wait_for_selector did not contain the selector.
+    OK = ':not([aria-busy="true"])'
+    bad = []
+    for path in sorted(Path(__file__).parent.glob("*_e2e.py")):
+        src = path.read_text()
+        for n, stmt in enumerate(_waits(src), 1):
+            if "aria-busy" in stmt and OK not in stmt:
+                bad.append(f"{path.name}: {stmt.strip()}")
+    assert not bad, (
+        "these waits can never match one of the two clearing conventions:\n  "
+        + "\n  ".join(bad) + '\n  use #root:not([aria-busy="true"])')

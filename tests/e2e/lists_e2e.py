@@ -378,20 +378,32 @@ def test_an_unknown_list_says_so_without_erroring(page, server):
 
 
 def test_no_console_errors_on_any_lists_page(page, server):
-    """The complaint page's ReferenceError blanked the entire project page while every
-    source-level gate stayed green. This is the assertion that class needs."""
-    for path in (f"/projects/{SLUG}/lists", f"/projects/{SLUG}/lists/2",
-                 f"/projects/{SLUG}", f"/projects/{PRIVATE}/lists"):
+    """The ReferenceError class, for the lists pages.
+
+    A runtime error in a section builder blanks the WHOLE page while every source-level
+    gate stays green -- the complaint page's `complaintCards(complaints, slug)` did
+    exactly that. This is the assertion that class needs.
+
+    Each page is waited on by ITS OWN root id and aria-busy, not by a content selector:
+    `.list-detail` times out on a private project's 404 shell, and one selector cannot
+    cover both #lists-root (index) and #list-root (detail) anyway. The project page's
+    root is #project-detail, read from project.html rather than guessed -- which is what
+    "kanban-board" was, and it timed out on a correct page.
+    """
+    for path, root in (
+        (f"/projects/{SLUG}/lists", "lists-root"),
+        (f"/projects/{SLUG}/lists/2", "list-root"),
+        (f"/projects/{SLUG}", "project-detail"),
+        # A private project serves the 404 SHELL: no root, nothing to wait for, and the
+        # assertion is that the shell is what rendered.
+        (f"/projects/{PRIVATE}/lists", None),
+    ):
         page.goto(BASE + path)
-        # Wait for the section the assertions are about rather than for a duration.
-        # Wait for the ROOT to stop being aria-busy, which is the page's own signal
-        # that its fetches have resolved.
-        #
-        # NOT `.list-detail`: one of the four paths is a private project, which
-        # legitimately renders no detail at all, so waiting for one timed out on a
-        # correct page. `#lists-root[aria-busy]` is present on every lists page.
-        if "/lists/" in path:
-            page.wait_for_selector("#list-root:not([aria-busy])", timeout=15000)
+        if root is None:
+            assert page.locator("#lists-root").count() == 0, (
+                "the private project's page rendered a lists root; it must be the 404")
+            assert "no project" in page.locator("body").inner_text().lower()
         else:
-            page.wait_for_selector("#lists-root:not([aria-busy])", timeout=15000)
+            page.wait_for_selector(f'#{root}:not([aria-busy="true"])',
+                               timeout=15000)
         assert not page.errors, f"{path}: {page.errors}"
