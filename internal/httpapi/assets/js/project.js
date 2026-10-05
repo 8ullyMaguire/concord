@@ -696,6 +696,10 @@
       '<div class="pill-row">' +
         '<a class="btn btn-primary" href="/projects/' + esc(p.slug) + '/rank">Rank features</a>' +
         '<a class="btn" href="/projects/' + esc(p.slug) + '/ranking">See the ranking</a>' +
+        // Settings is linked from the project page BODY, not only from the shared tab
+        // bar. The tab bar lives in base.html, so a reachability gate that only checked
+        // it would stay green even if every link to this page were deleted from here.
+        '<a class="btn" href="/projects/' + esc(p.slug) + '/settings">Settings</a>' +
       '</div></div>' +
       (features && features.length
         ? '<div class="grid-responsive-2">' + featureCards + '</div>'

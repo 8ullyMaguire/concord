@@ -42,6 +42,10 @@ var navPages = []string{"/finder", "/scout"}
 // concatenation. Anything that inspects this must match a SUFFIX, not an href.
 var projectPages = []string{
 	"/board", "/consensus", "/documents", "/audit", "/rank", "/ranking",
+	// Settings, added 2026-10-05 with the page. This list is what makes a new project
+	// sub-page reachable FROM EVERY OTHER ONE, so a page that is not in it is a dead
+	// end from nine of the ten places a reader can stand.
+	"/settings",
 }
 
 // assetCorpus concatenates every template and JS asset, which is where every
@@ -452,9 +456,10 @@ func TestLayoutRendersEachPieceOnce(t *testing.T) {
 	if n := strings.Count(body, "<main"); n != 1 {
 		t.Errorf("page contains %d <main> elements, want 1", n)
 	}
-	// Each tab exactly once: NINE sections, no repeats. Two more than it was --
+	// Each tab exactly once: TEN sections, no repeats. Three more than it was --
 	// Requests and Lists, whose pages existed but had no TAB, so they were reachable
-	// only by scrolling the overview far enough.
+	// only by scrolling the overview far enough, and Settings, whose three endpoints
+	// had no reader anywhere until the page was built.
 	//
 	// Counted with the trailing quote so the CONTAINER (`class="detail-tabs"`) is
 	// not counted as an eighth tab. Counting `class="detail-tab` reported 8 and
@@ -466,8 +471,8 @@ func TestLayoutRendersEachPieceOnce(t *testing.T) {
 	// 6 or 8 depending which, and both look like a real defect.
 	n := strings.Count(body, `class="detail-tab"`) +
 		strings.Count(body, `class="detail-tab is-active"`)
-	if n != 9 {
-		t.Errorf("page renders %d tabs, want 9", n)
+	if n != 10 {
+		t.Errorf("page renders %d tabs, want 10", n)
 	}
 	// Exactly one lit tab. Two lit tabs means the active state is decorative.
 	if n := strings.Count(body, "is-active"); n != 1 {

@@ -613,6 +613,19 @@ func (s *Server) handleListAdminLedger(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	// A LIST endpoint that answers `null` for an empty set is a trap for every client:
+	// `Array.isArray(null)` is false, `null.length` throws, and `x || []` in the caller
+	// is the only reason anything works. Measured on an empty project: this returned the
+	// literal `null` while handleListMembers beside it returned `[]`.
+	//
+	// Nothing was visibly broken, because every JS consumer happens to guard with `|| []`
+	// or `x && x.length`. So this is an API wart rather than a live defect -- but it is
+	// a wart that makes the NEXT caller's guard load-bearing, silently, and a client
+	// written without that habit throws on an empty project.
+	if entries == nil {
+		entries = []store.AdminLedgerEntry{}
+	}
+
 	writeJSON(w, http.StatusOK, entries)
 }
 
@@ -913,6 +926,19 @@ func (s *Server) handleListTaxonomyProposals(w http.ResponseWriter, r *http.Requ
 		mapError(w, err)
 		return
 	}
+	// A LIST endpoint that answers `null` for an empty set is a trap for every client:
+	// `Array.isArray(null)` is false, `null.length` throws, and `x || []` in the caller
+	// is the only reason anything works. Measured on an empty project: this returned the
+	// literal `null` while handleListMembers beside it returned `[]`.
+	//
+	// Nothing was visibly broken, because every JS consumer happens to guard with `|| []`
+	// or `x && x.length`. So this is an API wart rather than a live defect -- but it is
+	// a wart that makes the NEXT caller's guard load-bearing, silently, and a client
+	// written without that habit throws on an empty project.
+	if props == nil {
+		props = []store.TaxonomyProposal{}
+	}
+
 	writeJSON(w, http.StatusOK, props)
 }
 
@@ -1995,4 +2021,38 @@ func (s *Server) handleRequestsPage(w http.ResponseWriter, r *http.Request) {
 		pageData
 		Slug string
 	}{s.pageFor(r, "Requests - "+slug), slug})
+}
+
+// handleSettingsPage renders the project settings page: the charter, the members and
+// the criteria profiles.
+//
+// THE LAST PAGE ON docs/REMAINING.md §1, and the only one that needed a measured wire
+// shape rather than the house style. governance.Charter carries NO json tags, so
+// encoding/json marshals the Go FIELD NAMES and the endpoint answers PascalCase
+// (`QuorumRatio`) while every other endpoint in the API is snake_case. A page written
+// from the house style reads `charter.quorum_ratio`, gets undefined for all 22 fields,
+// and renders an empty form that submits an empty charter.
+//
+// The visibility guard is the standard one, and it is why this is not an information
+// leak: the charter is public to anyone who can read the project, and the WRITE is gated
+// again server-side by requireRole("maintainer"). The page shows the form to everyone
+// rather than hiding it, because a hidden form makes the refusal invisible and a reader
+// who cannot see why their save did nothing concludes the page is broken.
+func (s *Server) handleSettingsPage(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		// The same message for "no such project" and "not yours", so the address cannot
+		// be used to probe which slugs exist.
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	s.render(w, http.StatusOK, "settings", struct {
+		pageData
+		Slug string
+	}{s.pageFor(r, "Settings - "+slug), slug})
 }

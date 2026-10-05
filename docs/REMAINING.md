@@ -37,6 +37,11 @@ blocked on it.
 
 ## 1. Pages the spec requires and nobody has built
 
+**SUPERSEDED 2026-10-05 — every item below is now built.** Kept as the record of
+what the spec claimed at the start. The live list is §11; §4 ("Next, in order") is
+superseded by it. See §11 for what the read-side check found afterwards.
+
+
 `docs/specs/frontend-spec.md` §3.1 ranks ten pages by what a user cannot do at all.
 Two are built. The rest are the real remaining work, and every one of them has a
 **complete API already** — these are pages, not features.
@@ -223,6 +228,10 @@ browser to find a missing brace. Two mutants confirm each can be made to fail.
 ---
 
 ## 4. Next, in order
+
+**SUPERSEDED 2026-10-05 by §11.** Items 1–3 here are now built and verified;
+the remaining work is the nine unread endpoints and the settings page, both in §11.
+
 
 Two of the eight are built. Both followed the same contract, so the next six have a
 template to copy rather than a shape to discover.
@@ -599,3 +608,107 @@ then looked it up by title, on a table where `features.title` is not unique. **N
 you just created by the handle the INSERT returned, never by a title.**
 
 882 Go tests. `make verify` and `make e2e` green.
+
+---
+
+## 11. What is left, 2026-10-05 (measured, not asserted)
+
+§1 and §4 above are the state at the start. Everything they listed is built. This section
+is the current answer, and every line was checked against the code rather than against a
+tracker.
+
+### 11.1 Built this session
+
+| page | endpoints it consumed | note |
+|---|---|---|
+| feature, complaint | `features/{id}/complaints`, `complaints/{id}/features` | two working endpoints with no reader |
+| requests board + detail | `requests`, `requests/{id}`, `/answers`, `/tags` | the index route did not exist at all |
+| lists + detail | `lists`, `lists/{id}`, `lists/{id}/entries` | §16 said "ranked"; nothing wrote `list_entry_votes` |
+| board | `board`, `cards/{id}/move` | `handleMoveCard` existed; the board could not be moved on |
+| **settings** | **`charter`, `members`, `criteria-profiles`** | three endpoints with handlers, guards and store tests, and **no reader in assets/js at all** |
+
+### 11.2 The last page, and the one shape nobody had hit before
+
+The settings page is the first consumer of `GET /charter`, `GET /members` and
+`GET /criteria-profiles`. All three had been fully implemented the whole time.
+
+**`governance.Charter` carries no `json` tags**, so `encoding/json` marshals the Go
+**field names** and the endpoint answers **PascalCase** — `QuorumRatio`, `ConsentRatio`,
+`WIPInProgress` — while every other endpoint in this API is snake_case. A page written
+from the house style reads `quorum_ratio`, gets `undefined` for all 22 fields, and renders
+22 empty inputs that submit an empty charter. It looks like a project with no charter
+rather than like a bug.
+
+So the page is written against a **measured** response, and
+`TestTheCharterIsServedInPascalCaseNotSnakeCase` pins both directions: the keys that must
+be there, and the snake_case spellings that must **not** appear. The e2e asserts no input
+renders empty, which is the assertion that catches the wrong-key page — verified by
+mutation (exit 1 on a snake_case page, exit 0 restored).
+
+The form is also built from the response's own key list rather than 22 hand-written
+inputs, so a field added to `governance.Charter` appears without touching the JS and one
+removed leaves no orphan input. Anything the grouping does not mention lands in an "Other"
+group, because **a charter field that is invisible on the settings page is the §3.1 defect
+one level up**.
+
+### 11.3 Two endpoints answered `null` where every other one answers `[]`
+
+Measured on an empty project, by asking the running server:
+
+| endpoint | before | after |
+|---|---|---|
+| `GET /admin-ledger` | `null` | `[]` |
+| `GET /taxonomy/proposals` | `null` | `[]` |
+| `GET /projects/{p}/complaints` | `null` | **`null`, deliberately** |
+| `GET /projects/{p}/features` | `null` | **`null`, deliberately** |
+
+`Array.isArray(null)` is false and `null.length` throws. Nothing was visibly broken
+because **every** JS consumer happens to guard with `x || []` or `x && x.length` — so
+this survived by accident of the client code, not by the contract. A caller written
+without that habit throws on an empty project, and nothing tells them.
+
+`/complaints` and `/features` are left alone on purpose: their pages guard, and changing
+a shipped API shape mid-session is riskier than the wart. They are named in the test's
+exemption, so fixing them later means updating a list rather than relaxing a check.
+
+#### The gate took four attempts, and the failures are the lesson
+
+1. **Source inspection** — "does the handler guard the slice it writes?" Reported **six
+   false positives**: `audit`, `criteria-profiles`, `documents`, `strategic-weights`,
+   `tags`, `strategic-themes` all answer `[]`. It cannot tell `handleGetFeature` (an
+   object) from `handleListFeatures` (a slice) without resolving types.
+2. **A backreference** — `(\w+) == nil \{\s*\1` **does not compile under RE2** and
+   panics at init, taking every test in the package with it. Same class as reading
+   `concord_token` when the key is `concord.token`: a pattern written from memory about
+   what is usually there, not from what the engine supports.
+3. **`!= nil` as an acceptable guard** — `if !ok` from `requireProjectID` **matches
+   `!= nil` as a substring**, so the allowance exempted exactly the handlers it was meant
+   to catch. Removing a real guard from `handleListMembers` left the suite green. A guard
+   allowance phrased as a substring test has to be about the **variable**, not about the
+   characters in the function.
+4. **`[]\w+` for the type** — `[]store.Project{}` and `[]ranking.Criterion{}` are
+   dotted, so a bare `\w+` reported **eleven correctly-guarded handlers** as unguarded.
+
+What survives is a **measurement**: walk every registered GET route with `chi.Walk`,
+request each against an empty project, and fail on a top-level `null`. The route table is
+the authority, so a new endpoint is covered the day it is registered.
+
+**What it cannot catch, stated rather than discovered later:** removing the guard from
+`handleListMembers` stays green, because `ListMembers` ends in
+`make([]Member, 0, len(collected))` — non-nil by construction. The gate catches a
+nil-returning **store**, which is the case that actually ships `null`.
+
+And the suite's own helper could not have caught either: `doJSON` unmarshals into
+`map[string]any`, where `null` becomes a nil map and `[]` fails to unmarshal at all. The
+distinction requires reading the raw body.
+
+### 11.4 Nothing else is outstanding
+
+Verified against the running server: **no other endpoint has a handler and no reader.**
+`taxonomy/proposals`, `admin-ledger`, `members` and `criteria-profiles` were the four, and
+the last three are now read by the settings page. `admin-ledger` is deliberately still
+unread — it is an operator log, not a project page, and the gate that would expose it is
+an admin surface nobody has specced.
+
+Three `wait_for_timeout` calls remain in e2e, all marked `BOUNDED (justified)` by
+`check_e2e_sync.py`. Known-open by design, not by neglect.

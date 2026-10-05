@@ -204,7 +204,7 @@ func (s *Server) loadTemplates() error {
 	// (see `render`), which is how a missing entry shows up rather than a blank page.
 	pages := []string{"index", "search", "projects", "project", "board",
 		"login", "register", "rank", "ranking", "documents", "notfound", "finder",
-		"scout", "consensus", "audit", "feature", "complaint", "requests-detail", "requests-index", "lists", "list"}
+		"scout", "consensus", "audit", "settings", "feature", "complaint", "requests-detail", "requests-index", "lists", "list"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -753,6 +753,10 @@ func (s *Server) Router() http.Handler {
 	// reader opens, and requireProjectID reads chi's {project_id}, which is empty
 	// on a page route.
 	r.Get("/projects/{slug}/audit", s.handleAuditPage)
+	// Settings. The charter, the members and the criteria profiles: three endpoints that
+	// had handlers, guards and store tests for their whole life and NO reader in
+	// assets/js. Mounted on {slug} with the page routes for the same reason as audit.
+	r.Get("/projects/{slug}/settings", s.handleSettingsPage)
 	r.Get("/projects/{slug}/features/{id}", s.handleFeaturePage)
 	r.Get("/projects/{slug}/complaints/{id}", s.handleComplaintPage)
 	// §16's lists. Mounted on {slug} with the other detail pages, NOT on {project_id}

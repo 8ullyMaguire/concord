@@ -1791,3 +1791,20 @@ button.kanban-card:active { cursor: grabbing; }
 /* At or over the WIP limit, the column says so before a drag is attempted. */
 .kanban-column.is-at-wip .kanban-column-count { color: var(--danger, #b91c1c); font-weight: 600; }
 .kanban-card-move { font-size: 0.75rem; padding: 0.15rem 0.25rem; }
+
+/* Settings page groups. The charter is 22 scalars; without a box per group it reads as
+   one undifferentiated wall of numbers, which is the opposite of what a charter is for.
+   Written here rather than inline so the browser-default fieldset border and padding do
+   the work, with the legend kept as the visible label. */
+fieldset {
+  border: 1px solid var(--line, #e2e8f0);
+  border-radius: 6px;
+  padding: 1rem 1.1rem 1.2rem;
+  margin: 0 0 1.1rem;
+}
+fieldset legend {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--ink);
+  padding: 0 0.4rem;
+}
