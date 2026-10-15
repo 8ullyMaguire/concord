@@ -5,8 +5,8 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · 925 Go tests across
-9 test-bearing packages · 254 e2e tests in 17 suite files · 7/7 UI mutants killed ·
+**Measured state:** schema 25 · 25 migrations · 79 live tables · 943 Go tests across
+9 test-bearing packages · 261 e2e tests in 18 suite files · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
@@ -737,8 +737,8 @@ Three `wait_for_timeout` calls remain in e2e, all marked `BOUNDED (justified)` b
 §11 and everything above it are history. §1, §4 and §11 are marked superseded; this
 section is the current answer, and like §11 every line was checked against the code.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · **925 Go tests** across
-9 test-bearing packages · **254 e2e tests in 17 suite files** · 7/7 UI mutants killed ·
+**Measured state:** schema 25 · 25 migrations · 79 live tables · **943 Go tests** across
+9 test-bearing packages · **261 e2e tests in 18 suite files** · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 ### 12.1 How the remaining work was found (it was not in any tracker)
@@ -1233,3 +1233,146 @@ All verified by running the mutation, not by reading the source.
 7. **The criteria page defers three things on purpose** (spec §6): pair suggestion,
    a per-criterion standings leaderboard, and deleting a criterion — retiring is the
    flag, and a delete needs a decision about the votes behind it.
+
+---
+
+## 16. 2026-10-15 (fourth pass): §5.7's merge gate, which nothing consulted
+
+The largest defect found in this project so far, and it was not a missing feature.
+It was a written, unit-tested rule that no production code path called, guarding the
+one write that ships work.
+
+### 16.1 What was there, and what it did
+
+`governance.CheckMergeGate(approvals, eligible, reviewerApproval, charter)` implements
+§5.7 exactly — `MergeQuorumThreshold` clamps `max(min_confirmations, ceil(ratio ×
+eligible))` at the population, `QuorumOK` honours a charter that dropped the quorum,
+`ReviewerOK` honours the flag. Four branches, all pinned by `governance_test.go`.
+
+Its only caller in the whole tree was that test:
+
+```
+$ grep -rn 'CheckMergeGate' --include=*.go .
+./internal/governance/governance.go:264:func CheckMergeGate(...)
+./internal/governance/governance_test.go:140:	g := CheckMergeGate(1, 10, true, c)
+```
+
+`store.ExecuteMerge` required a non-zero actor id and nothing else. It set
+`status='merged'`, moved the feature to `shipped`, **closed every complaint linked to
+that feature**, and wrote an audit row. `ApproveMerge` accepted anyone. Neither read
+the charter, whose four merge columns have existed since migration 0001 with defaults
+`(requires_quorum 1, min 2, ratio 0.25, require_reviewer_approval 1)`.
+
+So the default state of every project was: one person who can read it presses a
+button and the change lands, in a charter that says two collaborators must confirm it
+first.
+
+### 16.2 Reproduced before it was fixed
+
+`internal/httpapi/merge_gate_test.go` was written first. Six of its eight tests failed
+against the pre-fix tree, and the failures ARE the defects:
+
+```
+--- FAIL: TestAMergeWithNoApprovalsIsRefused
+    a merge with zero confirmations was executed: 200 map[status:merged]
+--- FAIL: TestAMergeIsRefusedToSomebodyOutsideTheProject
+    an account with no membership in the project executed a merge: map[status:merged]
+--- FAIL: TestAnAuthorCannotConfirmTheirOwnMergeRequest
+    the author confirmed their own merge request: map[status:approved]
+--- FAIL: TestAMergeRequestCannotBeExecutedThroughAnotherProject
+    a merge request of project merge-project was executed through project
+    some-other-project: map[status:merged]
+--- FAIL: TestTheMergeListReportsTheGateAndItsShortfall
+    the list item carries no gate: map[author_id:2 feature_id:1 id:1 …]
+--- FAIL: TestAReviewerApprovalIsNotJustAnyApproval
+    two contributor confirmations and no reviewer passed a charter that requires
+    reviewer approval (reviewer): map[status=merged]
+```
+
+The two that passed are the ones that must keep passing: the charter's dropped
+quorum, and the happy path. A rule that refuses everything is as wrong as one that
+refuses nothing, and only a test can tell them apart.
+
+### 16.3 The gate, as it now runs
+
+Counted confirmation = a `merge_approvals` row whose user is not the author and is an
+eligible collaborator **now** (a lapsed collaborator's stops counting: eligibility is
+role AND activity, and a quorum held open by people who left is what §8.2 exists to
+prevent). Reviewer approval = a counted confirmation from someone holding ≥ reviewer.
+
+- **approve**: member with role ≥ contributor, and not the author. NOT "an eligible
+  collaborator" — that was this pass's own bug, caught by the existing route-(4) test:
+  approving somebody else's request *is* a qualifying contribution, so requiring
+  eligibility first would make that route unreachable.
+- **execute**: role ≥ contributor, the request must belong to the project in the URL,
+  and the gate must pass. The quorum lives in the store next to the state change, the
+  way `CloseConsensusCall` owns the consensus quorum.
+- **reject**: same standing; no quorum (refusing is the safe direction).
+- The list carries each row's `gate` (`approvals`, `needed`, `eligible`, `quorum_ok`,
+  `reviewer_ok`, `requires_quorum`, `passed`) so no client re-derives §5.7.
+- A quorumless merge is legal and the audit detail says
+  `merged without a quorum (the charter dropped it)` — §5.7 allows the exception only
+  because every such merge is logged.
+
+Second real bug found and fixed in the same path: `ExecuteMerge` took the project id
+from the URL and used it **only** as the audit row's project, so a member of any
+readable project could execute any merge request by id and have the record filed
+under their own project. Now a mismatch is a 404, indistinguishable from a request
+that does not exist.
+
+A third, found by asking what happens TWICE rather than by reading: nothing enforced
+`open -> merged|rejected`. A second execute re-ran the whole landing — re-shipping
+the feature and re-closing complaints already closed — and a reject afterwards
+flipped a landed change to `rejected`. Both are now conflicts, and
+`TestAMergeRequestLandsOnceAndRefusesToLandAgain` fails with
+`a second merge returned <nil>` when the guard is removed.
+
+That question — "what happens if this runs twice?" — is what the whole pass was. The
+gate itself was a rule nobody ran. This is the same question one step further in, and
+the answer was on no list before it was asked.
+
+### 16.4 The page
+
+`/projects/{slug}/merge`, tab "Merge" (twelfth). The four endpoints have had a reader
+missing for their whole life; the page renders each request's gate in the server's
+own numbers, offers Confirm / Merge / Reject, reports refusals in the server's
+sentence, and opens new requests. It does not compute the quorum — the source gate
+forbids the string `0.25` in it, because a second implementation of §6.3 is the one
+that gets it wrong.
+
+### 16.5 Gates, and the mutation that turns each red
+
+Every one verified by running the mutation; two of the ten produced a **compile**
+failure on the first attempt, which proves the compiler works and nothing about the
+gate, so both were rewritten to compile and assert.
+
+| mutation | gate that fires |
+|---|---|
+| `ExecuteMerge` does not consult the gate | `TestAMergeWithNoApprovalsIsRefused` |
+| the URL's project is not checked | `TestAMergeRequestCannotBeExecutedThroughAnotherProject` |
+| an author may confirm their own request | `TestAnAuthorCannotConfirmTheirOwnMergeRequest` |
+| approving needs no standing | `TestSomebodyOutsideTheProjectCannotConfirm` |
+| every approval row counts | `TestAnAuthorsOwnApprovalIsNotAConfirmation` |
+| any approval satisfies the reviewer requirement | `TestOnlyAReviewerSatisfiesTheReviewerRequirement` |
+| executing needs no membership | `TestAMergeIsRefusedToSomebodyOutsideTheProject` |
+| the list reports no gate | `TestTheMergeListReportsTheGateAndItsShortfall` |
+| a quorumless merge is logged like any other | `TestTheCharterCanDropTheMergeQuorum` |
+| the reported threshold is not the charter's | `TestTheQuorumIsFlooredAtTwoAndClampedAtThePopulation` |
+
+Plus `tests/e2e/merge_e2e.py` (7 browser tests, fixtures seeded in sqlite): a row per
+request with the gate it must meet; Merge on a short request refused with the
+server's sentence; two accounts filling a real quorum through the UI (the count on
+the row goes 0 of 2 → 1 of 2 → met, with a reviewer's sign-off as the last piece) and
+the change then landing; a signed-out visitor offered no controls; a title that is
+markup rendering as text.
+
+### 16.6 What is left
+
+1. **A standalone composite-rank view** — the last API surface with no reader
+   (§15.4 item 1 is now closed: merge requests have the page).
+2. **A propose-a-weight form** (§12.6.3).
+3. **No "every route has a reader" gate** (§12.1) — this pass is the second time the
+   measurement was made by hand and found something.
+4. **`check_doc_numbers.py` cannot see a qualified test count** (§14.6 item 7).
+5. Deliberate, unchanged: `admin-ledger` and `metrics` have no UI; the criteria page
+   defers pair suggestion, a per-criterion leaderboard and deleting a criterion.

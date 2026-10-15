@@ -32,9 +32,31 @@ import (
 
 // eligibleMemberPool returns n members who are eligible under §8.2: each has a
 // contributor role AND a qualifying contribution.
+//
+// The contribution is a merged merge request, and since §5.7's gate landed a merge
+// needs confirmations. Two members cannot confirm each other into existence, so the
+// fixture drops the merge quorum for the project first -- which is the charter's own
+// documented way to do it (§5.7: "in maintainer-led mode the charter may lower or
+// drop the merge quorum; every such merge is logged") and is restored afterwards.
+// Before the gate existed, this helper worked only because nothing checked.
 func eligibleMemberPool(t *testing.T, d *DB, pid int64, n int, prefix string) []int64 {
 	t.Helper()
 	ctx := context.Background()
+	charterBefore, err := d.GetCharterForProject(ctx, pid)
+	if err != nil {
+		t.Fatalf("GetCharterForProject: %v", err)
+	}
+	dropped := charterBefore
+	dropped.MergeRequiresQuorum = false
+	dropped.RequireReviewerApproval = false
+	if err := d.UpdateCharter(ctx, pid, dropped); err != nil {
+		t.Fatalf("UpdateCharter(drop merge quorum): %v", err)
+	}
+	t.Cleanup(func() {
+		if err := d.UpdateCharter(context.Background(), pid, charterBefore); err != nil {
+			t.Errorf("restore charter: %v", err)
+		}
+	})
 	ids := make([]int64, 0, n)
 	for i := 0; i < n; i++ {
 		u := newUserNamed(t, d, fmt.Sprintf("%s-%d", prefix, i))

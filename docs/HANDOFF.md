@@ -5,16 +5,23 @@ For the implementing agent taking over from here. Read this, then
 then `docs/ARCHITECTURE.md`. `docs/PLAN.md` covers the pre-r4 milestones (all
 complete) and `docs/concord-spec.md` is superseded — do not plan from either.
 
-**What is left is `docs/REMAINING.md` §15.4** (measured 2026-10-15). Everything
+**What is left is `docs/REMAINING.md` §16.6** (measured 2026-10-15). Everything
 before it in that file is history, and §1/§4/§11 are explicitly marked superseded —
 §11's "nothing else is outstanding" was verified by hand and was wrong twice over. If
 a tracker and the tree disagree, the tree wins and the tracker is the bug.
 
-**The criteria surface now has a page** (§15): `/projects/{slug}/criteria` renders
-spec §6.4's comparison table from one `POST /rank/composite`, with weights, saved
-weightings, create/retire and per-criterion voting. Two of the three unbuilt API
-surfaces are still unbuilt — `merge requests` and `composite rank` — and
-`docs/specs/criteria-panel-spec.md` is the spec that page was written from.
+**§5.7's merge gate now runs** (§16). It was implemented, unit-tested in
+`governance`, and called by nothing: `ExecuteMerge` required only a non-zero actor id
+and then shipped the feature and closed its complaints, in a charter that says two
+collaborators must confirm it first. Six of the eight tests written for it failed
+against the pre-fix tree (zero confirmations merged; a non-member merged; an author
+self-confirmed; another project's request merged through this project's URL; the list
+carried no gate; two contributors satisfied a reviewer requirement). The page
+`/projects/{slug}/merge` is the reader the four endpoints never had. Spec:
+`docs/specs/merge-gate-spec.md`.
+
+**Two pages landed in this pass** (§15, §16): the criteria comparison table and the
+merge queue. `composite rank` is now the last API surface with no reader of its own.
 
 **The one question in `docs/QUESTIONS.md` is answered** (Q1, the browser session: a
 `concord_nav` cookie, honoured only on a non-API GET). Do not re-litigate it; §14.2
@@ -29,7 +36,7 @@ store tests and no page.
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 925 tests, schema 25, 79 tables,
+Measured, not remembered: `make verify` green, 943 tests, schema 25, 79 tables,
 25 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 

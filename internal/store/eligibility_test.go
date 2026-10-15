@@ -247,8 +247,19 @@ func TestAReviewOfSomebodyElsesWorkIsQualifying(t *testing.T) {
 		t.Fatalf("CreateMergeRequest: %v", err)
 	}
 	// The author approving their own merge request is not a review.
-	if err := fx.store.ApproveMerge(ctx, mr.ID, fx.author); err != nil {
-		t.Fatalf("ApproveMerge: %v", err)
+	//
+	// ApproveMerge refuses it outright now, so the row is inserted directly: what
+	// route (4) has to keep excluding is a self-approval that EXISTS. Rows written
+	// before the gate landed are still in the table, and the query clause -- not the
+	// insert -- is the thing that must not count them.
+	if _, err := fx.store.ExecContext(ctx,
+		`INSERT INTO merge_approvals (mr_id, user_id, weight, created_at) VALUES (?,?,1.0,?)`,
+		mr.ID, fx.author, nowUnix()); err != nil {
+		t.Fatalf("insert self-approval: %v", err)
+	}
+	if err := fx.store.ApproveMerge(ctx, mr.ID, fx.author); err == nil {
+		t.Error("ApproveMerge accepted an author's confirmation of their own request: " +
+			"§6.3 counts confirmations of each other's work")
 	}
 	if ok, err := fx.store.HasQualifyingContribution(ctx, fx.project, fx.author); err != nil {
 		t.Fatalf("HasQualifyingContribution: %v", err)

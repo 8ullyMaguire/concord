@@ -453,10 +453,6 @@ func (s *Server) handleSetStrategicWeight(w http.ResponseWriter, r *http.Request
 	if !ok {
 		return
 	}
-	if err := s.requireRole(projectID, "contributor", r); err != nil {
-		mapError(w, err)
-		return
-	}
 	var req struct {
 		Weight    float64 `json:"weight"`
 		Rationale string  `json:"rationale"`
@@ -499,10 +495,6 @@ func (s *Server) handleConsentStrategicWeight(w http.ResponseWriter, r *http.Req
 	}
 	// Contributors and above are the eligible population (§8.2); ratifying
 	// needs no higher role than proposing, because a proposal is a proposal.
-	if err := s.requireRole(projectID, "contributor", r); err != nil {
-		mapError(w, err)
-		return
-	}
 	p, err := s.Store.RatifyStrategicWeightProposal(r.Context(), proposalID, getActorID(r))
 	if err != nil {
 		if errors.Is(err, store.ErrDuplicate) || errors.Is(err, store.ErrProposalStale) {
@@ -1053,10 +1045,6 @@ func (s *Server) handleProposeStrategicWeight(w http.ResponseWriter, r *http.Req
 	}
 	// Same population as consenting (§8.2 eligible collaborators): a proposal nobody
 	// eligible can second is a proposal that cannot be ratified.
-	if err := s.requireRole(projectID, "contributor", r); err != nil {
-		mapError(w, err)
-		return
-	}
 	var req strategicWeightRequest
 	if !readJSON(w, r, &req) {
 		return
@@ -1613,6 +1601,11 @@ func (s *Server) handleMoveCard(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "moved"})
 }
 
+// handleCreateMergeRequest opens a merge request for a feature in this project.
+//
+// Membership is required: opening a request is a project member's act, and the
+// route previously accepted any signed-in account. The store then records it as
+// `open`, which is all a merge request is until §5.7's gate is satisfied.
 func (s *Server) handleCreateMergeRequest(w http.ResponseWriter, r *http.Request) {
 	projectID, ok := s.requireProjectID(w, r)
 	if !ok {
@@ -1620,6 +1613,10 @@ func (s *Server) handleCreateMergeRequest(w http.ResponseWriter, r *http.Request
 	}
 	if getActorID(r) == 0 {
 		mapError(w, fmt.Errorf("authentication required"))
+		return
+	}
+	if err := s.requireRole(projectID, "contributor", r); err != nil {
+		mapError(w, err)
 		return
 	}
 	var req struct {
@@ -1662,6 +1659,16 @@ func (s *Server) handleExecuteMerge(w http.ResponseWriter, r *http.Request) {
 		mapError(w, fmt.Errorf("authentication required"))
 		return
 	}
+	// The gate itself lives in the store, next to the state change it guards; who
+	// may press the button is a role question, which the store cannot answer from
+	// an id alone. requireRole is the idiom the charter route already uses.
+	if err := s.requireRole(projectID, "contributor", r); err != nil {
+		mapError(w, err)
+		return
+	}
+	// The gate itself lives in the store, next to the state change it guards; who
+	// may press the button is a role question, which the store cannot answer from
+	// an id alone. requireRole is the idiom the charter route already uses.
 	if err := s.Store.ExecuteMerge(r.Context(), mrID, projectID); err != nil {
 		mapError(w, err)
 		return
@@ -1679,6 +1686,16 @@ func (s *Server) handleRejectMerge(w http.ResponseWriter, r *http.Request) {
 		mapError(w, fmt.Errorf("authentication required"))
 		return
 	}
+	// The gate itself lives in the store, next to the state change it guards; who
+	// may press the button is a role question, which the store cannot answer from
+	// an id alone. requireRole is the idiom the charter route already uses.
+	if err := s.requireRole(projectID, "contributor", r); err != nil {
+		mapError(w, err)
+		return
+	}
+	// The gate itself lives in the store, next to the state change it guards; who
+	// may press the button is a role question, which the store cannot answer from
+	// an id alone. requireRole is the idiom the charter route already uses.
 	if err := s.Store.RejectMerge(r.Context(), mrID, projectID); err != nil {
 		mapError(w, err)
 		return
@@ -1863,6 +1880,28 @@ func (s *Server) handleCriteriaPage(w http.ResponseWriter, r *http.Request) {
 		pageData
 		Slug string
 	}{s.pageFor(r, "Criteria - "+slug), slug})
+}
+
+// handleMergePage renders §5.7's merge queue, with the confirmation gate visible.
+//
+// Same visibility rule as every project page (a 200 must not confirm that a private
+// project's slug exists), and the same two-credential shape as criteria: the
+// navigation cookie opens the HTML, merge.js's own reads carry the token.
+func (s *Server) handleMergePage(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	s.render(w, http.StatusOK, "merge", struct {
+		pageData
+		Slug string
+	}{s.pageFor(r, "Merge requests - "+slug), slug})
 }
 
 func (s *Server) handleRankingPage(w http.ResponseWriter, r *http.Request) {

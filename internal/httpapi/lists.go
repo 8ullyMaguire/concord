@@ -579,6 +579,10 @@ func (s *Server) handleCreateInstanceRequest(w http.ResponseWriter, r *http.Requ
 // project must not be served here -- the same ownership check the feature and
 // complaint endpoints need, and the same reason it survives mutation testing only
 // once a test exists for it.
+// Each row carries §5.7's gate verdict alongside it, because the client's next
+// question is always "is this ready to land?" and a page that worked it out for
+// itself would be a second implementation of the rule -- the one that gets it
+// wrong. The count reported is the COUNTED confirmations, not the rows.
 func (s *Server) handleListMergeRequests(w http.ResponseWriter, r *http.Request) {
 	projectID, ok := s.requireProjectID(w, r)
 	if !ok {
@@ -589,10 +593,16 @@ func (s *Server) handleListMergeRequests(w http.ResponseWriter, r *http.Request)
 		mapError(w, err)
 		return
 	}
-	if mrs == nil {
-		mrs = []store.MergeRequest{}
+	views := make([]store.MergeRequestView, 0, len(mrs))
+	for _, mr := range mrs {
+		gate, err := s.Store.MergeGateFor(r.Context(), mr.ID)
+		if err != nil {
+			mapError(w, err)
+			return
+		}
+		views = append(views, store.MergeRequestView{MergeRequest: mr, Gate: gate})
 	}
-	writeJSON(w, http.StatusOK, mrs)
+	writeJSON(w, http.StatusOK, views)
 }
 
 // handleGetRequestTags returns a request's tags.
