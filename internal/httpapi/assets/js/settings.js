@@ -229,6 +229,36 @@
     }
     var proposals = s.proposals || [];
     var themes = s.themes || [];
+    // §6.2's propose form. The route has existed since the strategy panel was added
+    // and the panel could only CONSENT to proposals other people had made: there was
+    // no way to open one. Same class as the rest of this pass -- a write with a
+    // handler and no reader.
+    var features = (s.features && s.features.features) || s.features || [];
+    if (!Array.isArray(features)) features = [];
+    var featureOptions = features.map(function (f) {
+      return '<option value="' + esc(f.id) + '">#' + esc(f.id) + " " + esc(f.title || "untitled") +
+        " (weight " + esc(f.strategic_weight == null ? 1 : f.strategic_weight) + ")</option>";
+    }).join("");
+    var propose = '<form id="propose-weight-form" class="card">' +
+      '<h3 class="form-title">Propose a weight change</h3>' +
+      '<p class="form-note">The proposal opens a decision other contributors consent to; ' +
+      "the feature's weight does not move until that quorum is reached. The proposer's own " +
+      "consent does not count toward it.</p>" +
+      (features.length
+        ? '<div class="field"><label class="form-label" for="weight-feature">Feature</label>' +
+          '<select id="weight-feature" name="feature_id" required>' + featureOptions + "</select></div>"
+        : '<p class="form-note">This project has no features yet, so there is nothing to weigh.</p>') +
+      '<div class="field-row">' +
+      '<div class="field"><label class="form-label" for="weight-value">Proposed weight</label>' +
+      '<input id="weight-value" name="weight" type="number" step="0.1" min="0" value="1.5" required></div>' +
+      "</div>" +
+      '<div class="field"><label class="form-label" for="weight-rationale">Why</label>' +
+      '<input id="weight-rationale" name="rationale" required maxlength="300" ' +
+      'placeholder="what makes this one more important than it scores"></div>' +
+      '<div class="detail-actions"><button type="submit" class="btn btn-primary"' +
+      (features.length ? "" : " disabled") + ">Open the proposal</button></div>" +
+      '<p class="form-status" data-status hidden></p>' +
+      "</form>";
 
     var pending = proposals.length
       ? '<table class="table" data-strategy-proposals><thead><tr><th>Feature</th>' +
@@ -260,6 +290,7 @@
       '<p class="form-note">A weight proposal is ratified by consensus: contributors ' +
       "consent to it, the proposer cannot consent to their own, and the feature's weight " +
       "does not move until the quorum is reached.</p>" +
+      propose +
       "<h3>Open proposals</h3>" + pending +
       "<h3>Ratified themes</h3>" + liveThemes + "</section>";
   }
@@ -480,8 +511,12 @@
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/tags/completeness"),
       Promise.all([
         getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/weight-proposals"),
-        getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/themes")
-      ]).then(function (s) { return { proposals: s[0], themes: s[1] }; }),
+        getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/themes"),
+        // The propose form needs the features to choose from. A number input asking
+        // for a feature id would be a control that requires the reader to know
+        // something the page is holding.
+        getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/features/")
+      ]).then(function (s) { return { proposals: s[0], themes: s[1], features: s[2] }; }),
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug)),
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/tags"),
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/languages"),
@@ -490,6 +525,7 @@
       render(res[0], res[1], res[2], res[3], res[4], res[5], res[6], res[7], res[8]);
       wireSave();
       wireConsent();
+      wirePropose();
       wireVisibility();
       wireTags();
       wireLanguages();
@@ -695,6 +731,30 @@
             say("Could not reach the server: " + (err.message || String(err)), true);
           });
       });
+    });
+  }
+
+  // The propose form. `write` already reports the server's refusal in the server's
+  // words, and a 201 here means the proposal was OPENED, not that the weight moved --
+  // so the message says which of the two happened.
+  function wirePropose() {
+    var form = document.getElementById("propose-weight-form");
+    if (!form) return;
+    form.addEventListener("submit", function (ev) {
+      ev.preventDefault();
+      var fd = new FormData(form);
+      var btn = form.querySelector("button[type=submit]");
+      write("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/weight-proposals",
+        "POST", {
+          feature_id: Number(fd.get("feature_id") || 0),
+          weight: Number(fd.get("weight") || 0),
+          rationale: String(fd.get("rationale") || "").trim()
+        },
+        function (body) {
+          say("Proposal opened. " + (body.message || "It needs other contributors' consent " +
+            "before the weight moves."));
+          load();
+        }, btn);
     });
   }
 

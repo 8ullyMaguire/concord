@@ -1043,8 +1043,20 @@ func (s *Server) handleProposeStrategicWeight(w http.ResponseWriter, r *http.Req
 	if !ok {
 		return
 	}
-	// Same population as consenting (§8.2 eligible collaborators): a proposal nobody
-	// eligible can second is a proposal that cannot be ratified.
+	// The contributor gate this handler's own comment has claimed since it was
+	// written, and did not have: requireWriteActor asks only for a signed-in account,
+	// so ANY account on the instance could open a weight proposal on ANY project --
+	// including one it is not a member of. §6.2's "nobody can pin an item to the top
+	// by hand" was, at this door, exactly that.
+	//
+	// Contributor and not "eligible collaborator": proposing is a contribution, the
+	// same way opening a complaint or a merge request is, and requiring eligibility
+	// first would ask for a contribution before allowing one. The consent that
+	// ratifies it is where §8.2's population is enforced (see ConsentStrategicWeight).
+	if err := s.requireRole(projectID, "contributor", r); err != nil {
+		mapError(w, err)
+		return
+	}
 	var req strategicWeightRequest
 	if !readJSON(w, r, &req) {
 		return
@@ -1523,7 +1535,18 @@ func (s *Server) handleResolveObjection(w http.ResponseWriter, r *http.Request) 
 		mapError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "resolved"})
+	// The status ECHOED is the one that was written. It used to be the literal
+	// "resolved" whatever the caller asked for, so a page sending "vetoed" was told
+	// "resolved" -- and the page now renders what this returns.
+	if err := s.Store.AddAudit(r.Context(), call.ProjectID, getActorID(r),
+		"resolve_objection", "objection", id, req.Status+": "+req.Resolution); err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{
+		"status":     req.Status,
+		"resolution": req.Resolution,
+	})
 }
 
 func (s *Server) handleCloseConsensus(w http.ResponseWriter, r *http.Request) {

@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -285,10 +286,56 @@ func (d *DB) GetObjections(ctx context.Context, callID int64) ([]Objection, erro
 	return objections, rows.Err()
 }
 
+// objectionResolutionStatuses is the closed set the objections table's CHECK has
+// permitted since migration 0001, minus 'open'.
+//
+// 'open' is in the CHECK because it is the DEFAULT, not because it is an outcome:
+// a resolve that could write it would reopen a call's blocker with no record of
+// having done so. The rest are the four ways an objection stops standing.
+var objectionResolutionStatuses = []string{"withdrawn", "resolved", "overridden", "vetoed"}
+
+// ResolveObjection records how an objection was dealt with.
+//
+// The status is checked HERE, beside the write, and not only in the handler: the
+// endpoint passed whatever the caller sent straight into the UPDATE, so the
+// table's CHECK was the thing refusing a junk status -- and a refusal from a
+// constraint arrives as a 500 carrying a SQLite message with the schema in it
+// ("constraint failed: CHECK constraint failed: status IN (...)").
+//
+// Two things this closes that the CHECK could not:
+//
+//   - a 400 that names the permitted set, instead of a 500 that leaks the schema.
+//     The client can act on the first and not on the second.
+//   - a resolution with no reasoning. §6.6's resolutions are governance records,
+//     the way §6.5's outcomes are: the caller has to say what was decided.
+//
+// The CHECK stays as the backstop it should always have been, and the test for it
+// writes the bad row through the store rather than trusting the constraint to be
+// reachable.
 func (d *DB) ResolveObjection(ctx context.Context, id int64, status, resolution string) error {
-	_, err := d.ExecContext(ctx, `
+	if !slices.Contains(objectionResolutionStatuses, status) {
+		return fmt.Errorf("%w: an objection is resolved as one of %s, not %q",
+			ErrInvalid, strings.Join(objectionResolutionStatuses, ", "), status)
+	}
+	if strings.TrimSpace(resolution) == "" {
+		return fmt.Errorf("%w: a resolution is recorded with its reason; that is what "+
+			"makes it a record rather than a flag", ErrInvalid)
+	}
+	res, err := d.ExecContext(ctx, `
 		UPDATE objections SET status=?, resolution=? WHERE id=?`, status, resolution, id)
-	return err
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		// The handler reads the objection first and 404s, but a caller that does not
+		// must not get a 200 for writing nothing.
+		return fmt.Errorf("%w: objection %d", ErrNotFound, id)
+	}
+	return nil
 }
 
 // TallyConsensus builds a call's counts without closing it.

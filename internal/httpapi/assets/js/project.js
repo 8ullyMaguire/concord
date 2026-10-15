@@ -560,6 +560,48 @@ function apiAuth(extra) {
   function wire(box, slug, projectID) {
     var base = '/api/v1/projects/' + encodeURIComponent(slug);
 
+    // --- join ----------------------------------------------------------------
+    //
+    // The button is offered only when a session exists; without one the page
+    // leaves it hidden and the visitor is not told about an action they cannot
+    // take. On success it RELOADS rather than patching the page: the role the
+    // server granted is what every panel's visibility depends on, and a page
+    // that kept its old render would show a member the controls of a guest.
+    var joinBtn = document.getElementById('project-join');
+    if (joinBtn && window.ConcordSession && window.ConcordSession.instance()) {
+      var joinHeaders = window.ConcordSession.instance().authHeaders();
+      var hasToken = false;
+      for (var hk in joinHeaders) {
+        if (Object.prototype.hasOwnProperty.call(joinHeaders, hk) &&
+            hk.toLowerCase() === 'authorization') hasToken = true;
+      }
+      if (hasToken) {
+        joinBtn.hidden = false;
+        joinBtn.addEventListener('click', function () {
+          joinBtn.disabled = true;
+          joinBtn.textContent = 'Joining\u2026';
+          fetch(base + '/join', { method: 'POST', headers: apiAuth({ 'Content-Type': 'application/json' }), body: '{}' })
+            .then(function (r) {
+              return r.json().catch(function () { return {}; }).then(function (payload) {
+                if (!r.ok) throw new Error(payload.error || ('HTTP ' + r.status));
+                return payload;
+              });
+            })
+            .then(function () {
+              window.location.reload();
+            })
+            .catch(function (err) {
+              joinBtn.disabled = false;
+              joinBtn.hidden = true;
+              var note = document.createElement('p');
+              note.className = 'form-status form-status-error';
+              note.textContent = 'Could not join: ' + (err.message || String(err));
+              joinBtn.parentNode.appendChild(note);
+            });
+        });
+      }
+    }
+
     var complaintForm = document.getElementById('complaint-form');
     if (complaintForm) {
       wireDupPanel(complaintForm, 'complaint', projectID);
@@ -800,6 +842,16 @@ function apiAuth(extra) {
       // dead end. The layout sees the request path and can put it on all of them.
       // See the comment on the tab bar in base.html.
       '<div class="detail-actions">' +
+      // The join control, and until now there was NONE: POST
+      // /projects/{id}/join has existed with a handler, an audit row and a 200
+      // for any signed-in account, and nothing in the browser could reach it.
+      // "Participate" was a route with no door.
+      //
+      // Hidden until this page knows there is a session, because a join is
+      // attributed to an account: a signed-out visitor gets the same
+      // "sign in" prompt every other action on this page uses, rather than a
+      // button that can only fail.
+      '<button type="button" class="btn" id="project-join" hidden>Join this project</button>' +
       '<a class="btn btn-primary" href="/projects/' + esc(p.slug) + '/board">Open board</a>' +
       '<a class="btn btn-secondary" href="/projects">All projects</a>' +
       '</div></div>' +

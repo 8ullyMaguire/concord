@@ -114,6 +114,111 @@
       'consent ÷ (consent + blocks) · needs ' + pct(t.decisive_required);
   }
 
+  // §6.6's objections can be resolved, and until now nothing in the browser could:
+  // the route existed with a handler, a role check and a store call, and no reader.
+  //
+  // Three things this control deliberately does NOT do.
+  //
+  //   - It does not decide who may resolve one. The role is the server's fact; the
+  //     control is offered to any signed-in reader and the server's refusal is what
+  //     the page shows. A client-side role check is a claim the page cannot check.
+  //   - It does not offer "open". Open is the column's DEFAULT, not an outcome --
+  //     the store refuses it, so offering it would be a button that always fails.
+  //   - It does not resolve anything locally. It re-reads, so the status shown is
+  //     the status stored.
+  var RESOLUTIONS = [
+    ['resolved', 'resolved \u2014 the concern was addressed'],
+    ['overridden', 'overridden \u2014 considered, and set aside'],
+    ['vetoed', 'vetoed \u2014 a governance veto'],
+    ['withdrawn', 'withdrawn \u2014 the objector dropped it']
+  ];
+
+  function resolveControls(o) {
+    var wrap = document.createElement('div');
+    wrap.className = 'objection-resolve';
+
+    var selId = 'objection-status-' + o.id;
+    var label = document.createElement('label');
+    label.className = 'field-label';
+    label.setAttribute('for', selId);
+    label.textContent = 'Resolve this objection';
+
+    var sel = document.createElement('select');
+    sel.id = selId;
+    sel.setAttribute('data-objection-status', '');
+    RESOLUTIONS.forEach(function (pair) {
+      var opt = document.createElement('option');
+      opt.value = pair[0];
+      opt.textContent = pair[1];
+      sel.appendChild(opt);
+    });
+
+    var reasonId = 'objection-reason-' + o.id;
+    var reasonLabel = document.createElement('label');
+    reasonLabel.className = 'field-label';
+    reasonLabel.setAttribute('for', reasonId);
+    reasonLabel.textContent = 'Why (recorded with the decision)';
+    var reason = document.createElement('input');
+    reason.type = 'text';
+    reason.id = reasonId;
+    reason.className = 'input';
+    reason.setAttribute('data-objection-reason', '');
+    reason.placeholder = 'e.g. the export now resumes from the last checkpoint';
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn';
+    btn.textContent = 'Record the resolution';
+    btn.setAttribute('data-objection-resolve', String(o.id));
+
+    var err = document.createElement('p');
+    err.className = 'objection-resolve-error';
+    err.setAttribute('role', 'alert');
+    err.setAttribute('data-objection-error', String(o.id));
+    err.hidden = true;
+
+    btn.addEventListener('click', function () {
+      btn.disabled = true;
+      err.hidden = true;
+      var url = '/api/v1/projects/' + encodeURIComponent(slug) + '/consensus/objections/' +
+        encodeURIComponent(String(o.id)) + '/resolve';
+      fetch(url, {
+        method: 'PUT',
+        headers: (function () {
+          var h = { 'Content-Type': 'application/json' };
+          var t = token();
+          if (t) h.Authorization = 'Bearer ' + t;
+          return h;
+        })(),
+        body: JSON.stringify({ status: sel.value, resolution: reason.value })
+      }).then(function (r) {
+        return r.text().then(function (txt) {
+          var data = {};
+          try { data = txt ? JSON.parse(txt) : {}; } catch (e) { data = {}; }
+          // The server's own sentence, including the store's list of the statuses it
+          // accepts. Rewriting it here would tell the reader what this page thinks
+          // the rule is.
+          if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+          return data;
+        });
+      }).then(function () {
+        load();
+      }).catch(function (e) {
+        btn.disabled = false;
+        err.textContent = e.message;
+        err.hidden = false;
+      });
+    });
+
+    wrap.appendChild(label);
+    wrap.appendChild(sel);
+    wrap.appendChild(reasonLabel);
+    wrap.appendChild(reason);
+    wrap.appendChild(btn);
+    wrap.appendChild(err);
+    return wrap;
+  }
+
   function renderObjections(list, tallyVisible) {
     // Objections are stances on the public record while a call is open, and §6.6
     // hides the running picture. They appear when the call closes.
@@ -147,6 +252,11 @@
         s.className = 'objection-status';
         s.textContent = o.status;
         li.appendChild(s);
+      }
+      // Signed out: the objection is readable and the control is not offered --
+      // there is nobody to attribute a resolution to.
+      if (token() && (!o.status || o.status === 'open')) {
+        li.appendChild(resolveControls(o));
       }
       ul.appendChild(li);
     });

@@ -6,7 +6,7 @@ the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
 **Measured state:** schema 25 · 25 migrations · 79 live tables · 943 Go tests across
-9 test-bearing packages · 261 e2e tests in 18 suite files · 7/7 UI mutants killed ·
+9 test-bearing packages · 269 e2e tests in 19 suite files · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
@@ -738,10 +738,16 @@ Three `wait_for_timeout` calls remain in e2e, all marked `BOUNDED (justified)` b
 section is the current answer, and like §11 every line was checked against the code.
 
 **Measured state:** schema 25 · 25 migrations · 79 live tables · **943 Go tests** across
-9 test-bearing packages · **261 e2e tests in 18 suite files** · 7/7 UI mutants killed ·
+9 test-bearing packages · **269 e2e tests in 19 suite files** · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 ### 12.1 How the remaining work was found (it was not in any tracker)
+
+> **SUPERSEDED by §17.1.** The hand-built version below was a heuristic -- search the
+> client bundle for each route's contiguous static tail -- and it recorded its own
+> false-positive rate. §17.1 replaces it with a gate that walks the router and checks a
+> declared inventory in both directions. Kept because it is the measurement that found
+> §12.2's and §12.3's work, and because the difference between the two is the point.
 
 §11.4 claimed "no other endpoint has a handler and no reader". It was verified **by hand**
 and it was wrong. The replacement is a measurement: walk the registered route table with
@@ -1374,5 +1380,158 @@ markup rendering as text.
 3. **No "every route has a reader" gate** (§12.1) — this pass is the second time the
    measurement was made by hand and found something.
 4. **`check_doc_numbers.py` cannot see a qualified test count** (§14.6 item 7).
+5. Deliberate, unchanged: `admin-ledger` and `metrics` have no UI; the criteria page
+   defers pair suggestion, a per-criterion leaderboard and deleting a criterion.
+
+---
+
+## 17. 2026-10-16 (fifth pass): the measurement, instead of another hand count
+
+"Which pages read this endpoint?" had been answered by hand three times, and each
+hand count found something the previous one had missed. §12.1 did it with a
+heuristic — search the client bundle for each route's contiguous static tail — and
+recorded its own false-positive rate: 40 routes with no tail worth searching, 13 with
+a tail appearing in no client file, several of those wrongly. A measurement that
+cannot tell a miss from a false alarm is a measurement nobody reruns.
+
+This pass replaces it with a gate, then closes what the gate found.
+
+### 17.1 The gate
+
+`internal/httpapi/reader_coverage_test.go` walks the router the binary actually
+serves — `chi.Walk` over `srv.Router()`, so the list cannot go stale beside the thing
+it describes — and checks a declared inventory (`readerInventory`) in both
+directions:
+
+| assertion | what it prevents |
+|---|---|
+| every API route is matched by a row | an endpoint with no reader — the class this pass is the fifth instance of |
+| every row matches a registered route | a row left behind by a deleted route, asserting a reader for something nobody serves |
+| each row's `Routes` count **equals** the routes it matches | a route added UNDER an existing fragment, which would otherwise be covered silently |
+| a row's `Reader` exists and contains its `Anchor` | a claim of a reader that does not reference the endpoint |
+| a row with no `Reader` carries a `Note` | an exemption nobody stated |
+
+The `Routes` count is the load-bearing part: a coarse row matching
+`…/features` and everything under it would be a gate that can never fire for the next
+feature. The count going stale is the signal, and the failure prints the corrected row
+plus the routes it now matches.
+
+`Reader` is a file under `assets/js` and `Anchor` is the endpoint's own path. The pair
+proves a reference, not a behaviour, and the spec says so
+(`docs/specs/reader-coverage-spec.md`): it cannot see a comment, and it cannot prove
+every VERB is reachable.
+
+**The count is deliberate, not clever.** Adding a route anywhere fails the build until
+its author reads a row, decides what should read the new endpoint, and bumps a number.
+That is the whole mechanism.
+
+### 17.2 What it found
+
+The gate's first run named three surfaces with no reader at all, and a fourth that had
+one on paper:
+
+| endpoint | what was missing |
+|---|---|
+| `POST /projects/{id}/join` | no way to join a project from the browser. "Participate" was a route with a handler, an audit row and a 200 for any signed-in account, and no door. |
+| `PUT /consensus/objections/{id}/resolve` | §6.6's resolution: nothing in the browser could record one. |
+| `POST /strategy/weight-proposals` | §12.6.3's propose form. The panel could list proposals and consent to them for its whole life and could not open one. |
+| `POST /solutions/{id}/coverage/{cid}/contest` | §6.4's challenge — "the claim must stand to count" — enforced against a table no read exposed. A client had no way to name the claim it would contest. |
+
+All four are built. The fourth needed a read that did not exist: the claims now ride
+with the solutions payload (`SolutionScore.Claims`), because a contest names a claim
+and there was no way to list them.
+
+### 17.3 Three bugs in the same pass, all one shape
+
+The pass's shape is "a rule that exists somewhere and is enforced nowhere", and
+building the readers walked straight into three more:
+
+1. **A junk resolution status was a 500 carrying the schema.**
+   `UPDATE objections SET status=?` passed the caller's string through, so the table's
+   `CHECK` was what refused `"banana"` — and a constraint failure arrives as
+   `500 constraint failed: CHECK constraint failed: status IN ('open','withdrawn',
+   'resolved','overridden','vetoed')`. A client cannot act on that. The rule now lives
+   in the store beside the write (the `CloseConsensusCall` precedent) and answers **400
+   naming the four statuses**, with the `CHECK` kept as the backstop it should have
+   been.
+2. **The response reported a hardcoded `"resolved"`.** Whatever was written —
+   `vetoed`, `overridden` — the 200 said `{"status":"resolved"}`, and the page renders
+   what the response says; a resolution nobody made is what it would have shown.
+   `TestTheResponseEchoesTheStatusThatWasWritten` fails on the old text.
+3. **`handleProposeStrategicWeight` had no contributor gate**, while its own doc
+   comment said it "follows the taxonomy proposal's shape deliberately: contributor
+   gate". Reproduced before it was fixed: a **registered account with no membership in
+   the project** opened a weight proposal and got `201` with the proposal body. §6.2's
+   "nobody can pin an item to the top by hand" was, at that door, exactly that. Now
+   `requireRole(projectID, "contributor", r)`.
+
+Also closed on the way: `ResolveObjection` returned nothing for an id that does not
+exist (a 200 for writing nothing) — it is now `ErrNotFound`.
+
+### 17.4 Verification
+
+Eight mutations, each verified to turn a named test red, each applied to the tree,
+checked to COMPILE, and restored per-mutation:
+
+| mutation | gate that fires |
+|---|---|
+| the objections row names a file that does not reference the endpoint | `TestEveryAPIRouteIsDeclaredWithAReaderOrAReason` |
+| a row's measured route count is wrong by one | `TestEveryAPIRouteIsDeclaredWithAReaderOrAReason` |
+| a new API route with no reader at all | `TestEveryAPIRouteIsDeclaredWithAReaderOrAReason` |
+| the resolution status whitelist removed | `TestAResolutionStatusOutsideTheSchemaVocabularyIsRefused` |
+| the required reason removed | `TestAResolutionNeedsAResolution` |
+| the response reports a hardcoded `resolved` | `TestTheResponseEchoesTheStatusThatWasWritten` |
+| the solutions payload does not carry the claims | `TestTheSolutionsReadCarriesTheCoverageClaims` |
+| the contributor gate on a weight proposal removed | `TestOnlyAContributorCanOpenAWeightProposal` |
+
+Two of the eight were rewritten before they were accepted as evidence. The first
+version of the resolution mutations removed the guard along with the `slices` and
+`strings` imports, so they failed to COMPILE — which proves the compiler works and
+nothing about the guard. The `Claims` mutation removed the field assignment and left
+the variable unused, the same mistake. A red for the wrong reason is not a red (the
+§16 lesson, in a new place).
+
+The sweep itself had a bug worth recording because it produced five confident lies in
+a row: it restored every mutated file only in its **outer** `finally`, so the first
+mutation that failed to compile stayed in the tree and every later mutation was
+measured against an already-broken package. Five `COMPILE` verdicts, all naming the
+same two files, and the two files were the tell. It now restores per mutation inside
+the loop, and verifies the restore byte-for-byte against content read before the sweep
+started.
+
+`tests/e2e/readers_e2e.py` (8 browser tests, sqlite-seeded fixtures) proves each of
+the four controls appears where a reader looks, does the thing, and reports the
+server's refusal to a reader who may not do it:
+
+- a signed-in non-member presses Join and the membership row exists, with one audit
+  entry; a signed-out visitor is offered no button;
+- a maintainer resolves an objection from the consensus page and the reason is stored
+  with it; a contributor's attempt shows the server's refusal and writes nothing;
+- a contributor opens a weight proposal from the settings page and the proposal
+  appears while the feature's weight does not move; a non-member's is refused;
+- a member contests a coverage claim and `contested` is 1 with the reason; the
+  author's own challenge is refused in the server's words.
+
+One e2e claim had to be corrected rather than forced: the refusal a non-maintainer
+sees is the store's generic `permission denied`, not a sentence naming the maintainer
+role, so the test asserts that the refusal ARRIVES and that nothing was written. The
+alternative — loosening the assertion until it passed — would have hidden the fact
+that `requireRole` cannot say which role it wanted.
+
+### 17.5 What is left
+
+1. **`requireRole`'s refusal does not name the role it wanted** (17.4). Every gate in
+   the codebase answers `permission denied`, so a page can report that a write was
+   refused and not why. Worth a store-side message with the required role in it, and
+   it touches every guarded route, which is why it is recorded rather than done here.
+2. **A standalone composite-rank view** (§16.6 item 1) stays open, and this pass's
+   measurement says what it really is: `POST /rank/composite` HAS a reader — the
+   criteria table is built from one request — so the gap is not "no reader" but "no
+   page of its own". That is a feature, not a defect this gate can see.
+3. **An objector cannot withdraw their own objection.** The route requires a
+   maintainer, so `withdrawn` is recorded by a maintainer on the objector's behalf,
+   and §55's "the bar is no unresolved principled objection" can only be cleared by
+   someone else. Needs a route and a reader; deferred with the reason stated.
+4. **`check_doc_numbers.py` still cannot see a qualified test count** (§14.6 item 7).
 5. Deliberate, unchanged: `admin-ledger` and `metrics` have no UI; the criteria page
    defers pair suggestion, a per-criterion leaderboard and deleting a criterion.

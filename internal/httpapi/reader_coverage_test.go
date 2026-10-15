@@ -1,0 +1,247 @@
+package httpapi
+
+import (
+	"fmt"
+	"net/http"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/go-chi/chi/v5"
+)
+
+// readerRow declares what reads one API surface.
+//
+// Reader names a file under internal/httpapi/assets/js; Anchor is a string that
+// must appear in it. The pair is deliberately weak on its own -- a file that
+// contains "/rank/composite" is doing something with that endpoint, and nothing
+// more is claimed -- and deliberately strong in aggregate: it cannot be satisfied
+// by a comment, an empty file, or a name, only by the endpoint's path being
+// spelled in code the browser loads.
+//
+// Routes is the number of registered routes this row matches, MEASURED. It is a
+// count rather than a wildcard because of what it does when somebody adds a
+// route: the number stops matching, the gate goes red, and the author has to read
+// the row -- its reader and its note -- before bumping it. A row that covered
+// /api/v1/projects/{project_id}/features and every future sub-route under it would
+// be a gate that can never fire for the next feature.
+//
+// Exempt rows carry no reader and must say why. There are four, and each is a
+// surface that is not a page's business: a forge calls the webhook, an operator
+// releases an emergency hold, a probe reads /healthz, and /version belongs to
+// deployment tooling.
+type readerRow struct {
+	Match  string
+	Reader string
+	Anchor string
+	Routes int
+	Note   string
+}
+
+// readerInventory is the answer to "which page reads this endpoint?", written
+// down once and checked by the compiler of record (this test) rather than by hand.
+//
+// The hand-built version of this table -- docs/specs/frontend-spec.md §"inventory"
+// -- is what this replaces. It was wrong within two passes: it predates the merge
+// queue and the criteria table, and it never listed composite rank, the coverage
+// contest or the objection resolver at all. Its author (this repository's) measured
+// it twice by hand and found something missing both times.
+var readerInventory = []readerRow{
+	// --- auth and session ---------------------------------------------------
+	{Match: "/auth", Reader: "session.js", Anchor: "/auth/", Routes: 5,
+		Note: "login, logout, register, me, redeem-invite; authHeaders() gates every write"},
+	// --- projects ------------------------------------------------------------
+	{Match: "/api/v1/projects/{project_id}/capabilities", Reader: "project.js", Anchor: "capabilities",
+		Routes: 1, Note: "which controls the page offers"},
+	{Match: "/api/v1/projects/{project_id}/charter", Reader: "settings.js", Anchor: "charter",
+		Routes: 2, Note: "read and update"},
+	{Match: "/api/v1/projects/{project_id}/members", Reader: "settings.js", Anchor: "/members",
+		Routes: 1},
+	{Match: "/api/v1/projects/{project_id}/audit", Reader: "audit.js", Anchor: "/audit",
+		Routes: 2},
+	{Match: "/api/v1/projects/{project_id}/board", Reader: "board.js", Anchor: "board",
+		Routes: 2, Note: "read the board, move a card"},
+	{Match: "/api/v1/projects/{project_id}/complaints", Reader: "complaint.js", Anchor: "/complaints",
+		Routes: 7},
+	{Match: "/api/v1/projects/{project_id}/consensus/objections", Reader: "consensus.js",
+		Anchor: "objections/", Routes: 1, Note: "the maintainer's resolution of an objection (§6.6)"},
+	{Match: "/api/v1/projects/{project_id}/consensus", Reader: "consensus.js", Anchor: "/consensus",
+		Routes: 9},
+	{Match: "/api/v1/projects/{project_id}/criteria-profiles", Reader: "criteria.js",
+		Anchor: "/criteria-profiles", Routes: 2, Note: "saved weightings: list and create"},
+	{Match: "/api/v1/projects/{project_id}/criteria", Reader: "criteria.js", Anchor: "/criteria",
+		Routes: 4, Note: "the comparison table and a criterion's own vote"},
+	{Match: "/api/v1/projects/{project_id}/features/{id}/solutions/{solution_id}/coverage", Reader: "feature.js",
+		Anchor: "coverage/", Routes: 2, Note: "claim and contest a coverage claim (§6.4)"},
+	{Match: "/api/v1/projects/{project_id}/features", Reader: "feature.js", Anchor: "/features/",
+		Routes: 13},
+	{Match: "/api/v1/projects/{project_id}/lists", Reader: "lists.js", Anchor: "/lists",
+		Routes: 6},
+	{Match: "/api/v1/projects/{project_id}/merge", Reader: "merge.js", Anchor: "/merge",
+		Routes: 5, Note: "the merge queue (fifth pass)"},
+	{Match: "/api/v1/projects/{project_id}/alternatives", Reader: "project.js", Anchor: "/alternatives",
+		Routes: 4},
+	{Match: "/api/v1/projects/{project_id}/rank/composite", Reader: "criteria.js", Anchor: "/rank/composite",
+		Routes: 1, Note: "ONE request builds the whole comparison table"},
+	{Match: "/api/v1/projects/{project_id}/votes", Reader: "rank.js", Anchor: "/votes",
+		Routes: 1, Note: "the next thing to vote on"},
+	{Match: "/api/v1/projects/{project_id}/priorities", Reader: "ranking.js", Anchor: "priorities",
+		Routes: 1},
+	{Match: "/api/v1/projects/{project_id}/tallies", Reader: "ranking.js", Anchor: "tallies",
+		Routes: 1},
+	{Match: "/api/v1/projects/{project_id}/field-reports", Reader: "project.js", Anchor: "field-reports",
+		Routes: 1},
+	{Match: "/api/v1/projects/{project_id}/strategy/weight-proposals", Reader: "settings.js",
+		Anchor: "/strategy/weight-proposals", Routes: 3, Note: "list, propose, consent (§6.2)"},
+	{Match: "/api/v1/projects/{project_id}/strategy/themes", Reader: "settings.js", Anchor: "themes",
+		Routes: 1},
+	{Match: "/api/v1/projects/{project_id}/threads", Reader: "comments.js", Anchor: "/threads",
+		Routes: 4},
+	{Match: "/api/v1/projects/{project_id}/join", Reader: "project.js", Anchor: "/join",
+		Routes: 1, Note: "the Join button on a project page"},
+	{Match: "/api/v1/projects/{slug}/documents", Reader: "documents.js", Anchor: "/documents",
+		Routes: 6},
+	{Match: "/api/v1/projects/{slug}/invites", Reader: "settings.js", Anchor: "/invites",
+		Routes: 3},
+	{Match: "/api/v1/projects/{slug}/languages", Reader: "settings.js", Anchor: "/languages",
+		Routes: 2},
+	{Match: "/api/v1/projects/{slug}/tags", Reader: "settings.js", Anchor: "/tags",
+		Routes: 3, Note: "tags, and the completeness figure beside them"},
+	{Match: "/api/v1/projects/{slug}/visibility", Reader: "settings.js", Anchor: "/visibility",
+		Routes: 1},
+	{Match: "/api/v1/projects", Reader: "projects.js", Anchor: "/api/v1/projects",
+		Routes: 6, Note: "the index, the project page's own GET, and the panels that" +
+			" hang off it without a route of their own"},
+	// --- the reading half ----------------------------------------------------
+	{Match: "/api/v1/requests", Reader: "requests.js", Anchor: "/api/v1/requests",
+		Routes: 9},
+	{Match: "/api/v1/answers", Reader: "requests.js", Anchor: "/answers", Routes: 1},
+	{Match: "/api/v1/finder", Reader: "finder.js", Anchor: "/finder", Routes: 7},
+	{Match: "/api/v1/lists", Reader: "lists.js", Anchor: "/lists", Routes: 1},
+	{Match: "/api/v1/scout", Reader: "scout.js", Anchor: "/scout", Routes: 1},
+	{Match: "/api/v1/search", Reader: "search.js", Anchor: "/search", Routes: 1},
+	{Match: "/api/v1/similar", Reader: "project.js", Anchor: "/similar", Routes: 1},
+	{Match: "/api/v1/taxonomy", Reader: "taxonomy.js", Anchor: "/taxonomy", Routes: 4},
+	// --- surfaces that are not a page's business ------------------------------
+	{Match: "/api/v1/hooks", Routes: 1, Note: "a forge POSTs here; nothing in the browser may"},
+	{Match: "/api/v1/emergency-holds", Routes: 1, Note: "an operator releases a hold out of band; the ledger records it"},
+	{Match: "/api/v1/healthz", Routes: 1, Note: "the deploy probe and make deploy read it"},
+	{Match: "/api/v1/version", Routes: 1, Note: "deploy tooling; every JS hit for 'version' is a cache-buster, not this route"},
+	{Match: "/api/v1/admin-ledger", Routes: 1, Note: "deliberate: no UI (REMAINING §11)"},
+	{Match: "/api/v1/projects/{slug}/metrics", Routes: 1, Note: "deliberate: no UI (REMAINING §11)"},
+}
+
+// TestEveryAPIRouteIsDeclaredWithAReaderOrAReason walks the router that the binary
+// actually serves -- not a list of routes kept beside it, which is the artefact
+// that goes stale -- and checks the inventory against it in both directions.
+func TestEveryAPIRouteIsDeclaredWithAReaderOrAReason(t *testing.T) {
+	routes, ok := newTestServerNoActor(t).Config.Handler.(chi.Routes)
+	if !ok {
+		t.Fatal("Router() is not a chi.Routes; the walk needs the mux itself")
+	}
+	var api []string
+	if err := chi.Walk(routes, func(method, route string, _ http.Handler,
+		_ ...func(http.Handler) http.Handler) error {
+		if strings.HasPrefix(route, "/api/") {
+			api = append(api, method+" "+route)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	if len(api) < 100 {
+		t.Fatalf("walked %d API routes; the router has ~130 and a walk that finds a "+
+			"handful is measuring nothing", len(api))
+	}
+
+	// Longest fragment wins, so a specific row is never shadowed by a general one.
+	covered := make([][]string, len(readerInventory))
+	var undeclared []string
+	for _, route := range api {
+		best, bestLen := -1, -1
+		for i, row := range readerInventory {
+			if strings.Contains(route, row.Match) && len(row.Match) > bestLen {
+				best, bestLen = i, len(row.Match)
+			}
+		}
+		if best < 0 {
+			undeclared = append(undeclared, route)
+			continue
+		}
+		covered[best] = append(covered[best], route)
+	}
+	if len(undeclared) > 0 {
+		sort.Strings(undeclared)
+		t.Errorf("%d API route(s) have no reader declared:\n  %s\n"+
+			"Add a row to readerInventory naming the page that reads it (Reader + "+
+			"Anchor), or a row saying why no page should (Note). A route nobody "+
+			"reads is how the merge gate, the criteria table and the settings page "+
+			"were each found.",
+			len(undeclared), strings.Join(undeclared, "\n  "))
+	}
+
+	for i, row := range readerInventory {
+		if len(covered[i]) != row.Routes {
+			sort.Strings(covered[i])
+			t.Errorf("	{Match: %q, Reader: %q, Anchor: %q, Routes: %d}, // was %d\n"+
+				"    the count changed: a route was added or removed under %q. Read the\n"+
+				"    row, decide what should read the new route, then bump it. It now covers:\n      %s",
+				row.Match, row.Reader, row.Anchor, len(covered[i]), row.Routes, row.Match,
+				strings.Join(covered[i], "\n      "))
+		}
+		if row.Reader == "" {
+			if row.Note == "" {
+				t.Errorf("row %q has neither a reader nor a reason", row.Match)
+			}
+			continue
+		}
+		full := filepath.Join("assets", "js", row.Reader)
+		body, err := os.ReadFile(full)
+		if err != nil {
+			t.Errorf("row %q names reader %s, which does not exist: %v", row.Match, full, err)
+			continue
+		}
+		if !strings.Contains(string(body), row.Anchor) {
+			t.Errorf("row %q names %s as its reader, but %q does not appear in it: "+
+				"the claim is not backed by a reference to the endpoint",
+				row.Match, full, row.Anchor)
+		}
+	}
+}
+
+// TestTheReaderInventoryDoesNotClaimRoutesThatDoNotExist is the other direction.
+// A row left behind by a deleted route keeps asserting a reader for something that
+// is not served, and the forward test cannot see it -- every route is covered and
+// the gate is green with a dead claim in it.
+func TestTheReaderInventoryDoesNotClaimRoutesThatDoNotExist(t *testing.T) {
+	routes, ok := newTestServerNoActor(t).Config.Handler.(chi.Routes)
+	if !ok {
+		t.Fatal("Router() is not a chi.Routes")
+	}
+	var api []string
+	if err := chi.Walk(routes, func(_ string, route string, _ http.Handler,
+		_ ...func(http.Handler) http.Handler) error {
+		if strings.HasPrefix(route, "/api/") {
+			api = append(api, route)
+		}
+		return nil
+	}); err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	for _, row := range readerInventory {
+		found := false
+		for _, route := range api {
+			if strings.Contains(route, row.Match) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("row %q matches no registered route; either the route was "+
+				"removed (drop the row) or the fragment is misspelled (fix it)", row.Match)
+		}
+	}
+	_ = fmt.Sprintf
+}

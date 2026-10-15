@@ -72,6 +72,74 @@
     else root.setAttribute('aria-busy', 'false');
   }
 
+  // wireContests attaches §6.4's challenge flow: open the reason field, send the
+  // contest, and report the SERVER's refusal in the row it belongs to.
+  //
+  // The form is inline and per-claim rather than a modal, because a modal would
+  // have to carry the claim whose text it is about -- and the reason someone
+  // contests a claim is read off the claim.
+  function wireContests(base, featureID) {
+    var contests = root.querySelectorAll('[data-contest]');
+    for (var i = 0; i < contests.length; i++) {
+      (function (btn) {
+        btn.addEventListener('click', function () {
+          var row = btn.closest('.coverage-claim');
+          var form = row && row.querySelector('.coverage-contest-form');
+          if (form) form.hidden = !form.hidden;
+        });
+      })(contests[i]);
+    }
+    var sends = root.querySelectorAll('[data-contest-send]');
+    for (var j = 0; j < sends.length; j++) {
+      (function (btn) {
+        btn.addEventListener('click', function () {
+          var row = btn.closest('.coverage-claim');
+          if (!row) return;
+          var input = row.querySelector('[data-contest-reason]');
+          var err = row.querySelector('[data-contest-error]');
+          var reason = input ? String(input.value || '').trim() : '';
+          if (!reason) {
+            if (err) { err.textContent = 'A challenge needs its reason: the claim\u2019s author has to know what to answer.'; err.hidden = false; }
+            return;
+          }
+          btn.disabled = true;
+          var path = base + '/features/' + encodeURIComponent(featureID) + '/solutions/' +
+            encodeURIComponent(btn.getAttribute('data-contest-send')) + '/coverage/' +
+            encodeURIComponent(btn.getAttribute('data-contest-send-complaint')) + '/contest';
+          // authHeaders() from session.js, the one place that knows the key: reaching
+          // into localStorage here would be a second copy of the token's spelling.
+          var headers = { 'Content-Type': 'application/json' };
+          var sess = window.ConcordSession && window.ConcordSession.instance();
+          if (sess) {
+            var auth = sess.authHeaders();
+            for (var k in auth) {
+              if (Object.prototype.hasOwnProperty.call(auth, k)) headers[k] = auth[k];
+            }
+          }
+          fetch(path, {
+            method: 'POST',
+            headers: headers,
+            body: JSON.stringify({ reason: reason })
+          }).then(function (r) {
+            return r.text().then(function (txt) {
+              var body = {};
+              try { body = txt ? JSON.parse(txt) : {}; } catch (e) { body = {}; }
+              if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+              return body;
+            });
+          }).then(function () {
+            // Re-read: coverage is recomputed server-side and the contested claim
+            // changes that number, so a locally patched row would show the old one.
+            window.location.reload();
+          }).catch(function (e) {
+            btn.disabled = false;
+            if (err) { err.textContent = e.message; err.hidden = false; }
+          });
+        });
+      })(sends[j]);
+    }
+  }
+
   // A rating that has never been compared is not zero. Zero is a real rating that
   // lost every comparison, and the two must not look alike.
   function rating(f) {
@@ -121,6 +189,44 @@
       '</li>';
   }
 
+  // §6.4's coverage claims, one line each, with the challenge beside them.
+  //
+  // The contest endpoint has existed with a handler, a self-vote rule and a store
+  // test, and there was NO WAY TO REACH IT: a challenge names a claim, and no read
+  // exposed which claims a solution makes. The claims now arrive with the solution
+  // (the same endpoint), which is what makes the control possible at all.
+  //
+  // The page does not decide who may contest one. The store refuses the claimant's
+  // own challenge (§5.2's self-vote rule), and the refusal is what the page shows.
+  function claimRows(s) {
+    var claims = Array.isArray(s.claims) ? s.claims : [];
+    if (!claims.length) return '';
+    return '<ul class="coverage-claims" data-coverage-claims>' + claims.map(function (c) {
+      var contested = c.contested
+        ? ' <span class="badge badge-amber" title="' + esc(c.contest_reason || '') +
+          '">contested</span>'
+        : '';
+      return '<li class="coverage-claim" data-claim="' + esc(c.complaint_id) + '">' +
+        '<span class="coverage-claim-text">' +
+        esc(c.claim === 'leaves-unresolved' ? 'leaves complaint #' : 'resolves complaint #') +
+        esc(c.complaint_id) + '</span>' + contested +
+        '<button type="button" class="btn btn-secondary btn-sm" data-contest="' +
+        esc(s.solution_id) + '" data-contest-complaint="' + esc(c.complaint_id) + '">' +
+        'Contest</button>' +
+        '<span class="coverage-contest-form" hidden>' +
+        '<label class="field-label" for="contest-reason-' + esc(s.solution_id) + '-' +
+        esc(c.complaint_id) + '">Why the claim does not stand</label>' +
+        '<input type="text" class="input" id="contest-reason-' + esc(s.solution_id) + '-' +
+        esc(c.complaint_id) + '" data-contest-reason placeholder="e.g. it only fixes the ' +
+        'first page of results">' +
+        '<button type="button" class="btn" data-contest-send="' + esc(s.solution_id) +
+        '" data-contest-send-complaint="' + esc(c.complaint_id) + '">Record the challenge</button>' +
+        '</span>' +
+        '<span class="coverage-contest-error" role="alert" data-contest-error hidden></span>' +
+        '</li>';
+    }).join('') + '</ul>';
+  }
+
   function solutionRow(s) {
     var rd = typeof s.elo_rd === 'number' && isFinite(s.elo_rd) ? s.elo_rd : null;
     return '<li class="linked-row">' +
@@ -129,6 +235,7 @@
       (rd != null ? ' &plusmn;' + esc(Math.round(rd)) : '') + '</span>' +
       '<span>' + esc(s.title || 'solution') + '</span>' +
       '<span class="badge badge-slate">' + esc(s.status || 'proposed') + '</span>' +
+      claimRows(s) +
       '</li>';
   }
 
@@ -238,6 +345,7 @@
 
     root.innerHTML = html;
     done();
+    wireContests(base, at.id);
   }).catch(function (err) {
     // aria-busy is cleared on the error path too: a skeleton that spins forever
     // over an error message reads as "still loading".

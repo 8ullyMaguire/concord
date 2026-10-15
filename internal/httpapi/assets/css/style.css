@@ -1711,6 +1711,30 @@ textarea:focus-visible {
   letter-spacing: 0.04em;
 }
 
+/* The resolution control on an objection. It sits inside the objection it belongs
+   to and nowhere else: a resolved objection keeps its record, and an open one gets
+   the form. */
+.objection-resolve {
+  margin-top: var(--space-sm, 0.75rem);
+  padding-top: var(--space-sm, 0.75rem);
+  border-top: 1px dashed var(--border, #e2e8f0);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  max-width: 32rem;
+}
+
+.objection-resolve select,
+.objection-resolve input {
+  width: 100%;
+}
+
+.objection-resolve-error {
+  margin: 0;
+  color: var(--danger, #b91c1c);
+  font-size: 0.9rem;
+}
+
 .panel-consensus-link {
   margin-block: var(--space-sm, 0.75rem);
 }
@@ -1770,6 +1794,41 @@ textarea:focus-visible {
 .ie-value {
   font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums;
 }
+/* §6.4's coverage claims, under the solution they belong to. Each is one claim and
+   the challenge against it: the reason field is inline because the reason is read
+   off the claim it contests. */
+.coverage-claims {
+  list-style: none;
+  padding: 0;
+  margin: 0.4rem 0 0 1rem;
+}
+
+.coverage-claim {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  font-size: 0.9rem;
+}
+
+.coverage-claim-text {
+  color: var(--text-muted, #64748b);
+}
+
+.coverage-contest-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  flex-basis: 100%;
+}
+
+.coverage-contest-error {
+  flex-basis: 100%;
+  color: var(--danger, #b91c1c);
+  font-size: 0.88rem;
+}
+
 .linked-list { list-style: none; padding: 0; margin: 0; }
 .linked-row {
   display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;

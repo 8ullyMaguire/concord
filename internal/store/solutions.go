@@ -170,6 +170,9 @@ type SolutionScore struct {
 	Coverage float64 `json:"coverage"`
 	// Kappa is the charter-configurable weight from §6.4.
 	Kappa float64 `json:"kappa"`
+	// Claims are the per-complaint coverage claims this solution makes, so a
+	// client can offer §6.4's challenge without a second read.
+	Claims []CoverageClaim `json:"claims"`
 	// Score = Rating + Kappa*Coverage.
 	Score float64 `json:"score"`
 	// IsBaseline marks the "do nothing" competitor, which is ranked but never
@@ -418,8 +421,13 @@ func (d *DB) ListSolutions(ctx context.Context, featureID int64, limit int) ([]S
 		if err != nil {
 			return nil, err
 		}
+		claims, err := d.CoverageClaims(ctx, e.EntityID)
+		if err != nil {
+			return nil, err
+		}
 		score := SolutionScore{
 			SolutionID:     e.EntityID,
+			Claims:         claims,
 			Rating:         e.Conservative,
 			Coverage:       cov.Coverage,
 			Kappa:          kappa,
@@ -438,6 +446,48 @@ func (d *DB) ListSolutions(ctx context.Context, featureID int64, limit int) ([]S
 	}
 	sortSolutionScores(out)
 	return out, nil
+}
+
+// CoverageClaim is one row of §6.4's coverage table: what a solution says about a
+// linked complaint, and whether anybody has challenged it.
+//
+// It exists because a claim was CHALLENGEABLE AND UNREACHABLE. The contest endpoint
+// has been live with a handler, a self-vote rule and a store test, and no read
+// exposed which claims a solution makes -- so the only client that could have
+// contested one had no way to name it. §6.4's "the claim must stand to count" was
+// enforced against a table nobody could see.
+type CoverageClaim struct {
+	ComplaintID int64 `json:"complaint_id"`
+	// Claim is 'resolves' or 'leaves-unresolved'; the second is not a lesser
+	// claim (§6.3 asks what a solution explicitly does not fix).
+	Claim string `json:"claim"`
+	// Contested claims do not count toward coverage (store.CoverageSummary).
+	Contested     bool   `json:"contested"`
+	ContestReason string `json:"contest_reason,omitempty"`
+}
+
+// CoverageClaims lists a solution's claims in complaint order, contested ones
+// included -- a contested claim is still what the solution said, and hiding it
+// would make the contest look like a deletion.
+func (d *DB) CoverageClaims(ctx context.Context, solutionID int64) ([]CoverageClaim, error) {
+	rows, err := d.QueryContext(ctx, `
+		SELECT complaint_id, claim, contested, COALESCE(contest_reason, '')
+		FROM solution_coverage WHERE solution_id = ? ORDER BY complaint_id`, solutionID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []CoverageClaim{}
+	for rows.Next() {
+		var c CoverageClaim
+		var contested int
+		if err := rows.Scan(&c.ComplaintID, &c.Claim, &contested, &c.ContestReason); err != nil {
+			return nil, err
+		}
+		c.Contested = contested != 0
+		out = append(out, c)
+	}
+	return out, rows.Err()
 }
 
 // sortSolutionScores orders by score, keeping the baseline last regardless.
