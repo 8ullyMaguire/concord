@@ -598,6 +598,7 @@ func (s *Server) Router() http.Handler {
 	// steering loophole the single maintainer-only PUT used to leave open.
 	r.Route("/api/v1/projects/{project_id}/strategy", func(r chi.Router) {
 		r.Get("/weight-proposals", s.handleListStrategicWeightProposals)
+		r.Post("/weight-proposals", s.handleProposeStrategicWeight)
 		r.Post("/weight-proposals/{proposal_id}/consent", s.handleConsentStrategicWeight)
 		r.Get("/themes", s.handleListStrategicThemes)
 	})

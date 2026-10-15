@@ -147,29 +147,180 @@
     }).join("") + "</div>";
   }
 
-  function render(charter, members, profiles) {
+  // §4.3: "A completeness meter shows how well-tagged each project is."
+  //
+  // THE ENDPOINT HAD NO READER. GET /tags/completeness has answered this exact
+  // question since the taxonomy work, and nothing in assets/js referenced it, so the
+  // spec's meter did not exist. The handler's own comment names it as the §4.3 meter,
+  // which is the trap: a route comment describing the feature it serves reads like the
+  // feature being present.
+  //
+  // The score is six tenths "enough tags" and four tenths "enough namespaced tags",
+  // and the numbers behind it are on screen because a meter that shows 60% with no
+  // components is a number a reader cannot act on. The threshold is a judgement in the
+  // store (wantTags, wantNamespaced), so the page reports it rather than restating it.
+  function completenessPanel(c) {
+    if (failed(c)) {
+      return '<section class="panel"><h2>Tag completeness</h2>' + failedNote(c, "completeness") + "</section>";
+    }
+    var score = Number(c.score || 0);
+    var pct = Math.round(score * 100);
+    var tags = Number(c.tags || 0), want = Number(c.want_tags || 0);
+    var ns = Number(c.namespaced || 0), wantNs = Number(c.want_namespaced || 0);
+    var pending = Number(c.suggested_pending || 0);
+
+    var move = [];
+    if (tags < want) move.push((want - tags) + " more tag" + (want - tags === 1 ? "" : "s"));
+    if (ns < wantNs) move.push((wantNs - ns) + " more namespaced tag" + (wantNs - ns === 1 ? "" : "s"));
+    var advice = c.complete
+      ? "This project is findable through both the category filters and the hierarchy queries."
+      : "Add " + move.join(" and ") + " to reach the threshold.";
+
+    return '<section class="panel"><h2>Tag completeness</h2>' +
+      '<p class="form-note">A project with no tags is not merely untidy: it is invisible to ' +
+      "every taxonomy-filtered search, so tagging is a contribution rather than housekeeping.</p>" +
+      '<div class="meter" data-completeness-score="' + esc(score) + '" ' +
+        'data-completeness-complete="' + (c.complete ? "true" : "false") + '" ' +
+        'role="img" aria-label="tag completeness ' + pct + ' percent">' +
+        '<div class="meter-fill" style="width:' + pct + '%"></div></div>' +
+      "<p><strong data-completeness-pct>" + pct + "%</strong> complete &mdash; " +
+        esc(tags) + " of " + esc(want) + " tags, " + esc(ns) + " of " + esc(wantNs) +
+        " namespaced.</p>" +
+      '<p class="form-note">' + esc(advice) +
+        (pending > 0 ? " " + esc(pending) + " suggested tag" + (pending === 1 ? " is" : "s are") +
+          " still waiting to be applied." : "") +
+      "</p></section>";
+  }
+
+  // §6.2: strategic weights move only by consensus, and the page has to say so,
+  // because a proposal that looked applied would be the hand-steering the mechanism
+  // exists to prevent.
+  function strategyPanel(s) {
+    if (failed(s)) {
+      return '<section class="panel"><h2>Strategic weights</h2>' + failedNote(s, "strategic weights") + "</section>";
+    }
+    var proposals = s.proposals || [];
+    var themes = s.themes || [];
+
+    var pending = proposals.length
+      ? '<table class="table" data-strategy-proposals><thead><tr><th>Feature</th>' +
+        "<th>Weight</th><th>Rationale</th><th></th></tr></thead><tbody>" +
+        proposals.map(function (p) {
+          return '<tr data-proposal="' + esc(p.id) + '">' +
+            "<td>#" + esc(p.feature_id) + "</td>" +
+            "<td>" + esc(p.weight_before) + " &rarr; " + esc(p.weight_after) + "</td>" +
+            "<td>" + esc(p.rationale) + "</td>" +
+            '<td><button type="button" class="btn" data-consent="' + esc(p.id) + '">Consent</button></td>' +
+            "</tr>";
+        }).join("") + "</tbody></table>"
+      : '<div class="empty-state"><p class="empty-state-title">No weight proposals open</p>' +
+        "<p>Nobody can pin an item to the top by hand. Steering happens through pain, " +
+        "pairwise votes, and ratified themes.</p></div>";
+
+    var liveThemes = themes.length
+      ? '<table class="table" data-strategy-themes><thead><tr><th>Theme</th><th>Weight</th>' +
+        "<th>Rationale</th></tr></thead><tbody>" +
+        themes.map(function (t) {
+          return "<tr><td>" + esc(t.namespace ? t.namespace + "/" + t.tag : t.tag) + "</td>" +
+            "<td>" + esc(t.weight) + "</td><td>" + esc(t.rationale) + "</td></tr>";
+        }).join("") + "</tbody></table>"
+      : '<div class="empty-state"><p class="empty-state-title">No ratified themes</p>' +
+        "<p>A theme is a multiplier on every feature carrying its tag, and it expires at " +
+        "the next release cycle rather than being switched off by hand.</p></div>";
+
+    return '<section class="panel"><h2>Strategic weights</h2>' +
+      '<p class="form-note">A weight proposal is ratified by consensus: contributors ' +
+      "consent to it, the proposer cannot consent to their own, and the feature's weight " +
+      "does not move until the quorum is reached.</p>" +
+      "<h3>Open proposals</h3>" + pending +
+      "<h3>Ratified themes</h3>" + liveThemes + "</section>";
+  }
+
+  // A failed fetch must cost its own panel and nothing else. The page previously used
+  // Promise.all with one catch, which blanked all three panels when one fetch failed --
+  // the opposite of what its own comment claimed. Two more fetches made that a real
+  // risk rather than a hypothetical one.
+  function failed(v) {
+    return v && typeof v === "object" && v.__failed;
+  }
+  function failedNote(v, what) {
+    return '<div class="empty-state"><p class="empty-state-title">Could not load ' + esc(what) +
+      '</p><p>' + esc(v.__failed) + "</p></div>";
+  }
+  function getOrNull(path) {
+    return get(path).catch(function (e) { return { __failed: e.message || String(e) }; });
+  }
+
+  function render(charter, members, profiles, completeness, strategy) {
     root.innerHTML =
-      '<section class="panel"><h2>Charter</h2>' + charterForm(charter || {}) + "</section>" +
+      (failed(charter) ? '<section class="panel"><h2>Charter</h2>' + failedNote(charter, "charter") + "</section>"
+                       : '<section class="panel"><h2>Charter</h2>' + charterForm(charter || {}) + "</section>") +
       '<section class="panel"><h2>Members</h2>' + memberTable(members) + "</section>" +
-      '<section class="panel"><h2>Criteria profiles</h2>' + profileList(profiles) + "</section>";
+      '<section class="panel"><h2>Criteria profiles</h2>' + profileList(profiles) + "</section>" +
+      completenessPanel(completeness) +
+      strategyPanel(strategy);
     root.removeAttribute("aria-busy");
   }
 
-  // Each panel degrades on its own. A project with no charter profiles is a normal state,
-  // and one failing fetch must not cost the two panels that worked -- the rule
-  // project.js already follows.
+  // The strategy reads are keyed by slug, like every other project-scoped route --
+  // `{project_id}` in the route pattern carries a SLUG (requireProjectID resolves it
+  // with GetProject), which is worth knowing before reaching for a numeric id.
   Promise.all([
-    get("/api/v1/projects/" + encodeURIComponent(slug) + "/charter"),
-    get("/api/v1/projects/" + encodeURIComponent(slug) + "/members"),
-    get("/api/v1/projects/" + encodeURIComponent(slug) + "/criteria-profiles")
+    getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/charter"),
+    getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/members"),
+    getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/criteria-profiles"),
+    getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/tags/completeness"),
+    Promise.all([
+      getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/weight-proposals"),
+      getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/themes")
+    ]).then(function (s) { return { proposals: s[0], themes: s[1] }; })
   ]).then(function (res) {
-    render(res[0], res[1], res[2]);
+    render(res[0], res[1], res[2], res[3], res[4]);
     wireSave();
-  }).catch(function (err) {
-    root.removeAttribute("aria-busy");
-    root.innerHTML = '<div class="empty-state"><p class="empty-state-title">' +
-      "Could not load settings</p><p>" + esc(err.message || String(err)) + "</p></div>";
+    wireConsent();
   });
+
+  // Consent is a write, and the page reports which write happened: a 202 means the
+  // consent was recorded and the quorum is not reached yet, which is not a failure and
+  // must not read like one.
+  function wireConsent() {
+    root.querySelectorAll("[data-consent]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-consent");
+        var headers = { "Content-Type": "application/json" };
+        var tok = localStorage.getItem("concord.token");
+        if (tok) headers["Authorization"] = "Bearer " + tok;
+        btn.disabled = true;
+        fetch("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/weight-proposals/" +
+              encodeURIComponent(id) + "/consent", { method: "POST", headers: headers })
+          .then(function (r) {
+            return r.text().then(function (t) {
+              var body = {};
+              try { body = JSON.parse(t); } catch (e) { /* a non-JSON body is reported raw */ }
+              if (r.status === 401 || r.status === 403) {
+                say(body.error || ("Not allowed to consent (" + r.status + ")."), true);
+                btn.disabled = false;
+                return;
+              }
+              if (r.status === 202) {
+                say("Consent recorded. " + (body.message || "The quorum is not reached yet."));
+                return;
+              }
+              if (!r.ok) {
+                say("The server refused the consent: " + (body.error || t || r.status), true);
+                btn.disabled = false;
+                return;
+              }
+              say("Consent recorded and the quorum is reached: " + (body.message || "ratified."));
+            });
+          })
+          .catch(function (err) {
+            btn.disabled = false;
+            say("Could not reach the server: " + (err.message || String(err)), true);
+          });
+      });
+    });
+  }
 
   function wireSave() {
     var form = document.getElementById("charter-form");

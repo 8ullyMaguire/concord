@@ -155,7 +155,8 @@ func TestEveryEndpointThisPageReadsIsActuallyCalledFromIt(t *testing.T) {
 	//
 	// A gate satisfied by its own documentation is worse than no gate, because it is
 	// confident. The trailing `")` is what only the call site has.
-	for _, want := range []string{`+ "/criteria-profiles")`, `+ "/members")`, `+ "/charter")`} {
+	for _, want := range []string{`+ "/criteria-profiles")`, `+ "/members")`, `+ "/charter")`,
+		`+ "/tags/completeness")`, `+ "/strategy/weight-proposals")`, `+ "/strategy/themes")`} {
 		if !strings.Contains(js, want) {
 			t.Errorf("settings.js never fetches %s -- the endpoint has a handler and no "+
 				"reader, which is the defect this page exists to close", want)
@@ -176,5 +177,57 @@ func TestTheSettingsWriteSendsTheTokenTheServerReads(t *testing.T) {
 	if strings.Contains(js, "concord_token") {
 		t.Error("settings.js reads concord_token, which does not exist; every save 401s " +
 			"silently")
+	}
+}
+
+// The two panels added after the read-side gate above was already green.
+//
+// Both close the same hole one level down: /tags/completeness is the §4.3 completeness
+// meter and /strategy/* is §6.2's consensus path, and neither had a reader. The gates
+// here are about the SHAPE the page has to read, because both endpoints disagree with
+// the house style in ways that render as blank rather than as an error.
+func TestTheCompletenessMeterReadsTheKeysTheStoreReturns(t *testing.T) {
+	ts := newTestServer(t)
+	js := assetBody(t, ts, "/assets/js/settings.js")
+	// The keys come from store.TagCompleteness's map, transcribed from the literal
+	// rather than guessed: want_tags and want_namespaced are the threshold, and a page
+	// that hardcoded 5 and 2 would keep claiming them after the store changed.
+	for _, key := range []string{"want_tags", "want_namespaced", "suggested_pending", "namespaced"} {
+		if !strings.Contains(js, key) {
+			t.Errorf("settings.js does not read %q; the meter would show a percentage "+
+				"with none of the numbers behind it", key)
+		}
+	}
+	// The store spells them snake_case. A page reading c.wantTags renders "0 of
+	// undefined" -- asserted on the READ (c.wantTags), not on the bare word, because
+	// this file's comment above names the Go-side identifier and a substring check
+	// would flag its own documentation. That is the trap the read-side gate below
+	// already documents.
+	if strings.Contains(js, "c.wantTags") || strings.Contains(js, "c.wantNamespaced") {
+		t.Error("settings.js reads wantTags/wantNamespaced, which the endpoint does not send")
+	}
+}
+
+// The strategy panel is the page's only writer besides the charter, and the two
+// outcomes §6.2 distinguishes -- consent recorded but below quorum (202) and ratified
+// (200) -- must not be collapsed. A page that said "ratified" for a 202 would report a
+// weight change that has not happened, which is the hand-steering the mechanism exists
+// to prevent.
+func TestTheStrategyPanelDistinguishesBelowQuorumFromRatified(t *testing.T) {
+	ts := newTestServer(t)
+	js := assetBody(t, ts, "/assets/js/settings.js")
+	if !strings.Contains(js, "r.status === 202") {
+		t.Error("settings.js does not distinguish a 202 (consent recorded, below quorum) " +
+			"from a 200 (ratified); the page would report a change that has not happened")
+	}
+	// The consent button posts to the consent route, built from the data attribute the
+	// row carries. A row with a button that posts to the list route would 405.
+	if !strings.Contains(js, `"/consent"`) {
+		t.Error("settings.js never posts to the consent route")
+	}
+	// And the panel says the proposer cannot consent to their own proposal, because the
+	// server refuses it with a 403 and the reader needs to know that is a rule.
+	if !strings.Contains(js, "cannot consent to their own") {
+		t.Error("settings.js does not state the self-consent rule it will be refused by")
 	}
 }

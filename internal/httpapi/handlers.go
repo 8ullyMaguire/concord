@@ -963,6 +963,66 @@ func (s *Server) handleTagCompleteness(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, out)
 }
 
+// strategicWeightRequest is the body of a §6.2 weight proposal.
+//
+// The weight is a float between FeatureWeightMin and FeatureWeightMax; the store
+// enforces the range rather than this layer, so the bounds live in one place and an
+// out-of-range weight is a 400 with a message naming the range.
+type strategicWeightRequest struct {
+	FeatureID int64   `json:"feature_id"`
+	Weight    float64 `json:"weight"`
+	Rationale string  `json:"rationale"`
+}
+
+// handleProposeStrategicWeight opens a §6.2 weight proposal.
+//
+// THE ROUTE WAS MISSING, and that is the whole reason this handler exists. Its
+// neighbours -- the list, the consent, the themes -- have been registered for as long
+// as the store function has, and store.ProposeStrategicWeight has tests, and nothing
+// in httpapi called it. So the mechanism §6.2 leans on:
+//
+//	"theme_weight comes from themes ... changed only by consensus (Normal tier) ...
+//	 Nobody can pin an item to the top by hand. Steering happens through public
+//	 inputs: pain, pairwise votes, and ratified themes."
+//
+// could list proposals and consent to them and had no way to OPEN one. Every read
+// worked, the store refused bad weights correctly, and the feature was inert.
+//
+// It follows the taxonomy proposal's shape deliberately: contributor gate, rationale
+// required (in the store), 201 with a message that says the change is proposed rather
+// than applied. A client that showed "saved" would be describing a state the server
+// is not in.
+func (s *Server) handleProposeStrategicWeight(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireWriteActor(w, r); !ok {
+		return
+	}
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
+	// Same population as consenting (§8.2 eligible collaborators): a proposal nobody
+	// eligible can second is a proposal that cannot be ratified.
+	if err := s.requireRole(projectID, "contributor", r); err != nil {
+		mapError(w, err)
+		return
+	}
+	var req strategicWeightRequest
+	if !readJSON(w, r, &req) {
+		return
+	}
+	p, err := s.Store.ProposeStrategicWeight(r.Context(), projectID, req.FeatureID,
+		getActorID(r), req.Weight, req.Rationale)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{
+		"proposal": p,
+		"message": "strategic weights are ratified by consensus; consent to this " +
+			"proposal to proceed",
+	})
+}
+
 // handleListStrategicThemes returns the project's live (unexpired) themes (§6.2).
 func (s *Server) handleListStrategicThemes(w http.ResponseWriter, r *http.Request) {
 	projectID, ok := s.requireProjectID(w, r)

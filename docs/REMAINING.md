@@ -6,7 +6,7 @@ the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
 **Measured state:** schema 25 · 25 migrations · 79 live tables · 902 Go tests across
-9 test-bearing packages · 227 e2e tests in 16 suite files · 7/7 UI mutants killed ·
+9 test-bearing packages · 231 e2e tests in 16 suite files · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
@@ -620,6 +620,10 @@ you just created by the handle the INSERT returned, never by a title.**
 
 ## 11. What is left, 2026-10-05 (measured, not asserted)
 
+**SUPERSEDED 2026-10-15 by §12.** Kept as the record. §11.4's claim that "no other
+endpoint has a handler and no reader" was **wrong**, and §12 says how it was wrong and
+what found it; §11.1 and §11.2 remain accurate as history.
+
 §1 and §4 above are the state at the start. Everything they listed is built. This section
 is the current answer, and every line was checked against the code rather than against a
 tracker.
@@ -709,7 +713,13 @@ And the suite's own helper could not have caught either: `doJSON` unmarshals int
 `map[string]any`, where `null` becomes a nil map and `[]` fails to unmarshal at all. The
 distinction requires reading the raw body.
 
-### 11.4 Nothing else is outstanding
+### 11.4 Nothing else is outstanding — THIS CLAIM WAS FALSE
+
+**Corrected 2026-10-15.** Verified against the running server **by hand**, which is why it
+was wrong twice over: `GET /tags/completeness` (§4.3's completeness meter) and the whole
+`/strategy/*` surface (§6.2) had no reader, and §6.2's **write path had no route at all**
+— `store.ProposeStrategicWeight` existed with tests and nothing in `httpapi` called it.
+Neither survives a measurement of the route table; both survive a reading of it. See §12.
 
 Verified against the running server: **no other endpoint has a handler and no reader.**
 `taxonomy/proposals`, `admin-ledger`, `members` and `criteria-profiles` were the four, and
@@ -719,3 +729,164 @@ an admin surface nobody has specced.
 
 Three `wait_for_timeout` calls remain in e2e, all marked `BOUNDED (justified)` by
 `check_e2e_sync.py`. Known-open by design, not by neglect.
+
+---
+
+## 12. What is left, 2026-10-15 — THIS IS THE LIVE TRACKER
+
+§11 and everything above it are history. §1, §4 and §11 are marked superseded; this
+section is the current answer, and like §11 every line was checked against the code.
+
+**Measured state:** schema 25 · 25 migrations · 79 live tables · **905 Go tests** across
+9 test-bearing packages · **231 e2e tests in 16 suite files** · 7/7 UI mutants killed ·
+`make verify` exit 0, `make e2e` exit 0.
+
+### 12.1 How the remaining work was found (it was not in any tracker)
+
+§11.4 claimed "no other endpoint has a handler and no reader". It was verified **by hand**
+and it was wrong. The replacement is a measurement: walk the registered route table with
+`chi.Walk` (174 routes, 95 GET), then look for each route's **contiguous static segments**
+in `assets/js`, `assets/css` and `templates/`. Forty routes have no static tail worth
+searching (a bare `/{id}`), and thirteen have a tail that appears in no client file:
+
+| route | verdict |
+|---|---|
+| `GET /projects/{slug}/tags/completeness` | **§4.3's completeness meter. Built (§12.2).** |
+| `GET /projects/{id}/strategy/weight-proposals`, `/strategy/themes` | **§6.2. Built (§12.3).** |
+| `POST /projects/{id}/strategy/weight-proposals` | **did not exist at all — see §12.3** |
+| `/atom.xml`, `/feed.xml`, `/rss.xml` | feeds; linked from `base.html`'s `<link rel="alternate">`, correctly not fetched by JS |
+| `/healthz`, `/api/v1/version` | machine/operator surfaces, deliberately unread |
+| `/admin-ledger` | operator log, no specced admin UI (§11.4) |
+| `/`, `/projects/{slug}/documents/search` | a page (no inbound link needed) and a fetch built from interpolated segments |
+
+**A gate for this class is NOT built, deliberately.** The sweep has a high false-positive
+rate in the other direction — `'/api/v1/projects/' + slug + '/documents'` never appears as
+a contiguous string, so the heuristic finds readers it should not trust either. A gate with
+an allowlist long enough to be quiet is a gate people route around, which is the lesson
+§11.4's own section learned. What is in the tree instead is the per-page **read-side gate
+by NAME** (`TestEveryEndpointThisPageReadsIsActuallyCalledFromIt` and §12.4's two
+additions), which cannot be quiet and cannot be satisfied by its own documentation.
+
+### 12.2 §4.3's completeness meter (built)
+
+`GET /tags/completeness` has answered "how well-tagged is this project" since the taxonomy
+work, and the handler's comment **names it as the §4.3 meter** — which is the trap: a
+route comment describing the feature it serves reads like the feature being present. The
+meter is now on the settings page.
+
+The score is `0.6 * min(tags/want_tags, 1) + 0.4 * min(namespaced/want_namespaced, 1)`,
+and the page renders **the components, not just the percentage**, because a bare 56% is a
+number a reader cannot act on. The threshold (`want_tags`, `want_namespaced`) is read from
+the response rather than restated in JS, and the test asserts `c.wantTags` is absent — a
+page that hardcoded 5 and 2 would keep claiming them after the store changed.
+
+Measured against a seeded fixture: 3 tags, 1 namespaced, 1 unapplied-then-applied
+suggestion → 56%, "3 of 5 tags, 1 of 2 namespaced", "Add 2 more tags and 1 more namespaced
+tag", "1 suggested tag is still waiting to be applied". The score is compared with a
+tolerance: the endpoint sends a **float64 sum** (`0.6*3/5 + 0.4*1/2`), so the string in the
+attribute is whatever binary arithmetic produced — `0.5600000000000001` is the same claim.
+Asserting the literal `"0.56"` was the first version of that test and it was red.
+
+### 12.3 §6.2's write path did not exist (built)
+
+§6.2: *"changed only by consensus (Normal tier) … Nobody can pin an item to the top by
+hand. Steering happens through public inputs: pain, pairwise votes, and ratified themes."*
+
+`store.ProposeStrategicWeight` existed, with store tests. The list route, the consent route
+and the themes route were registered. **There was no route to open a proposal.** So the
+mechanism could list proposals and consent to them and had no way to `propose`, every read
+worked, the store correctly refused out-of-range weights, the whole suite was green, and
+the feature was inert. This is §3.1's shape at the API level: a *writer* with no route is a
+write that cannot happen.
+
+Fixed: `POST /api/v1/projects/{project_id}/strategy/weight-proposals`, contributor-gated
+with a required rationale (the store's rule), 201 with a message that says the change is
+**proposed rather than applied**, and the `Go` test asserts exactly that — the feature's
+`strategic_weight` is still 1.0 after proposing 2.0. A 201 that had already moved the dial
+would be the hand-steering the mechanism exists to prevent. Also asserted: anonymous → 401;
+self-consent → **403 naming the rule** (not 202 — the first version of this test guessed
+202 and was corrected by the measurement); a second pending proposal → **409**, from the
+partial unique index; weight 99 → 400 naming the range.
+
+**THE PATH SEGMENT NAMED `{project_id}` CARRIES A SLUG.** `requireProjectID` resolves it
+with `GetProject`, which is a slug lookup, so a numeric id answers `404 not found` —
+indistinguishable from a missing project, and it cost a debug cycle to find. Every
+project-scoped route behaves this way, including the `/charter` the settings page already
+read. Written down here because the route pattern reads like an integer.
+
+The settings page now shows the pending proposals with a **Consent** button and the live
+themes, and it distinguishes the two outcomes the handshake has: **202** (consent recorded,
+quorum not reached — the server's own reason, including the consent count) and **200**
+(ratified). Collapsing those would report a weight change that has not happened.
+
+### 12.4 What the gates for §12.2/§12.3 are, and that they can fail
+
+Four mutants, each killing exactly its own gate (run against a rebuilt binary, because the
+assets are **embedded in the Go binary** — an un-rebuilt `./bin/concord` serves the previous
+`settings.js`, which is how three of these tests first failed for a reason that had nothing
+to do with the code under test):
+
+| mutant | red |
+|---|---|
+| the `POST /weight-proposals` route removed | `TestTheStrategicWeightWritePathIsReachable` |
+| `settings.js` stops fetching `/tags/completeness` | the read-side gate + the meter e2e |
+| `settings.js` treats 202 as ratified | `test_a_consent_below_quorum_…` |
+| the meter hardcodes `want = 5` | `TestTheCompletenessMeterReadsTheKeysTheStoreReturns` |
+
+**One of these tests was decoration when written.** `test_a_consent_below_quorum_…`
+asserted that the word "ratified" was absent from the live region — but the below-quorum
+message does not contain that word *either way*, so deleting the entire 202 branch left it
+green. It was found by mutating the branch, not by reading the test, and it now asserts
+what has to be true: the page reports the **server's** reason (the consent count) and does
+not claim "quorum is reached".
+
+Two harness lessons, both from this session:
+
+* **A fixture that seeds from the first test makes the suite order-dependent.** The
+  below-quorum test relied on the meter test having seeded the proposal, so
+  `pytest -k below_quorum` found no Consent button and failed with a 30-second **click
+  timeout** — a red that says the code is broken when the fixture is. The seeder is now
+  idempotent and each test that needs it calls it.
+* **A 403 is not always a 403.** The Go route test asserts the self-consent refusal from a
+  *signed-in* actor; the browser test asserts the *anonymous* refusal, which is a 401
+  `authentication required`. Both messages name their cause, and both are asserted as
+  measured rather than as guessed.
+
+### 12.5 §3's documents page can search its own corpus (built)
+
+`GET /projects/{slug}/documents/search` is a real FTS5 index — bm25-ranked, with the
+hyphen fix that stops `language-neutral` searching for `language AND NOT neutral` — and it
+had **no caller**: `documents.js` fetched the whole list and filtered it in the browser.
+1,087 documents on the live instance were searchable with curl and not from the site.
+
+The wire shape is a **bare JSON array**, and two sources disagreed about it: the
+`documents_test.go` helper reads `hits["items"]` (its `doJSON` wraps a bare array under
+`"items"`, so the helper was hiding the wire from the tests), and the plan for this page
+guessed `{results: […]}`. Neither is what arrives; a test now asserts the raw body.
+
+What only a browser can assert, and does: a search **crosses kinds** (it runs from the
+readme kind, a hit in the spec kind appears, and clicking it opens that kind — the one
+thing a client-side filter cannot do, and the reason the endpoint is worth having); `?q=`
+is a **shareable address** (asserted by reloading, the only way to tell a URL that is
+written from a URL that is only displayed); and a **malformed FTS5 expression** (an
+unbalanced quote → 400) shows the server's message and leaves the previous results on
+screen, because "your query could not be parsed" and "nothing matches" are different
+statements and an empty list asserts the other one.
+
+### 12.6 The actual remaining list
+
+1. **`concord.polarisocial.xyz` runs a 36-commits-behind build** and this repo cannot
+   change that. Unchanged from §0; it is the one item that is not ours to do.
+2. **`admin-ledger` has no UI**, deliberately: an operator log, and the admin surface it
+   would need is not specced. §11.4's reasoning stands.
+3. **A propose-a-weight **form** is not on any page.** The API path is now reachable
+   (§12.3) and the proposals/themes/consent are visible on settings; *opening* a proposal
+   is API-only, and the natural home for the control is the feature detail page (a weight
+   belongs to a feature). Not built here because the route — the part that made the feature
+   inert — was the defect; the form is a control, and §6.2 does not require one.
+4. **5 `wait_for_timeout` calls remain in e2e** — measured by `check_e2e_sync.py` as 3
+   bounded-and-justified, 2 idle, **0 racy**; the gate passes. (§11's "22" was the count
+   at the time and is no longer the number.) Known-open by design, not by neglect.
+5. **The §6 out-of-scope items in each revision of the spec.** Unchanged.
+6. **No "every route has a reader" gate.** Reasoning in §12.1; the per-page named gates
+   are the coverage, and any *new* page has to bring its own.
