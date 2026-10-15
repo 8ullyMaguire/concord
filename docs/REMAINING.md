@@ -5,8 +5,8 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · 894 Go tests across
-9 test-bearing packages · 216 e2e tests in 14 suite files · 7/7 UI mutants killed ·
+**Measured state:** schema 25 · 25 migrations · 79 live tables · 900 Go tests across
+9 test-bearing packages · 222 e2e tests in 15 suite files · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was

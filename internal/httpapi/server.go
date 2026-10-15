@@ -204,7 +204,8 @@ func (s *Server) loadTemplates() error {
 	// (see `render`), which is how a missing entry shows up rather than a blank page.
 	pages := []string{"index", "search", "projects", "project", "board",
 		"login", "register", "rank", "ranking", "documents", "notfound", "finder",
-		"scout", "consensus", "audit", "settings", "feature", "complaint", "requests-detail", "requests-index", "lists", "list"}
+		"scout", "consensus", "audit", "settings", "feature", "complaint", "requests-detail", "requests-index", "lists", "list",
+		"taxonomy"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -329,6 +330,11 @@ func (s *Server) Router() http.Handler {
 	// and no data in the HTML.
 	r.Get("/finder", s.handleFinderPage)
 	r.Get("/scout", s.handleScoutPage)
+
+	// §4.3's taxonomy page. Instance-wide like the API it reads: a taxonomy change
+	// affects every project, so there is no slug to hang it off and nothing to
+	// hide -- the reads are public and the writes refuse on their own.
+	r.Get("/taxonomy", s.handleTaxonomyPage)
 
 	// Consensus (docs/specs/consensus-page-spec.md). `call` is a query parameter,
 	// not a path segment, because there is no endpoint that lists calls and a

@@ -931,14 +931,11 @@ func (s *Server) handleListTaxonomyProposals(w http.ResponseWriter, r *http.Requ
 	// is the only reason anything works. Measured on an empty project: this returned the
 	// literal `null` while handleListMembers beside it returned `[]`.
 	//
-	// Nothing was visibly broken, because every JS consumer happens to guard with `|| []`
-	// or `x && x.length`. So this is an API wart rather than a live defect -- but it is
-	// a wart that makes the NEXT caller's guard load-bearing, silently, and a client
-	// written without that habit throws on an empty project.
-	if props == nil {
-		props = []store.TaxonomyProposal{}
-	}
-
+	// The nil guard used to live here and now lives one layer down, in
+	// ListTaxonomyProposals' `out := []TaxonomyProposalView{}`. Two owners for one
+	// promise is how one of them ends up wrong, and the guard that cannot fire is
+	// decoration; TestNoListEndpointAnswersNullForAnEmptySet walks every GET route
+	// and holds the promise from outside, against the rendered body.
 	writeJSON(w, http.StatusOK, props)
 }
 

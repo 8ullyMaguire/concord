@@ -192,29 +192,70 @@ func (d *DB) GetTaxonomyProposal(ctx context.Context, id int64) (TaxonomyProposa
 	return p, err
 }
 
-// ListTaxonomyProposals returns pending then recent proposals, newest first.
-func (d *DB) ListTaxonomyProposals(ctx context.Context, projectID int64) ([]TaxonomyProposal, error) {
+// TaxonomyProposalView is a proposal plus the two counts a reader needs in order to
+// judge whether their consent is the one that gets it over the line.
+//
+// A separate read model rather than two more fields on TaxonomyProposal, and the
+// reason is narrow: the proposal struct is also the WRITE response (ProposeTaxonomy,
+// RatifyTaxonomyProposal both return it), and a struct field is zero unless someone
+// computes it. `GetTaxonomyProposal` is what ratify returns, so consent_count would
+// have read 0 on the response that says "ratified" -- on the one screen where the
+// count is the point. Computed here or not at all.
+type TaxonomyProposalView struct {
+	TaxonomyProposal
+	ConsentCount  int `json:"consent_count"`
+	EligibleCount int `json:"eligible_count"`
+}
+
+// ListTaxonomyProposals returns pending then recent proposals, newest first, each
+// with its consent and eligible-tagger counts.
+//
+// The page that reads this has to answer "how many more consents does this need",
+// and the API did not carry the answer: the only place the count appeared was the
+// 202 message after consenting (`... (2/5 consents)`), so it could be learned only
+// by acting. §4.3's whole point is that a taxonomy change is proposed and consented
+// to rather than made, and a closed proposal form nobody can count is a form nobody
+// can reason about.
+//
+// The eligible count is computed with the same role list and the same DISTINCT
+// user_id as eligibleTaggers, which is what RatifyTaxonomyProposal actually divides
+// by -- the two are held against each other by
+// TestTheCountsThePageShowsAreTheCountsTheServerUses, because a displayed
+// denominator that disagrees with the enforced one is worse than no denominator.
+func (d *DB) ListTaxonomyProposals(ctx context.Context, projectID int64) ([]TaxonomyProposalView, error) {
 	var pid any
 	if projectID > 0 {
 		pid = projectID
 	}
 	rows, err := d.QueryContext(ctx, `
-		SELECT id, project_id, proposed_by, action, target_tag, value,
-		       rationale, status, created_at, decided_at
-		FROM taxonomy_proposals
-		WHERE project_id IS NULL OR project_id = ?
-		ORDER BY (status = 'pending') DESC, created_at DESC`, pid)
+		SELECT p.id, p.project_id, p.proposed_by, p.action, p.target_tag, p.value,
+		       p.rationale, p.status, p.created_at, p.decided_at,
+		       (SELECT COUNT(*) FROM taxonomy_consents c WHERE c.proposal_id = p.id),
+		       (SELECT COUNT(DISTINCT m.user_id) FROM members m
+		         WHERE m.role IN ('contributor','reviewer','maintainer','owner')
+		           AND (p.project_id IS NULL OR m.project_id = p.project_id))
+		FROM taxonomy_proposals p
+		WHERE p.project_id IS NULL OR p.project_id = ?
+		ORDER BY (p.status = 'pending') DESC, p.created_at DESC`, pid)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
-	var out []TaxonomyProposal
+	out := []TaxonomyProposalView{}
 	for rows.Next() {
-		p, err := scanTaxonomyProposal(rows)
-		if err != nil {
+		var v TaxonomyProposalView
+		var project sql.NullInt64
+		var decided sql.NullFloat64
+		if err := rows.Scan(&v.ID, &project, &v.ProposedBy, &v.Action, &v.TargetTag,
+			&v.Value, &v.Rationale, &v.Status, &v.CreatedAt, &decided,
+			&v.ConsentCount, &v.EligibleCount); err != nil {
 			return nil, err
 		}
-		out = append(out, p)
+		v.ProjectID = project.Int64
+		if decided.Valid {
+			v.DecidedAt = decided.Float64
+		}
+		out = append(out, v)
 	}
 	return out, rows.Err()
 }
