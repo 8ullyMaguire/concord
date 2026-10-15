@@ -2,14 +2,30 @@
 
 Decisions that change more than one surface, or that a spec section should own.
 `docs/HANDOFF.md` says spec changes are proposed here rather than made in a
-page's commit; this is the first entry, and it is a real blocker rather than a
+page's commit; this is the first entry, and it was a real blocker rather than a
 style question.
 
 ## Q1. How does a browser session reach the server on a NAVIGATION?
 
-**Status:** open, blocking a visible feature.
+**Status:** ANSWERED and implemented 2026-10-15 — option 1, narrowed to non-API
+GETs. `docs/REMAINING.md` §14 has the implementation and the gates. The question
+and the rejected options are kept below rather than deleted, because the
+rejection reasoning is the part that would otherwise be re-litigated.
 **Raised:** 2026-10-15, found while building the settings administration panels
 (`docs/REMAINING.md` §13.4).
+
+**The answer taken:** a `concord_nav` cookie, set at login and register, HttpOnly,
+SameSite=Lax, session-scoped, honoured by `authenticate` ONLY for a GET whose path
+is not under `/api/`, and cleared at logout. That is option 1 with the CSRF
+surface removed by construction rather than by a token: every mutating route in
+this server is an API route, so the cookie cannot authorize a write, and no API
+read sees it either. `nav_session_test.go` asserts both halves, and the negative
+half is verified by mutation — removing the method-and-path condition turns it
+red. Option 2 (a service worker adding `X-Auth-Token`) would also have worked and
+needs no spec text at all, but it costs a service worker, its cache rules and a
+registration path to carry one header; this is smaller and testable in Chrome and
+in `httptest` alike. Option 3 (a token in the URL) stays rejected: it leaks
+through `Referer`, history, logs and screenshots.
 
 ### The problem
 

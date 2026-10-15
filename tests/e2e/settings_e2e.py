@@ -291,6 +291,14 @@ def _opens_settings(page, server, token=None):
         # The page reads the token from localStorage, so it has to be there before the
         # scripts run -- addInitScript, not a later evaluate.
         page.add_init_script("localStorage.setItem('concord.token', %r);" % token)
+        # AND the navigation cookie, because localStorage cannot help the PAGE request
+        # itself: a browser sends no localStorage on a navigation, so the HTML for a
+        # non-public project arrives anonymous and the page 404s before any script runs.
+        # The cookie is what a member's navigation to their own protected project needs
+        # (concord_nav, accepted only on a non-API GET).
+        page.context.add_cookies([{
+            "name": "concord_nav", "value": token, "url": server["base"] + "/",
+        }])
     page.goto(server["base"] + f"/projects/{SLUG}/settings")
     page.wait_for_selector('#settings-root:not([aria-busy="true"])', timeout=15000)
     return page.locator("#settings-root")
@@ -728,21 +736,47 @@ def test_invites_are_not_offered_to_a_visitor_who_cannot_read_them(page, server)
     assert root.locator("#invite-form").count() == 0, "an anonymous visitor was offered a mint form"
 
 
-# NOT WRITTEN, and the reason is a finding rather than an omission:
-# `test_every_panel_still_loads_for_a_member_of_a_protected_project` cannot be driven in a
-# browser at all. handleSettingsPage resolves the project and then calls projectReadable,
-# which for a protected or private project requires the request to carry the actor -- and a
-# browser NAVIGATION carries no token, because the session lives in localStorage and is
-# attached by script. The page 404s before the script that would attach it ever runs:
-# measured, `#settings-root` never renders and the wait times out. auth.go's bearerToken
-# already accepts an X-Auth-Token header "for browser clients that cannot set headers on a
-# navigation", so the design has a seat for the mechanism and nothing fills it yet (a
-# cookie set at login, or a service worker). Written up in docs/REMAINING.md §13.2 and
-# raised as a spec question, because setting a session cookie is not a change to make in a
-# page's pull request.
-#
-# What IS asserted, and what the token-on-reads fix is gated by: GET /invites is
-# member-only, so the invite panel rendering a MINTED ROW (above) can only happen if the
-# page's reads carry the token. Reverting authHeaders on the read path turns
-# test_an_invite_is_minted_reported_once_then_revoked red -- verified by mutation, not
-# asserted by reading the source.
+def test_a_member_can_open_a_protected_projects_settings_page(page, server):
+    """The case that was UNREACHABLE IN A BROWSER before the navigation cookie existed.
+
+    handleSettingsPage resolves the project and calls projectReadable, which needs the
+    request to carry the actor. A browser navigation cannot carry a token -- the session
+    is in localStorage and attached by script -- so the page 404'd before the script that
+    would attach it ever ran. Measured: `#settings-root` never rendered and this test's
+    own wait timed out, which is why it was a written-up finding rather than a test.
+
+    Now `concord_nav` (set at login, HttpOnly, honoured only on a non-API GET) is what a
+    member's navigation presents, and all nine panels render for them. The negative
+    half -- that the same cookie is not an API credential -- is
+    TestANavigationCookieCannotAuthorizeAnythingButAPageGet in nav_session_test.go.
+    """
+    root = _open_as_member(page, server, visibility="protected")
+    _settles(page, root, loads=1)
+
+    expect(root.locator("[data-visibility-current]")).to_have_text("protected")
+    # Every member-only panel: a selector that only the LOADED branch renders, so a
+    # refusal note cannot satisfy it.
+    for marker in ("[data-project-tags]", "[data-project-languages]", "[data-invites]"):
+        assert root.locator(marker).count() == 1, marker + " did not render"
+    text = root.inner_text()
+    for refused in ("could not load", "could not be loaded", "Not available"):
+        assert refused not in text, (
+            "a member reads a refusal (%r) on a project they are in: the page's reads are "
+            "anonymous again. %s" % (refused, text[:400]))
+    assert not page.errors, page.errors
+
+
+def test_a_stranger_gets_no_settings_page_for_a_protected_project(page, server):
+    """The other half of the same decision: a signed-out visitor must not get it either.
+
+    Deliberately NOT driven through _opens_settings -- that helper waits for
+    #settings-root, which is exactly what must not be there, so a failure would be a
+    30-second timeout rather than a statement. The raw body is the assertion.
+    """
+    _seed_taxonomy_and_strategy(server["db"])
+    _seed_admin_fixture(server["db"], visibility="protected")
+    page.goto(server["base"] + f"/projects/{SLUG}/settings")
+    body = page.content()
+    assert 'id="settings-root"' not in body, (
+        "a stranger got the settings shell for a PROTECTED project; the page leaked its "
+        "existence: " + body[:300])

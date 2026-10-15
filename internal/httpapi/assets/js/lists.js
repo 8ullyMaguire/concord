@@ -1,3 +1,17 @@
+/* apiAuth: the session's Authorization header, for API reads.
+ *
+ * Every read on this page used to go out anonymous -- harmless while the project is
+ * public, and fatal for the projects whose settings most need changing: a member
+ * reaches a protected project (the navigation cookie opened the page) and then every
+ * panel 404s, because the page's own reads carried no credential. session.js has
+ * exported authHeaders() all along; this is the two lines that use it, and for a
+ * signed-out visitor the request is identical to before. */
+function apiAuth(extra) {
+  var h = extra || {};
+  var tok = window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {};
+  for (var k in tok) { if (Object.prototype.hasOwnProperty.call(tok, k)) h[k] = tok[k]; }
+  return h;
+}
 // A project's lists (spec §16).
 //
 // §16's line that matters: "Awesome lists are a structural weakness of the git-forge
@@ -76,7 +90,7 @@
   }
 
   function load() {
-    fetch("/api/v1/projects/" + encodeURIComponent(slug) + "/lists")
+    fetch("/api/v1/projects/" + encodeURIComponent(slug) + "/lists", { headers: apiAuth() })
       .then(function (r) {
         if (r.status === 404) throw { notFound: true };
         if (!r.ok) throw { status: r.status };

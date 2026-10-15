@@ -5,8 +5,8 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · 902 Go tests across
-9 test-bearing packages · 238 e2e tests in 16 suite files · 7/7 UI mutants killed ·
+**Measured state:** schema 25 · 25 migrations · 79 live tables · 922 Go tests across
+9 test-bearing packages · 241 e2e tests in 16 suite files · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
@@ -737,8 +737,8 @@ Three `wait_for_timeout` calls remain in e2e, all marked `BOUNDED (justified)` b
 §11 and everything above it are history. §1, §4 and §11 are marked superseded; this
 section is the current answer, and like §11 every line was checked against the code.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · **917 Go tests** across
-9 test-bearing packages · **238 e2e tests in 16 suite files** · 7/7 UI mutants killed ·
+**Measured state:** schema 25 · 25 migrations · 79 live tables · **922 Go tests** across
+9 test-bearing packages · **241 e2e tests in 16 suite files** · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 ### 12.1 How the remaining work was found (it was not in any tracker)
@@ -1003,3 +1003,150 @@ behaviour; the reasoning is recorded where the test would have been.
    measured rather than remembered, which is the closest thing to it that does
    not require the spec to name a page for every route.
 8. **The §6 out-of-scope items in each revision of the spec.** Unchanged.
+
+---
+
+## 14. 2026-10-15 (second pass): the navigation session, and §13.4 closed
+
+§13.4 was the one open item from the previous pass that blocked a feature a reader
+can see: a member could not open their own project's settings page once the project
+was not public. It is fixed, and the fix is asserted from both sides.
+
+### 14.1 What the gap was, restated as the measurement
+
+`handleSettingsPage` resolves the project and calls `projectReadable`, which for a
+protected or private project needs the request to carry the actor. A browser
+**navigation** could not: the session is a bearer token in `localStorage`, attached
+by script, and the page's own HTML arrives before any script runs. Measured: with
+the project `protected`, `#settings-root` never rendered and the browser test's
+wait timed out — which is why the previous pass wrote a finding instead of a test.
+
+### 14.2 The fix, and the property that makes it safe
+
+`concord_nav`: set by `POST /api/v1/auth/login` and `/register`, `HttpOnly`,
+`SameSite=Lax`, `Path=/`, **session** (no `Max-Age`), `Secure` when the request
+arrived over TLS or `X-Forwarded-Proto: https`. `authenticate` reads it only when
+`navToken` returns something, and `navToken` returns something only for
+`GET` + a path that is **not** under `/api/`. Cleared at logout, beside the token
+revocation, so a logout cannot leave pages rendering for a credential that no
+longer resolves.
+
+The condition is the security property, which is why it is one expression in one
+place. **Every mutating route in this server is an API route** — checked, not
+assumed; a `r.Post(` outside `/api/` is the thing that would break the argument —
+so the cookie cannot authorize a write, and no API read sees it either. The
+bearer header stays the only API credential, and `X-Auth-Token` (the seat
+`auth.go` had reserved for this since it was written) stays empty.
+
+### 14.3 The gates, and which half is mutation-verified
+
+`nav_session_test.go`, four tests, both directions:
+
+| assertion | mutation that turns it red |
+|---|---|
+| the cookie's attributes (HttpOnly, Lax, `/`, session) | login stops setting it |
+| **a member opens a protected project's page with the cookie alone** | `authenticate` stops consulting the cookie |
+| **the same cookie authorizes no API read and no write** | the method-and-path condition is removed — i.e. the CSRF hole is injected and the test catches it |
+| a revoked token's cookie stops working, logout expires it | login stops setting it |
+
+Plus two browser tests, one of which was impossible to write before this pass:
+`test_a_member_can_open_a_protected_projects_settings_page` (all nine panels load
+for the member through a real navigation) and
+`test_a_stranger_gets_no_settings_page_for_a_protected_project` (the shell still
+does not render for a stranger — the existence of the project does not leak).
+
+### 14.5 The pages' own reads went out anonymous (26 call sites) — CLOSED
+
+The navigation cookie makes the page's **HTML** arrive with an actor. The page's
+**data** did not: most page scripts fetched `/api/v1/...` with no `Authorization`
+header, invisible on a public project and fatal on a protected one — the member got
+the shell (cookie) and then a page whose panels 404ed (no token in the read).
+`settings.js` was the only file sending the token on reads; `project.js` sent it on
+writes and not on its ten reads. So §14.2's fix was half a fix until this landed.
+
+Measured with this rule — a `fetch(` whose own argument list names neither
+`Authorization` nor `headers` — because the count is the thing to re-check, not the
+prose:
+
+**Result: 10 files, 26 call sites** — `project.js` 10, `audit.js` 3, `board.js` 3,
+`documents.js`, `index.js`, `ranking.js`, `requests-index.js` 2 each, `lists.js`,
+`projects.js`, `search.js` 1 each. Two further sites were found by the stronger
+rule the test below uses: `documents.js`'s document search and `scout.js`'s scout
+request passed `{ headers: { Accept: ... } }` — a `headers` object with no token,
+which the first rule counts as covered. So the measured floor was 26 and the real
+number 28.
+
+The fix: `apiAuth(extra)` in each file, two lines over `session.js`'s existing
+`ConcordSession.instance().authHeaders()`, and it takes the extras so the five
+hand-built copies of *"var headers = {Content-Type}; if (token)
+headers.Authorization = ..."* could go. Those five are why this was worth fixing as
+a class rather than 26 times: five copies of a rule is five chances to leave the
+token out, and two had (`documents.js`, `scout.js`). For a signed-out visitor
+`apiAuth()` returns `{}` and the request is byte-for-byte what it was.
+
+**The gate is the interesting part**: `TestEveryAPIFetchPresentsAToken` walks
+`assets/js/*.js`, extracts every `fetch(` call site by matching parentheses, and
+requires each one whose URL names an `/api/v1` path to present a token carrier *in
+its own arguments*. Three things it does that a grep cannot:
+
+  - it asserts it examined a non-zero number of call sites, so a broken scanner
+    fails instead of passing while guarding nothing;
+  - the one legitimate anonymous site (auth.js's login/register submit, which is
+    the request that mints the token) is **enumerated by file and count**, and a
+    second anonymous call site in that file fails the test. That assertion is
+    mutation-verified: inserting a second one turns it red;
+  - it forced five *correct but unverifiable* call sites to be rewritten. A hoisted
+    `var headers = apiAuth(...)` followed by `headers: headers` sends the token and
+    the test cannot see it, so every such site was inlined. The rule reads source,
+    so the helper has to be at the call site.
+
+Restoring one read to a bare `fetch(url)` turns it red (verified). A fetch whose
+URL arrives in a variable is not examined at all: this is a floor, not a census.
+
+**The browser gate is the one that would have caught the whole class**:
+`test_the_owner_sees_a_private_projects_panels` — the owner of the `panels-private`
+fixture loads the page in Chromium and the private claim must be **in the DOM**.
+Two independent credentials are needed and the test needs both: the `concord_nav`
+cookie, because a navigation cannot carry a token, and the token in `localStorage`,
+because the page's fetches are separate requests. Reverting any read to a bare fetch
+turns it red, and so does making `authenticate` ignore the cookie (both verified).
+
+Two facts about the server that cost a debugging round each and are now written
+down where they are used: `api_tokens.token_hash` is **base64 RawStd** of the
+sha256 digest, not hex (and `0001_init.sql`'s comment saying "sha256 hex" is
+wrong), and `ResolveToken` rejects any token that does not start with `clt_`
+before it looks it up. Both mistakes produce the same 401 on a page that should
+have rendered, which is a shapes-not-symptoms wait.
+
+### 14.6 What is left, restated once more
+
+~~The browser session~~ (§14.2) and ~~the pages' anonymous reads~~ (§14.5) are both
+closed. The list is now:
+
+1. **`concord.polarisocial.xyz` runs a 36-commits-behind build.** Unchanged; not
+   ours.
+2. **`merge requests`, `criteria` and `composite rank` have no reader.** The
+   largest remaining body of work, and the next item: three resource groups with
+   handlers, guards and store tests and no page anywhere. `criteria` first — it is
+   the input to the consensus pillar (§6.4's comparison table, which is the reason
+   people can trust a ranking) and its `vote`/`set-active` verbs are the ones a page
+   would have to *explain*, not just call.
+3. **A propose-a-weight form is not on any page** (§12.6.3). The route exists and
+   is guarded; the control is missing.
+4. **`admin-ledger` has no UI**, deliberately (§11.4).
+5. **`metrics` has no reader**, deliberately (§13.2).
+6. **No "every route has a reader" gate** (§12.1). `TestEveryAPIFetchPresentsAToken`
+   (§14.5) is the same shape pointed at the read path, and the measured inventory in
+   `docs/specs/frontend-spec.md` is still the closest thing for routes.
+7. **`check_doc_numbers.py` cannot see a QUALIFIED test count.** Its pattern is
+   `(\d{3,4})\s+tests\b`, so "922 tests" is gated and "902 Go tests" is invisible
+   — which is how this file's own headline line sat at **902** for several passes
+   while the gate printed OK, and why the row above it had to be found by hand.
+   Widening the pattern is the obvious fix and is not the whole fix: this file also
+   *records* older counts in prose ("882 Go tests" in §11, §12 and §13), and the
+   only exemption the gate has is a markdown table row, so a wider pattern would
+   flag the history it is meant to preserve. Doing it properly needs a
+   section-level exemption for superseded records — measured before it is written,
+   or it will exempt the wrong paragraphs (the same failure the "any line
+   containing *was*" exemption already produced once).
+7. **The §6 out-of-scope items in each revision of the spec.** Unchanged.

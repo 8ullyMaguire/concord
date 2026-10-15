@@ -209,14 +209,11 @@
       if (a === b) return;
       var outcome = form.querySelector("#cmp-outcome").value;
 
-      var headers = { "Content-Type": "application/json" };
-      var token = localStorage.getItem("concord.token");
-      if (token) headers.Authorization = "Bearer " + token;
 
       fetch("/api/v1/projects/" + encodeURIComponent(slug) + "/lists/" +
         encodeURIComponent(listID) + "/entries/vote", {
         method: "POST",
-        headers: headers,
+        headers: apiAuth({ "Content-Type": "application/json" }),
         body: JSON.stringify({ entry_a: a, entry_b: b, outcome: outcome })
       })
         .then(function (r) {

@@ -748,6 +748,94 @@ def test_a_private_projects_panels_are_not_rendered(page):
     assert "enforce it in the board UI" not in page.content()
 
 
+def _mint_token(db, username):
+    """A token row for `username`, the way the login handler would write one.
+
+    The fixture seeds users with sqlite and no password, so there is no login to
+    perform. api_tokens stores the hash of the raw token and never the token
+    itself, so this inserts the hash of a value it keeps. last_used_at is in the
+    column list because a migration added it NOT NULL after 0001.
+
+    Two details are the server's, not invented here, and both cost a debugging
+    round when guessed wrong:
+
+      - the encoding is base64 RawStd of the sha256 digest, NOT hex, and NOT what
+        0001_init.sql's comment says ("sha256 hex"). The comment is wrong and the
+        code is authority.
+      - ResolveToken rejects a token that does not start with `clt_` before it
+        even looks it up, so the raw value carries the prefix that newToken()
+        writes (internal/store/auth.go).
+
+    Both mistakes produced the same 401 on a page that should have rendered,
+    which is how they were found.
+    """
+    import base64
+    import hashlib
+    raw = "clt_panels-" + username
+    con = sqlite3.connect(db)
+    uid = con.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()[0]
+    digest = hashlib.sha256(raw.encode()).digest()
+    con.execute(
+        "INSERT OR REPLACE INTO api_tokens (token_hash, user_id, created_at, last_used_at)"
+        " VALUES (?,?,?,?)",
+        (base64.b64encode(digest).decode().rstrip("="), uid, time.time(), time.time()))
+    con.commit()
+    con.close()
+    return raw
+
+
+def test_the_owner_sees_a_private_projects_panels(browser, server):
+    """The mirror of the test above, and the one that was impossible to write.
+
+    A private project's page has to work for its own members, and getting there
+    needs TWO different credentials, which is the whole point:
+
+      - the concord_nav cookie, because a browser NAVIGATION cannot carry a token
+        (the session lives in localStorage and is attached by script, and the
+        page's HTML is fetched before any script runs). Without it the page 404s
+        and this test's own wait times out -- which is why it did not exist.
+      - the token in localStorage, because the PAGE'S OWN FETCHES are separate
+        requests: the cookie opened the shell and, by design, is not an API
+        credential, so without the token every panel renders its error.
+
+    So this asserts the pair together: the claim is READABLE in the DOM, which
+    can only happen if the panels' reads were authenticated. Mutating any read
+    back to a bare fetch (apiAuth removed) turns this red; the Go gate
+    TestEveryAPIFetchPresentsAToken is what stops that reaching a commit.
+    """
+    token = _mint_token(server["db"], "panel-owner")
+    # A distinct client key: the suite and the rate limiter both key on
+    # X-Forwarded-For, and this test would otherwise share a bucket with the
+    # tests that ran before it.
+    ctx = browser.new_context(extra_http_headers={"X-Forwarded-For": "10.44.9.9"})
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+    try:
+        pg.add_init_script("localStorage.setItem('concord.token', %r);" % token)
+        pg.context.add_cookies([{
+            "name": "concord_nav", "value": token, "url": BASE + "/",
+        }])
+        pg.goto(f"{BASE}/projects/panels-private")
+        # Same wait as open_project: the panel ROOT exists in every state
+        # (populated, empty, failed), so a failure names the panel rather than
+        # racing the three hydrating fetches. The classes come from project.js.
+        for panel in (".panel-capabilities", ".panel-field-reports",
+                      ".panel-solutions", ".panel-alternatives"):
+            pg.wait_for_selector(panel, state="visible", timeout=10000)
+
+        body = pg.content()
+        assert "secret internal claim" in body, (
+            "the owner cannot read the private project's own data: the page's reads "
+            "went out anonymous and 404ed. body: " + body[:400])
+        assert "not found" not in body.lower(), (
+            "the owner got the stranger's page for a project they own: " + body[:300])
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
 def test_no_console_errors_on_any_panelled_page(page):
     """The fixture's page listener collects errors; a page that renders cleanly
     has none. Checked across every panel shape so a TypeError in one branch

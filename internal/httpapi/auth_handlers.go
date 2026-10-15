@@ -37,6 +37,65 @@ type authResponse struct {
 
 const tokenNote = "Store this token. It cannot be retrieved again; only its hash is kept."
 
+// navCookieName is the cookie a browser NAVIGATION can carry.
+//
+// The problem it solves, measured rather than assumed: the session is a bearer token
+// held in localStorage and attached by script, so the HTML for a page arrives
+// anonymous. Every page behind `projectReadable` then 404s for a member of a
+// protected or private project -- their own project's settings page included -- while
+// the API reads they are entitled to (which the page's script makes, token in hand)
+// work fine. The failing request is the NAVIGATION, and only a cookie can carry a
+// credential on one.
+//
+// WHY THIS IS NOT A CSRF HOLE, stated as the property the tests assert: the cookie is
+// accepted ONLY on a GET whose path is not under /api/. Every mutating route in this
+// server is an API route, so the cookie structurally cannot authorize a write, and an
+// /api/ read never sees it either. The bearer header remains the only credential for
+// the API. SameSite=Lax keeps it off cross-site subrequests as well.
+//
+// It is deliberately a SESSION cookie (no Max-Age): the localStorage token lives until
+// it is revoked, and the navigation convenience should not outlive the browser session
+// that created it.
+const navCookieName = "concord_nav"
+
+// setNavCookie hands the browser a credential its navigations can present.
+func setNavCookie(w http.ResponseWriter, r *http.Request, tok string) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     navCookieName,
+		Value:    tok,
+		Path:     "/",
+		HttpOnly: true, // no script reads this; the header path is the script's
+		SameSite: http.SameSiteLaxMode,
+		Secure:   requestIsHTTPS(r),
+	})
+}
+
+// clearNavCookie expires it. Called on logout beside the token revocation: a cookie
+// left behind would keep rendering member pages for a credential that no longer
+// resolves, which is a logout that looks like it did not happen.
+func clearNavCookie(w http.ResponseWriter, r *http.Request) {
+	http.SetCookie(w, &http.Cookie{
+		Name:     navCookieName,
+		Value:    "",
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   requestIsHTTPS(r),
+		MaxAge:   -1,
+	})
+}
+
+// requestIsHTTPS reports whether the browser reached us over TLS. The deployed
+// instance listens on loopback behind a proxy, so the proxy's header is the only
+// evidence on that hop; a Secure cookie set over plain HTTP would be dropped by the
+// browser, which would make the fix look inert in exactly the deployment it is for.
+func requestIsHTTPS(r *http.Request) bool {
+	if r.TLS != nil {
+		return true
+	}
+	return strings.EqualFold(r.Header.Get("X-Forwarded-Proto"), "https")
+}
+
 func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 	var req registerRequest
 	if !readJSON(w, r, &req) {
@@ -53,6 +112,7 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	_ = s.Store.AddAudit(r.Context(), 0, u.ID, "register_user", "user", u.ID, u.Username)
+	setNavCookie(w, r, tok)
 	writeJSON(w, http.StatusCreated, authResponse{User: u, Token: tok, Expiry: tokenNote})
 }
 
@@ -66,18 +126,29 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	setNavCookie(w, r, tok)
 	writeJSON(w, http.StatusOK, authResponse{User: u, Token: tok, Expiry: tokenNote})
 }
 
 // handleLogout revokes the presented token. Idempotent: a client that logs out
 // twice, or whose token was already revoked, gets 204 both times.
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	if tok := bearerToken(r); tok != "" {
+	// The cookie may be the only credential the browser sent (a plain navigation to
+	// /logout), so the revocation takes whichever is present, and clears the cookie
+	// either way.
+	tok := bearerToken(r)
+	if tok == "" {
+		if c, err := r.Cookie(navCookieName); err == nil {
+			tok = c.Value
+		}
+	}
+	if tok != "" {
 		if err := s.Store.RevokeToken(r.Context(), tok); err != nil {
 			mapError(w, err)
 			return
 		}
 	}
+	clearNavCookie(w, r)
 	w.WriteHeader(http.StatusNoContent)
 }
 

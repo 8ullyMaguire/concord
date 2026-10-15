@@ -5,10 +5,17 @@ For the implementing agent taking over from here. Read this, then
 then `docs/ARCHITECTURE.md`. `docs/PLAN.md` covers the pre-r4 milestones (all
 complete) and `docs/concord-spec.md` is superseded — do not plan from either.
 
-**What is left is `docs/REMAINING.md` §12** (measured 2026-10-15). Everything before
-§12 in that file is history, and §1/§4/§11 are explicitly marked superseded — §11's
-"nothing else is outstanding" was verified by hand and was wrong twice over. If a
-tracker and the tree disagree, the tree wins and the tracker is the bug.
+**What is left is `docs/REMAINING.md` §14.4** (measured 2026-10-15). Everything
+before it in that file is history, and §1/§4/§11 are explicitly marked superseded —
+§11's "nothing else is outstanding" was verified by hand and was wrong twice over. If
+a tracker and the tree disagree, the tree wins and the tracker is the bug.
+
+**The one question in `docs/QUESTIONS.md` is answered** (Q1, the browser session: a
+`concord_nav` cookie, honoured only on a non-API GET). Do not re-litigate it; §14.2
+has the property that keeps it from being a CSRF hole, and the tests assert both
+halves. The tracker's §6/§13 items about routes with no reader are the real work
+left: `merge requests`, `criteria` and `composite rank` have handlers, guards and
+store tests and no page.
 
 ## What exists right now (verified 2026-10-05, `9310506`)
 
@@ -16,7 +23,7 @@ tracker and the tree disagree, the tree wins and the tracker is the bug.
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 917 tests, schema 25, 79 tables,
+Measured, not remembered: `make verify` green, 922 tests, schema 25, 79 tables,
 25 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 

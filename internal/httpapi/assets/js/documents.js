@@ -1,3 +1,17 @@
+/* apiAuth: the session's Authorization header, for API reads.
+ *
+ * Every read on this page used to go out anonymous -- harmless while the project is
+ * public, and fatal for the projects whose settings most need changing: a member
+ * reaches a protected project (the navigation cookie opened the page) and then every
+ * panel 404s, because the page's own reads carried no credential. session.js has
+ * exported authHeaders() all along; this is the two lines that use it, and for a
+ * signed-out visitor the request is identical to before. */
+function apiAuth(extra) {
+  var h = extra || {};
+  var tok = window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {};
+  for (var k in tok) { if (Object.prototype.hasOwnProperty.call(tok, k)) h[k] = tok[k]; }
+  return h;
+}
 // Concord — project documents.
 //
 // Reachable at /projects/{slug}/documents. Before this page the whole document
@@ -535,7 +549,7 @@
       var mine = ++seq;
       say('Searching…');
       fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/documents/search?q=' +
-            encodeURIComponent(q) + '&limit=20', { headers: { Accept: 'application/json' } })
+            encodeURIComponent(q) + '&limit=20', { headers: apiAuth({ Accept: 'application/json' }) })
         .then(function (r) {
           return r.text().then(function (t) { return { status: r.status, text: t }; });
         })
@@ -624,7 +638,7 @@
       : '<div class="loading-spinner" role="status" aria-label="Loading documents"></div>');
 
     // Documents are public: a read of the list returns 200 without a token.
-    fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/documents')
+    fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/documents', { headers: apiAuth() })
       .then(function (r) { return r.ok ? r.json() : []; })
       .then(function (list) {
         var docs = (list || []).map(function (d) { return d; });

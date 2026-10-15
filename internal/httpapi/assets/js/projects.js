@@ -1,3 +1,17 @@
+/* apiAuth: the session's Authorization header, for API reads.
+ *
+ * Every read on this page used to go out anonymous -- harmless while the project is
+ * public, and fatal for the projects whose settings most need changing: a member
+ * reaches a protected project (the navigation cookie opened the page) and then every
+ * panel 404s, because the page's own reads carried no credential. session.js has
+ * exported authHeaders() all along; this is the two lines that use it, and for a
+ * signed-out visitor the request is identical to before. */
+function apiAuth(extra) {
+  var h = extra || {};
+  var tok = window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {};
+  for (var k in tok) { if (Object.prototype.hasOwnProperty.call(tok, k)) h[k] = tok[k]; }
+  return h;
+}
 // Concord projects listing — hydrates the grid from the public API.
 (function () {
   function esc(s) {
@@ -36,7 +50,7 @@
     var grid = document.getElementById('projects-grid');
     if (!grid) return;
 
-    fetch('/api/v1/projects')
+    fetch('/api/v1/projects', { headers: apiAuth() })
       .then(function (r) { return r.ok ? r.json() : []; })
       .then(function (list) {
         if (!Array.isArray(list) || !list.length) {

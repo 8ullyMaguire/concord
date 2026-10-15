@@ -666,12 +666,9 @@
     root.querySelectorAll("[data-consent]").forEach(function (btn) {
       btn.addEventListener("click", function () {
         var id = btn.getAttribute("data-consent");
-        var headers = { "Content-Type": "application/json" };
-        var tok = localStorage.getItem("concord.token");
-        if (tok) headers["Authorization"] = "Bearer " + tok;
         btn.disabled = true;
         fetch("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/weight-proposals/" +
-              encodeURIComponent(id) + "/consent", { method: "POST", headers: headers })
+              encodeURIComponent(id) + "/consent", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }) })
           .then(function (r) {
             return r.text().then(function (t) {
               var body = {};
@@ -730,13 +727,10 @@
       // The same shape as requests.js: Content-Type always, Authorization only when a
       // token exists, so an anonymous save is a plain request that gets a plain 401
       // rather than a header of "Bearer null".
-      var headers = { "Content-Type": "application/json" };
-      var tok = localStorage.getItem("concord.token");
-      if (tok) headers["Authorization"] = "Bearer " + tok;
 
       fetch("/api/v1/projects/" + encodeURIComponent(slug) + "/charter", {
         method: "PUT",
-        headers: headers,
+        headers: authHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(payload)
       }).then(function (r) {
         if (r.status === 401 || r.status === 403) {

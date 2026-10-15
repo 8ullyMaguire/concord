@@ -1,3 +1,17 @@
+/* apiAuth: the session's Authorization header, for API reads.
+ *
+ * Every read on this page used to go out anonymous -- harmless while the project is
+ * public, and fatal for the projects whose settings most need changing: a member
+ * reaches a protected project (the navigation cookie opened the page) and then every
+ * panel 404s, because the page's own reads carried no credential. session.js has
+ * exported authHeaders() all along; this is the two lines that use it, and for a
+ * signed-out visitor the request is identical to before. */
+function apiAuth(extra) {
+  var h = extra || {};
+  var tok = window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {};
+  for (var k in tok) { if (Object.prototype.hasOwnProperty.call(tok, k)) h[k] = tok[k]; }
+  return h;
+}
 // Concord project detail — resolves the slug, then hydrates from the API.
 (function () {
   function esc(s) {
@@ -833,7 +847,7 @@
     var slug = slugFromPath();
     if (!slug) { box.innerHTML = notFound(''); return; }
 
-    fetch('/api/v1/projects/' + encodeURIComponent(slug))
+    fetch('/api/v1/projects/' + encodeURIComponent(slug), { headers: apiAuth() })
       .then(function (r) {
         if (r.status === 404) throw { notFound: true };
         return r.ok ? r.json() : Promise.reject({ status: r.status });
@@ -850,7 +864,7 @@
         // project that had three. A failure that looks like a valid empty
         // result is worse than an error, because nothing prompts anyone to look.
         return Promise.all([
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/features')
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/features', { headers: apiAuth() })
             .then(function (r) {
               if (r.status === 401) throw { auth: true };
               if (!r.ok) throw { status: r.status };
@@ -860,36 +874,36 @@
           // feature list is the more important of the two, and losing it
           // because a second request failed would be a worse outcome than
           // showing the complaints as unavailable.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/complaints')
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/complaints', { headers: apiAuth() })
             .then(function (r) { return r.ok ? r.json() : []; })
             .catch(function () { return []; }),
           // Documents are a count badge and a link, not content on this page,
           // so a failure here degrades to no badge rather than to an error. The
           // same reasoning as complaints: a third failing request must not cost
           // us the two that matter.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/documents')
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/documents', { headers: apiAuth() })
             .then(function (r) { return r.ok ? r.json() : []; })
             .catch(function () { return []; }),
           // The two §4.10 panels. Both swallow their own failures and resolve to
           // null, which panelError() renders differently from an empty result --
           // so an endpoint that 500s says "unavailable" instead of quietly
           // claiming the project has no capabilities and no field reports.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/capabilities')
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/capabilities', { headers: apiAuth() })
             .then(function (r) { return r.ok ? r.json() : null; })
             .catch(function () { return null; }),
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/field-reports')
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/field-reports', { headers: apiAuth() })
             .then(function (r) { return r.ok ? r.json() : null; })
             .catch(function () { return null; }),
           // The third §4.10 panel. Same rule as the other two: swallow its own
           // failure and resolve to null, which panelError renders differently
           // from an empty result.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/solutions')
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/solutions', { headers: apiAuth() })
             .then(function (r) { return r.ok ? r.json() : null; })
             .catch(function () { return null; }),
           // The fourth §4.10 panel, and the first panel whose data is grouped by
           // something the project NAMED rather than by a fixed dimension. Same
           // failure rule: swallow its own failure, resolve to null.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/alternatives')
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/alternatives', { headers: apiAuth() })
             .then(function (r) { return r.ok ? r.json() : null; })
             .catch(function () { return null; }),
           // Requests (17), the same non-fatal shape as complaints: the board is one
@@ -900,12 +914,12 @@
           // first version went in after complaints and fed documents to
           // capabilities, which renders as a panel quietly missing rather than an
           // error. Anything added here goes LAST, and the mapping below is by index.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/requests')
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/requests', { headers: apiAuth() })
             .then(function (r) { return r.ok ? r.json() : []; })
             .catch(function () { return []; }),
           // Lists (16), appended last so no existing index shifts. Same non-fatal
           // shape as complaints and requests.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/lists')
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/lists', { headers: apiAuth() })
             .then(function (r) { return r.ok ? r.json() : []; })
             .catch(function () { return []; })
         ])

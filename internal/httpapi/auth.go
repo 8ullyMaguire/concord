@@ -28,6 +28,12 @@ type actorKey struct{}
 // bearerToken extracts a token from the Authorization header, falling back to
 // an X-Auth-Token header for browser clients that cannot set headers on a
 // navigation. Returns "" when absent.
+//
+// The X-Auth-Token fallback has been a seat with nothing in it since it was written: no
+// client in this repository sets it, because a browser NAVIGATION cannot carry a header.
+// The seat that is filled is the navigation cookie (see navCookie in auth_handlers.go,
+// and the branch in authenticate that accepts it), which is strictly narrower: a GET
+// outside /api/ and nothing else.
 func bearerToken(r *http.Request) string {
 	if h := r.Header.Get("Authorization"); h != "" {
 		// "Bearer clt_..." — case-insensitive scheme per RFC 7235.
@@ -52,9 +58,33 @@ func bearerToken(r *http.Request) string {
 //     token to anonymous would let a client with an expired credential believe
 //     it is still working, and would turn a typo into a confusing 401 on read
 //     instead of an honest one.
+// navToken returns the navigation cookie's token, or "" when this request is not a
+// navigation this cookie is allowed to stand for.
+//
+// THE CONDITION IS THE SECURITY PROPERTY, so it is one expression in one place rather
+// than a rule spread across handlers: the cookie is honoured only for a GET whose path is
+// not under /api/. Every mutating route in this server is an API route (checked, not
+// assumed -- a plain `r.Post(` outside /api/ is what would break this), so a cookie can
+// never authorize a write, and no /api/ read sees it either. That keeps the bearer header
+// the only API credential and leaves this cookie with exactly one job: making a page
+// navigation carry the actor so a member can open a page that is not public.
+func navToken(r *http.Request) string {
+	if r.Method != http.MethodGet || isAPIPath(r.URL.Path) {
+		return ""
+	}
+	c, err := r.Cookie(navCookieName)
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(c.Value)
+}
+
 func (s *Server) authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		tok := bearerToken(r)
+		if tok == "" {
+			tok = navToken(r)
+		}
 		if tok == "" {
 			next.ServeHTTP(w, r)
 			return
