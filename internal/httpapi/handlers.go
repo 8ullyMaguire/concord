@@ -162,10 +162,61 @@ func (s *Server) handleValidateComplaint(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "validated"})
 }
 
+// handleMergeComplaints folds one complaint into another.
+//
+// THE GUARD WAS MISSING, and this is the destructive one: it takes two ids and joins
+// them, with no actor check at all. An anonymous caller could merge any two complaints
+// on the instance -- and a merge is not reversible from the API, so the distinction
+// between two separately-reported problems was destroyable by a stranger. Found by the
+// same route-table walk as the languages and metrics holes, after being missed twice by
+// reading the route group.
+//
+// The gate is the project's own merge rule rather than a new one: the source complaint
+// resolves to a project, and merging is maintainer work (it rewrites what the corpus
+// says the problem IS). The onus that the TARGET is in the same project is the store's,
+// which now enforces it -- and it did not, so a maintainer of one project could have
+// folded its complaint into another project's complaint.
+// The path parameter is `id`, not `source_id`: the router registers this as
+// `r.Route("/api/v1/complaints/{id}", ...)` + `r.Post("/merge/{target_id}", ...)`, and
+// the handler read "source_id", so the source id was ALWAYS 0 -- every merge answered
+// 404 "not found" and no test and no page ever called it. Verified against the running
+// instance before the fix: POST /api/v1/complaints/1/merge/2 returned 404 and left both
+// complaints untouched. An endpoint that could never have worked, with no auth check on
+// it, and nothing anywhere noticed -- because nothing called it.
 func (s *Server) handleMergeComplaints(w http.ResponseWriter, r *http.Request) {
-	sourceID, _ := strconv.ParseInt(chi.URLParam(r, "source_id"), 10, 64)
+	if _, ok := s.requireWriteActor(w, r); !ok {
+		return
+	}
+	// THE ROUTE IS PROJECT-SCOPED: /api/v1/projects/{project_id}/complaints/{id}/merge/{target_id}.
+	// requireProjectID resolves that slug to the numeric id and enforces visibility, which
+	// is the same helper `requireRole` needs. Resolving the project from the complaint
+	// instead was possible and worse: the path's project and the row's project are two
+	// facts, and only checking the row means a maintainer of project A can act on a
+	// complaint reached through project B's URL (the catalogue's Defect 4).
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
+	sourceID, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	targetID, _ := strconv.ParseInt(chi.URLParam(r, "target_id"), 10, 64)
-	if err := s.Store.MergeComplaints(r.Context(), sourceID, targetID); err != nil {
+	if err := s.requireRole(projectID, "maintainer", r); err != nil {
+		mapError(w, err)
+		return
+	}
+	source, err := s.Store.GetComplaint(r.Context(), sourceID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if source.ProjectID != projectID {
+		// Both checks, always: a complaint id from another project must not be
+		// reachable through this project's path.
+		mapError(w, store.ErrNotFound)
+		return
+	}
+	// The store audits this one with the real actor (it used to record actor 0), so the
+	// handler does not add a second row saying the same thing.
+	if err := s.Store.MergeComplaints(r.Context(), sourceID, targetID, getActorID(r)); err != nil {
 		mapError(w, err)
 		return
 	}

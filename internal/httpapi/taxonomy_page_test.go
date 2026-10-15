@@ -29,7 +29,7 @@ func TestTheTaxonomyPageRendersAndKeepsItsRouteRegistered(t *testing.T) {
 	}
 	if strings.Contains(body, "taxonomy.html") {
 		t.Errorf("the body names the template, which is what render() does when the "+
-		"template is NOT in the pages slice:\n%s", firstBytes([]byte(body), 400))
+			"template is NOT in the pages slice:\n%s", firstBytes([]byte(body), 400))
 	}
 	for _, want := range []string{"taxonomy-root", `aria-busy="true"`, "/assets/js/taxonomy.js"} {
 		if !strings.Contains(body, want) {

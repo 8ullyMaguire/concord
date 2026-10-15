@@ -16,7 +16,7 @@ tracker and the tree disagree, the tree wins and the tracker is the bug.
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 905 tests, schema 25, 79 tables,
+Measured, not remembered: `make verify` green, 912 tests, schema 25, 79 tables,
 25 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 

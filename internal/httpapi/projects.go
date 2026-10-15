@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -402,21 +403,61 @@ type languagesRequest struct {
 	Languages []store.Language `json:"languages"`
 }
 
+// handleProjectLanguages replaces a project's language percentages.
+//
+// §15 makes languages "collaboratively correctable", so the floor is contributor --
+// the same floor as tags, which sit in this route group beside it.
+//
+// THE GUARD WAS MISSING. This route and the metrics route below answered 200 to an
+// anonymous caller while their two neighbours in the same group (`/tags`, `/visibility`)
+// checked the actor and the role: measured on the running instance, an anonymous PUT
+// here wrote a language row and the metrics route set stars to 999999. Two of four
+// siblings guarded is exactly what a reader skimming the group stops noticing, which is
+// why `TestEveryMutatingRouteIsGuarded` now walks the route table instead.
 func (s *Server) handleProjectLanguages(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireWriteActor(w, r); !ok {
+		return
+	}
+	slug := chi.URLParam(r, "slug")
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		mapError(w, store.ErrNotFound)
+		return
+	}
+	if err := s.requireRole(proj.ID, "contributor", r); err != nil {
+		mapError(w, err)
+		return
+	}
 	var req languagesRequest
 	if !readJSON(w, r, &req) {
 		return
 	}
-	if err := s.Store.SetProjectLanguages(r.Context(), chi.URLParam(r, "slug"), req.Languages); err != nil {
+	if err := s.Store.SetProjectLanguages(r.Context(), slug, req.Languages); err != nil {
 		mapError(w, err)
 		return
 	}
-	p, err := s.Store.GetProject(r.Context(), chi.URLParam(r, "slug"))
+	// Audited, because this was not: a write that changes a project's face to
+	// discovery search had no record of who changed it.
+	_ = s.Store.AddAudit(r.Context(), proj.ID, getActorID(r), "set_languages", "project",
+		proj.ID, languagesSummary(req.Languages))
+	p, err := s.Store.GetProject(r.Context(), slug)
 	if err != nil {
 		mapError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, p)
+}
+
+func languagesSummary(langs []store.Language) string {
+	parts := make([]string, 0, len(langs))
+	for _, l := range langs {
+		parts = append(parts, fmt.Sprintf("%s %g%%", l.Language, l.Pct))
+	}
+	return strings.Join(parts, ", ")
 }
 
 type metricsRequest struct {
@@ -431,7 +472,35 @@ type metricsRequest struct {
 	License           string  `json:"license"`
 }
 
+// handleProjectMetrics overwrites a project's forge facts (stars, forks, commits,
+// review latency, releases, license).
+//
+// MAINTAINER, not contributor, and that is the judgement worth stating: these are
+// INBOUND FACTS about the project's forge, not a collaborative field like tags or
+// languages. Normally the forge hook writes them (§15's sync), so the API route is for
+// an operator repairing a botched import -- and a wrong star count is not a matter of
+// opinion the way a missing tag is. Contributor-gating it would let any contributor
+// restate the project's public metrics.
+//
+// THE GUARD WAS MISSING (see handleProjectLanguages).
 func (s *Server) handleProjectMetrics(w http.ResponseWriter, r *http.Request) {
+	if _, ok := s.requireWriteActor(w, r); !ok {
+		return
+	}
+	slug := chi.URLParam(r, "slug")
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		mapError(w, store.ErrNotFound)
+		return
+	}
+	if err := s.requireRole(proj.ID, "maintainer", r); err != nil {
+		mapError(w, err)
+		return
+	}
 	var req metricsRequest
 	if !readJSON(w, r, &req) {
 		return
@@ -442,11 +511,14 @@ func (s *Server) handleProjectMetrics(w http.ResponseWriter, r *http.Request) {
 		Contributors:      req.Contributors,
 		Releases90d:       req.Releases90d,
 	}
-	p, err := s.Store.UpdateProjectMetrics(r.Context(), chi.URLParam(r, "slug"), m,
+	p, err := s.Store.UpdateProjectMetrics(r.Context(), slug, m,
 		req.Stars, req.Forks, req.OpenIssues, req.CommitCount, req.License)
 	if err != nil {
 		mapError(w, err)
 		return
 	}
+	_ = s.Store.AddAudit(r.Context(), proj.ID, getActorID(r), "set_metrics", "project",
+		proj.ID, fmt.Sprintf("stars=%d forks=%d commits=%d license=%s",
+			req.Stars, req.Forks, req.CommitCount, req.License))
 	writeJSON(w, http.StatusOK, p)
 }

@@ -737,7 +737,7 @@ Three `wait_for_timeout` calls remain in e2e, all marked `BOUNDED (justified)` b
 §11 and everything above it are history. §1, §4 and §11 are marked superseded; this
 section is the current answer, and like §11 every line was checked against the code.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · **905 Go tests** across
+**Measured state:** schema 25 · 25 migrations · 79 live tables · **912 Go tests** across
 9 test-bearing packages · **231 e2e tests in 16 suite files** · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 

@@ -110,8 +110,8 @@ func TestEveryRegisteredPageHasAnInboundLink(t *testing.T) {
 	createTestProject(t, ts, "nav-project")
 
 	pages := []string{
-	"/", "/finder", "/scout", "/taxonomy", "/projects", "/search", "/login", "/register",
-	"/projects/nav-project",
+		"/", "/finder", "/scout", "/taxonomy", "/projects", "/search", "/login", "/register",
+		"/projects/nav-project",
 		"/projects/nav-project/board",
 		"/projects/nav-project/consensus",
 		"/projects/nav-project/documents",

@@ -164,14 +164,33 @@ func (d *DB) CloseComplaint(ctx context.Context, complaintID int64) error {
 }
 
 // MergeComplaints merges source into target (M1).
-func (d *DB) MergeComplaints(ctx context.Context, sourceID, targetID int64) error {
-	_, err := d.GetComplaint(ctx, sourceID)
+// actorID is passed rather than inferred: the audit row is the record of who folded two
+// reports together, and this was the only write in the store that recorded actor 0.
+func (d *DB) MergeComplaints(ctx context.Context, sourceID, targetID, actorID int64) error {
+	source, err := d.GetComplaint(ctx, sourceID)
 	if err != nil {
 		return err
 	}
 	target, err := d.GetComplaint(ctx, targetID)
 	if err != nil {
 		return err
+	}
+	// SAME PROJECT ONLY, and this check did not exist. Loading both rows is not a guard
+	// on either of them (the catalogue's Defect 4: a guard on the path is not a guard on
+	// the row): a maintainer of one project could fold that project's complaint into a
+	// complaint belonging to a DIFFERENT project, and the impacts of the source would be
+	// inserted against a foreign complaint -- an INSERT OR IGNORE that no later reader
+	// could tell from a legitimate impact. The audit row would also have named the
+	// wrong project, which is how it stayed invisible.
+	if target.ProjectID != source.ProjectID {
+		return fmt.Errorf("%w: complaint %d belongs to project %d and complaint %d to "+
+			"project %d; a merge cannot cross projects",
+			ErrInvalid, sourceID, source.ProjectID, targetID, target.ProjectID)
+	}
+	// Merging a complaint into itself sets merged_into to its own id, which every
+	// reader that follows the chain then loops on.
+	if sourceID == targetID {
+		return fmt.Errorf("%w: complaint %d cannot be merged into itself", ErrInvalid, sourceID)
 	}
 	now := float64(time.Now().Unix())
 	_, err = d.ExecContext(ctx, `UPDATE complaints SET merged_into=?, updated_at=? WHERE id=?`, targetID, now, sourceID)
@@ -183,7 +202,8 @@ func (d *DB) MergeComplaints(ctx context.Context, sourceID, targetID int64) erro
 	if err != nil {
 		return err
 	}
-	return d.AddAudit(ctx, target.ProjectID, 0, "merge_complaints", "complaint", sourceID, fmt.Sprintf("merged into %d", target.ID))
+	return d.AddAudit(ctx, source.ProjectID, actorID, "merge_complaints", "complaint", sourceID,
+		fmt.Sprintf("merged into %d", target.ID))
 }
 
 // GetComplaintPain computes the current pain score for a complaint.
