@@ -1754,6 +1754,18 @@ textarea:focus-visible {
 .meter[data-completeness-complete="true"] .meter-fill {
   background: var(--color-accent-2, #2f8f6b);
 }
+
+/* The settings page's tag list and language rows. The tag list reuses the site's pill
+   shape (`.tag-pill` is the indigo variant used in cards) so a tag looks the same here
+   as it does anywhere else -- a control that renders tags differently from the pages
+   that display them teaches a reader that they are different things. */
+.tag-list { list-style: none; display: flex; flex-wrap: wrap; gap: 0.4rem; padding: 0; margin: 0 0 1rem; }
+.tag-list .tag {
+  border: 1px solid var(--color-border, rgba(127, 127, 127, 0.25));
+  border-radius: 999px; padding: 0.15rem 0.6rem; font-size: 0.85rem;
+}
+.lang-row { display: flex; align-items: center; gap: 0.75rem; }
+.lang-row .form-label { min-width: 8rem; }
 .ie-score { display: flex; align-items: baseline; gap: 0.6rem; flex-wrap: wrap; }
 .ie-value {
   font-size: 1.6rem; font-weight: 700; font-variant-numeric: tabular-nums;

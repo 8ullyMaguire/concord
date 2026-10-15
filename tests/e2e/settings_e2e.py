@@ -433,11 +433,21 @@ def _seed_contributor(db, username):
         now = 1790000000
         pid = con.execute("SELECT id FROM projects WHERE slug=?", (SLUG,)).fetchone()[0]
         owner = con.execute("SELECT id FROM users WHERE username='setowner'").fetchone()[0]
-        con.execute("INSERT INTO members (project_id, user_id, role, joined_at)"
+        # OR IGNORE: _seed_contributor runs once per test block, but a re-run of a
+        # single test must not fail on the membership row it already wrote.
+        con.execute("INSERT OR IGNORE INTO members (project_id, user_id, role, joined_at)"
                     " VALUES (?,?,'contributor',?)", (pid, uid, now))
+        # OR IGNORE on the documents: this helper is called once per USERNAME and every
+        # call writes the SAME two slugs, so the second username raised "UNIQUE constraint
+        # failed: project_documents.project_id, kind, slug". That exception rolled back the
+        # whole transaction -- including the members row inserted three lines above it --
+        # and the symptom appeared in a DIFFERENT test, as "permission denied" on a panel
+        # whose author had a token and no membership. A helper that shares a transaction
+        # between a row it must write and a row it only wants if absent has to say which
+        # is which.
         for author, slug in ((uid, "voter-notes"), (owner, "owner-notes")):
             con.execute(
-                "INSERT INTO project_documents (project_id, kind, slug, title, body,"
+                "INSERT OR IGNORE INTO project_documents (project_id, kind, slug, title, body,"
                 " revision, author_id, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
                 (pid, "readme", slug, slug, "body", 1, author, now, now))
         con.commit()
@@ -452,3 +462,287 @@ def _login(username):
     })
     assert body and body.get("token"), body
     return body["token"]
+
+
+# --- the administration surface: visibility, tags, languages, invites ------------
+#
+# Six endpoints with handlers, guards and store tests and no UI anywhere on the site:
+# PUT /visibility, GET+PUT /tags, PUT /languages, POST+GET /invites and
+# POST /invites/{id}/revoke. docs/specs/frontend-spec.md listed them as "none".
+# These four panels are the readers, and the tests below drive them as a member would.
+
+
+def _seed_admin_fixture(db, visibility="public"):
+    """A deterministic starting state for the four administration panels.
+
+    A RESET, not an insert-if-missing: these tests assert exact numbers (3 of 5 tags,
+    Rust 70 / Go 30, one invite), and the DB is session-scoped, so a fixture that only
+    inserted would leave the state the PREVIOUS run wrote and the assertion would read
+    like a code failure. That is the same order-dependence the taxonomy seeder's comment
+    describes, in its second costume.
+    """
+    con = sqlite3.connect(db)
+    try:
+        now = 1790000000
+        pid = con.execute("SELECT id FROM projects WHERE slug=?", (SLUG,)).fetchone()[0]
+        uid = con.execute("SELECT id FROM users WHERE username='setowner'").fetchone()[0]
+
+        # Visibility back to public: one test sets it to protected, and a protected
+        # project refuses an anonymous reader -- which would break the anonymous-invites
+        # test below for a reason that has nothing to do with invites.
+        con.execute("UPDATE projects SET visibility=? WHERE id=?", (visibility, pid))
+
+        con.execute("DELETE FROM project_languages WHERE project_id=?", (pid,))
+        con.execute("INSERT INTO project_languages (project_id, language, pct) VALUES (?,?,?)",
+                    (pid, "Rust", 70.0))
+        con.execute("INSERT INTO project_languages (project_id, language, pct) VALUES (?,?,?)",
+                    (pid, "Go", 30.0))
+
+        # A tag that EXISTS and is not applied. The panel's job is attaching it, and the
+        # meter (which counts project_tags rows) must move 3 -> 4 as a result.
+        con.execute("INSERT OR IGNORE INTO tags (project_id, name, namespace, suggested)"
+                    " VALUES (?,?,?,?)", (pid, "hooks", None, 0))
+        con.execute("DELETE FROM project_tags WHERE project_id=? AND tag_id IN"
+                    " (SELECT id FROM tags WHERE name='hooks')", (pid,))
+        # The table is project_invites, not invites. The panel's token column and the
+        # store's INSERT agree on `project_invites (project_id, token, created_by,
+        # created_at, expires_at, max_uses, uses, revoked_at)`.
+        con.execute("DELETE FROM invite_redemptions WHERE invite_id IN"
+                    " (SELECT id FROM project_invites WHERE project_id=?)", (pid,))
+        con.execute("DELETE FROM project_invites WHERE project_id=?", (pid,))
+        con.commit()
+    finally:
+        con.close()
+
+
+def _settles(page, root, loads=2):
+    """Wait for the page's own reads to land after a write.
+
+    Waits on `data-loads`, the counter settings.js increments at the end of each load,
+    NOT on a panel count: the pre-write DOM already holds all nine panels, so counting
+    them is satisfied before the write lands and the caller reads the previous render.
+    That is what the first version did, and it reported "the panel shows public" -- a
+    test that did not wait, dressed as a server that did not persist.
+    """
+    page.wait_for_function(
+        "n => Number(document.getElementById('settings-root').getAttribute('data-loads') || 0) >= n",
+        arg=loads, timeout=15000)
+
+
+def _member_token(db, username="settingsadmin"):
+    """The member's session, registered ONCE and logged in after that.
+
+    _seed_contributor POSTs /auth/register, which answers 409 the second time, so the
+    first version of this helper made the first test in this block pass and every later
+    one fail during SETUP with "urllib.error.HTTPError: 409 Conflict" -- a red that reads
+    like a broken panel and is a fixture that cannot be called twice. _login exists in
+    this file for exactly this reason.
+    """
+    try:
+        return _login(username)
+    except Exception:
+        token, _uid = _seed_contributor(db, username)
+        return token
+
+
+def _open_as_member(page, server, visibility="public"):
+    """The page as a signed-in contributor: every one of the four writers is member-gated.
+
+    Without the token every write answers 401 and the panel reports the refusal, which
+    would make these tests assertions about the refusal path only.
+    """
+    _seed_taxonomy_and_strategy(server["db"])
+    _seed_admin_fixture(server["db"], visibility=visibility)
+    return _opens_settings(page, server, token=_member_token(server["db"]))
+
+
+def test_the_visibility_panel_offers_every_level_and_saves_one(page, server):
+    """The four levels the store accepts, and a save that changes the row.
+
+    Asserted on the DB as well as the page: a panel that reported "Visibility set to
+    unlisted" while the projects row still said public would pass any DOM assertion.
+    """
+    root = _open_as_member(page, server)
+
+    sel = root.locator("#visibility-select")
+    opts = sel.locator("option")
+    assert [opts.nth(i).get_attribute("value") for i in range(opts.count())] == \
+        ["public", "unlisted", "protected", "private"], "the levels are the store's four"
+    expect(root.locator("[data-visibility-current]")).to_have_text("public")
+
+    sel.select_option("protected")
+    root.locator("#visibility-form button[type=submit]").click()
+    live = page.locator("[data-settings-live]")
+    expect(live).to_contain_text("Visibility set to protected", timeout=15000)
+    # The panels re-read their data rather than reloading the document, so the level on
+    # screen comes from the server's answer to the next GET. Polled by hand and asserted
+    # with the reason in the message: `to_have_text` reported "element(s) not found" for a
+    # panel that had in fact been re-rendered, which says nothing about why.
+    _settles(page, root)
+    cell = root.locator("[data-visibility-current]")
+    got = cell.inner_text() if cell.count() else "(no element)"
+    assert got == "protected", (
+        "the panel shows %r after a save the server accepted; panels=%r errors=%r"
+        % (got, [h.strip() for h in root.locator("section.panel h2").all_inner_texts()],
+           page.errors[:4]))
+
+    con = sqlite3.connect(server["db"])
+    try:
+        got = con.execute("SELECT visibility FROM projects WHERE slug=?", (SLUG,)).fetchone()[0]
+    finally:
+        con.close()
+    assert got == "protected", got
+    assert not page.errors, page.errors
+
+
+def test_applying_a_tag_moves_the_completeness_meter(page, server):
+    """The meter says "Add 2 more tags"; this is the control that obeys it.
+
+    §4.3's meter told the reader to add tags and there was no way to do it anywhere on
+    the site -- a meter that instructs and cannot be obeyed. Applying "hooks" (a tag that
+    exists but is not applied) must move the count from 3 of 5 to 4 of 5, which is also
+    what proves the panel wrote by the same route the meter reads.
+    """
+    root = _open_as_member(page, server)
+    expect(root.locator("[data-completeness-pct]")).to_have_text("56%")
+
+    root.locator("#tags-input").fill("hooks")
+    root.locator("#tags-form button[type=submit]").click()
+    live = page.locator("[data-settings-live]")
+    expect(live).to_contain_text("Applied.", timeout=15000)
+
+    rows = root.locator("[data-project-tags] .tag")
+    expect(rows).to_have_count(4)
+    assert "hooks" in root.locator("[data-project-tags]").inner_text()
+    # 3 of 5 -> 4 of 5: 0.6 * 4/5 + 0.4 * 1/2 = 0.68
+    expect(root.locator("[data-completeness-pct]")).to_have_text("68%", timeout=15000)
+    assert not page.errors, page.errors
+
+
+def test_a_tag_this_instance_does_not_have_is_refused_with_the_servers_reason(page, server):
+    """PUT /tags attaches tags that EXIST; it does not mint them (§4.3: a new tag is a
+    proposal with a quorum). The refusal has to reach the reader, or the form looks
+    broken for a reason that is actually a rule."""
+    root = _open_as_member(page, server)
+    root.locator("#tags-input").fill("zzz-not-a-tag")
+    root.locator("#tags-form button[type=submit]").click()
+    live = page.locator("[data-settings-live]")
+    expect(live).to_contain_text("The server refused it", timeout=15000)
+    # The rule, named: the store answers with which tag it could not find.
+    expect(live).to_contain_text("zzz-not-a-tag", timeout=15000)
+
+
+def test_a_language_correction_starts_from_the_current_numbers_and_is_stored(page, server):
+    """§15's "collaboratively correctable" in practice: the edit box is seeded with what
+    is stored, and the save round-trips through the server."""
+    root = _open_as_member(page, server)
+    expect(root.locator("[data-project-languages]")).to_contain_text("Rust")
+
+    root.locator("#languages-edit").click()
+    box = root.locator("#languages-input")
+    assert box.input_value() == "Rust 70, Go 30", box.input_value()
+
+    box.fill("Rust 90, Go 10")
+    root.locator("#languages-form button[type=submit]").click()
+    expect(page.locator("[data-settings-live]")).to_contain_text("Languages saved", timeout=15000)
+    # The percentages are INPUT VALUES, not text: `to_contain_text` on the container
+    # matched "RustGo" and reported "unexpected value" for a panel that was correct.
+    _settles(page, root)
+    expect(root.locator('input[data-language="Rust"]')).to_have_value("90")
+
+    con = sqlite3.connect(server["db"])
+    try:
+        rows = dict(con.execute(
+            "SELECT language, pct FROM project_languages WHERE project_id="
+            "(SELECT id FROM projects WHERE slug=?)", (SLUG,)).fetchall())
+    finally:
+        con.close()
+    assert rows == {"Rust": 90.0, "Go": 10.0}, rows
+    assert not page.errors, page.errors
+
+
+def test_a_language_line_without_a_percentage_is_refused_without_a_request(page, server):
+    """The client refuses what the server cannot describe.
+
+    The store's own refusal for a bad body names the field, not the offending text, so
+    the page parses the line first and reports the chunk it could not read. Asserted with
+    a request counter: a refusal that still fired the PUT would be a page telling the
+    reader one thing and the server another.
+    """
+    root = _open_as_member(page, server)
+    puts = []
+    page.on("request", lambda r: puts.append(r.url) if r.method == "PUT" else None)
+
+    root.locator("#languages-edit").click()
+    root.locator("#languages-input").fill("Rust seventy")
+    root.locator("#languages-form button[type=submit]").click()
+
+    live = page.locator("[data-settings-live]")
+    expect(live).to_contain_text("Could not read a percentage from: Rust seventy", timeout=15000)
+    assert puts == [], puts
+
+
+def test_an_invite_is_minted_reported_once_then_revoked(page, server):
+    """The mint reports its token in the live region, which is OUTSIDE the re-rendered
+    panel -- the reason the writes re-read their data instead of reloading the document.
+    On a document reload that message is on screen for zero frames, and an invite nobody
+    can read is an invite nobody can use."""
+    root = _open_as_member(page, server)
+
+    root.locator("#invite-days").fill("7")
+    root.locator("#invite-uses").fill("1")
+    root.locator("#invite-form button[type=submit]").click()
+
+    live = page.locator("[data-settings-live]")
+    expect(live).to_contain_text("Invite minted:", timeout=15000)
+    minted = live.inner_text().split("Invite minted:")[1].strip()
+    assert len(minted) >= 20, minted
+
+    # The token is in the table too, and the row is active.
+    row = root.locator('[data-invites] tr[data-invite]')
+    expect(row).to_have_count(1)
+    expect(row.locator("[data-invite-token]")).to_have_text(minted)
+    expect(row).to_contain_text("active")
+
+    root.locator("[data-invites] button[data-revoke]").click()
+    expect(live).to_contain_text("Invite revoked", timeout=15000)
+    expect(root.locator('[data-invites] tr[data-invite]')).to_contain_text("revoked", timeout=15000)
+
+    con = sqlite3.connect(server["db"])
+    try:
+        n = con.execute("SELECT COUNT(*) FROM project_invites WHERE revoked_at IS NOT NULL").fetchone()[0]
+    finally:
+        con.close()
+    assert n == 1, n
+
+
+def test_invites_are_not_offered_to_a_visitor_who_cannot_read_them(page, server):
+    """Member-only, and the panel says WHICH rule refused it rather than rendering an
+    empty table -- an empty "No invites" state for a visitor who was actually refused is
+    the page telling them a different fact about the project."""
+    _seed_taxonomy_and_strategy(server["db"])
+    _seed_admin_fixture(server["db"])
+    root = _opens_settings(page, server)  # no token
+    panel = root.locator("section.panel", has_text="Invites")
+    expect(panel).to_contain_text("visible to members")
+    assert root.locator("#invite-form").count() == 0, "an anonymous visitor was offered a mint form"
+
+
+# NOT WRITTEN, and the reason is a finding rather than an omission:
+# `test_every_panel_still_loads_for_a_member_of_a_protected_project` cannot be driven in a
+# browser at all. handleSettingsPage resolves the project and then calls projectReadable,
+# which for a protected or private project requires the request to carry the actor -- and a
+# browser NAVIGATION carries no token, because the session lives in localStorage and is
+# attached by script. The page 404s before the script that would attach it ever runs:
+# measured, `#settings-root` never renders and the wait times out. auth.go's bearerToken
+# already accepts an X-Auth-Token header "for browser clients that cannot set headers on a
+# navigation", so the design has a seat for the mechanism and nothing fills it yet (a
+# cookie set at login, or a service worker). Written up in docs/REMAINING.md §13.2 and
+# raised as a spec question, because setting a session cookie is not a change to make in a
+# page's pull request.
+#
+# What IS asserted, and what the token-on-reads fix is gated by: GET /invites is
+# member-only, so the invite panel rendering a MINTED ROW (above) can only happen if the
+# page's reads carry the token. Reverting authHeaders on the read path turns
+# test_an_invite_is_minted_reported_once_then_revoked red -- verified by mutation, not
+# asserted by reading the source.

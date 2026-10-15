@@ -680,6 +680,41 @@ type Language struct {
 	Pct      float64 `json:"pct"`
 }
 
+// ListProjectLanguages returns a project's language mix, highest percentage first.
+//
+// The read half, added with its first UI consumer. SetProjectLanguages existed with no
+// reader reachable from HTTP: the finder asked the database directly for the dominant
+// language (see projectPrimaryLanguage, whose comment says exactly this), and a project's
+// own settings page could not show what a PUT had stored. Same shape as `PUT /tags`,
+// which needed `GET /tags` before a client could confirm what it wrote.
+//
+// Ordering is by percentage DESC with the language name as the tiebreak, so a 50/50 mix
+// renders in the same order on every request. SQLite returns equal-key rows in rowid
+// order, which is insertion order -- stable until a PUT rewrites the rows, which it does
+// on every save.
+func (d *DB) ListProjectLanguages(ctx context.Context, slug string) ([]Language, error) {
+	id, err := d.projectIDBySlug(ctx, slug)
+	if err != nil {
+		return nil, err
+	}
+	rows, err := d.QueryContext(ctx,
+		`SELECT language, pct FROM project_languages WHERE project_id=?
+		 ORDER BY pct DESC, language ASC`, id)
+	if err != nil {
+		return nil, fmt.Errorf("list project languages: %w", err)
+	}
+	defer rows.Close()
+	out := make([]Language, 0, 4)
+	for rows.Next() {
+		var l Language
+		if err := rows.Scan(&l.Language, &l.Pct); err != nil {
+			return nil, fmt.Errorf("scan project language: %w", err)
+		}
+		out = append(out, l)
+	}
+	return out, rows.Err()
+}
+
 // SetProjectLanguages replaces the language mix (spec §15: collaboratively
 // correctable percentages).
 func (d *DB) SetProjectLanguages(ctx context.Context, slug string, langs []Language) error {

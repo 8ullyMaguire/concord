@@ -271,25 +271,31 @@ row now marked done.
     0 build step           no bundler, no framework, no node_modules
     18 top-level /api/v1 mounts, 90 route registrations in total
 
-**The API is roughly ten times larger than the frontend.** Fifteen resource
-groups have no page at all:
+**The API is still larger than the frontend, but the gap has closed
+substantially.** Measured 2026-10-15 by searching `internal/httpapi/assets/js`
+for each group's route suffixes and recording the file that reads it — the
+method is stated because the previous version of this table was written from
+memory and went six endpoints wrong in one direction (it listed as "none" four
+groups that had readers, and one, `invites`, that was about to get them):
 
-| resource | endpoints | page |
+| resource | endpoints | reader |
 |---|---|---|
-| documents | list, put, kinds, search, get, delete | **built** (was none) |
-| consensus | create, get, position, objection, close, resolve | **none** |
+| documents | list, put, kinds, search, get, delete | `documents.js`, `project.js` |
+| consensus | create, get, position, objection, close, resolve | `feature.js` |
 | merge requests | create, approve, execute, reject | **none** |
-| lists | list, create, get, entries | **none** |
-| requests | list, create, get, answers, answer, vote-answer | **none** |
+| lists | list, create, get, entries | `lists.js`, `project.js` |
+| requests | list, create, get, answers, answer, vote-answer | `requests-index.js`, `requests.js` |
 | criteria | list, create, vote, set-active | **none** |
-| criteria profiles | list, save | **none** |
-| comments | list, create, delete, vote | **none** |
-| invites | create, list, revoke | **none** |
-| charter | get, update | **none** |
-| members | list | **none** |
-| tags / languages / metrics | put | **none** |
-| visibility | put | **none** |
-| priorities / tallies | get | **none** |
+| criteria profiles | list, save | `settings.js` |
+| comments | list, create, delete, vote | `comments.js` (via `/threads/`) |
+| invites | create, list, revoke | `settings.js` (2026-10-15) |
+| charter | get, update | `settings.js` |
+| members | list | `settings.js` |
+| tags | get, put | `settings.js` (2026-10-15) |
+| languages | get, put | `settings.js` (2026-10-15; `GET` added with the panel) |
+| metrics | put | **none**, deliberately: a forge projection, not an opinion |
+| visibility | put | `settings.js` (2026-10-15) |
+| priorities / tallies | get | `ranking.js` |
 | composite rank | post | **none** |
 
 The sharpest instance: **six documents are stored, with a full read/search API

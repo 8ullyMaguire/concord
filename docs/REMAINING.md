@@ -6,7 +6,7 @@ the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
 **Measured state:** schema 25 · 25 migrations · 79 live tables · 902 Go tests across
-9 test-bearing packages · 231 e2e tests in 16 suite files · 7/7 UI mutants killed ·
+9 test-bearing packages · 238 e2e tests in 16 suite files · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
@@ -737,8 +737,8 @@ Three `wait_for_timeout` calls remain in e2e, all marked `BOUNDED (justified)` b
 §11 and everything above it are history. §1, §4 and §11 are marked superseded; this
 section is the current answer, and like §11 every line was checked against the code.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · **912 Go tests** across
-9 test-bearing packages · **231 e2e tests in 16 suite files** · 7/7 UI mutants killed ·
+**Measured state:** schema 25 · 25 migrations · 79 live tables · **917 Go tests** across
+9 test-bearing packages · **238 e2e tests in 16 suite files** · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 ### 12.1 How the remaining work was found (it was not in any tracker)
@@ -890,3 +890,116 @@ statements and an empty list asserts the other one.
 5. **The §6 out-of-scope items in each revision of the spec.** Unchanged.
 6. **No "every route has a reader" gate.** Reasoning in §12.1; the per-page named gates
    are the coverage, and any *new* page has to bring its own.
+
+---
+
+## 13. 2026-10-15: the administration surface, and three defects it exposed
+
+Where §12's list stands after this pass, and what this pass was.
+
+### 13.1 Three mutating routes had no guard, and one of them could never have worked
+
+Found by walking the ROUTE TABLE (`chi.Walk`, the measurement §12.4's class gate
+now uses) and reading each mutating handler for a guard call. Reading the
+handlers is how these were missed: `PUT /tags` and `PUT /visibility` sit in the
+same route group as the two that were unguarded, and a reader skimming a group
+stops noticing.
+
+| route | before | now |
+|---|---|---|
+| `PUT /projects/{slug}/languages` | **no guard at all**: an anonymous PUT answered 200 and `project_languages` gained the row (verified on the running instance) | `requireWriteActor` + role `contributor` + readable |
+| `PUT /projects/{slug}/metrics` | **no guard at all**: an anonymous PUT answered 200 and `project_metrics` went to `stars=999999` | role `maintainer` (stars/forks/commits are inbound forge facts, not an opinion) |
+| `POST /projects/{p}/complaints/{id}/merge/{target}` | no guard, and the handler read `chi.URLParam(r, "source_id")` while the router registers `{id}`: the source id was ALWAYS 0, so every merge answered 404 for its whole life. Nothing called it, so nothing noticed | `requireWriteActor` + `requireProjectID` + `maintainer`, and the complaint's own project is checked against the path's |
+
+The merge had two further defects, both invisible while it answered 404 for
+everyone: the store loaded source and target and compared **nothing**, so a
+maintainer could fold one project's complaint into another project's complaint
+(and `INSERT OR IGNORE` the source's impacts against a foreign row); and its
+audit row recorded actor 0 — nobody — for the one action that most needs
+attribution.
+
+Gates: four behavioural tests written failing first, each seen red under a
+compile-clean mutation; and `TestEveryMutatingRouteIsGuarded` walks the route
+table and allows only nine public routes, each with its reason. Its limits are
+stated in the file, including the measured one — deleting `requireWriteActor`
+from the merge leaves it GREEN, because `requireRole` returns `ErrAuth` for
+actor 0. That mutation removes a redundant line rather than creating a hole, and
+it is why a `SURVIVED` line is a statement about the mutant first.
+
+### 13.2 Six endpoints had no UI at all, and the meter told readers to use one
+
+`PUT /visibility`, `GET`+`PUT /tags`, `PUT /languages`, `POST`+`GET /invites`
+and `POST /invites/{id}/revoke` had handlers, guards and store tests, and
+`docs/specs/frontend-spec.md` listed them as "none". They are also the only way
+to change what a project looks like to the rest of the instance, so a project
+could not be made private, tagged, or invited to from the site.
+
+The sharpest instance was already in the tree: §4.3's completeness meter printed
+**"Add 2 more tags and 1 more namespaced tag"** with no control anywhere on the
+site that applied a tag. A meter that instructs and cannot be obeyed is worse
+than no meter, and there is now a gate for that pair (`TestTheMeterAndTheTagsControlShipTogether`).
+
+Built on the settings page, four panels: **Visibility** (the four levels the
+store accepts, each with what it means), **Tags** (the applied tags, and a form;
+the route attaches tags that EXIST rather than minting them, because a new tag is
+a proposal with a quorum), **Languages** (§15's collaboratively correctable
+percentages, seeded from what is stored), **Invites** (list, mint, revoke — the
+token is reported in the live region, which is *outside* the re-rendered panel).
+
+`GET /projects/{slug}/languages` did not exist and was added with the panel: the
+read half of a surface whose only reader was the finder, querying the table
+directly. Without it a project's own page could not show what a `PUT` stored —
+the same write-blind shape `PUT /tags` had before `GET /tags` was added.
+
+### 13.3 Two defects the panels exposed, both in the page itself
+
+1. **Every read on the page was anonymous.** The read helper sent only `Accept`
+   — the token was attached to writes and not to reads. Invisible while a project
+   is public (all nine panels load), and fatal for the projects whose settings
+   most need changing. Fixed; the gate is behavioural and mutation-verified:
+   `GET /invites` is member-only, so the invite panel rendering a minted row can
+   only happen if the reads carry the token.
+2. **A stale read after a write.** `PUT /visibility` answered 200, SQLite held
+   `protected`, and the panel still rendered `public`. The cause was the
+   *document reload* the page used to do after a write — a reload of a page whose
+   project had just stopped being public — and what fixed it was re-reading the
+   panels in place (`load()`) instead. This entry's first version blamed the
+   browser's HTTP cache; that was a plausible story the experiment did not
+   support, and it is corrected here rather than quietly dropped. Both halves of
+   the `no-store` change were kept as API hygiene, and labelled hygiene: removing
+   them does **not** reproduce the stale read (verified by mutation, both sides).
+
+### 13.4 OPEN: a browser navigation carries no token (needs a spec decision)
+
+`handleSettingsPage` — and every page behind `projectReadable` — needs the
+request to carry the actor, and a browser **navigation** cannot: the session
+lives in `localStorage` and is attached by script, which has not run yet. A
+member opening a protected or private project in a browser gets the 404 page.
+Measured, not reasoned: with the project set to `protected`, `#settings-root`
+never renders and the wait times out.
+
+`auth.go`'s `bearerToken` already accepts an `X-Auth-Token` header "for browser
+clients that cannot set headers on a navigation", so the design has a seat for
+the mechanism and nothing fills it. The options (an HttpOnly session cookie set
+at login, or a service worker) change the auth model and carry CSRF
+consequences, so this is raised as a spec question in **`docs/QUESTIONS.md`
+Q1** rather than settled in a page's commit. No test asserts the unreachable
+behaviour; the reasoning is recorded where the test would have been.
+
+### 13.5 The remaining list, restated
+
+1. **`concord.polarisocial.xyz` runs a 36-commits-behind build.** Unchanged;
+   not ours to do.
+2. **Q1: the browser session** (§13.4). The one item that blocks a feature a
+   reader can see: a member cannot open their own project's settings page once
+   it is not public.
+3. **`admin-ledger` has no UI**, deliberately (§11.4).
+4. **A propose-a-weight form is not on any page** (§12.6.3). Unchanged.
+5. **`metrics` has no reader**, deliberately (§13.2): a forge projection.
+6. **`merge requests`, `criteria` and `composite rank` have no reader.** Measured
+   by the inventory in `docs/specs/frontend-spec.md`; each needs its own spec
+   section before a page, since none of the three is described in detail in r4.
+7. **No "every route has a reader" gate** (§12.1). The inventory table is now
+   measured rather than remembered, which is the closest thing to it that does
+   not require the spec to name a page for every route.
+8. **The §6 out-of-scope items in each revision of the spec.** Unchanged.

@@ -120,7 +120,7 @@ be rewritten. Federation and MCP are listed in the plan for later.
 
 ## Status
 
-Measured against the running instance (schema 25, 79 tables, 912 tests,
+Measured against the running instance (schema 25, 79 tables, 917 tests,
 `v0.4.0-voting-90-g6b9bb17`), not against the plan's own history. "Shipped"
 means there is code, a migration and a test -- not that the surface is complete.
 
@@ -139,7 +139,8 @@ one did.
 | R4 ranking->consensus gating | **shipped** | `0019_solution_consensus_calls.sql`; agenda, eligibility gate, and the ADR on close (a `kind='adr'` document) |
 | R5 field reports + capabilities | **shipped** | `0021_capabilities.sql`, `0022_field_reports.sql`; panels on the project page |
 | R6 Scout | **shipped** | `0023_scout_document_kind.sql`; a report is a `kind='scout'` document, so the absent `scout_reports` table is the design, not the gap |
-| R7 docs sync | **in progress** | this file, README, KNOWN-ISSUES and HANDOFF updated 2026-10-02. `docs/concord-spec.md` is still two revisions stale -- it remains a verbatim copy of the master that the r4 rewrite replaced |
+| R7 docs sync | **in progress** | this file, README, KNOWN-ISSUES and HANDOFF updated 2026-10-02; `docs/REMAINING.md` §13 and `docs/QUESTIONS.md` added 2026-10-15. `docs/concord-spec.md` is still two revisions stale -- it remains a verbatim copy of the master that the r4 rewrite replaced, and `scripts/check_spec_drift.py` keeps every citation off it |
+| R8 administration surface | **shipped 2026-10-15** | the settings page owns visibility, tags, languages and invites; `GET /languages` added as the read half. Six endpoints had handlers, guards and tests and no reader anywhere on the site. See `docs/REMAINING.md` §13.2 |
 
 ### What is deliberately left
 
@@ -150,11 +151,27 @@ count) and "agents are excluded" (`users` has no agent flag).
 
 ### Where the next milestone should go
 
-R4's `decision_records`. A call can now open and decide, and the *fallback chain*
-that section 6.5 requires to be pre-agreed has nowhere to live, so the part of the
-outcome a reader most needs later -- why we did this instead of the runner-up --
-is recorded nowhere. It is a small migration and a small write path, and it closes
-the last gap in the consensus pillar.
+**Updated 2026-10-15.** Two candidates, and the second one is now blocking a
+feature a reader can see:
+
+1. R4's `decision_records` — unchanged from this section's original judgement. A
+   call can open and decide, and the *fallback chain* that section 6.5 requires to
+   be pre-agreed has nowhere to live, so the part of the outcome a reader most
+   needs later -- why we did this instead of the runner-up -- is recorded nowhere.
+   A small migration and a small write path; it closes the last gap in the
+   consensus pillar.
+2. **`docs/QUESTIONS.md` Q1 — the browser session.** A browser navigation carries
+   no token, so every page behind `projectReadable` is a 404 to a member of a
+   protected or private project. This is not a new gap: it is what the
+   `X-Auth-Token` fallback in `auth.go`'s `bearerToken` was written for, and
+   nothing fills the seat. It needs a spec decision (cookie plus a CSRF section,
+   or a service worker) rather than a page's commit, which is why it is a question
+   and not a fix in `docs/REMAINING.md` §13.4.
+
+The 2026-10-05 correction below -- "check the claim against the code, not the
+tracker" -- is the reason both of those were found by reading handlers and route
+tables rather than this file: §13's unguarded routes and the never-working merge
+were invisible in every tracker and visible in `chi.Walk`.
 
 
 ---

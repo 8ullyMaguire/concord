@@ -452,6 +452,29 @@ func (s *Server) handleProjectLanguages(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, http.StatusOK, p)
 }
 
+// handleGetProjectLanguages returns a project's language mix.
+//
+// Visibility-checked like GET /tags, and for the same reason: a 200 with an empty list
+// for a private project confirms the slug exists.
+func (s *Server) handleGetProjectLanguages(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		mapError(w, store.ErrNotFound)
+		return
+	}
+	langs, err := s.Store.ListProjectLanguages(r.Context(), slug)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string][]store.Language{"languages": langs})
+}
+
 func languagesSummary(langs []store.Language) string {
 	parts := make([]string, 0, len(langs))
 	for _, l := range langs {

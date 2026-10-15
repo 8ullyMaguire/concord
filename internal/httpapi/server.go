@@ -282,6 +282,29 @@ func (s *Server) render(w http.ResponseWriter, status int, name string, data any
 	}
 }
 
+// noStoreAPI marks every /api/v1 response as uncacheable.
+//
+// HYGIENE, not a measured fix, and the distinction is recorded because the first version
+// of this comment claimed otherwise. The symptom that led here was real -- PUT /visibility
+// answered 200, SQLite held `protected`, and the settings page still rendered `public` --
+// but its cause was the document reload the page used to do after a write, not an HTTP
+// cache: removing this middleware AND the page's own `cache: "no-store"` does not
+// reproduce the stale read (verified by mutation). An API response that a client re-reads
+// after a write should not be cacheable, and `no-store` is the standard way to say so, so
+// it stays -- on the terms of what it is.
+//
+// Scoped to the API on purpose. Page HTML has its own caching story -- assets_version.go
+// sets `immutable` on hashed asset URLs and `no-cache` on bare ones -- and a blanket
+// no-store would undo the reasoning there.
+func noStoreAPI(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if isAPIPath(r.URL.Path) {
+			w.Header().Set("Cache-Control", "no-store")
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 func (s *Server) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(securityHeaders)
@@ -289,6 +312,7 @@ func (s *Server) Router() http.Handler {
 	// authenticate must come after rateLimit: an unauthenticated flood of bad
 	// tokens should be rate limited, not turned into 64 MiB argon2 verifications.
 	r.Use(s.authenticate)
+	r.Use(noStoreAPI)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Recoverer)
@@ -400,6 +424,10 @@ func (s *Server) Router() http.Handler {
 			r.Get("/tags", s.handleGetProjectTags)
 			// §4.3 completeness meter for the under-tagged queue.
 			r.Get("/tags/completeness", s.handleTagCompleteness)
+			// The read half of the languages surface, added with the settings panel
+			// that shows what a PUT stored -- until then the only reader was the
+			// finder, which queries the table directly.
+			r.Get("/languages", s.handleGetProjectLanguages)
 			r.Put("/languages", s.handleProjectLanguages)
 			r.Put("/metrics", s.handleProjectMetrics)
 
