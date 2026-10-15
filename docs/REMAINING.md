@@ -5,8 +5,8 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · 922 Go tests across
-9 test-bearing packages · 241 e2e tests in 16 suite files · 7/7 UI mutants killed ·
+**Measured state:** schema 25 · 25 migrations · 79 live tables · 925 Go tests across
+9 test-bearing packages · 254 e2e tests in 17 suite files · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
@@ -737,8 +737,8 @@ Three `wait_for_timeout` calls remain in e2e, all marked `BOUNDED (justified)` b
 §11 and everything above it are history. §1, §4 and §11 are marked superseded; this
 section is the current answer, and like §11 every line was checked against the code.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · **922 Go tests** across
-9 test-bearing packages · **241 e2e tests in 16 suite files** · 7/7 UI mutants killed ·
+**Measured state:** schema 25 · 25 migrations · 79 live tables · **925 Go tests** across
+9 test-bearing packages · **254 e2e tests in 17 suite files** · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 ### 12.1 How the remaining work was found (it was not in any tracker)
@@ -1139,7 +1139,8 @@ closed. The list is now:
    (§14.5) is the same shape pointed at the read path, and the measured inventory in
    `docs/specs/frontend-spec.md` is still the closest thing for routes.
 7. **`check_doc_numbers.py` cannot see a QUALIFIED test count.** Its pattern is
-   `(\d{3,4})\s+tests\b`, so "922 tests" is gated and "902 Go tests" is invisible
+   `(\d{3,4})\s+tests\b`, so a bare count is gated and the same number followed by
+   a qualifier — `902 Go tests` — is invisible
    — which is how this file's own headline line sat at **902** for several passes
    while the gate printed OK, and why the row above it had to be found by hand.
    Widening the pattern is the obvious fix and is not the whole fix: this file also
@@ -1150,3 +1151,85 @@ closed. The list is now:
    or it will exempt the wrong paragraphs (the same failure the "any line
    containing *was*" exemption already produced once).
 7. **The §6 out-of-scope items in each revision of the spec.** Unchanged.
+
+---
+
+## 15. 2026-10-15 (third pass): the criteria page, and §6.4's comparison table
+
+§14.6's first item. `criteria` is the largest of the three API surfaces that had
+handlers, guards and store tests and **no reader anywhere**; it is now the one with
+a page. Measured on the live database before this pass:
+
+```
+criteria 0 · criterion_ratings 0 · criterion_votes 0 · criteria_profiles 0   features 537
+```
+
+Zero criteria had ever been created, so §6.4's "criteria rankings are displayed as
+a comparison table" had never been displayed. Spec: `docs/specs/criteria-panel-spec.md`,
+written before the code.
+
+### 15.1 What the page is
+
+`/projects/{slug}/criteria`, tab "Criteria" (after Ranking). One POST to
+`/rank/composite` produces the whole table: its `results` carry `rank`, `score`,
+`confidence` and the `contributions` that produced them, so the page renders the
+forgery's own arithmetic instead of re-deriving it. Around it: per-criterion weight
+boxes, the two flags (`include_inactive`, `require_min_rd`), saved weightings
+(load + save), the criteria list with create and retire, and a per-criterion
+comparison form with the five outcomes the schema allows.
+
+### 15.2 Three properties of `Composite` the page had to learn, and one bug
+
+The first version of the page assumed a contribution exists for every (feature,
+criterion) pair. It does not — `Composite` loops over `criterion_ratings` ROWS, so:
+
+1. a feature nobody has compared under a criterion has **no cell value at all**;
+2. a criterion with no rows contributes nothing and gets **no column** (that is why
+   an empty pool is invisible rather than present and empty);
+3. naming **any** criterion restricts the query to the named set, so the page must
+   send every box or it would silently rank a subset.
+
+The first two are why an unrated cell must read `unrated` in both of its forms: a
+rating row with `games == 0` sits at the Glicko starting value, and its normalised
+value is 0.5 **by construction** — the literal midpoint of an empty distribution.
+Rendering that number would present an artifact as a measurement. The fixture seeds
+a criterion in exactly that state so the browser suite can prove the page does not.
+
+The bug the browser suite found, which no source check could: **the rank's own
+re-render wiped the message the write had just set.** "Added UX" was shown and
+cleared inside one tick, and the two updated ratings from a vote were written into a
+row that the follow-up rank destroyed. Messages now ride through the rank
+(`rank(msg)`), and the vote's outcome goes to the notice, which is outside the
+re-rendered subtree. A write that reports nothing is indistinguishable from a write
+that failed.
+
+### 15.3 Gates, and what each mutation proved
+
+| gate | mutation that turns it red |
+|---|---|
+| `TestTheCriteriaPageIsRegisteredAndMounted` | unregistering the template name |
+| `TestCriteriaPageHidesAPrivateProjectFromAnonymousCallers` | dropping the `projectReadable` check |
+| `TestTheCriteriaScriptKeepsItsRules` (16 rules) | removing `skip` from the outcome list; rendering `0.50` instead of `unrated` |
+| `criteria_e2e.py` — cells | rendering `0.50` for an unrated cell |
+| `criteria_e2e.py` — the leader moves with the weights | never sending the weight vector |
+| `criteria_e2e.py` — the hostile name is text | dropping `esc()` from the criterion name |
+| `criteria_e2e.py` — retired criteria join on request | never sending `include_inactive` |
+
+All verified by running the mutation, not by reading the source.
+
+### 15.4 What is left, restated
+
+1. **`merge requests` and `composite rank` still have no reader** — the two
+   remaining surfaces of the three. `composite rank` is now *nearly* reachable: the
+   criteria page posts to it, but nothing renders a saved weighting as its own view
+   and `GET /rank/composite` does not exist (it is a POST because a weight vector
+   belongs in a body).
+2. **A propose-a-weight form is still on no page** (§12.6.3): the route exists and
+   is guarded; the control is missing.
+3. **`admin-ledger` has no UI**, deliberately (§11.4).
+4. **`metrics` has no reader**, deliberately (§13.2).
+5. **No "every route has a reader" gate** (§12.1).
+6. **`check_doc_numbers.py` still cannot see a QUALIFIED test count** (§14.6 item 7).
+7. **The criteria page defers three things on purpose** (spec §6): pair suggestion,
+   a per-criterion standings leaderboard, and deleting a criterion — retiring is the
+   flag, and a delete needs a decision about the votes behind it.

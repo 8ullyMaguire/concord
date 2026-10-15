@@ -58,6 +58,7 @@ func bearerToken(r *http.Request) string {
 //     token to anonymous would let a client with an expired credential believe
 //     it is still working, and would turn a typo into a confusing 401 on read
 //     instead of an honest one.
+//
 // navToken returns the navigation cookie's token, or "" when this request is not a
 // navigation this cookie is allowed to stand for.
 //

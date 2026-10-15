@@ -205,7 +205,7 @@ func (s *Server) loadTemplates() error {
 	pages := []string{"index", "search", "projects", "project", "board",
 		"login", "register", "rank", "ranking", "documents", "notfound", "finder",
 		"scout", "consensus", "audit", "settings", "feature", "complaint", "requests-detail", "requests-index", "lists", "list",
-		"taxonomy"}
+		"taxonomy", "criteria"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -808,6 +808,7 @@ func (s *Server) Router() http.Handler {
 	r.Get("/projects/{slug}/requests/{id}", s.handleRequestPage)
 
 	r.Get("/projects/{slug}/ranking", s.handleRankingPage)
+	r.Get("/projects/{slug}/criteria", s.handleCriteriaPage)
 	r.Get("/projects/{slug}/documents", s.handleDocumentsPage)
 	r.Get("/login", s.handleLoginPage)
 	r.Get("/register", s.handleRegisterPage)

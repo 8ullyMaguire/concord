@@ -46,6 +46,8 @@ var projectPages = []string{
 	// sub-page reachable FROM EVERY OTHER ONE, so a page that is not in it is a dead
 	// end from nine of the ten places a reader can stand.
 	"/settings",
+	// Criteria, added 2026-10-15 with the page (§6.4's comparison table).
+	"/criteria",
 }
 
 // assetCorpus concatenates every template and JS asset, which is where every
@@ -118,6 +120,7 @@ func TestEveryRegisteredPageHasAnInboundLink(t *testing.T) {
 		"/projects/nav-project/audit",
 		"/projects/nav-project/rank",
 		"/projects/nav-project/ranking",
+		"/projects/nav-project/criteria",
 	}
 
 	// Entry points. Nothing links to the home page or the auth pages because they
@@ -246,6 +249,7 @@ func TestSubPagesCarryTheTabBar(t *testing.T) {
 		"/projects/tab-project/audit",
 		"/projects/tab-project/rank",
 		"/projects/tab-project/ranking",
+		"/projects/tab-project/criteria",
 	} {
 		_, body := getBody(t, ts.URL+p)
 		if !strings.Contains(body, "detail-tabs") {
@@ -293,6 +297,7 @@ func TestProjectTabMarksTheCurrentPage(t *testing.T) {
 		{"/projects/mark-project/consensus", "Consensus"},
 		{"/projects/mark-project/board", "Board"},
 		{"/projects/mark-project/ranking", "Ranking"},
+		{"/projects/mark-project/criteria", "Criteria"},
 	}
 	for _, c := range cases {
 		_, body := getBody(t, ts.URL+c.path)
@@ -456,10 +461,12 @@ func TestLayoutRendersEachPieceOnce(t *testing.T) {
 	if n := strings.Count(body, "<main"); n != 1 {
 		t.Errorf("page contains %d <main> elements, want 1", n)
 	}
-	// Each tab exactly once: TEN sections, no repeats. Three more than it was --
-	// Requests and Lists, whose pages existed but had no TAB, so they were reachable
-	// only by scrolling the overview far enough, and Settings, whose three endpoints
-	// had no reader anywhere until the page was built.
+	// Each tab exactly once: ELEVEN sections, no repeats. Three more than it once
+	// was -- Requests and Lists, whose pages existed but had no TAB, so they were
+	// reachable only by scrolling the overview far enough, and Settings, whose three
+	// endpoints had no reader anywhere until the page was built. Criteria joined on
+	// 2026-10-15 with the page; the number is updated WITH the tab, which is the
+	// point of counting rather than checking presence.
 	//
 	// Counted with the trailing quote so the CONTAINER (`class="detail-tabs"`) is
 	// not counted as an eighth tab. Counting `class="detail-tab` reported 8 and
@@ -471,8 +478,8 @@ func TestLayoutRendersEachPieceOnce(t *testing.T) {
 	// 6 or 8 depending which, and both look like a real defect.
 	n := strings.Count(body, `class="detail-tab"`) +
 		strings.Count(body, `class="detail-tab is-active"`)
-	if n != 10 {
-		t.Errorf("page renders %d tabs, want 10", n)
+	if n != 11 {
+		t.Errorf("page renders %d tabs, want 11", n)
 	}
 	// Exactly one lit tab. Two lit tabs means the active state is decorative.
 	if n := strings.Count(body, "is-active"); n != 1 {

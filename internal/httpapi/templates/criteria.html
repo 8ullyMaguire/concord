@@ -1,0 +1,30 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <p class="breadcrumb"><a href="/projects">Projects</a> / <span data-slug>{{.Slug}}</span></p>
+    <h1>Criteria · <span data-slug>{{.Slug}}</span></h1>
+    <p class="lede">Each criterion is its own question — <em>cheapest to maintain</em>,
+      <em>least risky to migrate</em> — ranked in its own pool, so a blend is something
+      you choose rather than something you get. Below is the comparison table: every
+      criterion's ranking beside the blend it produced, so <em>why</em> a feature leads
+      is readable rather than asserted. It is the only reason a weighted order can be
+      argued with.</p>
+  </div>
+  <a class="btn" href="/projects/{{.Slug}}/ranking">Overall ranking</a>
+</div>
+
+<div id="criteria-root" aria-busy="true">
+<script src="{{ asset "/assets/js/skeleton.js" }}"></script>
+<script>
+(function(){var b=document.getElementById("criteria-root");
+if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(6);}})();
+</script>
+  <div class="empty-state">
+    <p class="empty-state-title">Loading the criteria…</p>
+  </div>
+</div>
+
+<div id="criteria-notice" class="form-note" role="status" aria-live="polite"></div>
+
+<script src="{{ asset "/assets/js/criteria.js" }}"></script>
+{{end}}

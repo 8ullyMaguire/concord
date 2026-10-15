@@ -1841,6 +1841,30 @@ func (s *Server) handleRankPage(w http.ResponseWriter, r *http.Request) {
 	}{s.pageFor(r, "Rank features - "+slug), slug})
 }
 
+// handleCriteriaPage renders spec §6.4's criteria comparison table.
+//
+// Same visibility rule as every project page: the shell must not render for a
+// project the caller cannot see, so a private project's slug cannot be confirmed
+// by a 200. The data behind it comes from the API, which enforces visibility
+// independently -- and which is why this page needs BOTH credentials in a browser
+// (the navigation cookie for this HTML, the token for criteria.js's reads).
+func (s *Server) handleCriteriaPage(w http.ResponseWriter, r *http.Request) {
+	slug := chi.URLParam(r, "slug")
+	proj, err := s.Store.GetProject(r.Context(), slug)
+	if err != nil {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	if !s.projectReadable(r, proj) {
+		s.notFoundPage(w, r, "There is no project at this address.")
+		return
+	}
+	s.render(w, http.StatusOK, "criteria", struct {
+		pageData
+		Slug string
+	}{s.pageFor(r, "Criteria - "+slug), slug})
+}
+
 func (s *Server) handleRankingPage(w http.ResponseWriter, r *http.Request) {
 	slug := chi.URLParam(r, "slug")
 	// The page itself is a template shell, but it still must not render for a
