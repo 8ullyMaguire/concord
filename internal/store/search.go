@@ -100,19 +100,12 @@ func (d *DB) SearchProjects(ctx context.Context, q string, f SearchFilters, sort
 	// would bind the actor ids to the FTS MATCH placeholder instead. Every
 	// other filter above must therefore append before this point.
 	//
-	// The predicate is the same as ListProjectsVisibleTo's, so the list and the
-	// search cannot disagree about who sees what.
-	wheres = append(wheres, `(
-		p.visibility = 'public'
-		OR (p.visibility IN ('unlisted','private') AND EXISTS (
-		      SELECT 1 FROM members mv WHERE mv.project_id = p.id AND mv.user_id = ?))
-		OR (p.visibility = 'protected' AND (
-		      EXISTS (SELECT 1 FROM members mv2 WHERE mv2.project_id = p.id AND mv2.user_id = ?)
-		   OR EXISTS (SELECT 1 FROM invite_redemptions ir
-		                  JOIN project_invites iv ON iv.id = ir.invite_id
-		                  WHERE iv.project_id = p.id AND ir.user_id = ?)
-		))
-	)`)
+	// The predicate is shared with ListProjectsVisibleTo and FindSimilarField
+	// rather than copied, so the list, the search and the duplicate panel cannot
+	// disagree about who sees what. It was a copy here until it was not: the
+	// comment above it said "the same as ListProjectsVisibleTo's" while being a
+	// third transcription of the same rule.
+	wheres = append(wheres, `(`+visibleProjectPredicate+`)`)
 	args = append(args, actorID, actorID, actorID)
 
 	sqlStr := `SELECT ` + projectColumns

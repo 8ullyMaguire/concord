@@ -524,6 +524,37 @@ func (d *DB) SetProjectVisibility(ctx context.Context, slug, visibility string) 
 	return d.GetProject(ctx, slug)
 }
 
+// visibleProjectPredicate is the LISTING half of the access rule: the projects a
+// query may surface for an actor. Three placeholders, all the actor id.
+//
+// It is the one spelling, shared by ListProjectsVisibleTo, SearchProjects and
+// FindSimilarField. Each of those said "the same predicate as the other" in a
+// comment while carrying its own copy, and a second copy of an access rule is a
+// second chance to get it wrong -- search.go's commentary is what that looks like
+// when it is maintained carefully, and it was still three copies.
+//
+// It is NOT the same question as CanAccessProject, and the difference is one
+// level wide on purpose:
+//
+//	public     listed to everyone        | readable by everyone
+//	unlisted   listed to MEMBERS only    | readable by EVERYONE (the URL is the
+//	                                     | capability -- visibility_test.go's
+//	                                     | TestUnlistedIsReadableByAnyone)
+//	protected  listed to members         | readable by members + invite holders
+//	private    listed to members         | readable by members
+//
+// So "may read" and "may be surfaced" disagree for unlisted, and that disagreement
+// is the level's entire definition. TestAccessRuleSpellingsAgreeExceptForUnlisted
+// pins both halves, so a change to either one has to be deliberate.
+const visibleProjectPredicate = `p.visibility = 'public'
+   OR (p.visibility IN ('unlisted','private') AND EXISTS (
+         SELECT 1 FROM members mm WHERE mm.project_id = p.id AND mm.user_id = ?))
+   OR (p.visibility = 'protected' AND (
+         EXISTS (SELECT 1 FROM members mm2 WHERE mm2.project_id = p.id AND mm2.user_id = ?)
+      OR EXISTS (SELECT 1 FROM invite_redemptions ir
+                 JOIN project_invites i ON i.id = ir.invite_id
+                 WHERE i.project_id = p.id AND ir.user_id = ?)))`
+
 // ListProjectsVisibleTo returns every project actor may see: the listed public
 // ones plus anything at another level that actor is entitled to. This is what a
 // signed-in user's own view of the index should show, so that a private project
@@ -532,16 +563,7 @@ func (d *DB) ListProjectsVisibleTo(ctx context.Context, actorID int64) ([]Projec
 	rows, err := d.QueryContext(ctx, `
 		SELECT `+projectColumns+` FROM projects p
 		LEFT JOIN project_metrics m ON m.project_id = p.id
-		WHERE p.visibility = 'public'
-		   OR (p.visibility IN ('unlisted','private') AND EXISTS (
-		         SELECT 1 FROM members mm WHERE mm.project_id = p.id AND mm.user_id = ?
-		   ))
-		   OR (p.visibility = 'protected' AND (
-		         EXISTS (SELECT 1 FROM members mm2 WHERE mm2.project_id = p.id AND mm2.user_id = ?)
-		      OR EXISTS (SELECT 1 FROM invite_redemptions ir
-		                 JOIN project_invites i ON i.id = ir.invite_id
-		                 WHERE i.project_id = p.id AND ir.user_id = ?)
-		   ))
+		WHERE `+visibleProjectPredicate+`
 		ORDER BY p.created_at`, actorID, actorID, actorID)
 	if err != nil {
 		return nil, err

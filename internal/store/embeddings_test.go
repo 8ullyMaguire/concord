@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"testing"
+	"time"
 
 	"git.polarisocial.xyz/concord/concord/internal/embed"
 )
@@ -46,7 +47,7 @@ func TestFindSimilarCatchesAnExactDuplicate(t *testing.T) {
 	fileComplaint(t, store, pid, uid, "Search results are identical for every query", "bm25 not applied")
 
 	sims, err := store.FindSimilar(ctx, KindComplaint,
-		"Search results are identical for every query", pid, 5)
+		"Search results are identical for every query", pid, uid, 5)
 	if err != nil {
 		t.Fatalf("FindSimilar: %v", err)
 	}
@@ -73,7 +74,7 @@ func TestFindSimilarCatchesTheSameComplaintFiledTwice(t *testing.T) {
 	const title = "Upload fails silently on a network drop"
 	fileComplaint(t, store, pid, uid, title, "No error, no retry, the file just stops")
 
-	sims, err := store.FindSimilar(ctx, KindComplaint, title+" It fails silently again", pid, 5)
+	sims, err := store.FindSimilar(ctx, KindComplaint, title+" It fails silently again", pid, uid, 5)
 	if err != nil {
 		t.Fatalf("FindSimilar: %v", err)
 	}
@@ -108,7 +109,7 @@ func TestDistinctComplaintsAreNotFlagged(t *testing.T) {
 		"Sign-up silently fails with a generic error",
 	}
 	for _, probe := range probes {
-		sims, err := store.FindSimilar(ctx, KindComplaint, probe, pid, 5)
+		sims, err := store.FindSimilar(ctx, KindComplaint, probe, pid, uid, 5)
 		if err != nil {
 			t.Fatalf("FindSimilar(%q): %v", probe, err)
 		}
@@ -127,7 +128,7 @@ func TestEmptyQueryMatchesNothing(t *testing.T) {
 	fileComplaint(t, store, pid, uid, "A real complaint about uploads", "body")
 
 	for _, q := range []string{"", "   ", "the of and to"} {
-		sims, err := store.FindSimilar(ctx, KindComplaint, q, pid, 5)
+		sims, err := store.FindSimilar(ctx, KindComplaint, q, pid, uid, 5)
 		if err != nil {
 			t.Fatalf("FindSimilar(%q): %v", q, err)
 		}
@@ -150,7 +151,7 @@ func TestFindSimilarScopesToProjectUnlessAskedOtherwise(t *testing.T) {
 	const title = "Search results are identical for every query"
 	fileComplaint(t, store, projB.ID, uid, title, "in the other project")
 
-	scoped, err := store.FindSimilar(ctx, KindComplaint, title, pidA, 5)
+	scoped, err := store.FindSimilar(ctx, KindComplaint, title, pidA, uid, 5)
 	if err != nil {
 		t.Fatalf("scoped FindSimilar: %v", err)
 	}
@@ -158,7 +159,7 @@ func TestFindSimilarScopesToProjectUnlessAskedOtherwise(t *testing.T) {
 		t.Errorf("project-scoped query leaked %d matches from another project", len(scoped))
 	}
 
-	global, err := store.FindSimilar(ctx, KindComplaint, title, 0, 5)
+	global, err := store.FindSimilar(ctx, KindComplaint, title, 0, uid, 5)
 	if err != nil {
 		t.Fatalf("instance-wide FindSimilar: %v", err)
 	}
@@ -205,7 +206,7 @@ func TestUpsertEmbeddingReplacesRatherThanAccumulates(t *testing.T) {
 
 	// And the old text must no longer match: otherwise the stale vector is still
 	// winning queries.
-	sims, err := store.FindSimilarField(ctx, KindComplaint, "original title about caching", pid, FieldTitle, 5)
+	sims, err := store.FindSimilarField(ctx, KindComplaint, "original title about caching", pid, uid, FieldTitle, 5)
 	if err != nil {
 		t.Fatalf("FindSimilar: %v", err)
 	}
@@ -259,7 +260,7 @@ func TestStopWordOnlyTextDoesNotMatchRealComplaints(t *testing.T) {
 	}
 
 	for _, probe := range []string{"the of and to", "it is was a", "to be or not"} {
-		sims, err := store.FindSimilar(ctx, KindComplaint, probe, pid, 5)
+		sims, err := store.FindSimilar(ctx, KindComplaint, probe, pid, uid, 5)
 		if err != nil {
 			t.Fatalf("FindSimilar(%q): %v", probe, err)
 		}
@@ -286,7 +287,7 @@ func TestVectorsFromADifferentModelAreIgnored(t *testing.T) {
 		`UPDATE embeddings SET model_id='other-model-v9' WHERE kind=?`, KindComplaint); err != nil {
 		t.Fatalf("rewrite model_id: %v", err)
 	}
-	sims, err := store.FindSimilar(ctx, KindComplaint, title, pid, 5)
+	sims, err := store.FindSimilar(ctx, KindComplaint, title, pid, uid, 5)
 	if err != nil {
 		t.Fatalf("FindSimilar: %v", err)
 	}
@@ -371,7 +372,7 @@ func TestBackfillIndexesOnlyMissingRowsAndIsIdempotent(t *testing.T) {
 	}
 
 	// Now detection works against the backfilled corpus.
-	sims, err := store.FindSimilar(ctx, KindComplaint, "complaint 2 about a different subject", pid, 5)
+	sims, err := store.FindSimilar(ctx, KindComplaint, "complaint 2 about a different subject", pid, uid, 5)
 	if err != nil {
 		t.Fatalf("FindSimilar after backfill: %v", err)
 	}
@@ -382,8 +383,8 @@ func TestBackfillIndexesOnlyMissingRowsAndIsIdempotent(t *testing.T) {
 
 func TestFindSimilarWithoutAnEmbedderIsRefusedNotGuessed(t *testing.T) {
 	// An unconfigured instance must say so rather than report "no duplicates".
-	store, _, pid := setupWithProject(t)
-	if _, err := store.FindSimilar(context.Background(), KindComplaint, "anything", pid, 5); err == nil {
+	store, uid, pid := setupWithProject(t)
+	if _, err := store.FindSimilar(context.Background(), KindComplaint, "anything", pid, uid, 5); err == nil {
 		t.Error("FindSimilar with no embedder returned nil error, want a refusal")
 	}
 	if store.EmbedderID() != "" {
@@ -401,7 +402,7 @@ func TestDeleteEmbeddingRemovesAStaleVector(t *testing.T) {
 	if err := store.DeleteEmbedding(ctx, KindComplaint, id); err != nil {
 		t.Fatalf("DeleteEmbedding: %v", err)
 	}
-	sims, err := store.FindSimilar(ctx, KindComplaint, "a complaint that will be deleted", pid, 5)
+	sims, err := store.FindSimilar(ctx, KindComplaint, "a complaint that will be deleted", pid, uid, 5)
 	if err != nil {
 		t.Fatalf("FindSimilar: %v", err)
 	}
@@ -422,7 +423,7 @@ func TestStaleEmbeddingsForDeletedEntitiesAreSkipped(t *testing.T) {
 	if err := store.UpsertEmbedding(ctx, KindComplaint, 999999, pid, "ghost entry text"); err != nil {
 		t.Fatalf("UpsertEmbedding: %v", err)
 	}
-	sims, err := store.FindSimilar(ctx, KindComplaint, "ghost entry text", pid, 5)
+	sims, err := store.FindSimilar(ctx, KindComplaint, "ghost entry text", pid, uid, 5)
 	if err != nil {
 		t.Fatalf("FindSimilar: %v", err)
 	}
@@ -479,5 +480,92 @@ func TestEmbeddingCoverageReachesCompleteWhenOnlyUnembeddableRowsRemain(t *testi
 	if unembed, _ := cov["unembeddable"].(int); unembed != 1 {
 		t.Errorf("unembeddable=%d, want 1: the skipped row must be reported so "+
 			"a coverage number that cannot reach 100%% stays explainable", unembed)
+	}
+}
+
+// TestAccessRuleSpellingsAgreeExceptForUnlisted.
+//
+// The access rule has two spellings: CanAccessProject in Go, which decides one
+// project at a time ("may this actor READ it"), and visibleProjectPredicate in
+// SQL, which decides a whole query at once ("may this actor be SHOWN it"). A
+// second spelling of an access rule is a second chance to get it wrong, so they
+// are held against each other here.
+//
+// They are also allowed to differ in exactly one place, on purpose, and this test
+// is where that is written down:
+//
+//   - public: both say yes to everyone.
+//   - unlisted: READABLE by everyone (the URL is the capability -- see
+//     TestUnlistedIsReadableByAnyone) but LISTED to members only. That difference
+//     IS the level's definition, so both halves are pinned.
+//   - protected / private: both say members only, anonymous and non-members no.
+//
+// Written this way because the FIRST version of this test asserted the two agree
+// everywhere, and it failed on unlisted -- which is how the difference was found.
+// "Fix the test" would have deleted the level; "fix the predicate" would have
+// started surfacing unlisted projects to strangers. Neither, so it is documented.
+//
+// Unreachable by construction, stated rather than discovered later: the
+// predicate's invite-redemption branch cannot be produced through the API, because
+// RedeemInvite inserts a `members` row in the same transaction (invites.go). A
+// person who redeemed an invite is a member, so the member term already allows
+// them. CanAccessProject's branch has the same property, which is the point of
+// comparing them at all.
+func TestAccessRuleSpellingsAgreeExceptForUnlisted(t *testing.T) {
+	ctx := context.Background()
+	st, owner := setupWithUser(t)
+	member := newUserNamed(t, st, "predicate-member")
+	outsider := newUserNamed(t, st, "predicate-outsider")
+
+	// canRead: whether the Go rule allows the actor. listed: how many rows the SQL
+	// predicate yields for them. For every level but unlisted these must agree.
+	for _, vis := range []string{VisibilityPublic, VisibilityUnlisted, VisibilityProtected, VisibilityPrivate} {
+		t.Run(vis, func(t *testing.T) {
+			slug := "pred-" + vis
+			if _, err := st.CreateProject(ctx, owner, slug, "Pred", "d", "collective", "MIT"); err != nil {
+				t.Fatalf("CreateProject: %v", err)
+			}
+			p, err := st.SetProjectVisibility(ctx, slug, vis)
+			if err != nil {
+				t.Fatalf("SetProjectVisibility: %v", err)
+			}
+			if _, err := st.ExecContext(ctx,
+				`INSERT INTO members (project_id, user_id, role, joined_at) VALUES (?,?, 'contributor', ?)`,
+				p.ID, member, float64(time.Now().Unix())); err != nil {
+				t.Fatalf("add member: %v", err)
+			}
+
+			for _, actor := range []int64{0, member, outsider} {
+				readable, err := st.CanAccessProject(ctx, p, actor)
+				if err != nil {
+					t.Fatalf("CanAccessProject: %v", err)
+				}
+				var n int
+				if err := st.QueryRowContext(ctx,
+					`SELECT count(*) FROM projects p WHERE p.id = ? AND (`+visibleProjectPredicate+`)`,
+					p.ID, actor, actor, actor).Scan(&n); err != nil {
+					t.Fatalf("predicate: %v", err)
+				}
+				listed := n > 0
+
+				if vis == VisibilityUnlisted {
+					if !readable {
+						t.Errorf("unlisted, actor %d: CanAccessProject refuses a project "+
+							"the level says anyone with the link may read", actor)
+					}
+					wantListed := actor == owner || actor == member
+					if listed != wantListed {
+						t.Errorf("unlisted, actor %d: listed=%v, want %v -- an unlisted "+
+							"project must not be surfaced to a non-member", actor, listed, wantListed)
+					}
+					continue
+				}
+				if listed != readable {
+					t.Errorf("%s, actor %d: CanAccessProject says %v, the SQL predicate "+
+						"says %v -- the two spellings of the access rule disagree",
+						vis, actor, readable, listed)
+				}
+			}
+		})
 	}
 }

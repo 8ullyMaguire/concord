@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
@@ -169,13 +170,18 @@ func (d *DB) DeleteEmbedding(ctx context.Context, kind string, entityID int64) e
 // Scope: projectID > 0 restricts to that project; projectID == 0 searches the
 // whole instance, which is the "this was fixed in X" case of §6.1.
 //
+// actorID is the caller, and it is what stops the instance-wide case from being
+// an oracle: only projects that actor may read contribute candidates. 0 is an
+// anonymous caller, which still sees public and unlisted projects -- §6.1's panel
+// is unauthenticated on purpose and must keep working.
+//
 // limit 0 means "no limit", which callers use for the "is there any duplicate at
 // all" question.
 //
 // Results below embed.WeakThreshold are omitted: a panel of ten weak candidates
 // teaches people to ignore it.
-func (d *DB) FindSimilar(ctx context.Context, kind, text string, projectID int64, limit int) ([]embed.Similarity, error) {
-	return d.FindSimilarField(ctx, kind, text, projectID, "", limit)
+func (d *DB) FindSimilar(ctx context.Context, kind, text string, projectID, actorID int64, limit int) ([]embed.Similarity, error) {
+	return d.FindSimilarField(ctx, kind, text, projectID, actorID, "", limit)
 }
 
 // FindSimilarField is FindSimilar with an explicit field selector.
@@ -184,7 +190,7 @@ func (d *DB) FindSimilar(ctx context.Context, kind, text string, projectID int64
 // or "" for the best score over all fields. The pre-submit panel passes "" because
 // the filer is usually holding only a title; a caller comparing a full description
 // passes FieldFull.
-func (d *DB) FindSimilarField(ctx context.Context, kind, text string, projectID int64, field string, limit int) ([]embed.Similarity, error) {
+func (d *DB) FindSimilarField(ctx context.Context, kind, text string, projectID, actorID int64, field string, limit int) ([]embed.Similarity, error) {
 	if d.embedder == nil {
 		return nil, fmt.Errorf("%w: no embedder configured", ErrInvalid)
 	}
@@ -203,10 +209,24 @@ func (d *DB) FindSimilarField(ctx context.Context, kind, text string, projectID 
 		sel = "auto"
 	}
 
+	// The visibility clause is not optional and not a caller's business.
+	//
+	// Without it this was an oracle: /api/v1/similar is anonymous by design, so an
+	// unauthenticated caller could submit a phrase, learn whether a matching row
+	// existed in ANY project including private ones, and read back its title,
+	// status and id. The same defect as the six numeric-id endpoints
+	// (id_enumeration_test.go), one layer over -- there a loop walked a private
+	// roadmap, here a sentence does.
+	//
+	// And on the WRITE path it was worse: checkDuplicates files instance-wide, so
+	// a filer was refused a filing (409) and shown the title of a complaint in a
+	// project they cannot read.
 	q := `SELECT e.entity_id, e.project_id, e.field, e.vector, e.dims, e.model_id
 	      FROM embeddings e
-	      WHERE e.kind = ? AND e.model_id = ?`
-	args := []any{kind, d.embedder.ID()}
+	      JOIN projects p ON p.id = e.project_id
+	      WHERE e.kind = ? AND e.model_id = ?
+	        AND (` + visibleProjectPredicate + `)`
+	args := []any{kind, d.embedder.ID(), actorID, actorID, actorID}
 	if projectID > 0 {
 		q += ` AND e.project_id = ?`
 		args = append(args, projectID)
@@ -312,20 +332,42 @@ func (d *DB) hydrateSimilarities(ctx context.Context, kind string, sims []embed.
 	out := make([]embed.Similarity, 0, len(sims))
 	for _, s := range sims {
 		var title, status sql.NullString
+		var slug string
 		var err error
+		// The URL is a PAGE the filer can open, and it comes from the row's own
+		// project slug rather than from a guess at the API's shape.
+		//
+		// It used to be `/api/v1/complaints/%d`, `/api/v1/features/%d`,
+		// `/api/v1/requests/%d`. None of those routes exists: the live service
+		// answered `/api/v1/features/222` with 404 for every match it returned.
+		// The test that covered this asserted `URL != ""`, which a 404 satisfies
+		// -- a non-empty string is not a link. The panel this endpoint exists for
+		// had not been built, so nothing ever followed one.
+		var urlFmt string
 		switch kind {
 		case KindComplaint:
 			err = d.QueryRowContext(ctx,
-				`SELECT title, status FROM complaints WHERE id = ?`, s.EntityID).Scan(&title, &status)
-			s.URL = fmt.Sprintf("/api/v1/complaints/%d", s.EntityID)
+				`SELECT c.title, c.status, p.slug FROM complaints c
+				   JOIN projects p ON p.id = c.project_id
+				  WHERE c.id = ?`, s.EntityID).Scan(&title, &status, &slug)
+			urlFmt = "/projects/%s/complaints/%d"
 		case KindFeature:
 			err = d.QueryRowContext(ctx,
-				`SELECT title, status FROM features WHERE id = ?`, s.EntityID).Scan(&title, &status)
-			s.URL = fmt.Sprintf("/api/v1/features/%d", s.EntityID)
+				`SELECT f.title, f.status, p.slug FROM features f
+				   JOIN projects p ON p.id = f.project_id
+				  WHERE f.id = ?`, s.EntityID).Scan(&title, &status, &slug)
+			urlFmt = "/projects/%s/features/%d"
 		case KindRequest:
+			// A request may be instance-wide (requests.project_id IS NULL, §17),
+			// and there is no page for one: the only request pages are under a
+			// project. LEFT JOIN so the row still hydrates, and the URL stays
+			// empty rather than pointing at a route that does not exist. The
+			// client renders the title without a link, which is the truth.
 			err = d.QueryRowContext(ctx,
-				`SELECT title, status FROM requests WHERE id = ?`, s.EntityID).Scan(&title, &status)
-			s.URL = fmt.Sprintf("/api/v1/requests/%d", s.EntityID)
+				`SELECT r.title, r.status, COALESCE(p.slug, '') FROM requests r
+				   LEFT JOIN projects p ON p.id = r.project_id
+				  WHERE r.id = ?`, s.EntityID).Scan(&title, &status, &slug)
+			urlFmt = "/projects/%s/requests/%d"
 		default:
 			// A kind with no hydration table yet (solutions arrive with §6.3).
 			// Returned with its score so the caller still learns a match exists.
@@ -337,6 +379,9 @@ func (d *DB) hydrateSimilarities(ctx context.Context, kind string, sims []embed.
 			return nil, fmt.Errorf("hydrate %s %d: %w", kind, s.EntityID, err)
 		}
 		s.Title, s.Status = title.String, status.String
+		if slug != "" && urlFmt != "" {
+			s.URL = fmt.Sprintf(urlFmt, url.PathEscape(slug), s.EntityID)
+		}
 		out = append(out, s)
 	}
 	return out, nil

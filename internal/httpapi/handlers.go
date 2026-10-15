@@ -687,14 +687,14 @@ func (s *Server) checkDuplicates(w http.ResponseWriter, r *http.Request, kind, t
 	// no warning. The full-text query is still run, because two complaints can
 	// share a vague title and an identical description, which the title alone
 	// would miss.
-	sims, err := s.Store.FindSimilarField(ctx, kind, title, scope, store.FieldTitle, 5)
+	sims, err := s.Store.FindSimilarField(ctx, kind, title, scope, getActorID(r), store.FieldTitle, 5)
 	if err != nil {
 		// A failure to check must not block the filing: refusing on an internal
 		// error would lose a real complaint to a bug in the similarity code.
 		return nil, true
 	}
 	if len(sims) == 0 && strings.TrimSpace(body) != "" {
-		if full, ferr := s.Store.FindSimilarField(ctx, kind, title+" "+body, scope, store.FieldFull, 5); ferr == nil {
+		if full, ferr := s.Store.FindSimilarField(ctx, kind, title+" "+body, scope, getActorID(r), store.FieldFull, 5); ferr == nil {
 			sims = full
 		}
 	}
@@ -791,12 +791,12 @@ func (s *Server) handleFindSimilar(w http.ResponseWriter, r *http.Request) {
 	// Best score over both fields is kept, for the case where the filer has
 	// written a description that matches an existing complaint whose title
 	// differs.
-	sims, err := s.Store.FindSimilarField(r.Context(), kind, text, projectID, store.FieldTitle, limit)
+	sims, err := s.Store.FindSimilarField(r.Context(), kind, text, projectID, getActorID(r), store.FieldTitle, limit)
 	if err != nil {
 		mapError(w, err)
 		return
 	}
-	if full, ferr := s.Store.FindSimilarField(r.Context(), kind, text, projectID, store.FieldFull, limit); ferr == nil {
+	if full, ferr := s.Store.FindSimilarField(r.Context(), kind, text, projectID, getActorID(r), store.FieldFull, limit); ferr == nil {
 		sims = mergeSimilarities(sims, full, limit)
 	}
 	if sims == nil {

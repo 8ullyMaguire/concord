@@ -1808,3 +1808,31 @@ fieldset legend {
   color: var(--ink);
   padding: 0 0.4rem;
 }
+
+/* §6.1 duplicate detection panel, under the title field of the filing forms.
+   It sits between the title and the body rather than below the submit button,
+   because the answer is about the title and it is only useful before the body is
+   written. */
+.dup-panel { margin: -0.4rem 0 0.9rem; }
+.dup-panel:empty { margin: 0; }
+.dup-note {
+  font-size: 0.8rem;
+  line-height: 1.5;
+  margin: 0;
+  color: var(--slate-600);
+  border-left: 3px solid var(--slate-200);
+  padding: 0.35rem 0 0.35rem 0.6rem;
+}
+.dup-panel .dup-checking { color: var(--slate-500); }
+/* A strong match is a warning, not an error: filing is still allowed, and the
+   copy says so. Colouring it like a failure would teach people that the panel
+   refuses filings, which it never does. */
+.dup-panel .dup-strong {
+  color: #92400e;
+  background: #fef3c7;
+  border-left-color: #fde68a;
+}
+.dup-list { margin: 0.35rem 0 0; padding-left: 1.1rem; font-size: 0.82rem; }
+.dup-list li { color: var(--slate-600); }
+.dup-list a { color: var(--indigo); }
+.dup-score { color: var(--slate-400); font-variant-numeric: tabular-nums; }

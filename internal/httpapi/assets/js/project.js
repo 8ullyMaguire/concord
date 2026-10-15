@@ -505,6 +505,7 @@
         'Vague complaints cannot be validated and therefore cannot be solved.</p>' +
         '<label class="field"><span>Title</span>' +
         '<input name="title" required maxlength="200" placeholder="Search returns nothing for an empty query"></label>' +
+        dupPanel('complaint') +
         '<label class="field"><span>What happens, and to whom</span>' +
         '<textarea name="body" rows="3" required placeholder="I searched for… and got…"></textarea></label>' +
         '<div class="field-row">' +
@@ -523,6 +524,7 @@
         'it answers — an unlinked feature has no pain score and never ranks.</p>' +
         '<label class="field"><span>Title</span>' +
         '<input name="title" required maxlength="200" placeholder="Search falls back to substring matching"></label>' +
+        dupPanel('feature') +
         '<label class="field"><span>What it would do</span>' +
         '<textarea name="body" rows="3" required></textarea></label>' +
         '<label class="field"><span>Answers complaint</span>' +
@@ -546,6 +548,7 @@
 
     var complaintForm = document.getElementById('complaint-form');
     if (complaintForm) {
+      wireDupPanel(complaintForm, 'complaint', projectID);
       complaintForm.addEventListener('submit', function (ev) {
         ev.preventDefault();
         var fd = new FormData(complaintForm);
@@ -569,6 +572,7 @@
 
     var featureForm = document.getElementById('feature-form');
     if (featureForm) {
+      wireDupPanel(featureForm, 'feature', projectID);
       featureForm.addEventListener('submit', function (ev) {
         ev.preventDefault();
         var fd = new FormData(featureForm);
@@ -602,6 +606,110 @@
           });
       });
     });
+  }
+
+  // ------------------------------------------------- §6.1 duplicate detection
+  //
+  // "Duplicate detection at filing time uses semantic similarity BEFORE submit,
+  // and also searches other projects." The server half shipped with the store:
+  // GET /api/v1/similar/{kind}/ was complete, measured (coverage, per-model
+  // thresholds, cross-project scope) and called by NOTHING. `grep -rin similar`
+  // over assets/js, templates/ and tests/ returned the route registration and
+  // nothing else, so a filer could not see what they were about to duplicate --
+  // only be refused after pressing submit, which is the wrong end of the form.
+  //
+  // Two forms use it: the complaint form and the feature form, both of which ask
+  // for a title first, which is exactly what the endpoint scores.
+  function dupPanel(kind) {
+    // aria-live: the panel's whole content arrives without a keystroke, so a
+    // screen reader has to be told. `polite` because the filer is typing and an
+    // assertive announcement would interrupt them mid-word.
+    return '<div class="dup-panel" data-dup-panel="' + esc(kind) + '" role="status" aria-live="polite"></div>';
+  }
+
+  // dupSeq is the last lookup started. A response whose sequence is not current
+  // is dropped: the panel is debounced, so typing "search returns", then "search
+  // returns nothing" leaves two requests in flight, and without this the FIRST
+  // one's answer can land last and describe a title the filer has moved on from.
+  var dupSeq = 0;
+
+  function wireDupPanel(form, kind, projectID) {
+    var title = form.querySelector('input[name="title"]');
+    var panel = form.querySelector('[data-dup-panel]');
+    if (!title || !panel) return;
+    var timer = null;
+
+    title.addEventListener('input', function () {
+      var text = title.value.trim();
+      if (timer) clearTimeout(timer);
+      if (text.length < 8) {
+        // Below eight characters the vector is mostly noise, and the answer
+        // would be "nothing similar" for a title that is not yet a title. Saying
+        // nothing is more honest than saying that.
+        panel.innerHTML = '';
+        return;
+      }
+      timer = setTimeout(function () { dupLookup(kind, projectID, text, panel); }, 350);
+    });
+  }
+
+  function dupLookup(kind, projectID, text, panel) {
+    var mine = ++dupSeq;
+    panel.innerHTML = '<p class="dup-note dup-checking">Checking for existing ' + esc(kind) + 's…</p>';
+    var url = '/api/v1/similar/' + encodeURIComponent(kind) + '/?text=' +
+      encodeURIComponent(text) + '&project_id=' + encodeURIComponent(projectID);
+    fetch(url, { headers: { Accept: 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (mine !== dupSeq) return;
+        panel.innerHTML = dupMarkup(kind, data);
+      })
+      .catch(function () {
+        if (mine !== dupSeq) return;
+        // Never an empty panel: "we could not ask" and "nothing similar exists"
+        // are different statements, and the second one is a lie if the first is
+        // what happened.
+        panel.innerHTML = '<p class="dup-note">The duplicate check could not run. ' +
+          'Filing still works.</p>';
+      });
+  }
+
+  function dupMarkup(kind, data) {
+    if (!data || data.available === false) {
+      return '<p class="dup-note">' + esc((data && data.note) ||
+        'Duplicate detection is not configured on this instance.') + '</p>';
+    }
+    var matches = data.similar || [];
+    // The coverage line is not decoration. §6.1's promise is "nothing similar
+    // exists on the parts of the instance we indexed", and a filer told "no
+    // duplicates" by an instance that has indexed a twelfth of its corpus has
+    // been told nothing. The endpoint returns the number; the panel says it.
+    var cov = data.coverage || null;
+    var covNote = '';
+    if (cov && cov.coverage != null && cov.coverage < 1) {
+      covNote = ' Only ' + Math.round(cov.coverage * 100) + '% of ' + esc(kind) +
+        's are indexed, so this is not a complete answer.';
+    }
+    if (!matches.length) {
+      return '<p class="dup-note">No similar ' + esc(kind) + ' found.' + covNote + '</p>';
+    }
+    var head = data.has_duplicate === true
+      ? '<p class="dup-note dup-strong">This looks like an existing ' + esc(kind) +
+        '. Read it before filing — if it is the same problem, adding to it is worth ' +
+        'more than a second report.</p>'
+      : '<p class="dup-note">Similar ' + esc(kind) + 's already exist:</p>';
+    var rows = matches.slice(0, 5).map(function (m) {
+      var label = esc(m.title || (kind + ' #' + m.entity_id));
+      // The href is the API's own `url`, not a path reassembled here. The
+      // endpoint used to hand out `/api/v1/features/222`, which is a 404 -- and
+      // it did so for every match, because nothing ever followed one. Using the
+      // server's value means a wrong URL fails a test instead of being written
+      // correctly a second time in this file.
+      var link = m.url ? '<a href="' + esc(m.url) + '">' + label + '</a>' : label;
+      return '<li>' + link + ' <span class="dup-score">' +
+        Math.round((m.score || 0) * 100) + '%</span></li>';
+    }).join('');
+    return head + '<ul class="dup-list">' + rows + '</ul>' + covNote;
   }
 
   function setStatus(form, message, isError) {

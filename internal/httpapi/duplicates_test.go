@@ -1,13 +1,27 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"git.polarisocial.xyz/concord/concord/internal/embed"
 	"git.polarisocial.xyz/concord/concord/internal/store"
 )
+
+// decodeBody turns a raw response body into the map getJSON would have returned.
+func decodeBody(t *testing.T, b []byte) map[string]any {
+	t.Helper()
+	var m map[string]any
+	if err := json.Unmarshal(b, &m); err != nil {
+		t.Fatalf("decode %s: %v", b, err)
+	}
+	return m
+}
 
 // Duplicate detection at filing time, at the API boundary (§6.1).
 //
@@ -309,5 +323,300 @@ func TestCrossProjectSearchFindsTheSameProblemElsewhere(t *testing.T) {
 	}
 	if sims, _ := body["similar"].([]any); len(sims) != 0 {
 		t.Errorf("project-scoped search leaked %d matches from another project", len(sims))
+	}
+}
+
+// ---------------------------------------------------------------- §6.1's leaks
+//
+// Two defects the /similar endpoint shipped with, both found by asking of a
+// field the endpoint RETURNS what a reader does with it. Neither was reachable
+// by any earlier test, because every one of them asserted that the response was
+// shaped right rather than that it was usable.
+
+// similarMatches pulls the match objects out of a /similar response body.
+func similarMatches(t *testing.T, body map[string]any) []map[string]any {
+	t.Helper()
+	raw, ok := body["similar"].([]any)
+	if !ok {
+		t.Fatalf("no similar array in %v", body)
+	}
+	out := make([]map[string]any, 0, len(raw))
+	for _, m := range raw {
+		if mm, ok := m.(map[string]any); ok {
+			out = append(out, mm)
+		}
+	}
+	return out
+}
+
+// TestEverySimilarityMatchCarriesALinkThatResolves.
+//
+// hydrateSimilarities used to build `/api/v1/features/222`,
+// `/api/v1/complaints/9`, `/api/v1/requests/4`. None of those routes exist. The
+// live service answered
+//
+//	$ curl -s .../api/v1/similar/feature/?text=... | jq -r '.similar[0].url'
+//	/api/v1/features/222
+//	$ curl -s -o /dev/null -w '%{http_code}' .../api/v1/features/222
+//	404
+//
+// for every match it returned, and the store test that covers this asserted
+// `sims[0].URL != ""`. A non-empty string is not a link, and the panel this
+// endpoint exists for had not been built yet, so nothing ever followed one.
+//
+// So this follows one. For each kind: seed the entity, find it through the API,
+// take the URL the API handed out, and FETCH IT. Execution, not string shape.
+func TestEverySimilarityMatchCarriesALinkThatResolves(t *testing.T) {
+	// "" is anonymous on this harness (authJSON reads it as the X-No-Auth
+	// opt-out), so every write here needs a real token. That is the harness
+	// working as documented: passing "" is the LEAST privileged thing a test can
+	// do, for authJSON, and the first version of this test filed 401s because it
+	// read the getJSON convention across.
+	type seed func(t *testing.T, ts *httptest.Server, tok string) string
+	cases := []struct {
+		kind string
+		seed seed
+	}{
+		{"complaint", func(t *testing.T, ts *httptest.Server, tok string) string {
+			code, body := authJSON(t, ts, http.MethodPost,
+				"/api/v1/projects/linktest/complaints", tok,
+				map[string]any{"project_id": 1, "title": "The exporter drops the final row",
+					"body": "one row short", "severity": 4})
+			if code != http.StatusCreated {
+				t.Fatalf("file complaint: %d %s", code, body)
+			}
+			return "The exporter drops the final row"
+		}},
+		{"feature", func(t *testing.T, ts *httptest.Server, tok string) string {
+			code, body := authJSON(t, ts, http.MethodPost,
+				"/api/v1/projects/linktest/complaints", tok,
+				map[string]any{"project_id": 1, "title": "Exports lose the last row",
+					"body": "one row short", "severity": 4})
+			if code != http.StatusCreated {
+				t.Fatalf("file complaint: %d %s", code, body)
+			}
+			// §6.2: a feature must link to at least one VALIDATED complaint. The
+			// first version of this seed skipped this and got a 400, which is the
+			// schema catching a fixture that was asserting a state the product
+			// forbids -- the same lesson as §3.3 of the tracker.
+			if code, v := authJSON(t, ts, http.MethodPost,
+				"/api/v1/projects/linktest/complaints/1/validate", tok,
+				map[string]any{}); code != http.StatusOK {
+				t.Fatalf("validate complaint: %d %s", code, v)
+			}
+			code, body = authJSON(t, ts, http.MethodPost,
+				"/api/v1/projects/linktest/features", tok,
+				map[string]any{"project_id": 1, "title": "Resumable uploads survive a drop",
+					"body": "the design", "linked_complaints": []int64{1}})
+			if code != http.StatusCreated {
+				t.Fatalf("propose feature: %d %s", code, body)
+			}
+			return "Resumable uploads survive a drop"
+		}},
+		{"request", func(t *testing.T, ts *httptest.Server, tok string) string {
+			code, body := authJSON(t, ts, http.MethodPost,
+				"/api/v1/projects/linktest/requests", tok,
+				map[string]any{"project_id": 1, "title": "Could the board show a countdown",
+					"body": "asking for a feature"})
+			if code != http.StatusCreated {
+				t.Fatalf("open request: %d %s", code, body)
+			}
+			return "Could the board show a countdown"
+		}},
+	}
+
+	for _, c := range cases {
+		t.Run(c.kind, func(t *testing.T) {
+			ts, _ := withEmbedder(t)
+			tok := registerAndLogin(t, ts, "linktest-owner")
+			if code, body := authJSON(t, ts, http.MethodPost, "/api/v1/projects", tok,
+				map[string]any{"slug": "linktest", "name": "Link", "description": "d"}); code != http.StatusCreated {
+				t.Fatalf("create project: %d %s", code, body)
+			}
+			title := c.seed(t, ts, tok)
+
+			code, raw := authJSON(t, ts, http.MethodGet, "/api/v1/similar/"+c.kind+
+				"?text="+strings.ReplaceAll(title, " ", "+"), anonymousMarker, nil)
+			if code != http.StatusOK {
+				t.Fatalf("similar: %d %s", code, raw)
+			}
+			matches := similarMatches(t, decodeBody(t, raw))
+			if len(matches) == 0 {
+				t.Fatalf("no match for text just filed (%s); the URL cannot be checked "+
+					"and this test would pass for the wrong reason: %s", c.kind, raw)
+			}
+			url, _ := matches[0]["url"].(string)
+			if url == "" {
+				t.Fatalf("%s match has no url at all: %v", c.kind, matches[0])
+			}
+
+			// Followed anonymously, because the panel is unauthenticated and the
+			// project here is public: a link only the author can open is not the
+			// link the panel needs.
+			code, page := authJSON(t, ts, http.MethodGet, url, anonymousMarker, nil)
+			if code != http.StatusOK {
+				t.Errorf("the link the API hands out does not resolve: GET %s -> %d\n"+
+					"  (it must be a route a person can open, not a guess at one)\n  %s",
+					url, code, firstBytes(page, 200))
+			}
+			// And it must be a PAGE. The request case passed the status check
+			// alone: `/api/v1/requests/1` is a real route that answers 200 with a
+			// JSON document, so "the link resolves" is satisfied by an endpoint a
+			// person cannot read. Mutation testing found that hole -- the mutation
+			// that restored the API-path URLs left the request subtest green.
+			if !strings.Contains(string(page), "<html") {
+				t.Errorf("the link the API hands out is not a page: GET %s -> %d, "+
+					"and the body is not HTML.\n  A filer cannot jump to a JSON "+
+					"document.\n  %s", url, code, firstBytes(page, 200))
+			}
+		})
+	}
+}
+
+func firstBytes(b []byte, n int) string {
+	if len(b) > n {
+		return string(b[:n])
+	}
+	return string(b)
+}
+
+// TestASimilarityProbeDoesNotRevealAPrivateProjectsTitles.
+//
+// /similar is unauthenticated on purpose (§6.1: "a panel that needs a token is a
+// panel nobody sees"), and FindSimilarField selected from `embeddings` filtered by
+// kind, model and an optional project id -- and NEVER by visibility. So an
+// anonymous probe could ask "does this text exist anywhere" and get back the
+// title, status and id of a match in a private project.
+//
+// That is the same defect as id_enumeration_test.go's six endpoints, one layer
+// over: there a loop over integers walked a private roadmap; here a phrase does.
+// And it is worse on the write path: checkDuplicates files instance-wide, so a
+// filer in their own project was refused a filing (409) with a private project's
+// complaint title in the response body.
+//
+// The two halves are both load-bearing. A fix that hides everything would break
+// §6.1's cross-project search for the people entitled to it, so the owner must
+// still find their own.
+func TestASimilarityProbeDoesNotRevealAPrivateProjectsTitles(t *testing.T) {
+	ts, _ := withEmbedder(t)
+	owner := seedPrivateProject(t, ts) // private "privgate", complaint "Export drops the last row"
+	const secret = "Export drops the last row"
+
+	// 1. The owner finds it. Without this the rest of the test proves nothing:
+	//    a probe that finds nothing for anybody is not a privacy fix.
+	code, body := authJSON(t, ts, http.MethodGet,
+		"/api/v1/similar/complaint?text="+strings.ReplaceAll(secret, " ", "+"), owner, nil)
+	if code != http.StatusOK {
+		t.Fatalf("owner probe: %d %s", code, body)
+	}
+	if !strings.Contains(string(body), secret) {
+		t.Fatalf("the owner of the private project cannot find their own complaint; "+
+			"§6.1's search must work for people entitled to the answer: %s", body)
+	}
+
+	// 2. An anonymous probe does not, including by id and by count.
+	code, body = authJSON(t, ts, http.MethodGet,
+		"/api/v1/similar/complaint?text="+strings.ReplaceAll(secret, " ", "+"),
+		anonymousMarker, nil)
+	if code != http.StatusOK {
+		t.Fatalf("anonymous probe: %d %s", code, body)
+	}
+	if strings.Contains(string(body), secret) {
+		t.Errorf("LEAK: an anonymous similarity probe returned a private project's "+
+			"complaint title.\n  GET /api/v1/similar/complaint?text=... -> %d\n  %s",
+			code, body)
+	}
+	if n := len(similarMatches(t, decodeBody(t, body))); n != 0 {
+		t.Errorf("LEAK: an anonymous probe matched %d private-project row(s); the "+
+			"count alone confirms the complaint exists.\n  %s", n, body)
+	}
+
+	// 3. And the filing path: a second user must not be refused a filing because
+	//    of a complaint they cannot see, and must not be told its title.
+	mallory := registerAndLogin(t, ts, "mallory")
+	if code, body := authJSON(t, ts, http.MethodPost, "/api/v1/projects", mallory,
+		map[string]any{"slug": "mallorys", "name": "M", "description": "d"}); code != http.StatusCreated {
+		t.Fatalf("create project: %d %s", code, body)
+	}
+	code, body = authJSON(t, ts, http.MethodPost, "/api/v1/projects/mallorys/complaints",
+		mallory, map[string]any{"project_id": 2, "title": secret,
+			"body": "I hit this too", "severity": 3})
+	if code == http.StatusConflict {
+		t.Errorf("LEAK: filing refused with 409 because of a complaint in a project "+
+			"the filer cannot read. The body carries that project's title and id:\n  %s", body)
+	}
+	// The response echoes the filer's OWN title, so "does the body contain the
+	// text" is not the question. The question is whether it carries a match: a
+	// `similar` array, or the private project's slug or name.
+	if _, leaked := decodeBody(t, body)["similar"]; leaked {
+		t.Errorf("LEAK: the filing response carries similarity matches from a project "+
+			"the filer cannot read:\n  %s", body)
+	}
+	for _, forbidden := range []string{"privgate", "P\"", "\"P\""} {
+		if strings.Contains(string(body), forbidden) {
+			t.Errorf("LEAK: the filing response names the private project (%q):\n  %s",
+				forbidden, body)
+		}
+	}
+}
+
+// TestTheFilingFormsAskTheServerAboutDuplicates.
+//
+// The endpoint was complete and called by nothing: `grep -rin similar` over
+// assets/js, templates/ and tests/ returned the route registration alone. So a
+// filer could not see what they were about to duplicate; they could only be
+// refused afterwards, which is the wrong end of the form.
+//
+// Asserted on the SOURCE, which is the weaker half of a pair: source inspection
+// proves a string exists, never that the code runs (the ReferenceError that killed
+// the whole project page parsed perfectly). The browser half is
+// tests/e2e/duplicates_e2e.py, which types a title and reads the panel.
+func TestTheFilingFormsAskTheServerAboutDuplicates(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("assets", "js", "project.js"))
+	if err != nil {
+		t.Fatalf("read project.js: %v", err)
+	}
+	src := string(data)
+
+	// Wired on both forms, by name, so deleting one is visible.
+	for _, want := range []string{
+		"wireDupPanel(complaintForm, 'complaint'",
+		"wireDupPanel(featureForm, 'feature'",
+		"dupPanel('complaint')",
+		"dupPanel('feature')",
+	} {
+		if !strings.Contains(src, want) {
+			t.Errorf("project.js no longer contains %q: one of the two filing forms "+
+				"has no duplicate check", want)
+		}
+	}
+
+	// It calls the endpoint, and names the kind rather than hardcoding one.
+	if !strings.Contains(src, "'/api/v1/similar/' + encodeURIComponent(kind)") {
+		t.Error("project.js does not call /api/v1/similar/<kind>: the panel has no " +
+			"server to ask, and a hardcoded kind would report the wrong corpus on " +
+			"the other form")
+	}
+
+	// The link is the API's own url field. Reassembling a path here is how the
+	// server's 404 survived: nothing ever followed one.
+	if !strings.Contains(src, "m.url ? '<a href=\"' + esc(m.url)") {
+		t.Error("project.js does not build the match link from the API's url field")
+	}
+
+	// The positive half, so the pair cannot be satisfied by deleting the panel:
+	// the titles are authored text and must go through esc().
+	if !strings.Contains(src, "esc(m.title") {
+		t.Error("project.js does not escape the match title it renders: a complaint " +
+			"titled with markup would be executed in the filer's browser")
+	}
+
+	// The negative half of the defect: no path may be reassembled from the API's
+	// route vocabulary, because those routes are what did not exist.
+	for _, bad := range []string{"'/api/v1/features/'", "'/api/v1/complaints/'", "'/api/v1/requests/'"} {
+		if strings.Contains(src, bad) {
+			t.Errorf("project.js builds a link from %s; the API's match URLs are page "+
+				"routes and come from the response's url field", bad)
+		}
 	}
 }
