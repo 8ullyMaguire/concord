@@ -133,6 +133,109 @@
     ['withdrawn', 'withdrawn \u2014 the objector dropped it']
   ];
 
+  // Whether the signed-in reader is the account that raised this objection.
+  //
+  // This is the ONE thing this page checks for itself, and it can: it is a fact about
+  // the reader's own session, not a claim about standing. The server enforces the
+  // rule either way; what the check buys is that the objector is shown the act that
+  // is theirs (withdrawing) instead of a control the server would refuse them.
+  //
+  // An unreadable session is "not mine", so the default is the control the server
+  // decides on.
+  function mine(o) {
+    try {
+      var raw = window.localStorage.getItem('concord.user');
+      var me = raw ? JSON.parse(raw) : null;
+      return !!me && !!me.id && Number(me.id) === Number(o.user_id);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // The objector's own act: withdraw the objection. One status, and it is not a
+  // choice -- a withdrawal is the only outcome the person who raised a block may
+  // record, and the reason is required because the store records a resolution, not a
+  // flag.
+  //
+  // It replaces the four-status control rather than joining it: an objector cannot
+  // resolve their own objection (the server refuses that), so offering both would be
+  // offering a button that always fails beside one that works.
+  function withdrawControls(o) {
+    var wrap = document.createElement('div');
+    wrap.className = 'objection-resolve objection-withdraw';
+
+    var reasonId = 'objection-withdraw-reason-' + o.id;
+    var label = document.createElement('label');
+    label.className = 'field-label';
+    label.setAttribute('for', reasonId);
+    label.textContent = 'Withdraw this objection';
+
+    var reason = document.createElement('input');
+    reason.type = 'text';
+    reason.id = reasonId;
+    reason.className = 'input';
+    reason.setAttribute('data-objection-withdraw-reason', '');
+    reason.placeholder = 'why you are dropping it (recorded with the decision)';
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn';
+    btn.textContent = 'Withdraw my objection';
+    btn.setAttribute('data-objection-withdraw', String(o.id));
+
+    var err = document.createElement('p');
+    err.className = 'objection-resolve-error';
+    err.setAttribute('role', 'alert');
+    err.setAttribute('data-objection-withdraw-error', String(o.id));
+    err.hidden = true;
+
+    btn.addEventListener('click', function () {
+      sendOutcome(o, 'withdrawn', reason.value, btn, err);
+    });
+
+    wrap.appendChild(label);
+    wrap.appendChild(reason);
+    wrap.appendChild(btn);
+    wrap.appendChild(err);
+    return wrap;
+  }
+
+  // sendOutcome records one outcome. Both controls go through here, so the request
+  // shape (and the server's refusal, reported verbatim) cannot differ between them.
+  function sendOutcome(o, status, why, btn, err) {
+    btn.disabled = true;
+    err.hidden = true;
+    var url = '/api/v1/projects/' + encodeURIComponent(slug) + '/consensus/objections/' +
+      encodeURIComponent(String(o.id)) + '/resolve';
+    fetch(url, {
+      method: 'PUT',
+      headers: (function () {
+        var h = { 'Content-Type': 'application/json' };
+        var t = token();
+        if (t) h.Authorization = 'Bearer ' + t;
+        return h;
+      })(),
+      body: JSON.stringify({ status: status, resolution: why })
+    }).then(function (r) {
+      return r.text().then(function (txt) {
+        var data = {};
+        try { data = txt ? JSON.parse(txt) : {}; } catch (e) { data = {}; }
+        // The server's own sentence, including the store's list of the statuses it
+        // accepts and -- since the standing refusals stopped being bare -- the role
+        // this action needed. Rewriting it here would tell the reader what this page
+        // thinks the rule is.
+        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+        return data;
+      });
+    }).then(function () {
+      load();
+    }).catch(function (e) {
+      btn.disabled = false;
+      err.textContent = e.message;
+      err.hidden = false;
+    });
+  }
+
   function resolveControls(o) {
     var wrap = document.createElement('div');
     wrap.className = 'objection-resolve';
@@ -178,36 +281,7 @@
     err.hidden = true;
 
     btn.addEventListener('click', function () {
-      btn.disabled = true;
-      err.hidden = true;
-      var url = '/api/v1/projects/' + encodeURIComponent(slug) + '/consensus/objections/' +
-        encodeURIComponent(String(o.id)) + '/resolve';
-      fetch(url, {
-        method: 'PUT',
-        headers: (function () {
-          var h = { 'Content-Type': 'application/json' };
-          var t = token();
-          if (t) h.Authorization = 'Bearer ' + t;
-          return h;
-        })(),
-        body: JSON.stringify({ status: sel.value, resolution: reason.value })
-      }).then(function (r) {
-        return r.text().then(function (txt) {
-          var data = {};
-          try { data = txt ? JSON.parse(txt) : {}; } catch (e) { data = {}; }
-          // The server's own sentence, including the store's list of the statuses it
-          // accepts. Rewriting it here would tell the reader what this page thinks
-          // the rule is.
-          if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
-          return data;
-        });
-      }).then(function () {
-        load();
-      }).catch(function (e) {
-        btn.disabled = false;
-        err.textContent = e.message;
-        err.hidden = false;
-      });
+      sendOutcome(o, sel.value, reason.value, btn, err);
     });
 
     wrap.appendChild(label);
@@ -256,7 +330,10 @@
       // Signed out: the objection is readable and the control is not offered --
       // there is nobody to attribute a resolution to.
       if (token() && (!o.status || o.status === 'open')) {
-        li.appendChild(resolveControls(o));
+        // The objector gets the one act that is theirs; everyone else gets the
+        // control the server decides on. See `mine` above for why this page may
+        // answer that question about itself and not about anybody else.
+        li.appendChild(mine(o) ? withdrawControls(o) : resolveControls(o));
       }
       ul.appendChild(li);
     });

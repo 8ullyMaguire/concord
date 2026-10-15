@@ -161,6 +161,33 @@ Same rule as every other page.
   (the column defaults to `''`), so any reason shown would be empty by construction.
   Render the stance or nothing.
 
+### 5.2 Objections: who may record which outcome (added 2026-10-16, §18.1)
+
+§6.6's remedy for a block has two branches, and only the override was reachable for the
+life of the page: "the blocker withdraws" needed the maintainer role, because
+`PUT /consensus/objections/{id}/resolve` gated all four statuses the same way. The
+standing now depends on the **outcome**:
+
+| status | who may record it | why |
+|---|---|---|
+| `withdrawn` | the objector, or a maintainer | the block is the objector's to drop. Membership is NOT required — creating an objection never needed a role |
+| `resolved` | a maintainer | a finding about the proposal, and the person who blocked it is not the judge of it |
+| `overridden` | a maintainer | same, and §6.6's 80% override window is a separate, unbuilt feature (§18.5) |
+| `vetoed` | a maintainer | §6.6's emergency hold |
+
+`open` is the column's DEFAULT, not an outcome, and the store refuses it.
+
+The page renders accordingly and never decides standing for itself:
+
+- an objection whose `user_id` is the signed-in reader's own id gets **Withdraw this
+  objection** — one status, reason required — and NOT the four-status control, because
+  the server refuses the objector all four of those. Reading the session's own id is
+  the one judgement the page makes, and it is a fact about itself, not a claim about
+  who may do what;
+- everything else gets the four-status control, and the server's answer is what the
+  page shows. A refusal names the role it wanted ("…needs the maintainer role or
+  above"), which is the sentence the reader has to act on.
+
 ---
 
 ## 6. Out of scope, deliberately

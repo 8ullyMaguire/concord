@@ -5,8 +5,8 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · 943 Go tests across
-9 test-bearing packages · 269 e2e tests in 19 suite files · 7/7 UI mutants killed ·
+**Measured state:** schema 25 · 25 migrations · 79 live tables · 962 Go tests across
+9 test-bearing packages · 271 e2e tests in 19 suite files · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
@@ -444,7 +444,7 @@ And the seed that proves §16 at all is built so **alphabetical and rating order
 disagree completely** (`aaaa first` is best, `zzzz last` is worst). Without that, an
 unranked implementation and a correctly ranked one render identically.
 
-882 Go tests. `make verify` and `make e2e` green.
+882 Go tests. `make verify` and `make e2e` green. (historical)
 
 ---
 
@@ -496,7 +496,7 @@ for both sections while both tabs were correct. The second is the general lesson
 **searching backwards from a label with a character budget is a guess; find the element
 by an attribute and inspect its own tag.**
 
-882 Go tests. `make verify` and `make e2e` green.
+882 Go tests. `make verify` and `make e2e` green. (historical)
 
 ---
 
@@ -572,7 +572,7 @@ the request. And one session means one database, so `_reset()` puts the board ba
 each test: the suite is *about* moving cards, and a fixture that cannot be restored makes
 every test after the first order-dependent.
 
-882 Go tests. `make verify` and `make e2e` green.
+882 Go tests. `make verify` and `make e2e` green. (historical)
 
 ---
 
@@ -614,7 +614,7 @@ reaching the page: the helper looked up a card id **before creating any card**
 then looked it up by title, on a table where `features.title` is not unique. **Name a row
 you just created by the handle the INSERT returned, never by a title.**
 
-882 Go tests. `make verify` and `make e2e` green.
+882 Go tests. `make verify` and `make e2e` green. (historical)
 
 ---
 
@@ -737,8 +737,8 @@ Three `wait_for_timeout` calls remain in e2e, all marked `BOUNDED (justified)` b
 §11 and everything above it are history. §1, §4 and §11 are marked superseded; this
 section is the current answer, and like §11 every line was checked against the code.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · **943 Go tests** across
-9 test-bearing packages · **269 e2e tests in 19 suite files** · 7/7 UI mutants killed ·
+**Measured state:** schema 25 · 25 migrations · 79 live tables · **962 Go tests** across
+9 test-bearing packages · **271 e2e tests in 19 suite files** · 7/7 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 ### 12.1 How the remaining work was found (it was not in any tracker)
@@ -1524,6 +1524,7 @@ that `requireRole` cannot say which role it wanted.
    the codebase answers `permission denied`, so a page can report that a write was
    refused and not why. Worth a store-side message with the required role in it, and
    it touches every guarded route, which is why it is recorded rather than done here.
+   **Closed by §18.2.**
 2. **A standalone composite-rank view** (§16.6 item 1) stays open, and this pass's
    measurement says what it really is: `POST /rank/composite` HAS a reader — the
    criteria table is built from one request — so the gap is not "no reader" but "no
@@ -1532,6 +1533,176 @@ that `requireRole` cannot say which role it wanted.
    maintainer, so `withdrawn` is recorded by a maintainer on the objector's behalf,
    and §55's "the bar is no unresolved principled objection" can only be cleared by
    someone else. Needs a route and a reader; deferred with the reason stated.
+   **Closed by §18.1** — no new route was needed, because the standing was the wrong
+   shape rather than the surface.
 4. **`check_doc_numbers.py` still cannot see a qualified test count** (§14.6 item 7).
+   **Closed by §18.3** — and the number it could not see was itself two passes stale.
 5. Deliberate, unchanged: `admin-ledger` and `metrics` have no UI; the criteria page
+   defers pair suggestion, a per-criterion leaderboard and deleting a criterion.
+---
+
+## 18. 2026-10-16 (sixth pass): the blocker withdraws, and the refusal says what it wanted
+
+Two entries from §17.5, plus the one that kept the tracker's own numbers invisible.
+
+### 18.1 §6.6 says "the blocker withdraws". The blocker could not.
+
+The spec's remedy for a block has two branches and only one of them was reachable:
+
+> **Resolving a block:**
+> - The author amends the solution and the blocker withdraws or converts, or
+> - **Override:** a second window where ≥ 80% of non-abstain participants vote to
+>   override, with the objector's remedy answered in writing.
+
+`PUT /consensus/objections/{id}/resolve` required the maintainer role for all four
+statuses, `withdrawn` included. So the first branch of §6.6's remedy needed the
+objector to ask a maintainer to drop their block — and a maintainer to agree — or a
+second consensus window with an 80% override. The person whose proposal was blocked
+was, in practice, the one who had to clear it.
+
+**The rule now depends on the outcome, not only on the route.** `resolved`,
+`overridden` and `vetoed` are findings about somebody else's work and still need a
+maintainer; `withdrawn` needs only to be the account that raised the objection:
+
+```go
+func objectionOutcomeNeedsMaintainer(obj store.Objection, actorID int64, status string) bool {
+	if status == "withdrawn" && obj.UserID != 0 && obj.UserID == actorID {
+		return false
+	}
+	return true
+}
+```
+
+Three things this deliberately does NOT do:
+
+- **It does not let the objector do anything else.** A verdict on their own block is
+  still refused (`TestAnObjectorCannotResolveTheirOwnObjection`), and so is a bystander
+  withdrawing somebody else's (`TestSomebodyElseCannotWithdrawAnObjection`).
+- **It does not require membership.** Creating an objection has never needed a role —
+  any signed-in account may block — so withdrawing one asks for less: being the
+  account that raised it. A rule that asked for membership would leave an objection
+  standing that only a maintainer could drop, which is the bug being fixed.
+- **It does not move the check into the store.** Roles stay in the handler beside
+  `requireRole`; the store's rule is the vocabulary and the reason
+  (§17.3). The pure function is what the table test pins, including the case where an
+  unknown author (`user_id 0`) must not match an unknown actor.
+
+The page follows the server rather than guessing at it: an objection the reader raised
+gets a **Withdraw this objection** control (one status, reason required) and the
+four-status control is not shown, because the server refuses the objector all four of
+those. Everything else gets the four-status control and the server's answer. The one
+thing the page decides for itself is whether the objection is *the reader's* — a fact
+about its own session, which it can read, and not a claim about standing, which it
+cannot.
+
+### 18.2 The refusal said "permission denied" and not which permission
+
+`requireRole` returned a bare `store.ErrPerm` for every gate, so a page could report
+that a write was refused and never why. The rest of this codebase had already rejected
+that shape once — the self-vote refusal answers *"you proposed one of these features"*
+with a `detail` field, and its test says why: *"A bare 'permission denied' for an
+action the interface offered is indistinguishable from a bug to whoever hit it."*
+
+`roleRefusal` wraps `store.ErrPerm` (so `mapError` still answers 403 and every
+`errors.Is` check keeps working) and names the role:
+
+```
+permission denied: this action needs the maintainer role or above
+```
+
+`TestTheRefusalNamesTheRoleItWanted` exercises **two routes with different
+requirements** — the objection route (maintainer) and the weight-proposal route
+(contributor) — because a message naming a constant role passes a test that only ever
+hits one. The browser suite asserts the sentence reaches a reader.
+
+### 18.3 The gate could not see the number it was written for
+
+`scripts/check_doc_numbers.py` exists because a status line sat
+`schema 19, 73 tables, 443 tests` for weeks while nothing read the docs. Its test pattern was
+`(\d{3,4})\s+tests\b`, so `962 Go tests` — the form `REMAINING.md` actually uses —
+was invisible. Measured the moment the qualifier was accepted:
+
+```
+REMAINING.md:8:   says '943 Go tests' (test count); the tree has 962
+REMAINING.md:740: says '943 Go tests' (test count); the tree has 962
+```
+
+The tracker's own headline, two passes stale, in the file the gate reads. §17.5 called
+this "still cannot see a qualified test count"; it was worse than that — the number it
+could not see was wrong.
+
+Widening is not free, and both obvious widenings are wrong:
+
+- **"A dated section is a record"** would have exempted `REMAINING.md` §12, titled
+  *"What is left, 2026-10-15 — THIS IS THE LIVE TRACKER"*, i.e. the section holding the
+  numbers that must be right. Pinned by
+  `test_a_dated_section_is_not_exempt_by_its_date`.
+- **"A line containing 'was' is historical"** was tried once and exempted the whole
+  file (§ the gate's own docstring).
+
+So the gate has exactly three exemptions, and COUNTS each one in its output:
+
+| exemption | why |
+|---|---|
+| a markdown table row | `HANDOFF.md`'s was/now table must keep its *Was* column |
+| the literal `(historical)` | each pass section ends with the numbers that pass measured; four lines now carry the marker |
+| a number inside quotes, or inside a fenced block | the docs *discuss* stale numbers and quote command output. `"902 Go tests"` in a sentence about this gate is a quotation; so is the block below, which is this gate's own output |
+
+`OK 14 measured number(s) across docs/ agree with the tree ; exempted 9 quoted or
+fenced, 5 table row or (historical)`. The exemption counts are printed on the failure
+path too, because a gate that silently exemptions lines is a gate you cannot trust.
+
+The fence exemption ends with the fence
+(`test_a_number_after_a_closed_fence_is_still_compared`), because a marker that
+switched the gate off for the rest of a document would be a way to disable it by
+opening a code block.
+
+The `Go` qualifier is deliberately the only one accepted. `N e2e tests` is measured by
+pytest, and `make verify` must keep running without the browser toolchain;
+`tests/e2e/harness_selftest_test.py` already compares that number
+(`test_an_e2e_count_is_not_compared_against_the_go_count` pins the separation, which
+would otherwise flag a correct "269 e2e tests" against the Go count).
+
+### 18.4 Verification
+
+Seven mutations, each verified to turn a named test red, each applied to the tree,
+checked to COMPILE (or build, for the JS), and restored per mutation:
+
+| mutation | gate that fires |
+|---|---|
+| the objector's own withdrawal needs a maintainer again | `TestAnObjectorMayWithdrawTheirOwnObjection` |
+| nobody needs a maintainer for anything | `TestSomebodyElseCannotWithdrawAnObjection` |
+| the objector may record any outcome | `TestAnObjectorCannotResolveTheirOwnObjection` |
+| the refusal drops the role name | `TestTheRefusalNamesTheRoleItWanted` |
+| the page never recognises the reader's own objection | `test_the_objector_withdraws_their_own_objection` (browser) |
+| the doc gate stops accepting the `Go` qualifier | `test_catches_a_stale_qualified_go_test_count` |
+| the doc gate exempts any dated section | `test_a_dated_section_is_not_exempt_by_its_date` |
+
+`tests/e2e/readers_e2e.py` grew from 8 tests to 10, and its session fixture now writes
+**both** `concord.token` and `concord.user` — the consensus page compares the
+objection's author against the session's own id, so a token-only session reads as "not
+mine" and the withdrawal control never renders. That is the third time this fixture
+family has had to learn the same lesson (`taxonomy_e2e.py`'s proposer card, and the
+`apiAuth` call sites before it): **a signed-in fixture that does not say WHO is signed
+in tests the signed-out path.**
+
+### 18.5 What is left
+
+1. **A standalone composite-rank view** (§16.6 item 1, §17.5 item 2). §17.5
+   re-classified it and this pass confirms it: `POST /rank/composite` HAS a reader —
+   the criteria table is built from one request — so the gap is a page of its own, not
+   an unreachable endpoint. A feature, not a defect the reader gate can see.
+2. **A maintainer's own objection cannot be resolved by them** — which is the new rule
+   working, and worth stating as a consequence: a maintainer who blocks something and
+   then changes their mind withdraws; if the block stands and the author amends, the
+   verdict has to come from another maintainer. In a project with exactly one
+   maintainer, an objection that is not withdrawn cannot be resolved at all. §6.6's
+   override window is the escape hatch, and it needs the whole second window.
+3. **An override window has no route.** §6.6's second branch — "a second window where
+   ≥ 80% of non-abstain participants vote to override" — has no endpoint, no store
+   method and no page. The `overridden` status can be written by a maintainer's
+   decision alone. This is the largest remaining gap between §6.6's prose and the
+   product, and it is a feature with its own design questions (who opens the window,
+   what counts as the objector's remedy being answered), not a defect to patch.
+4. Deliberate, unchanged: `admin-ledger` and `metrics` have no UI; the criteria page
    defers pair suggestion, a per-criterion leaderboard and deleting a criterion.

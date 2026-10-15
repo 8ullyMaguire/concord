@@ -67,6 +67,71 @@ class DocNumbersGate(unittest.TestCase):
             r = run_gate()
         self.assertEqual(r.returncode, 0, "a historical table row must not be flagged")
 
+    def test_catches_a_stale_qualified_go_test_count(self):
+        # `"943 Go tests"` was invisible to the unqualified pattern while the
+        # unqualified `"955 tests"` beside it was gated, so REMAINING.md's own
+        # headline sat two passes behind the tree -- the exact failure this gate
+        # exists for, taking place inside the number it reads.
+        with self._doc_containing("All 111 Go tests pass.\n"):
+            r = run_gate()
+        self.assertEqual(r.returncode, 1, "a stale qualified count must fail")
+        self.assertIn("test count", r.stdout)
+        self.assertIn("Go tests", r.stdout)
+
+    def test_an_e2e_count_is_not_compared_against_the_go_count(self):
+        # The e2e total is measured by pytest, which `make verify` must not depend
+        # on; tests/e2e/harness_selftest_test.py compares that one. If this gate read
+        # it, a correct "269 e2e tests" would be flagged against 111 Go tests.
+        with self._doc_containing("A run collects 111 e2e tests in 19 suite files.\n"):
+            r = run_gate()
+        self.assertEqual(r.returncode, 0,
+                         "an e2e count must not be read as a Go test count")
+
+    def test_a_quoted_number_is_a_quotation_not_a_claim(self):
+        # The gate is discussed in the docs, and the discussion quotes numbers.
+        # Flagging them would mean the gate cannot be written about.
+        with self._doc_containing('It read "111 Go tests" before the fix.\n'):
+            r = run_gate()
+        self.assertEqual(r.returncode, 0, "a quoted number must not be flagged")
+
+    def test_a_number_inside_a_code_fence_is_a_quotation_not_a_claim(self):
+        # A fenced block holds command OUTPUT. REMAINING.md §18.3 quotes this gate's
+        # own stale output to explain why the patterns changed; rewriting it would
+        # destroy the evidence for the change.
+        with self._doc_containing("The gate printed:\n\n```\n111 Go tests\n```\n"):
+            r = run_gate()
+        self.assertEqual(r.returncode, 0, "a fenced quotation must not be flagged")
+
+    def test_a_number_after_a_closed_fence_is_still_compared(self):
+        # The fence exemption ends with the fence. Otherwise the marker would be a
+        # way to switch this gate off for the rest of a document.
+        with self._doc_containing(
+            "It printed:\n\n```\n2 migrations\n```\n\nand then 111 Go tests.\n"
+        ):
+            r = run_gate()
+        self.assertEqual(r.returncode, 1, "a claim after a closed fence must be read")
+
+    def test_the_historical_marker_exempts_a_recorded_number(self):
+        # Each pass section ends with the numbers that pass measured. They were true
+        # then and are not claims about this tree; `(historical)` is the marker that
+        # says so, and it is the only prose-shaped exemption the gate has.
+        with self._doc_containing(
+            "# Tracker\n\n## 11. What is left, 2026-01-01\n\n111 Go tests. (historical)\n"
+        ):
+            r = run_gate()
+        self.assertEqual(r.returncode, 0, "a marked record must not be flagged")
+
+    def test_a_dated_section_is_not_exempt_by_its_date(self):
+        # The obvious widening -- "a dated section is a record" -- would have exempted
+        # REMAINING.md's §12, whose title is "What is left, 2026-10-15 -- THIS IS THE
+        # LIVE TRACKER", i.e. the section holding the numbers that must be right.
+        with self._doc_containing(
+            "# Tracker\n\n## 11. What is left, 2026-01-01\n\n111 Go tests.\n"
+        ):
+            r = run_gate()
+        self.assertEqual(r.returncode, 1,
+                         "a date in a heading must not exempt the number under it")
+
     def test_a_subset_count_is_not_a_finding(self):
         # "0008 rebuilds 23 tables" is a correct subset claim, not a stale total.
         # A gate that flags it trains you to route around it.

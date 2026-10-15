@@ -5,7 +5,7 @@ For the implementing agent taking over from here. Read this, then
 then `docs/ARCHITECTURE.md`. `docs/PLAN.md` covers the pre-r4 milestones (all
 complete) and `docs/concord-spec.md` is superseded — do not plan from either.
 
-**What is left is `docs/REMAINING.md` §17.5** (measured 2026-10-16). Everything
+**What is left is `docs/REMAINING.md` §18.5** (measured 2026-10-16). Everything
 before it in that file is history, and §1/§4/§11 are explicitly marked superseded —
 §11's "nothing else is outstanding" was verified by hand and was wrong twice over. If
 a tracker and the tree disagree, the tree wins and the tracker is the bug.
@@ -36,7 +36,7 @@ store tests and no page.
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 955 tests, schema 25, 79 tables,
+Measured, not remembered: `make verify` green, 962 tests, schema 25, 79 tables,
 25 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 

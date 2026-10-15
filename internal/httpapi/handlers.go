@@ -1503,6 +1503,30 @@ func (s *Server) handleCreateObjection(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, obj)
 }
 
+// objectionOutcomeNeedsMaintainer reports whether recording `status` against `obj`
+// by `actorID` needs the maintainer role.
+//
+// §6.6 gives an objection one owner and one outcome that is theirs: the objector may
+// WITHDRAW their own objection and may not do anything else with it. The other three
+// statuses are findings about somebody else's work -- resolved, overridden, vetoed --
+// and the person whose proposal was blocked is not the judge of whether the block was
+// fair. Requiring a maintainer to withdraw a block its holder no longer holds is the
+// mirror of the same mistake: it asks the objector to ask the person they blocked to
+// drop it for them, so a blocker who changes their mind cannot free the proposal.
+//
+// Everything else needs a maintainer, including a withdrawal by anyone who is not the
+// objector.
+//
+// `obj.UserID != 0` is not decoration: a row whose author is unknown (0) must not
+// match a caller whose actor id is also 0, or an unauthenticated request that reached
+// this point would stand in for the objector.
+func objectionOutcomeNeedsMaintainer(obj store.Objection, actorID int64, status string) bool {
+	if status == "withdrawn" && obj.UserID != 0 && obj.UserID == actorID {
+		return false
+	}
+	return true
+}
+
 func (s *Server) handleResolveObjection(w http.ResponseWriter, r *http.Request) {
 	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
 	if getActorID(r) == 0 {
@@ -1520,16 +1544,23 @@ func (s *Server) handleResolveObjection(w http.ResponseWriter, r *http.Request) 
 		mapError(w, err)
 		return
 	}
-	if err := s.requireRole(call.ProjectID, "maintainer", r); err != nil {
-		mapError(w, err)
-		return
-	}
 	var req struct {
 		Status     string `json:"status"`
 		Resolution string `json:"resolution"`
 	}
+	// The body is read BEFORE the standing check, because the standing this action
+	// needs depends on the outcome asked for: the objector withdrawing their own is
+	// not a maintainer action. Reading it first is the only order that can ask
+	// "who may record THIS outcome" -- and nothing is written either way until both
+	// the standing and the store's own rules have passed.
 	if !readJSON(w, r, &req) {
 		return
+	}
+	if objectionOutcomeNeedsMaintainer(obj, getActorID(r), req.Status) {
+		if err := s.requireRole(call.ProjectID, "maintainer", r); err != nil {
+			mapError(w, err)
+			return
+		}
 	}
 	if err := s.Store.ResolveObjection(r.Context(), id, req.Status, req.Resolution); err != nil {
 		mapError(w, err)
@@ -2076,6 +2107,25 @@ var roleHierarchy = map[string]int{
 	"owner":       5,
 }
 
+// roleRefusal is store.ErrPerm with the role it wanted written into the message.
+//
+// Every gate in the codebase answered a bare "permission denied", so a page could
+// report that a write was refused and never why -- and an action the interface
+// offered, refused without a reason, is indistinguishable from a bug to whoever hit
+// it. The self-vote refusal already names its reason ("you proposed one of these
+// features"); this is the same rule for standing, which is the other thing the
+// interface cannot see.
+//
+// It wraps store.ErrPerm, so mapError still answers 403 and every existing
+// errors.Is(err, store.ErrPerm) check keeps working.
+type roleRefusal struct{ minRole string }
+
+func (e *roleRefusal) Error() string {
+	return fmt.Sprintf("permission denied: this action needs the %s role or above", e.minRole)
+}
+
+func (e *roleRefusal) Unwrap() error { return store.ErrPerm }
+
 // requireRole returns an error if the actor's role in the project
 // is below the minimum required role. Returns nil if authorized.
 func (s *Server) requireRole(projectID int64, minRole string, r *http.Request) error {
@@ -2093,7 +2143,7 @@ func (s *Server) requireRole(projectID int64, minRole string, r *http.Request) e
 		minRank = 2 // default to contributor
 	}
 	if actorRank < minRank {
-		return store.ErrPerm
+		return &roleRefusal{minRole: minRole}
 	}
 	return nil
 }

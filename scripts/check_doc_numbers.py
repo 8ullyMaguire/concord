@@ -21,15 +21,25 @@ document claiming a feature exists is a claim about code; this cannot settle tha
 and pretending otherwise would make the gate cry wolf. `check_spec_drift.py`
 covers the other doc-shaped failure (citing a superseded spec as authority).
 
-## Historical tables are exempt, by section
+## Three kinds of line are exempt, and each is reported
 
-`HANDOFF.md` carries a "what changed since this page was written" table quoting the
-OLD numbers on purpose -- "62 tests pass" is the *Was* column, and rewriting it
-would destroy the record. So a number inside a markdown table row, or on a line that
-explicitly marks itself historical, is skipped rather than compared.
+1. **A markdown table row.** `HANDOFF.md` carries a "what changed since this page was
+   written" table quoting the OLD numbers on purpose -- "62 tests pass" is the *Was*
+   column, and rewriting it would destroy the record.
+2. **A line that marks itself historical** with the literal `(historical)`. The
+   pass sections in `REMAINING.md` each end with the numbers that pass measured
+   ("882 Go tests. `make verify` and `make e2e` green."), which were true when they
+   were written and are not claims about this tree. The marker is what tells the two
+   apart; prose alone cannot, and every attempt to infer it from phrasing has been
+   wrong in both directions.
+3. **A number inside quotes or a code fence** -- backticks, double quotes, or a fenced
+   block. `"902 Go tests"` in a sentence about the pattern is a quotation of a number,
+   not an assertion of one, and a fenced block holds command output that was true when
+   it was captured -- this tracker quotes the gate's own stale output to explain why
+   the gate changed.
 
-The skip is narrow and stated in the failure output, because a gate that silently
-exemptions lines is a gate you cannot trust.
+Each exemption is COUNTED and printed in both the OK line and the failure output,
+because a gate that silently exemptions lines is a gate you cannot trust.
 
 ## Usage
 
@@ -116,16 +126,52 @@ def go_test_count() -> int:
 def is_historical(line: str) -> bool:
     """True when a line is quoting a past state rather than asserting the present.
 
-    Only a markdown table row qualifies. `HANDOFF.md` records old numbers in a
-    was/now table and rewriting them would destroy the record.
+    A markdown table row (`HANDOFF.md`'s was/now table, whose *Was* column must keep
+    the old numbers), or a line carrying the literal marker `(historical)`.
 
     NOT a substring test for "was". The first version did that, and it exempted
     every line in docs/ containing the word -- including the ones the gate exists
     to check -- so the gate reported `OK 0 measured numbers` and guarded nothing.
     A stale number lives in prose far more often than in a table, so exempting
     prose exempts exactly what matters.
+
+    NOT "any dated section" either. `REMAINING.md`'s §12 is titled "What is left,
+    2026-10-15 -- THIS IS THE LIVE TRACKER", so a date is not a signal that a section
+    records rather than claims; the live tracker would have been the exempt one.
     """
-    return line.lstrip().startswith("|")
+    return line.lstrip().startswith("|") or HISTORICAL_MARKER in line
+
+
+# The literal a line uses to say "this is a record, not a claim". Deliberately a
+# marker and not a phrase: `REMAINING.md` argues at length about what its numbers
+# used to be, so any prose-shaped exemption would exempt the argument itself.
+HISTORICAL_MARKER = "(historical)"
+
+
+def is_fence(line: str) -> bool:
+    """True for a line that opens or closes a fenced code block.
+
+    A fenced block is a quotation too, and the one place a document holds command
+    OUTPUT rather than prose: `REMAINING.md` §18.3 quotes this gate's own stale output
+    to explain why the patterns below changed. Inside the fence those numbers are the
+    record of what it printed; the fix is not to rewrite them.
+    """
+    return line.lstrip().startswith("```")
+
+
+def is_quoted(line: str, start: int, end: int) -> bool:
+    """True when the matched span sits inside backticks or double quotes.
+
+    A number in quotes is being quoted. `"902 Go tests"` appears in a sentence about
+    this gate's blind spot, and flagging it would mean the gate cannot be written
+    about -- the same shape as the "was" bug, where the fix was to stop guessing.
+    """
+    for i in range(start - 1, -1, -1):
+        if line[i] in "`\"":
+            # Look for the closing character after the span; an unbalanced quote
+            # before the match is a markdown artefact, not a quotation.
+            return line[i] in line[end:]
+    return False
 
 
 def build_checks(facts: dict) -> list:
@@ -159,8 +205,22 @@ def build_checks(facts: dict) -> list:
             )
         )
     if facts.get("tests") is not None:
+        # The `Go` qualifier is optional and deliberately the ONLY one accepted.
+        # `"943 Go tests"` was invisible to the unqualified pattern while the
+        # unqualified `"955 tests"` beside it was gated -- so `docs/REMAINING.md`'s
+        # own headline sat at 943 for two passes, which is the failure this gate
+        # exists for, taking place inside the number it reads.
+        #
+        # `N e2e tests` does NOT match (the qualifier has to be `Go`), because the e2e
+        # count is measured by pytest and
+        # `tests/e2e/harness_selftest_test.py` already compares it; this gate must
+        # keep running under `make verify` without the browser toolchain.
         checks.append(
-            (re.compile(r"\b(\d{3,4})\s+tests\b"), "test count", "tests")
+            (
+                re.compile(r"\b(\d{3,4})\s+(?:Go\s+)?tests\b"),
+                "test count",
+                "tests",
+            )
         )
     return checks
 
@@ -184,25 +244,41 @@ def main() -> int:
 
     findings = []
     scanned = 0
+    # Exemptions are counted per class and reported, never applied silently.
+    exempt = {"table row or (historical)": 0, "quoted or fenced": 0}
     for name in sorted(os.listdir(DOCS)):
         if not name.endswith(".md"):
             continue
         path = os.path.join(DOCS, name)
+        in_fence = False
         with open(path) as fh:
             for lineno, line in enumerate(fh, 1):
-                if is_historical(line):
+                if is_fence(line):
+                    in_fence = not in_fence
                     continue
                 for pattern, label, key in checks:
                     expected = facts.get(key)
                     if expected is None:
                         continue
                     for m in pattern.finditer(line):
+                        if is_historical(line):
+                            exempt["table row or (historical)"] += 1
+                            continue
+                        if in_fence or is_quoted(line, m.start(), m.end()):
+                            exempt["quoted or fenced"] += 1
+                            continue
                         scanned += 1
                         if int(m.group(1)) != expected:
                             findings.append(
                                 f"{name}:{lineno}: says {m.group(0)!r} "
                                 f"({label}); the tree has {expected}"
                             )
+    exemption_note = (
+        "; exempted "
+        + ", ".join(f"{n} {k}" for k, n in sorted(exempt.items()))
+        if any(exempt.values())
+        else ""
+    )
 
     if scanned == 0:
         # A run that examined nothing must not report agreement. The first version
@@ -222,14 +298,16 @@ def main() -> int:
         for f in findings:
             print(f"  {f}")
         print(
-            "\n  Fix the number, or mark the line historical (a table row) if it is "
-            "quoting a past state."
+            "\n  Fix the number, or mark the line historical -- a table row, or the "
+            "literal (historical) -- if it is quoting a past state" + exemption_note
         )
         return 1
 
     print(
         f"  OK  {scanned} measured number(s) across docs/ agree with the tree "
-        f"(schema {facts['schema']}, {facts['migrations']} migrations"
+        + exemption_note
+        + " ("
+        + f"schema {facts['schema']}, {facts['migrations']} migrations"
         + (f", {facts['tables']} tables" if facts["tables"] is not None else "")
         + (f", {facts['tests']} tests" if facts["tests"] is not None else "")
         + ")"

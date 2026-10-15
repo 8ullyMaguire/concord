@@ -33,6 +33,7 @@ the endpoints under test cannot fail for the reason it exists.
 
 import base64
 import hashlib
+import json
 import sqlite3
 import tempfile
 import time
@@ -64,20 +65,30 @@ def browser(server):
         yield p.chromium.launch(headless=True)
 
 
-def _context(browser, token=None):
+def _context(browser, session=None):
     _xff_counter["n"] += 1
     n = _xff_counter["n"]
     ctx = browser.new_context(
         extra_http_headers={"X-Forwarded-For": f"10.67.{n // 200}.{n % 200}"})
-    if token:
-        ctx.add_init_script("localStorage.setItem('concord.token', %r);" % token)
+    if session:
+        token, uid, username = session
+        # BOTH keys, which is what auth.js stores. The consensus page compares an
+        # objection's author against the session's own id to decide whether to offer
+        # the reader their own control (withdraw) or the maintainer's (resolve), so a
+        # token-only session reads as "not mine" and the withdrawal control never
+        # renders. Same trap as taxonomy_e2e.py's proposer card.
+        ctx.add_init_script(
+            "localStorage.setItem('concord.token', %r);"
+            "localStorage.setItem('concord.user', %r);"
+            % (token, json.dumps({"id": uid, "username": username})))
         ctx.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
     return ctx
 
 
-def _mint_token(db, username):
-    """A token row for `username`, the way the login handler would write one.
+def _session(db, username):
+    """The two things the sign-in form stores for `username`: (token, id, user).
 
+    The token row is written the way the login handler writes one.
     api_tokens.token_hash is base64 RawStd of the sha256 digest, not hex, and
     ResolveToken rejects anything that does not start with `clt_`.
     """
@@ -91,15 +102,22 @@ def _mint_token(db, username):
         (base64.b64encode(digest).decode().rstrip("="), uid, time.time(), time.time()))
     con.commit()
     con.close()
-    return raw
+    return raw, uid, {"id": uid, "username": username}
 
 
 def _page(browser, db, username=None):
-    ctx = _context(browser, _mint_token(db, username) if username else None)
+    ctx = _context(browser, _session(db, username) if username else None)
     pg = ctx.new_page()
     errors = []
-    pg.on("pageerror", lambda e: errors.append(str(e)))
-    pg.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+    pg.on("pageerror", lambda e: errors.append("PAGEERROR: " + str(e)))
+    # A deliberate 4xx is a FAILED SUBRESOURCE to the browser, and two of the tests
+    # below ask the server for a refusal on purpose: the console line would be the
+    # expected outcome reported as an error. The status and the server's sentence are
+    # asserted where they belong -- on the control's own error region and in the
+    # database -- and this filter is the same one taxonomy_e2e.py uses for the same
+    # reason. A page error (`pageerror`) is never filtered.
+    pg.on("console", lambda m: errors.append("CONSOLE: " + m.text)
+          if m.type == "error" and "Failed to load resource" not in m.text else None)
     pg.errors = errors
     return ctx, pg
 
@@ -271,33 +289,151 @@ def test_a_maintainer_resolves_an_objection_on_the_call_page(browser, server):
 
 
 def test_a_contributor_is_told_why_they_cannot_resolve_an_objection(browser, server):
-    """The refusal is the server's, verbatim. The page does not claim to know who may
-    resolve one: it offers the control to any signed-in reader and reports the
-    answer, so this asserts the maintainer rule reaches a reader who is not one."""
+    """The refusal is the server's, verbatim, AND it names the role it wanted.
+
+    The page does not claim to know who may resolve one: it offers the control to any
+    signed-in reader who is not the objector and reports the answer. Every gate used
+    to answer a bare "permission denied", so this could only assert that a refusal
+    arrived; now the sentence says which role the action needs, which is the thing the
+    reader has to act on.
+    """
     db, base = server["db"], server["base"]
-    # Re-open the objection the previous test resolved, so this one has something to
-    # be refused about.
+    # Re-open the objection the previous tests dealt with, so this one has something
+    # to be refused about.
     con = sqlite3.connect(db)
     con.execute("UPDATE objections SET status = 'open', resolution = '' WHERE id = 1")
     con.commit()
     con.close()
 
-    ctx, pg = _page(browser, db, "readers-member")
+    # readers-author is a contributor who did NOT raise this objection: objection 1
+    # belongs to readers-member, so this reader gets the four-status control.
+    ctx, pg = _page(browser, db, "readers-author")
     try:
         pg.goto(base + "/projects/readers-e2e/consensus?call=1")
+        assert pg.locator("[data-objection-withdraw]").count() == 0, \
+            "the withdrawal control was offered to somebody who did not raise the objection"
         pg.locator("[data-objection-status]").first.select_option("overridden")
         pg.locator("[data-objection-reason]").first.fill("considered and set aside")
         pg.locator("[data-objection-resolve]").first.click()
         err = pg.locator("[data-objection-error]").first
         expect(err).to_be_visible()
-        # The wording is the store's generic ErrPerm ("permission denied"), not a
-        # role name: requireRole answers the same for every gate in the codebase, and
-        # the page does not translate it into a claim about who may resolve what. What
-        # this asserts is that the refusal REACHES the reader and that nothing was
-        # written -- a control that fails silently is the alternative.
-        assert "permission" in err.inner_text().lower(), err.inner_text()
+        text = err.inner_text()
+        assert "permission" in text.lower(), text
+        assert "maintainer" in text.lower(), \
+            f"the refusal does not name the role it wanted: {text!r}"
         status = _one(db, "SELECT status FROM objections WHERE id = 1")
         assert status == "open", f"a contributor's resolution was written: {status!r}"
+        assert not pg.errors, pg.errors
+    finally:
+        ctx.close()
+
+
+def test_the_objector_withdraws_their_own_objection(browser, server):
+    """The one outcome §6.6 leaves with the objector.
+
+    Withdrawal needed a maintainer, so a blocker who changed their mind had to ask the
+    person whose proposal they blocked to drop it for them -- and until somebody did,
+    §55's "no unresolved principled objection" bar stayed up against a proposal nobody
+    still objected to. The page shows the objector this control and not the four-status
+    one, because the server refuses them all four of those.
+    """
+    db, base = server["db"], server["base"]
+    con = sqlite3.connect(db)
+    con.execute("UPDATE objections SET status = 'open', resolution = '' WHERE id = 1")
+    con.commit()
+    con.close()
+
+    # The test's premise: objection 1 is readers-member's, so the session below IS
+    # the objector. A fixture that changed hands would otherwise make this test pass
+    # by testing the other branch.
+    author = _one(db, "SELECT user_id FROM objections WHERE id = 1")
+    author_name = _one(db, "SELECT username FROM users WHERE id = ?", (author,))
+    assert author_name == "readers-member", \
+        f"fixture problem: objection 1 belongs to {author_name!r}"
+    ctx, pg = _page(browser, db, "readers-member")
+    try:
+        pg.goto(base + "/projects/readers-e2e/consensus?call=1")
+        btn = pg.locator("[data-objection-withdraw]").first
+        expect(btn).to_be_visible()
+        assert pg.locator("[data-objection-status]").count() == 0, \
+            "the objector was offered the maintainer's control as well, which the " \
+            "server refuses them"
+        pg.locator("[data-objection-withdraw-reason]").first.fill("the export checkpoints now")
+        btn.click()
+        pg.wait_for_load_state("load")
+        expect(pg.locator(".objection-status").first).to_have_text("withdrawn")
+
+        status = _one(db, "SELECT status FROM objections WHERE id = 1")
+        reason = _one(db, "SELECT resolution FROM objections WHERE id = 1")
+        assert status == "withdrawn", f"objection status in the database is {status!r}"
+        assert reason == "the export checkpoints now", f"resolution stored as {reason!r}"
+        # The bar §55 is computed from, read from the call's own tally.
+        assert _one(db, "SELECT COUNT(*) FROM objections WHERE call_id = 1"
+                        " AND status = 'open'") == 0, "the withdrawal left the objection open"
+        assert not pg.errors, pg.errors
+    finally:
+        ctx.close()
+
+
+def test_the_objector_cannot_resolve_their_own_objection(browser, server):
+    """The other half of the same rule, and the one a page could get wrong by offering
+    one control for both: withdrawal is the objector's, the verdict is not. Signed in as
+    the author of a DIFFERENT objection, because the page now shows the objector only
+    the withdrawal control -- this asserts the server refuses them anyway, which is the
+    rule that has to hold when a client is wrong."""
+    db, base = server["db"], server["base"]
+    con = sqlite3.connect(db)
+    # TWO open objections: one this reader raised (so their own control is on the page)
+    # and one they did not (so the four-status control is too). Objection 1 is withdrawn
+    # by now, and a page renders no control for an objection that has an outcome.
+    mine_id = con.execute(
+        "SELECT id FROM users WHERE username = 'readers-author'").fetchone()[0]
+    theirs_id = con.execute(
+        "SELECT id FROM users WHERE username = 'readers-member'").fetchone()[0]
+    for uid, principle in ((mine_id, "Scope"), (theirs_id, "Portability")):
+        con.execute(
+            "INSERT INTO objections (call_id, user_id, principle, violation, remedy, status,"
+            " created_at) VALUES (1, ?, ?, 'it touches another project', 'split it',"
+            " 'open', ?)", (uid, principle, time.time()))
+    con.commit()
+    new_id = con.execute(
+        "SELECT id FROM objections WHERE user_id = ? ORDER BY id DESC LIMIT 1",
+        (mine_id,)).fetchone()[0]
+    con.close()
+
+    ctx, pg = _page(browser, db, "readers-author")
+    try:
+        pg.goto(base + "/projects/readers-e2e/consensus?call=1")
+        # Their own row carries the withdrawal control, and the FIRST objection (which
+        # is somebody else's) does not.
+        assert pg.locator(f"[data-objection-withdraw='{new_id}']").count() == 1, \
+            "the objector's own objection was not offered the withdrawal control"
+        assert pg.locator("[data-objection-withdraw='1']").count() == 0, \
+            "the withdrawal control was offered on somebody else's objection"
+        assert pg.locator("[data-objection-status]").count() >= 1, \
+            "the four-status control disappeared for a bystander's objection"
+
+        # The rule the server has to hold whatever the page shows: the objector's own
+        # token, the objector's own objection, a verdict asked for directly. A page
+        # that offered one control for both would send exactly this.
+        out = pg.evaluate(
+            """async (id) => {
+                const r = await fetch('/api/v1/projects/readers-e2e/consensus/'
+                    + 'objections/' + id + '/resolve', {
+                    method: 'PUT',
+                    headers: {'Content-Type': 'application/json',
+                              Authorization: 'Bearer ' + localStorage.getItem('concord.token')},
+                    body: JSON.stringify({status: 'resolved', resolution: 'I decide my own block'})
+                });
+                return {status: r.status, body: await r.text()};
+            }""", new_id)
+        assert out["status"] == 403, \
+            f"the objector recorded a verdict on their own objection: {out}"
+        assert "maintainer" in out["body"].lower(), \
+            f"the refusal does not name the role it wanted: {out['body']!r}"
+        status = _one(db, "SELECT status FROM objections WHERE id = ?", (new_id,))
+        assert status == "open", f"a refused self-verdict was written anyway: {status!r}"
+        assert not pg.errors, pg.errors
     finally:
         ctx.close()
 
