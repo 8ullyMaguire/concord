@@ -35,31 +35,106 @@ def read(name):
         return f.read()
 
 
-def test_every_suite_is_collected_by_a_directory_run():
-    """`pytest tests/e2e` must collect BOTH browser suites, not just the one
-    whose filename happens to match.
+def collect_suites():
+    """Run a real directory-level collection and return (per-file counts, total).
 
-    Asserted by running pytest --collect-only and reading which files appear,
-    because "the run was green" is not the question; "did the Finder tests run"
-    is. It used to collect 35 and pass, silently skipping 38.
+    The subprocess is the measurement. Reading pytest.ini and reasoning about
+    fnmatch patterns would re-implement pytest's discovery and disagree with it
+    the first time either changes.
     """
     out = subprocess.run(
         [sys.executable, "-m", "pytest", "tests/e2e", "--collect-only", "-q"],
-        cwd=REPO, capture_output=True, text=True, timeout=120).stdout
-    for suite in ("e2e_test.py", "finder_e2e.py", "project_panels_e2e.py",
-                    "harness_selftest_test.py"):
-        assert suite in out, (
-            f"{suite} contributed no tests to a directory-level run -- it matches "
-            f"neither of pytest's default patterns and is absent from "
-            f"pytest.ini's python_files. Its tests would be silently skipped.")
-    # And a real count, so a suite that collects one trivial test still fails.
-    m = re.search(r"(\d+) tests? collected", out)
-    assert m, f"pytest --collect-only printed no count:\n{out[-2000:]}"
-    total = int(m.group(1))
-    assert total >= 88, (
-        f"only {total} tests collected across all suites; expected >= 88 "
-        f"(35 site + 38 finder + 10 project panels + 5 harness). A drop means a "
-        f"suite lost tests.")
+        cwd=REPO, capture_output=True, text=True, timeout=180)
+    if out.returncode != 0:
+        raise AssertionError(
+            "pytest --collect-only exited %d, so the collection below is not a "
+            "measurement of anything:\n%s\n%s"
+            % (out.returncode, out.stdout[-2000:], out.stderr[-2000:]))
+    counts = {}
+    for line in out.stdout.splitlines():
+        if line.startswith("tests/e2e/") and "::" in line:
+            name = line.split("::", 1)[0].rsplit("/", 1)[-1]
+            counts[name] = counts.get(name, 0) + 1
+    m = re.search(r"(\d+) tests? collected", out.stdout)
+    assert m, f"pytest --collect-only printed no count:\n{out.stdout[-2000:]}"
+    return counts, int(m.group(1))
+
+
+def test_every_suite_is_collected_by_a_directory_run():
+    """`pytest tests/e2e` must collect EVERY suite in the directory.
+
+    The directory is the authority. The previous version of this test named four
+    suites by hand and asserted a total of >= 88, and both stayed true while five
+    suites -- feature, requests, lists, board, settings, 58 tests between them --
+    stopped being collected at all. `pytest tests/e2e` reported a pass over 152 of
+    210 tests. A hand-maintained list of what to check goes stale exactly the way
+    the thing it guards does, and this list went stale twice.
+
+    So: glob the directory, and require every `*_e2e.py` in it to contribute tests.
+    A suite that is not collectible fails the test that is about collectability.
+    """
+    suites = sorted(p.name for p in Path(__file__).parent.glob("*_e2e.py"))
+    assert suites, (
+        "no *_e2e.py files found next to this test: the glob is empty, so this "
+        "check would pass while examining nothing. Treat that as a failure.")
+    counts, total = collect_suites()
+
+    missing = [s for s in suites if counts.get(s, 0) == 0]
+    assert not missing, (
+        "these suites contributed no tests to a directory-level run -- they match "
+        "neither pytest's default patterns nor pytest.ini's python_files, so "
+        "`pytest tests/e2e` reports a pass while silently skipping them: "
+        + ", ".join(missing) + f"\ncollected: {sorted(counts)}")
+
+    # And a per-file floor, so a suite that collects one trivial test still fails.
+    # Per-file rather than a single global total: a total can be held up by one
+    # large suite while another loses every test it has, which is the failure this
+    # test exists for.
+    thin = {s: n for s, n in counts.items() if n < 3}
+    assert not thin, (
+        f"these suites collected fewer than 3 tests each: {thin}. A suite that "
+        f"collects one test is a suite that has lost its tests.")
+
+
+def test_the_documented_e2e_counts_are_the_measured_ones():
+    """The tracker's e2e numbers must be numbers this tree actually has.
+
+    `docs/REMAINING.md` stated "174 e2e tests in 10 suites" while the tree held 210
+    in 13 -- and the Go test count beside it was gated by
+    `scripts/check_doc_numbers.py` the whole time. A number that no gate reads is a
+    number that is wrong within the session it is written in.
+
+    Checked here rather than in check_doc_numbers.py because the measurement needs
+    pytest, and `make verify` must not start depending on the e2e toolchain. This
+    test already runs under pytest and already collects the suites.
+    """
+    suites = sorted(p.name for p in Path(__file__).parent.glob("*_e2e.py"))
+    counts, total = collect_suites()
+
+    doc = open(os.path.join(REPO, "docs", "REMAINING.md")).read()
+    m = re.search(r"(\d+)\s+e2e tests?\s+in\s+(\d+)\s+suite files?", doc)
+    assert m, (
+        "docs/REMAINING.md no longer states an e2e count in the form "
+        "'N e2e tests in M suite files', so nothing ties this measurement to the "
+        "tracker. Restore the sentence or re-point this check.")
+    stated_tests, stated_suites = int(m.group(1)), int(m.group(2))
+    # The suite count is the number of files that CONTRIBUTED tests, read off the
+    # collection rather than counted in the directory: `e2e_test.py` and
+    # `harness_selftest_test.py` do not match `*_e2e.py`, so a directory count and a
+    # collection count differ by two and neither is obviously "the" number. The
+    # measured one is the one with tests in it.
+    assert stated_suites == len(counts), (
+        f"docs/REMAINING.md says {stated_suites} e2e suite files; a directory-level "
+        f"run collects tests from {len(counts)}: {sorted(counts)}")
+    assert stated_tests == total, (
+        f"docs/REMAINING.md says {stated_tests} e2e tests; a directory-level run "
+        f"collects {total}")
+    # And the glob's suites must be a subset of what contributed, so this pair of
+    # assertions cannot both hold while a `*_e2e.py` file sits there uncollected
+    # (the case the test above reports in detail).
+    assert set(suites) <= set(counts), (
+        f"{sorted(set(suites) - set(counts))} are not collected at all")
+
 
 
 def test_the_two_browser_suites_cannot_share_one_pytest_process():
