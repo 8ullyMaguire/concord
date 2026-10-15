@@ -3,6 +3,31 @@
   <h1 class="page-title">Documents <span class="muted" style="color:var(--slate-500);font-weight:400;">&middot; {{.Slug}}</span></h1>
   <p class="page-subtitle">What this project is, what it must do, how it is being built, and why.</p>
 </div>
+
+<!--
+  The search box lives in the TEMPLATE, above the mount, and not inside
+  #project-documents: the mount's innerHTML is replaced wholesale on every render,
+  so a control placed inside it is destroyed the moment the page loads.
+
+  A GET form with a real `action`, so it works before the script does: the browser
+  puts `?q=` in the URL and the page reads it on load. That also makes a search a
+  SHAREABLE address rather than a transient DOM state, which is the same promise
+  `?kind=` and `?doc=` already make. (GET is the right method here for the opposite
+  reason project.js posts its forms: a search term in a URL is a link, and a password
+  in a URL is a leak.)
+-->
+<form id="doc-search" class="doc-search" role="search" method="get" action="">
+  <label class="form-label" for="doc-search-input">Search this project&rsquo;s documents</label>
+  <div class="doc-search-row">
+    <input id="doc-search-input" name="q" type="search" autocomplete="off"
+           placeholder="e.g. consent, content-addressed, quorum">
+    <button class="btn btn-primary" type="submit">Search</button>
+  </div>
+  <!-- The results note is a live region: a search result arrives without a
+       navigation, so a screen reader has to be told there is one. -->
+  <p class="form-note" data-search-status role="status" aria-live="polite"></p>
+</form>
+
 <div id="project-documents" aria-busy="true"></div>
 <script src="{{ asset "/assets/js/skeleton.js" }}"></script>
 <script>

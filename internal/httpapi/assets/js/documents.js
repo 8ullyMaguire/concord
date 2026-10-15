@@ -493,6 +493,123 @@
     });
   }
 
+  // ---------------------------------------------------------------- search
+  //
+  // GET /projects/{slug}/documents/search?q= is a real FTS5 index over the project's
+  // documents (bm25-ranked, with the hyphen fix in store.SearchDocuments) and it had
+  // NO CALLER: documents.js fetched the whole list and filtered it in the browser, and
+  // the page had no search input at all. So the corpus was searchable with curl and
+  // not from the site. Measured on the live instance: 1,087 documents, all invisible
+  // to a reader who did not already know which document to open.
+  //
+  // The response is a bare ARRAY of document objects -- not {results: [...]}, which is
+  // what the plan for this page guessed before anyone looked. Each hit carries its own
+  // `kind`, so a hit links to its own kind's page rather than the kind the reader
+  // happened to be browsing, and that is the one behaviour a client-side filter cannot
+  // reproduce: it can only ever search the kind you are already looking at.
+  function wireSearch(box, slug, state) {
+    var form = document.getElementById('doc-search');
+    var input = document.getElementById('doc-search-input');
+    if (!form || !input) return;   // a page without the box still works
+    var status = form.querySelector('[data-search-status]');
+    var seq = 0;
+    var timer = null;
+
+    function say(msg, bad) {
+      if (!status) return;
+      status.textContent = msg || '';
+      status.className = bad ? 'error-state' : 'form-note';
+    }
+
+    function column() {
+      return box.querySelector('.doc-list-col');
+    }
+
+    function restore() {
+      var col = column();
+      if (col) col.innerHTML = docList(state.ofKind, state.doc && state.doc.id);
+      say('');
+    }
+
+    function run(q) {
+      var mine = ++seq;
+      say('Searching…');
+      fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/documents/search?q=' +
+            encodeURIComponent(q) + '&limit=20', { headers: { Accept: 'application/json' } })
+        .then(function (r) {
+          return r.text().then(function (t) { return { status: r.status, text: t }; });
+        })
+        .then(function (res) {
+          // A slow answer to "consensus" must not land after "consensus vote".
+          if (mine !== seq) return;
+
+          if (res.status === 400) {
+            // A malformed FTS5 expression -- an unbalanced quote, a bare operator.
+            // The server says WHICH, and the list is left as it was rather than
+            // emptied: an empty list is a claim about the corpus, and "your query
+            // could not be parsed" is a different statement.
+            var why = 'the server could not parse that query';
+            try { why = JSON.parse(res.text).error || why; } catch (e) { /* not JSON */ }
+            say('The search could not run: ' + why, true);
+            return;
+          }
+          if (res.status !== 200) {
+            say('The search failed (' + res.status + '). The list below is unchanged.', true);
+            return;
+          }
+
+          var hits = [];
+          try { hits = JSON.parse(res.text) || []; } catch (e) { hits = []; }
+          hits.forEach(function (d) { d.__slug = slug; });
+          var col = column();
+          if (col) col.innerHTML = docList(hits, state.doc && state.doc.id);
+          say(hits.length
+            ? hits.length + (hits.length === 1 ? ' result' : ' results') +
+              ' for “' + q + '”'
+            : 'No document in this project matches “' + q + '”.');
+        })
+        .catch(function () {
+          if (mine === seq) say('The search could not reach the server.', true);
+        });
+    }
+
+    function go(q) {
+      // The address bar follows the box, so a search is a link somebody can send.
+      // replaceState rather than pushState: every keystroke pushing a history entry
+      // would make the back button walk backwards through the query one character at
+      // a time.
+      try {
+        var url = new URL(window.location.href);
+        if (q) { url.searchParams.set('q', q); } else { url.searchParams.delete('q'); }
+        window.history.replaceState(null, '', url.pathname + url.search);
+      } catch (e) { /* a browser without URL/history is not worth failing over */ }
+      if (!q) { restore(); return; }
+      run(q);
+    }
+
+    input.addEventListener('input', function () {
+      var q = input.value.trim();
+      if (timer) clearTimeout(timer);
+      // Debounced: one request per pause, not one per keystroke.
+      timer = setTimeout(function () { go(q); }, 300);
+    });
+
+    form.addEventListener('submit', function (ev) {
+      // Without this the browser navigates and the page reloads -- which still
+      // works (the load path reads ?q=), but loses the reading pane for no reason.
+      ev.preventDefault();
+      if (timer) clearTimeout(timer);
+      go(input.value.trim());
+    });
+
+    // A ?q= in the URL is a search somebody linked to.
+    var initial = new URLSearchParams(window.location.search).get('q');
+    if (initial) {
+      input.value = initial;
+      run(initial);
+    }
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
     var box = document.getElementById('project-documents');
     if (!box) return;
@@ -541,17 +658,24 @@
           doc = canonical || ofKind[0] || docs[0] || null;
         }
 
+        // The list column is ALWAYS rendered, even when the active kind has no
+        // documents. It used to be omitted in that case, and that is exactly where
+        // search results have to appear -- so a search on an empty kind would have
+        // had nowhere to draw and would have looked like a search that found nothing.
         box.innerHTML =
           '<div class="doc-layout">' +
           rail(kinds, { kind: kind, slug: slug }) +
           '<div class="doc-main">' +
-          (ofKind.length ? '<div class="doc-list-col">' + docList(ofKind, doc && doc.id) + '</div>' : '') +
+          '<div class="doc-list-col">' + docList(ofKind, doc && doc.id) + '</div>' +
           '<div class="doc-reader">' + reader(doc, slug) + '</div>' +
           '</div></div>';
 
         renderMarkdownNodes(box);
         if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
         wire(box, slug, doc || { body: '' });
+        // The state the search needs to put the kind list BACK: the hits replace the
+        // list column, and clearing the box has to restore what was there.
+        wireSearch(box, slug, { docs: docs, ofKind: ofKind, kind: kind, doc: doc });
       })
       .catch(function () {
         box.innerHTML = '<div class="empty-state"><div class="empty-state-icon">\u26A0\uFE0F</div>' +

@@ -1836,3 +1836,20 @@ fieldset legend {
 .dup-list li { color: var(--slate-600); }
 .dup-list a { color: var(--indigo); }
 .dup-score { color: var(--slate-400); font-variant-numeric: tabular-nums; }
+
+/* Documents search (§3 of the completion pass). The box sits above the document
+   layout rather than inside it: the layout is rebuilt on every render, and a control
+   inside it would be destroyed on load. */
+.doc-search { margin: 0 0 1.1rem; max-width: 44rem; }
+.doc-search-row { display: flex; gap: 0.5rem; align-items: stretch; }
+.doc-search-row input[type="search"] {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--slate-200);
+  border-radius: 6px;
+  font: inherit;
+  color: var(--ink);
+  background: #fff;
+}
+.doc-search .form-note { margin: 0.4rem 0 0; min-height: 1.1em; }
