@@ -5,7 +5,7 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state (the thirteenth pass, §26):** schema 29 · 29 migrations · 82 live tables · 1065 Go
+**Measured state (the fourteenth pass, §27):** schema 29 · 29 migrations · 82 live tables · 1066 Go
 tests across 9 test-bearing packages · 290 e2e tests in 21 suite files · 38/38 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 4 project.js, 3 settings.js, 3 feature.js) ·
 `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
@@ -2879,14 +2879,13 @@ route, the control on the feature page, and — found while building it — the 
 was missing (it took two bare ids and never checked they were in one project). Which UI should offer
 the extra link was a product question and §26 records the answer.
 
-**Three store methods with no caller anywhere and no test**, recorded rather than deleted:
-`GetMember`, `GetBoardCard`, and `ApplyProjectTag` (superseded by `ApplyExistingProjectTag` — the
-decision and its reason are in `internal/httpapi/projects.go:341`, which leaves the old function's
-doc comment reading as though it were still the live path). They are dead, and they are exactly the
-ambiguity that this sweep exists to resolve. **They were not deleted in this pass**: the first
-attempt was a scripted span removal and it took a neighbouring type definition with it. A bulk edit
-that must be verified by `go build` is the wrong tool for a cosmetic cleanup — delete them by hand,
-with `gofmt` and the suite as the check, or leave them named here.
+**Three store methods with no caller anywhere and no test** — `GetMember`, `GetBoardCard`, and
+`ApplyProjectTag` (superseded by `ApplyExistingProjectTag`; the decision is in
+`internal/httpapi/projects.go`). Recorded rather than deleted in §24, **deleted in §27** by hand, one
+at a time, with `gofmt` and the suite as the check. All three names were correct. §27 then replaced
+this hand-kept list with a measurement, because the list was a sample of a property nothing was
+measuring: the three were accurate and there were **twenty-four more methods that only tests could
+reach**, which a list of three cannot be right about in either direction.
 
 ### 24.8 Where the numbers stand after this pass
 
@@ -3178,12 +3177,148 @@ like this is worth making rather than documenting.
 
 ### 26.7 Where the numbers stand
 
-**Measured state:** schema 29 · 29 migrations · 82 live tables · 1065 Go tests · 290 e2e tests in 21
+**Measured state:** schema 29 · 29 migrations · 82 live tables · 1066 Go tests · 290 e2e tests in 21
 suite files · 38/38 UI mutants · Go mutants: 18 arms, 127 killed, 0 survived · `make verify`,
 `make gates`, `make e2e` all exit 0.
 
+## 27. The store's exports had no inventory (2026-10-16)
+
+Spec `docs/specs/store-export-inventory-spec.md`, plan `docs/plans/store-export-inventory.md`, both
+written before any code.
+
+### 27.1 Why this pass exists
+
+Three passes in a row found the same defect — a complete store function with no production caller —
+and each found it **by accident**, by grepping for something else:
+
+| pass | found | how it surfaced |
+| --- | --- | --- |
+| §25 | `ThemeWeightTotal`, `feature_tags` with no INSERT, `strategic_themes.expires_at` never written | while building the themes UI |
+| §26 | `store.LinkComplaint`, complete since M2, no caller | while checking what §354 needed |
+
+`internal/httpapi/reader_coverage_test.go` closed that hole on the HTTP side: every registered route
+must be named in a declared inventory with a reader in `assets/js`, so a route nothing consumes fails
+a test instead of waiting for an accident. **The store had no equivalent, and both findings lived in
+the store.** §24.7 kept a three-name list by hand; a hand-kept list of a measurable property is wrong
+the moment the next file lands.
+
+### 27.2 The measurement
+
+`internal/store/export_inventory_test.go` walks every non-vendored `.go` file with `go/parser` and
+classifies every exported `*DB` method by what reaches it:
+
+- **LIVE** — a call from production code.
+- **TEST-ONLY** — a call only from `_test.go`. Exercised, so it looks alive in every test run, and
+  unreachable by anything a user does. **Both of the previous two passes' findings are this class**,
+  which is why it is separate from being dead.
+- **UNCALLED** — no call anywhere, not even a test.
+
+Three things make it a measurement rather than a plausible scan:
+
+1. **Only `SelectorExpr` nodes are counted.** A declaration `func (d *DB) Foo()` holds its name in a
+   `FuncDecl`, never as a selector, so counting selectors counts *references* and cannot mistake a
+   definition for a caller. It also catches calls inside the defining file — `GetBoard` calls
+   `GetBoardColumns` in `board.go`, and a scan that skips the defining file calls both of them dead.
+2. **It fails on a parse error** instead of skipping the file: a walker that silently skips what it
+   does not understand reports a smaller tree, and a smaller tree reads as fewer live callers.
+3. **Anchors run first.** `CreateFeature`, `GetBoard`, `ListFeatures` (from
+   `internal/httpapi/handlers.go`), `LinkComplaint` (from §26's new handler) and `AddAudit`
+   (in-package) must come back LIVE with the named file, so a broken walker fails loudly instead of
+   reporting a clean, wrong, all-dead tree.
+
+The first attempt at this measurement was **a text scan that called 249 of 254 methods uncalled**,
+among them `CreateFeature` and `GetBoard`: its lookbehind excluded a `.` before the name, and every
+call site in this tree is `s.Store.Name(...)`. A measurement wrong in the direction of noise is worse
+than none — it would have justified deleting half the store. The Go form was written because of it,
+and the anchors are what would have caught it.
+
+### 27.3 What it found
+
+Measured: **227 LIVE, 24 TEST-ONLY, 3 UNCALLED** out of 254 exported methods. §24.7's three names
+were exactly right — and were three of a class with twenty-seven members. The inventory in the test
+names every unreachable method **with the reason it stays**, grouped by the surface it belongs to,
+because the reason is the deliverable:
+
+- **Deleted in this pass (the three UNCALLED, each with a named replacement, one at a time by hand):**
+  `ApplyProjectTag` (the pre-taxonomy path: it called `ensureTag`, so attaching a tag to one project
+  could **mint an entry in the global taxonomy** — `ApplyExistingProjectTag` refuses an unknown tag,
+  which is the rule the taxonomy work settled on), `GetBoardCard` (nothing reads a single card;
+  `GetBoard` → `GetBoardCards` is the board page's path), `GetMember` (the live paths are
+  `GetRoleForProject` and `ListMembers`; the full record had no reader).
+- **The write half of a surface with no route** — the largest group, and the §25/§26 class at scale:
+  field reports have **one** route (`GET .../field-reports`) and no write, so the corpus can only be
+  empty while six store functions that would fill it are exercised by tests; `ConfirmCapability`
+  (nothing records a confirmation or dispute); `ConsentRecords` (nothing reads the consent ledger);
+  `SetPassword` (no password-change route); `CreateUser` (a fixture helper — production registers
+  through `RegisterUser`).
+- **A read half with no route:** `GetFeatureVotes`, `GetListEntryVotes` (`VoteListEntry` is routed,
+  its read is not, so nobody can see who voted on an entry), `GetListsByProject` and `ListArases`
+  (both the narrower predecessors of the functions the routes call, the second with the typo in its
+  name as the tell), `ListArenaVotes`, `NextArenaPair`, `ListCriterionRatings`, `RankByCriterion`,
+  `RecomputeArenaRatings`, `RemoveArenaEntry` (the criteria/priority arena's pairs have no route; the
+  live arena path is `CastArenaVote` over alternatives).
+- **A sweep with no scheduler:** `ExpireHolds` (confirms the vote for a hold that has lapsed —
+  nothing calls it, so a lapsed hold stays lapsed until someone looks).
+- **A twin:** `FindSimilar` and `UpsertEmbedding` are the entity-level forms of `FindSimilarField`
+  and `UpsertEmbeddingField`, which are what production reads; `DeleteEmbedding` has no caller at all,
+  so nothing removes a vector.
+
+The **deletion queue** (superseded, one store test each still reads through them, so they need the
+test ported rather than the method removed): `ListArases` → `ListProjectArases`,
+`GetListsByProject` → `GetListsByProjectForDisplay`. Named, not deleted, because the fix is a test
+edit and not a deletion.
+
+One private function is in the same position and **outside** the measurement's reach, because it is
+unexported: after `ApplyProjectTag` went, `ensureTag` is reached only from tests
+(`themes_test.go`, `expertise_test.go` seed tags through it). Recorded at the site.
+
+### 27.4 The gate, proved by firing it
+
+The inventory is a declaration the test checks the measurement against, in both directions: a method
+that is unreachable and unnamed fails, a `LIVE` method that carries an "unreachable" reason fails,
+an entry with an empty reason fails, and an entry naming a method that no longer exists fails (a
+ghost). All four were proved by execution, not by reading:
+
+- add an exported method nothing calls → `ExportedDeadProbe is UNCALLED and the inventory does not
+  name it`;
+- declare `GetBoard` unreachable → `GetBoard is LIVE (called from internal/httpapi/feeds_handlers.go)
+  but the inventory gives it a reason for being unreachable`;
+- empty one reason → `... is declared TEST-ONLY with no reason`;
+- delete the three methods without touching the inventory → three ghost failures (which is exactly
+  what happened when the deletions landed before the entries were dropped).
+
+`make gates` runs three mutants against it: a live method declared unreachable, a reason emptied, and
+**a walker that stops counting production callers** (which fails through the anchors). 3/3 killed.
+
+### 27.5 Named limits
+
+- Classification is by **name** over the AST. A call through reflection or a string would be
+  misclassified; the anchors are what would notice, and nothing in this tree does that.
+- The measurement covers **exported `*DB` methods** only. `ensureTag` above is the case that shows
+  what is outside: a private helper reached only by tests is invisible here, and is recorded at its
+  site instead.
+- A LIVE classification says *something in production names this method*, not that the caller is
+  reachable from a route a user can hit. `FeatureTallies` is LIVE because `scout.go` calls it; whether
+  the surface above it is built is a different question, and `reader_coverage_test.go` is the gate
+  that answers it for HTTP routes.
+
+### 27.6 What this changes about the three open items
+
+The two previous passes' headline findings were instances of a measured class with 27 members, 24 of
+which cannot be fixed by deletion and are now named with reasons. The tracker's "open items" list
+therefore grows a measured sub-list rather than three anecdotes, and the next pass can pick a surface
+(the field-report write half is the largest, with six store functions and one read route) instead of
+waiting to trip over the next one.
+
+### 27.7 Where the numbers stand
+
+**Measured state:** schema 29 · 29 migrations · 82 live tables · 1066 Go tests · 290 e2e tests in 21
+suite files · 38/38 UI mutants · Go mutants: 19 arms, 130 killed, 0 survived · store exports: 227
+LIVE, 24 TEST-ONLY (all named with reasons), 0 UNCALLED · `make verify`, `make gates`, `make e2e` all
+exit 0.
+
 **Still open, and named rather than implied:** Q2 (the sum), Q3 (the pain-side multiplier), §452's
-global themes, and the items §24.7 lists under its own heading — `LinkComplaint`'s missing route and
-the three store methods with no caller (`GetMember`, `GetBoardCard`, `ApplyProjectTag`). The last
-three are NOT touched here: a scripted span deletion already ate a neighbouring type once, and that
-is a by-hand edit with the suite as the check.
+global themes, and the items §24.7 lists under its own heading — `LinkComplaint`'s missing route (built in
+§26) and the three store methods with no caller (**deleted in §27**, which replaced the hand-kept
+list with a measurement: the three names were right, and there were twenty-four more only tests
+could reach).

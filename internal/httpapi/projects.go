@@ -338,7 +338,8 @@ type tagsRequest struct {
 // attribution was whatever the caller claimed. A tagged-by field is only
 // evidence if the server supplies it, so it now comes from the token.
 //
-// It auto-created tags that did not exist (ApplyProjectTag -> ensureTag), which
+// It auto-created tags that did not exist (it called ApplyProjectTag, which minted one via
+// ensureTag -- §27 deleted that function), which
 // made the global taxonomy a side effect of editing one project. §4.3 requires
 // suggest-before-create and quorum-ratified taxonomy changes, so tagging now
 // resolves an existing tag or fails with the proposal route named.

@@ -79,7 +79,7 @@ lands, which is why this file does not carry one)
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 1065 tests, schema 29, 82 tables,
+Measured, not remembered: `make verify` green, 1066 tests, schema 29, 82 tables,
 29 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 

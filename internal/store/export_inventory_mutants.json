@@ -1,0 +1,17 @@
+[
+ {
+  "name": "a live method is declared unreachable",
+  "old": "\t\"CreateUser\":                {testOnly, \"a fixture helper: production registers through RegisterUser (password hashing and the claim flow live there)\"},",
+  "new": "\t\"GetBoard\": {testOnly, \"deliberately wrong: GetBoard is LIVE and must be refused\"},\n\t\"CreateUser\":                {testOnly, \"a fixture helper: production registers through RegisterUser (password hashing and the claim flow live there)\"},"
+ },
+ {
+  "name": "an unreachable method loses its reason",
+  "old": "\t\"FindSimilar\":               {testOnly, \"the entity-level twin of FindSimilarField, which is what production reads through\"},",
+  "new": "\t\"FindSimilar\":               {testOnly, \"\"},"
+ },
+ {
+  "name": "the walker stops counting production callers",
+  "old": "\t\t\tif isTest {\n\t\t\t\tm.testFiles = append(m.testFiles, rel)",
+  "new": "\t\t\tif isTest || true {\n\t\t\t\tm.testFiles = append(m.testFiles, rel)"
+ }
+]

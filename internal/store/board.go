@@ -393,15 +393,6 @@ func (d *DB) boardColumnID(ctx context.Context, projectID int64, phase string) (
 	return id, err
 }
 
-func (d *DB) GetBoardCard(ctx context.Context, cardID int64) (BoardCard, error) {
-	var c BoardCard
-	err := d.QueryRowContext(ctx, `
-		SELECT bc.id, bc.project_id, bc.feature_id, b.phase, bc.entered_at
-		FROM board_cards bc LEFT JOIN board_columns b ON bc.column_id=b.id
-		WHERE bc.id=?`, cardID).Scan(
-		&c.ID, &c.ProjectID, &c.FeatureID, &c.Column, &c.EnteredAt)
-	if err != nil {
-		return BoardCard{}, err
-	}
-	return c, nil
-}
+// §27 deleted GetBoardCard here: a single card by id, which nothing read. The board page reads
+// GetBoard, which reads GetBoardCards -- and a read path that no route uses is one more place for
+// a rule to be applied inconsistently. docs/REMAINING.md §24.7 named it; the inventory measured it.

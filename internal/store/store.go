@@ -258,25 +258,10 @@ func (d *DB) GetRoleForProject(ctx context.Context, projectID, userID int64) (st
 	return role, nil
 }
 
-// GetMember returns the full membership record for a user in a project.
-func (d *DB) GetMember(ctx context.Context, projectID, userID int64) (Member, error) {
-	var m Member
-	err := d.QueryRowContext(ctx, `
-		SELECT project_id, user_id, role, is_moderator, joined_at
-		FROM members WHERE project_id = ? AND user_id = ?`,
-		projectID, userID).Scan(&m.ProjectID, &m.UserID, &m.Role, &m.IsModerator, &m.JoinedAt)
-	if errors.Is(err, sql.ErrNoRows) {
-		return Member{}, fmt.Errorf("%w: not a member of project", ErrNotFound)
-	}
-	if err != nil {
-		return Member{}, fmt.Errorf("load member: %w", err)
-	}
-	return m, nil
-}
-
-// ---------------------------------------------------------------- projects
-
-// ---------------------------------------------------------------- projects
+// §27 deleted GetMember here. It returned the full membership record, and nothing read one: the
+// live paths are GetRoleForProject (the role alone, above) and ListMembers (the settings panel's
+// list, which is where is_moderator and joined_at are actually rendered). It was named in
+// docs/REMAINING.md §24.7 three passes before store_export_inventory_test.go measured it.
 
 // ---------------------------------------------------------------- projects
 
@@ -638,30 +623,16 @@ func (d *DB) projectIDBySlug(ctx context.Context, slug string) (int64, error) {
 	return id, err
 }
 
-// ApplyProjectTag attaches a tag (creating it in the global namespace if
-// needed). Contributor-level permission is enforced upstream (spec §15).
-// appliedBy is the acting user's id, or 0 for "unknown" (stored as NULL).
-func (d *DB) ApplyProjectTag(ctx context.Context, slug, tag string, appliedBy int64) error {
-	id, err := d.projectIDBySlug(ctx, slug)
-	if err != nil {
-		return err
-	}
-	tagID, err := d.ensureTag(ctx, tag)
-	if err != nil {
-		return err
-	}
-	var appliedByArg any
-	if appliedBy > 0 {
-		appliedByArg = appliedBy
-	}
-	_, err = d.ExecContext(ctx, `
-		INSERT OR IGNORE INTO project_tags (project_id, tag_id, applied_by, created_at)
-		VALUES (?, ?, ?, ?)`, id, tagID, appliedByArg, float64(time.Now().Unix()))
-	if err != nil {
-		return err
-	}
-	return d.ReindexProject(ctx, id)
-}
+// §27 deleted ApplyProjectTag here: it called ensureTag, so attaching a tag to ONE project could
+// mint an entry in the GLOBAL taxonomy, and §4.3 requires suggest-before-create with a ratified
+// taxonomy change. ApplyExistingProjectTag (taxonomy.go) is the live path -- it resolves an
+// existing tag and refuses an unknown one, naming the proposal route -- and
+// internal/httpapi/projects.go carries the decision. Its doc comment here still read as though it
+// were the live path, which is the trap: the callers had moved and the comment had not.
+//
+// ensureTag survives with TEST callers only (themes_test.go, expertise_test.go seed tags through
+// it). It is unexported, so store_export_inventory_test.go does not measure it; that is recorded
+// here rather than left to be found by the next grep.
 
 // ProjectTags returns the names of every tag attached to a project, sorted.
 //

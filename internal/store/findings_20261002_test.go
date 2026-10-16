@@ -10,7 +10,7 @@ import (
 // 2026-10-02 (20-Areas/concord-site-e2e-verification.md, F2).
 //
 // board_cards had no writer anywhere in the codebase, so it held zero rows for
-// all 70 projects while MoveCard and GetBoardCard both operated on rows that
+// all 70 projects while MoveCard and the single-card reader (§27 removed it) operated on rows that
 // could not exist. Every board rendered nine columns of "0", and a user could
 // not tell "no work" from "broken". GetBoard now derives cards from each
 // feature's own workflow status.

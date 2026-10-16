@@ -111,6 +111,9 @@ gates:
 	# §354's extra link at the edge: the role gate, the body guard, and the audit line. Its own
 	# arm because handlers.go's arm runs override_window_test.go, which never reaches these.
 	python3 internal/mutate.py internal/httpapi/complaint_links.go ./internal/httpapi/ internal/httpapi/complaint_links_test.go internal/httpapi/complaint_links_mutants.json
+	# §27's inventory gate. It mutates the TEST file, because the declaration it checks lives there:
+	# a wrong class on one entry, a missing reason, and a walker that stops finding callers.
+	python3 internal/mutate.py internal/store/export_inventory_test.go ./internal/store/ internal/store/export_inventory_test.go internal/store/export_inventory_mutants.json
 	python3 internal/mutate.py internal/store/audit.go ./internal/store/ internal/store/audit_test.go internal/store/audit_mutants.json
 	# §6.5's decision record: the outcome guard, the hold, the ranking the record
 	# carries, and the date on it. The record's own gate because consensus_solutions.go

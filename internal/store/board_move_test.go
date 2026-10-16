@@ -10,7 +10,7 @@ import (
 //
 // F2 of the site-wide e2e sweep (20-Areas/concord-site-e2e-verification.md)
 // reported that board_cards held zero rows across all 70 projects because no
-// code path inserted one, so MoveCard and GetBoardCard both operated on rows
+// code path inserted one, so MoveCard and the single-card reader (§27 removed it) operated on rows
 // that could not exist.
 //
 // The first fix made the board DISPLAY derived cards. That left the finding's
