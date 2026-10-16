@@ -214,15 +214,18 @@ SSH git transport, mobile apps. Revisit after M11.
 | M12 sync + hardening | done | security headers, per-visitor rate limiting, audit wiring, make deploy healthz-verified; live on 127.0.0.1:8006 and PUBLIC at concord.polarisocial.xyz (icecast2 removed per owner, ingress already pointed at 8006) |
 
 
-## Current State (updated 2026-10-02)
+## State when the M-plan closed (2026-10-02 -- SUPERSEDED; the live numbers are in
+`docs/REMAINING.md`, which is gated, and this snapshot's are not)
 
 - **Live on thinkcentre** at 127.0.0.1:8006
-- Deployed build: `v0.4.0-voting-36-gb964f75`
+- Deployed build: `v0.4.0-voting-36-gb964f75` (the build on 2026-10-02, historical)
 - Binary: `/home/alvaro/concord-deploy/concord` (15MB, CGO-free, embedded templates)
 - Service: `systemctl --user concord` (active, auto-restart)
-- Database: `/home/alvaro/.local/share/concord/concord.db` — schema 27, 81 tables,
-  27 migrations, integrity `ok`
-- `make verify` green; 1029 tests across 9 test-bearing packages
+- Database: `/home/alvaro/.local/share/concord/concord.db` — integrity `ok` (the schema,
+  table and migration counts belong to `docs/REMAINING.md`; this snapshot cannot carry them, and
+  the ones that were here read as 2026-10-02's when they were 2026-10-16's)
+- `make verify` green on that date (the counts are in `docs/REMAINING.md`; a number written here
+  would belong to 2026-10-16 and read as this snapshot's)
 - M0–M12 (below) are complete and were completed before 2026-09-29.
 - **Revision 4 is tracked in `docs/PLAN-r4.md`** — arenas (R1), solutions
   (R2/R3) and consensus gating (R4, partial) have since landed, along with

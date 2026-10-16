@@ -2632,6 +2632,9 @@ holding namespaces is a squatting vector), and creating or revoking an invite (i
 9 consensus.js, 5 consent.js, 2 auth.js) · `make verify` exit 0, `make gates` exit 0,
 `make e2e` exit 0.
 
+§23.11 added one Go test after this pass closed, which is why the mirror above counts one more
+than the pass itself did; the sentence is kept in the gated form, so it tracks the tree.
+
 One migration added two columns and two indexes and created nothing (81 tables before and
 after). Every number in that sentence is read from the tree by this file's own header block and
 by `tests/e2e/harness_selftest_test.py` -- which is why the same sentence appears above the

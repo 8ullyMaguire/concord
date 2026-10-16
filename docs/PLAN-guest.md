@@ -4,9 +4,11 @@ Implements `docs/specs/guest-interactions-spec.md`. Every step ends with the com
 proves it, and the output that proves the command worked. Steps are ordered so that nothing
 later is needed to verify anything earlier.
 
-Baseline before step 1 (measured on this tree, `c145179`):
-`make verify` exit 0 / 1029 Go tests; `make gates` exit 0 / 13 lines, 128 mutants killed;
-`make e2e` exit 0 / 282 e2e tests; schema 27, 27 migrations, 81 tables.
+Baseline before step 1, measured on the tree this plan NAMES — `c145179`, by the same gate that
+reads the live numbers: 1004 Go tests, schema 26, 26 migrations, 81 tables (historical) -- the suite
+grew by a quarter while the pass was written, which is why this line names a tree instead of saying
+"current". The pass ended at 1028 Go tests and schema 27 at `8bc99c7` (historical), with 282 e2e
+tests in 20 suite files and 128 mutants killed.
 
 ---
 
@@ -627,10 +629,11 @@ Recorded because a plan that only ever records the intended path cannot be used 
 one, and because three of the differences below are the substance of the pass.
 
 1. **Step 4's expected counts were wrong in the small and right in the kind.** The plan guessed
-   "Go tests 1004 → ~1025, e2e 277 → 281, schema 27, mutants 16 → 20". Actual: 1029 Go tests, 282
-   e2e in 20 suite files, 23/23 UI mutants (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js),
-   13 Go mutation gates armed. The guesses were close because they were guesses about the SIZE of
-   work already done; the numbers a gate reads are the ones that matter.
+   "Go tests 1004 → ~1025, e2e 277 → 281, schema 27, mutants 16 → 20". Actual at the end of the
+   pass, `8bc99c7`: 1028 Go tests (historical), 282 e2e in 20 suite files, 23/23 UI mutants
+   (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js), 13 Go mutation gates armed -- the tree has
+   one more Go test since §23.11 of `docs/REMAINING.md`. The guesses were close because they were
+   guesses about the SIZE of work already done; the numbers a gate reads are the ones that matter.
 2. **Two defects were found by the BROWSER, after every Go gate was green, and both made the fold
    unreachable.** `auth.js` sent any visitor holding a token away from `/register` — and a guest
    holds a token, because that is how it acts — so the one visitor who needed the form was bounced

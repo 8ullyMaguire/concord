@@ -120,8 +120,10 @@ be rewritten. Federation and MCP are listed in the plan for later.
 
 ## Status
 
-Measured against the running instance (schema 27, 81 tables, 1029 tests,
-`v0.4.0-voting-122-gbe3d262`), not against the plan's own history. "Shipped"
+Measured against the running instance (schema 27, 81 tables, 1029 tests; the build it is
+running is whatever `GET /api/v1/version` answers, which is deliberately not written down here --
+a version string in a status paragraph is stale the moment the next commit lands), not against the
+plan's own history. "Shipped"
 means there is code, a migration and a test -- not that the surface is complete.
 
 **These numbers are gated.** `scripts/check_doc_numbers.py` fails when a document
