@@ -479,3 +479,109 @@ func TestTheOverrideRatioIsTheProjectsOwn(t *testing.T) {
 		t.Errorf("the call's result is %q; the tuned ratio refused the override", got)
 	}
 }
+
+// §6.6's window carries at "≥ 80% of non-abstain participants", and the objector is one of
+// them whenever they are §8.2-eligible — a member with a qualifying contribution, which is
+// the ordinary case. Nothing in the code excludes them, and through the eighth pass that was
+// coherent but unrecorded: REMAINING §20.7 item 3 listed it as "coherent but untested as a
+// product decision".
+//
+// It is a decision now, and this is where it is recorded: the objector may vote to uphold
+// their own block, that stance counts like any other, and they may equally consent to being
+// overridden. The reason to keep it is the denominator — §6.6 counts everyone who took a
+// position, and the objector's position is the most informative one in the window.
+//
+// The arithmetic is what makes the first case load-bearing rather than decorative: three
+// consents of four non-abstain participants is 3/4 = 0.75, which does NOT carry, while the
+// same three consents with the objector abstaining is 3/3 = 1.00, which does. The objector's
+// own stance decides the window, which is exactly the kind of outcome that should be
+// intended rather than discovered.
+func TestTheObjectorsStanceInTheirOwnWindowIsCounted(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("the objector may uphold their own block, and that stance decides the window", func(t *testing.T) {
+		f := seedBlockedCall(t, 6)
+		win := f.open(t)
+		f.vote(t, win, "consent", f.voters[1], f.voters[2], f.voters[3])
+
+		if _, err := f.db.CastOverridePosition(ctx, win.ID, f.objector, "block", ""); err != nil {
+			t.Fatalf("the objector could not take a position in their own window: %v\n"+
+				"§6.6 counts non-abstain PARTICIPANTS, and an eligible objector is one", err)
+		}
+		counts, err := f.db.TallyOverride(ctx, win)
+		if err != nil {
+			t.Fatalf("TallyOverride: %v", err)
+		}
+		if counts.Participants != 4 || counts.Consent != 3 || counts.Block != 1 {
+			t.Fatalf("tally = %d participants (%d consent, %d block), want 4 (3 consent, 1 block): "+
+				"the objector's own stance is a position like any other",
+				counts.Participants, counts.Consent, counts.Block)
+		}
+		if ratio := counts.SupportRatio(); ratio >= 0.8 {
+			t.Fatalf("support ratio = %.2f, want under the 0.80 override ratio: 3 of 4 "+
+				"non-abstain participants consent", ratio)
+		}
+
+		// No note: §6.6 requires one when the window CARRIES, and this one does not.
+		closed, err := f.db.CloseOverrideWindow(ctx, f.callID, "")
+		if err != nil {
+			t.Fatalf("CloseOverrideWindow: %v", err)
+		}
+		if closed.Result == nil || *closed.Result != string(governance.ResultUpheld) {
+			t.Fatalf("window result = %v, want upheld: the objector's own block is the "+
+				"difference between 3/4 and the 3/3 that would have carried", closed.Result)
+		}
+		if got := f.callResult(t); got != string(governance.ResultBlocked) {
+			t.Errorf("the call's result is %q; a window that does not carry leaves it as it was", got)
+		}
+		if status, _ := f.objectionState(t); status != "open" {
+			t.Errorf("the objection is %q; a block that stood is not cleared by having been voted on", status)
+		}
+	})
+
+	t.Run("the same three consents carry when the objector abstains", func(t *testing.T) {
+		f := seedBlockedCall(t, 6)
+		win := f.open(t)
+		f.vote(t, win, "consent", f.voters[1], f.voters[2], f.voters[3])
+		f.vote(t, win, "abstain", f.objector)
+
+		counts, err := f.db.TallyOverride(ctx, win)
+		if err != nil {
+			t.Fatalf("TallyOverride: %v", err)
+		}
+		if counts.Participants != 4 || counts.Consent != 3 || counts.Abstain != 1 {
+			t.Fatalf("tally = %d participants (%d consent, %d abstain), want 4 (3 consent, 1 abstain)",
+				counts.Participants, counts.Consent, counts.Abstain)
+		}
+		closed, err := f.db.CloseOverrideWindow(ctx, f.callID, overrideNote)
+		if err != nil {
+			t.Fatalf("CloseOverrideWindow: %v", err)
+		}
+		if closed.Result == nil || *closed.Result != string(governance.ResultOverridden) {
+			t.Fatalf("window result = %v, want overridden: an abstain is not a non-abstain "+
+				"participant, so the same three consents read 3/3", closed.Result)
+		}
+		if got := f.callResult(t); got != string(governance.ResultAcceptedOverridden) {
+			t.Errorf("the call's result is %q; the window that carried has to reach the call", got)
+		}
+	})
+
+	t.Run("the objector may consent to being overridden", func(t *testing.T) {
+		f := seedBlockedCall(t, 6)
+		win := f.open(t)
+		f.vote(t, win, "consent", f.voters[1], f.voters[2], f.voters[3], f.objector)
+
+		closed, err := f.db.CloseOverrideWindow(ctx, f.callID, overrideNote)
+		if err != nil {
+			t.Fatalf("CloseOverrideWindow: %v", err)
+		}
+		if closed.Result == nil || *closed.Result != string(governance.ResultOverridden) {
+			t.Fatalf("window result = %v, want overridden: the objector's own consent is a consent",
+				closed.Result)
+		}
+		if status, resolution := f.objectionState(t); status != "overridden" || resolution != overrideNote {
+			t.Errorf("objection = (%q, %q), want (overridden, the note): the answer belongs on the "+
+				"objection the window resolved", status, resolution)
+		}
+	})
+}

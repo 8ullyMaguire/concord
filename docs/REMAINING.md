@@ -5,7 +5,7 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state:** schema 26 · 26 migrations · 81 live tables · 1003 Go tests across
+**Measured state:** schema 26 · 26 migrations · 81 live tables · 1004 Go tests across
 9 test-bearing packages · 277 e2e tests in 19 suite files · 16/16 UI mutants killed (7 audit.js, 9 consensus.js) ·
 `make verify` exit 0, `make e2e` exit 0.
 
@@ -743,7 +743,7 @@ Three `wait_for_timeout` calls remain in e2e, all marked `BOUNDED (justified)` b
 §11 and everything above it are history. §1, §4 and §11 are marked superseded; this
 section is the current answer, and like §11 every line was checked against the code.
 
-**Measured state:** schema 26 · 26 migrations · 81 live tables · **1003 Go tests** across
+**Measured state:** schema 26 · 26 migrations · 81 live tables · **1004 Go tests** across
 9 test-bearing packages · **277 e2e tests in 19 suite files** · **16/16 UI mutants** killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
@@ -2086,7 +2086,7 @@ Measured 2026-10-16, eighth pass. Nothing below is remembered.
 
 | Check | Result |
 |---|---|
-| `make verify` | exit 0 — vet, 1003 Go tests in 9 test-bearing packages, build, doc-number gate, e2e-sync gate |
+| `make verify` | exit 0 — vet, 1004 Go tests in 9 test-bearing packages, build, doc-number gate, e2e-sync gate |
 | `make e2e` | exit 0 — 274 e2e tests in 19 suite files, then 12/12 UI mutants killed |
 | Go mutants (`make gates`) | **every gate clean, 0 survived, 0 not applicable** — see §20.6 for what it took to make that line mean something |
 | UI mutants | 7/7 for `audit.js` and 5/5 for `consensus.js` = 12/12 (two new: the window shown on any call, and the window's state never read), source restored byte-identical |
@@ -2143,6 +2143,10 @@ ungated number gets introduced. 16 measured numbers now, 2 of them new.
 
 ### 20.7 What is left, after this pass
 
+Items 1–4 below are no longer open questions. Each is a decision the code was already taking
+without a record of it, and each is now decided in §22 with the evidence that holds it; item 3
+is the one that had no test at all and has one now.
+
 1. **A window that does not carry cannot be retried.** `UNIQUE(call_id)` is deliberate —
    repeating the ballot until the room yields is attrition, not an override — but it means
    the sequence is: the author amends (or the objector withdraws), or the call stays
@@ -2150,9 +2154,11 @@ ungated number gets introduced. 16 measured numbers now, 2 of them new.
    short last month".
 2. **A closed window cannot be reopened**, like a closed call, and `result` is written
    once.
-3. **The objector does not vote in their own window** by any rule — they are §8.2-eligible
-   if they are a member with a contribution, so they can consent to being overridden or
-   vote to uphold their own block, which is coherent but untested as a product decision.
+3. **The objector may take a position in their own window**, and that stance counts like any
+   other: they are §8.2-eligible whenever they are a member with a contribution, and §6.6's
+   denominator is "non-abstain participants" — everyone who took a position. Nothing in the
+   code excluded them; what was missing was a record of the decision, which is now §22.5 and
+   `TestTheObjectorsStanceInTheirOwnWindowIsCounted`.
 4. **A single-maintainer project** can now escape a standing block through the window
    (which is what §18.5 item 2 asked for), and still cannot resolve the objection
    directly.
@@ -2341,3 +2347,117 @@ empty string for anyone who sent one.
 lesson the release route teaches, and it generalises past pages: the reader inventory's
 "no page calls this" rows are honest reasons, but they are not evidence that the route works
 — the API test is. There is one for the hold's whole lifecycle now.
+
+---
+
+## 22. 2026-10-16 (the decisions left, taken)
+
+§20.7 and §21.6 listed what remained as questions. Read again, most of them were never work:
+the code was already doing something coherent, and what was missing was a record of *which*
+behaviour is intended — so that a later pass does not find it, read it as an accident and
+"fix" it. Each is decided below with the evidence that holds it. One was a genuine gap: the
+objector's own stance had no test, and that is §22.5.
+
+### 22.1 A window that does not carry cannot be retried — retained
+
+`UNIQUE(call_id)` stays. Repeating the ballot until the room yields is attrition, not an
+override, and §6.6 gives the blocked call two other exits: the author amends, or the objector
+withdraws. Held by `TestOnlyOneOverrideWindowPerCall` and by §6.6's other branch in the close.
+
+The cost is stated rather than hidden: "the room was one vote short last month" has no route.
+That is the point — a second window on the same objections would let a determined majority
+wait out the objector, which is what §6.2's floor exists to prevent.
+
+### 22.2 Neither a closed window nor a closed call is reopened — retained
+
+`result` is written once, on both windows. Held by `TestAStanceInAClosedWindowIsRefused` — a
+stance recorded after the verdict would silently disagree with a ratio it did not influence —
+and by the close's own refusal to re-close.
+
+### 22.3 The outcome panel is offered to anyone signed in — retained
+
+Not a client-side role check, deliberately: the page cannot verify a role, so a hidden control
+would be a claim rather than a rule, and the refusal it would be hiding is the authoritative
+one. Held by the API tests asserting the maintainer requirement.
+
+### 22.4 A call closed with no outcome writes no decision record — retained
+
+§6.5's five outcomes include choices the verdict cannot derive ("fall back to #2", "sent back",
+"accepted with amendments"), so the record is a decision a maintainer makes rather than a
+rendering of the tally. Held by `TestACallWithADecisionRecordIsNotDecidedTwice` (a second
+outcome is refused) and by `TestASolutionCallKeepsItsDecisionRecordReachableAfterTheVerdict`
+(recording the outcome after the close works, and neither order erases the other).
+
+### 22.5 The objector may take a position in their own window — retained, and now pinned
+
+This was the one real gap. Nothing in the code excluded the objector, and nothing recorded that
+as intended either. It is intended, for the reason §6.6 names its own denominator: the window
+carries on non-abstain *participants*, every person who took a position, and the objector's
+position is the most informative one in the window — whether they consent to being overridden
+or vote to uphold their own block. Excluding them would put the conflict-of-interest guard on
+the wrong question: the objector cannot **resolve** their own objection (held by
+`TestAnObjectorCannotResolveTheirOwnObjection`), but voting on it is what the second window is
+for.
+
+`TestTheObjectorsStanceInTheirOwnWindowIsCounted` has three cases, and the arithmetic in the
+first is what makes it load-bearing rather than decorative: 3 consents of 4 non-abstain
+participants is 0.75, which does NOT carry, while the same 3 consents with the objector
+abstaining is 3/3 = 1.00, which does. The objector's own stance decides the window.
+
+**The mutation gate had a hole exactly here, and it is closed.** The armed test files for
+override.go's gate had never cast an `abstain` — measured, not assumed: one occurrence of
+`"abstain"` across `override_window_test.go` and `consensus_override_test.go`, and it was this
+new test's — so the mutant *"an abstain counts as a non-abstain participant in the override
+ratio"* **survived** the gate. Demonstrated rather than asserted: with the mutant applied and
+the new test filtered out, the pre-existing armed set reports `ok` (the mutant lives); with the
+new test in, it fails on the tally. Two mutants were added to
+`internal/store/override_mutants.json` — that one, and "a block in the second window is not a
+participant at all" — both killed, with every anchor verified to match once in the source.
+
+### 22.6 A single-maintainer project still cannot resolve the objection directly — retained
+
+The escape is the window (§18.5 item 2, which is what §22.1's refusal leaves standing), and the
+refusal is the conflict-of-interest rule: the party an objection is about does not answer it. A
+one-person project's other remedy is a second maintainer, which is what §8.2 membership is for.
+Held by `TestAnObjectorCannotResolveTheirOwnObjection`.
+
+### 22.7 `rejected` and "fall back to the baseline" stay two spellings — retained
+
+§6.5 lists them as different outcomes, and the fall-back picker hides the baseline for that
+reason.
+
+### 22.8 The public instance is current as of this pass
+
+`concord.polarisocial.xyz` was running `v0.4.0-voting-56-g3ffae12` — the 2026-10-14 build, 67
+commits behind HEAD — reached through the cloudflared tunnel on thinkcentre to
+`127.0.0.1:8006`. Read from the running process rather than from a document: the tunnel's origin
+is a systemd *user* unit (`~/.config/systemd/user/concord.service`), and the live version came
+from `/api/v1/version` and the page footer, which agreed with each other.
+
+It now runs HEAD. Deployed 2026-10-16 with both backups taken first: the database online
+(`concord.db.bak-predeploy-20261016-090636`, 22 migrations, taken with `sqlite3 .backup` so the
+WAL is consistent) and the previous binary (`concord.bak-20261016-090636`). Migrations applied
+on start: 22 → 26. Both instances — the local test one and the public one — answer the same
+version string.
+
+**Reachability was verified rather than assumed.** `make deploy` targets `$HOME/concord-deploy`
+on whichever machine runs it, and this repository is a mount of thinkcentre's disk, so the
+deploy was run *on* thinkcentre: the built binary was already on that disk
+(`/home/alvaro/code/projects/concord/bin/concord`, sha256 compared before install). Running
+`make deploy` from the laptop would have stopped and restarted the laptop's **own** `concord` on
+`127.0.0.1:8006` — a different instance, answering `healthz` perfectly — and reported success.
+
+### 22.9 The embedding index was incomplete, and is not now
+
+The new build printed two warnings on start that the deployed one could not, because the check
+is newer than that binary:
+
+```
+WARNING: feature embedding index is incomplete: 872/1156 embedded (284 never indexed).
+WARNING: project embedding index is incomplete: 70/71 embedded (1 never indexed).
+```
+
+Data conditions rather than defects — 284 features and 1 project could not be found by
+similarity search — and the binary names its own remedy (`bin/embedbackfill -kind feature`).
+Backfilled on the live instance: feature 284 embedded → 1156/1156 = 100.0%; project 1 embedded →
+71/71 = 100.0%. Complaints were already complete (217/217) and requests have no rows.

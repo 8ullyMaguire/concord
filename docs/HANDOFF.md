@@ -77,9 +77,16 @@ store tests and no page.
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 1003 tests, schema 26, 81 tables,
+Measured, not remembered: `make verify` green, 1004 tests, schema 26, 81 tables,
 26 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
+
+The **public instance** runs this build too, as of 2026-10-16: `concord.polarisocial.xyz`
+is the cloudflared tunnel to thinkcentre's systemd user unit `concord.service` on
+`127.0.0.1:8006`, deployed from thinkcentre (not from the laptop, whose `concord` is a
+separate instance on the same port). It went from `v0.4.0-voting-56-g3ffae12` (67 commits
+behind) to HEAD, migrations 22 → 26, DB and binary both backed up first, and its two
+embedding indexes backfilled to 100%. Details: `docs/REMAINING.md` §22.8–§22.9.
 
 - **Revision 4 is partly built.** `docs/concord-spec-r4.md` is the current spec;
   `docs/concord-spec.md` is two revisions stale. Milestone state is in
@@ -93,7 +100,10 @@ the tree wins and this file is the bug.
 - **Consensus gating (R4) is partial.** `0019_solution_consensus_calls.sql`. The
   gate and the agenda exist; **`decision_records` does not**, so the ADR §6.5
   requires on close is unimplemented. This is the next milestone.
-- **Embeddings shipped but need a manual backfill.** `0016_embeddings.sql`,
+- **Embeddings shipped but need a manual backfill.** The live instance's index was
+  backfilled to 100% on 2026-10-16 (feature 284 embedded, project 1 — REMAINING §22.9),
+  so the check below is now a maintenance habit rather than a known gap.
+  `0016_embeddings.sql`,
   `internal/embed/` (hashed + ollama backends), `internal/store/embeddings.go`,
   `internal/httpapi/duplicates_test.go`. Duplicate detection searches the whole
   instance, not one project (§6.1). `cmd/embedbackfill -status` — if it says 0.0%
