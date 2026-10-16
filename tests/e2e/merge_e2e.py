@@ -338,5 +338,9 @@ def test_opening_a_merge_request_from_the_page_adds_a_row(owner_page):
 
 def test_no_console_errors_on_the_merge_page(owner_page):
     open_merge(owner_page)
-    owner_page.wait_for_timeout(300)
+    # The state being asked for is "the page has stopped fetching", and that is what
+    # networkidle means; a 300ms sleep is a guess at it that gets less reliable the busier
+    # the machine is. This suite's own subject is a stray console error, so the wait has to
+    # outlast the LAST request, not the first paint.
+    owner_page.wait_for_load_state("networkidle")
     assert owner_page.errors == []

@@ -21,32 +21,36 @@ security hole and a write-only database table. See §3.
 
 ---
 
-## 0. The one thing that is not ours to do
+## 0. The old build on the public host — resolved 2026-10-16
 
-**`concord.polarisocial.xyz` runs an old build and this repo cannot change that.**
+**This section used to be titled "the one thing that is not ours to do", and the reasoning behind
+that title was wrong.** The evidence for it looked conclusive: this host has no tunnel, no reverse
+proxy and nothing on :80/:443, and the public hostname answered a build 67 commits behind. The
+conclusion drawn from it — that the public instance is somebody else's machine — did not follow.
+What was true is simpler: the deploy had never been run on the host that serves it.
+
+Measured after `ssh thinkcentre 'cd <repo> && make deploy'`:
 
 | Where | Version |
 |---|---|
-| `https://concord.polarisocial.xyz/api/v1/version` | `v0.4.0-voting-56-g3ffae12` |
-| `http://127.0.0.1:8006/api/v1/version` (this host) | `v0.4.0-voting-123-gae1e210` (`ae1e210`, the last commit that changed code — doc-only commits after it do not change the binary) |
+| `https://concord.polarisocial.xyz/api/v1/version` | `v0.4.0-voting-123-gae1e210-11-gd3c58bb` |
+| `http://127.0.0.1:8006/api/v1/version` (this host) | the same string |
 
-Both rows were re-measured 2026-10-16: the public host still answers `g3ffae12` (67
-commits behind), and this host answers `gae1e210`, deployed by `make deploy` and
-verified live (the hold scoping, the release route and the empty-reason refusal were all
-exercised against the running binary — `docs/REMAINING.md` §21.7).
+A matching version string is weak evidence on its own — two hosts sharing a home directory print
+the same one — so three checks were run:
 
-The public hostname is served by a **different machine**. Evidence, not inference: this
-host has no tunnel, no reverse proxy and nothing on :80/:443; the only Concord binary on
-it is `/home/alvaro/concord-deploy/concord`, which `make deploy` refreshes, and which
-answers `gae1e210`. Cloudflare reports `cf-cache-status: DYNAMIC`, so it is not serving a
-stale cache either — it is proxying to an origin elsewhere. Cloudflare reports
-`cf-cache-status: DYNAMIC`, so it is not serving a stale cache either — it is
-proxying to an origin elsewhere.
+- the public endpoint reports `guests: 2`, and the DB behind the service on thinkcentre reports 2
+  guests while this laptop's reports 0;
+- `cloudflared` runs only on thinkcentre (`/usr/bin/cloudflared --no-autoupdate tunnel run
+  --token-file /etc/cloudflared/token`); this host runs none;
+- the public version string moved with each deploy run there inside one session
+  (`…-9-g4d51580` → `…-11-gd3c58bb`). This is the observation that distinguishes "our deploy
+  reaches the public host" from "the two happen to agree", and it is the one the section above
+  lacked when it declared the job not ours.
 
-**Action for whoever owns that host:** `git pull && make deploy`. Nothing else is
-blocked on it.
-
----
+The tunnel's ingress rules are Cloudflare-dashboard-side and cannot be read from either host, so
+*which* host terminates the tunnel stays inferred. What follows is not inferred: the deploy is
+ours, and the version at the public URL tracks it.
 
 ## 1. Pages the spec requires and nobody has built
 
@@ -887,21 +891,38 @@ statements and an empty list asserts the other one.
 
 ### 12.6 The actual remaining list
 
-1. **`concord.polarisocial.xyz` runs a 36-commits-behind build** and this repo cannot
-   change that. Unchanged from §0; it is the one item that is not ours to do.
+1. ~~**`concord.polarisocial.xyz` runs a 36-commits-behind build** and this repo cannot
+   change that.~~ **RESOLVED 2026-10-16, and the claim was wrong** — see §0. Both instances
+   report the same build, deployed from this repo by `ssh thinkcentre 'cd <repo> && make deploy'`.
 2. **`admin-ledger` has no UI**, deliberately: an operator log, and the admin surface it
    would need is not specced. §11.4's reasoning stands.
-3. **A propose-a-weight **form** is not on any page.** The API path is now reachable
-   (§12.3) and the proposals/themes/consent are visible on settings; *opening* a proposal
-   is API-only, and the natural home for the control is the feature detail page (a weight
-   belongs to a feature). Not built here because the route — the part that made the feature
-   inert — was the defect; the form is a control, and §6.2 does not require one.
-4. **5 `wait_for_timeout` calls remain in e2e** — measured by `check_e2e_sync.py` as 3
-   bounded-and-justified, 2 idle, **0 racy**; the gate passes. (§11's "22" was the count
-   at the time and is no longer the number.) Known-open by design, not by neglect.
+3. ~~**A propose-a-weight **form** is not on any page.**~~ **BUILT since — on the settings
+   page.** `settings.js` renders `#propose-weight-form` into the strategy panel and `wirePropose()`
+   opens the proposal; `test_a_contributor_opens_a_weight_proposal_from_the_settings_page` drives it
+   and pins the consequence a proposal must NOT have (the feature's weight does not move until the
+   quorum is reached), with a non-member twin asserting the contributor refusal. The original
+   reasoning is kept because it was right about the ORDER — the route was the defect, and the form
+   is a control §6.2 does not require. Two things this item is now evidence FOR: the sweeps that
+   found the missing route are the same ones that would have found a missing form, and a tracker
+   line nobody revisits reads as current for as long as the file lives.
+4. **4 `wait_for_timeout` calls remain in e2e** — measured by `check_e2e_sync.py` as 4
+   bounded-and-justified, **0 idle, 0 racy**; the gate passes. (§11's "22" was the count at the
+   time and is no longer the number.) It was 7 with 2 idle until 2026-10-16, when each idle one
+   was dealt with as itself rather than as a number to reduce: the board's poll interval became
+   `page.expect_response` (a poll interval IS a sleep, and the response is the event to wait on);
+   the merge page's 300ms sleep became `wait_for_load_state("networkidle")`, which is what "no
+   stray fetch will still error" actually means; the duplicates suite's justification moved ABOVE
+   the call it justifies, where the gate's only reader looks; and the non-member weight-proposal
+   test now WAITS for the refusal message before asserting no row exists — which also made it a
+   stronger test, since the version that slept passed just as well when the request was never
+   made at all.
 5. **The §6 out-of-scope items in each revision of the spec.** Unchanged.
-6. **No "every route has a reader" gate.** Reasoning in §12.1; the per-page named gates
-   are the coverage, and any *new* page has to bring its own.
+6. ~~**No "every route has a reader" gate.**~~ **WRONG SINCE PASS 10.** `readerInventory` in
+   `internal/httpapi/reader_coverage_test.go` walks the router the binary actually serves and
+   fails the build for any API route with no reader row; `TestEveryMutatingRouteIsGuarded` covers
+   the mutating half. The residual, stated in the test's own limits: a row can be satisfied by a
+   comment, so the gate cannot prove the named anchor is CODE, and it cannot see a missing VERB
+   (which is how the propose-weight form stayed missing while settings.js consented to proposals).
 
 ---
 

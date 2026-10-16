@@ -492,7 +492,17 @@ def test_a_non_member_is_refused_a_weight_proposal(browser, server):
         pg.locator("#weight-value").fill("3")
         pg.locator("#weight-rationale").fill("because I want to")
         pg.locator("#propose-weight-form button[type=submit]").click()
-        pg.wait_for_timeout(400)
+        # Wait for the REFUSAL, which is the state this test is about: `say(msg, true)`
+        # writes it into the page's live region with `error-state`.
+        #
+        # This replaces a 400ms sleep followed by a count assertion, and it is a stronger
+        # test than the one that slept: that version passed just as well when the request
+        # was NEVER MADE (a JS error, a missing button), because it only asserted that no
+        # row appeared. The message proves the write was attempted and refused, and the
+        # count then proves nothing was stored.
+        refusal = pg.locator("#settings-live p.error-state")
+        expect(refusal).to_be_visible(timeout=10000)
+        expect(refusal).to_contain_text("contributor")
         rows = _one(db, "SELECT COUNT(*) FROM strategic_weight_proposals")
         assert rows == 0, "a non-member's weight proposal was accepted"
     finally:

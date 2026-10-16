@@ -52,6 +52,7 @@ import tempfile
 import time
 
 import pytest
+from playwright.sync_api import TimeoutError as PlaywrightTimeoutError
 from playwright.sync_api import expect, sync_playwright
 
 import harness
@@ -335,24 +336,25 @@ def test_a_card_can_be_moved(page, server):
     # The listener is attached FIRST. It was registered after select_option in one
     # version, which meant the PUT had already happened and `seen` was empty: the test
     # reported "selecting a column issued no PUT at all" about a board that sent one.
-    seen = []
-    page.on("response", lambda r: seen.append(r.status) if "/move" in r.url else None)
-
-
-    page.locator("#kanban-board select.kanban-card-move").first.select_option("accepted")
-
     # Wait for the RESPONSE, not the DOM: the card landing and the response arriving are
     # the same event seen from two sides, and asserting on the DOM alone cannot tell a
-    # refusal from a slow success. expect.poll() does not exist in this Playwright
-    # version, so the wait is page.wait_for_function over a plain closure -- the JS list
-    # is not visible to the browser, so the loop lives in Python.
-    deadline = time.time() + 15
-    while not seen and time.time() < deadline:
-        page.wait_for_timeout(50)
-    assert seen, "selecting a column issued no PUT at all"
-    assert seen[0] < 300, (
-        f"the move was refused with {seen[0]}; the commonest cause is a token read "
-        f"from the wrong localStorage key, which returns null instead of throwing")
+    # refusal from a slow success.
+    #
+    # This used to be a hand-rolled Python poll (`while not seen: page.wait_for_timeout(50)`)
+    # with a comment explaining that expect.poll() does not exist in this Playwright
+    # version -- true, and beside the point: `page.expect_response` waits on the response
+    # itself. A poll interval IS a sleep, and the e2e-sync gate reported it as one (an idle
+    # sleep in a path where nothing is asserted); waiting on the event removes the sleep
+    # and stops a 15-second loop from being what decides the test.
+    try:
+        with page.expect_response(lambda r: "/move" in r.url, timeout=15000) as info:
+            page.locator("#kanban-board select.kanban-card-move").first.select_option("accepted")
+    except PlaywrightTimeoutError:
+        raise AssertionError(
+            "selecting a column issued no PUT at all: no /move response arrived within 15s")
+    assert info.value.status < 300, (
+        f"the move was refused with {info.value.status}; the commonest cause is a token "
+        f"read from the wrong localStorage key, which returns null instead of throwing")
 
     # And it LANDS in the second column, after the board re-reads.
     settled(page, "Add a migration check", "accepted")

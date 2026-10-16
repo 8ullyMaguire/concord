@@ -220,11 +220,16 @@ def test_the_panel_makes_no_claim_before_a_title_is_worth_matching(page, server)
 
     form = page.locator("#complaint-form")
     form.locator("input[name='title']").fill("abc")
-    page.wait_for_timeout(1200)
     # BOUNDED (justified): this asserts the ABSENCE of a request and of a claim.
     # There is no state to wait for -- a request that should never arrive has no
     # completion to synchronise on -- so a bounded wait is the only way to give the
     # unwanted thing time to appear.
+    #
+    # The comment was BELOW the call until now, and the e2e-sync gate reported the sleep
+    # as idle because that is where its justification rule looks. The gate was right about
+    # the file and wrong about the reason: the reasoning existed and was invisible to the
+    # only reader that checks it.
+    page.wait_for_timeout(1200)
 
     assert not asked, f"the panel queried the server for a 3-character title: {asked}"
     assert form.locator("[data-dup-panel]").inner_text().strip() == "", (
