@@ -6,9 +6,9 @@ the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
 **Measured state (the sixteenth pass, §29):** schema 29 · 29 migrations · 82 live tables · 1088 Go
-tests across 9 test-bearing packages · 297 e2e tests in 22 suite files · 48/48 UI mutants killed
+tests across 9 test-bearing packages · 298 e2e tests in 22 suite files · 49/49 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
-6 project.js/arena) · Go mutants: 20 arms, 142 killed, 0 survived · `make verify` exit 0,
+7 project.js/arena) · Go mutants: 20 arms, 142 killed, 0 survived · `make verify` exit 0,
 `make gates` exit 0, `make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
@@ -3560,7 +3560,15 @@ Two things came out of it that no test had:
    (proven red by re-adding the limit: "verified 200 entries of 205"). The first version of that test
    drifted every row instead of one — `WHERE r = (SELECT MIN(r) …)` matching all of them — so it
    would have read 205 either way.
-2. **A live arena with votes and no entries.** Arena 70 (tessera) carries two `pairwise_votes` rows
+2. **An empty arena reported agreement.** `GET /projects/test-project/arenas/1/verification` on the
+   laptop answers `agrees: true, divergent: 0, entries: []` — and the laptop's database is 55 arenas
+   with **no `arena_entries` rows at all**, so that is the state of every arena on it. `agrees: true`
+   over a comparison set that is empty is the same shape as the 200-of-327 page above, and the panel
+   now says which case it is: *"This arena has no competitors to verify yet: the log is empty."* — with
+   a mutant that requires it to (`an arena with no competitors reports agreement`). The leaderboard's
+   own empty copy stays separate: "the ranking has nothing in it" and "the verification had nothing to
+   check" are different facts, and one merged sentence reads as "nothing to see here" twice.
+3. **A live arena with votes and no entries.** Arena 70 (tessera) carries two `pairwise_votes` rows
    about features 605/606 and 607/608 and zero `arena_entries`, so its verification is vacuously
    true: there is nothing to verify. `CastArenaVote` resolves both entries before scoring, so the
    current code cannot produce that shape — it is residue from an earlier writing path. Named here
@@ -3569,7 +3577,7 @@ Two things came out of it that no test had:
 
 ### 29.7 Where the numbers stand
 
-**Measured state:** schema 29 · 29 migrations · 82 live tables · 1088 Go tests · 297 e2e tests in 22
+**Measured state:** schema 29 · 29 migrations · 82 live tables · 1088 Go tests · 298 e2e tests in 22
 suite files · 48/48 UI mutants · Go mutants: 20 arms, 143 killed, 0 survived · store exports: 233 LIVE,
 19 TEST-ONLY (all named with reasons), 0 UNCALLED · `make verify`, `make gates`, `make e2e` all exit 0.
 

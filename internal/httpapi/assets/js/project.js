@@ -461,7 +461,16 @@ function apiAuth(extra) {
   }
 
   function arenaVerifyHTML(verdict) {
-    var head = verdict.agrees
+    // NO ENTRIES IS NOT AGREEMENT. A comparison set that is empty reproduces itself
+    // and says nothing about anything, and the live instances are full of arenas in
+    // exactly that state: the laptop's database has 55 arenas and no entries at all,
+    // and the public one has an arena with two votes and none. `agrees: true` over
+    // nothing is the same shape as the 200-of-327 page this pass started with, so the
+    // panel states which case it is rather than rendering the reassuring one.
+    var n = (verdict.entries || []).length;
+    var head = n === 0
+      ? '<p class="arena-note arena-empty">This arena has no competitors to verify yet: the log is empty.</p>'
+      : verdict.agrees
       ? '<p class="arena-note arena-agrees">The vote log reproduces every rating in this arena.</p>'
       : '<p class="arena-note arena-disagrees">' + esc(verdict.divergent) +
         ' entr' + (verdict.divergent === 1 ? 'y is' : 'ies are') +

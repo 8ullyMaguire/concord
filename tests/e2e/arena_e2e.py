@@ -186,6 +186,11 @@ def seed(db):
     entry(untouched, rival_a, 1500.0, 350.0, 0)
     entry(untouched, rival_b, 1500.0, 350.0, 0)
 
+    # And one with NOTHING in it. Both live instances carry arenas in this state (the
+    # laptop's database has 55 and no entries at all), and the verification answers
+    # `agrees: true` over an empty set -- which the panel must not render as agreement.
+    arena("nobody has been here")
+
     con.commit()
     con.close()
 
@@ -214,7 +219,7 @@ def test_the_panel_offers_the_arena_loop_beside_the_ranking(page, server):
 
     arena = _arena(page, "teams needing audit logs")
     # The ranking itself: both competitors, labelled.
-    expect(page.locator(".alt-arena")).to_have_count(2)
+    expect(page.locator(".alt-arena")).to_have_count(3)
     expect(arena.locator(".alt-title")).to_have_count(2)
     expect(arena.locator(".alt-title").first).to_have_text("Rival A")
 
@@ -329,4 +334,27 @@ def test_a_ranking_the_log_does_not_produce_is_reported_and_repairable(page, ser
     # And the repair is real: a fresh verification agrees.
     arena.locator("[data-arena-verify]").click()
     expect(arena.locator(".arena-verify").locator(".arena-agrees")).to_be_visible()
+    assert not page.errors, page.errors
+
+
+def test_an_arena_with_no_competitors_does_not_report_agreement(page, server):
+    """The vacuous case, which both live instances are full of.
+
+    `agrees: true` over an empty set is the same shape as the verification that
+    covered 200 of an arena's 327 entries: a check reporting a verdict about a
+    comparison set it did not examine. The panel states which case it is.
+    """
+    _open_project(page, server["base"])
+    arena = _arena(page, "nobody has been here")
+    # The ranking area itself says so, before anyone asks for a verdict -- in the
+    # leaderboard's own words. The two places state it separately on purpose: the
+    # ranking having nothing in it and the verification having nothing to check are
+    # different facts, and one merged sentence reads as "nothing to see here" twice.
+    expect(arena.locator(".card-text")).to_contain_text("No projects entered yet")
+
+    arena.locator("[data-arena-verify]").click()
+    out = arena.locator(".arena-verify")
+    expect(out.locator(".arena-empty")).to_be_visible()
+    expect(out.locator(".arena-empty")).to_contain_text("no competitors to verify")
+    expect(out.locator(".arena-agrees")).to_have_count(0)
     assert not page.errors, page.errors
