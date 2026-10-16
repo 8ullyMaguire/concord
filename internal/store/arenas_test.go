@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"git.polarisocial.xyz/concord/concord/internal/ranking"
 )
@@ -1435,5 +1436,66 @@ func TestTheRecomputeMirrorsFeatureRatings(t *testing.T) {
 				"not mirror, so the priority endpoint ranks from a different number",
 				id, f.EloR, byID[id].R)
 		}
+	}
+}
+
+// TestVerificationCoversEveryEntryNotTheLeaderboardPage is the live instance's
+// lesson: production has a feature-priority arena with 327 competitors, and the
+// first version of VerifyArenaRatings compared through ArenaLeaderboard(200) -- so
+// it verified the top 200 and reported `agrees: true` about the rest by omitting
+// them. A verification that silently covers a subset is the failure it exists to
+// catch, and 327 > 200 is not a corner case.
+func TestVerificationCoversEveryEntryNotTheLeaderboardPage(t *testing.T) {
+	d, uid, pid, _ := arenaFixture(t)
+	ctx := context.Background()
+	arena, err := d.EnsureArena(ctx, ArenaFeaturePriority, pid, 0, "", "")
+	if err != nil {
+		t.Fatalf("EnsureArena: %v", err)
+	}
+	// 205 entries: five more than the leaderboard's cap, so a subset check cannot
+	// pass by covering everything by accident.
+	const n = 205
+	var last int64
+	for i := 0; i < n; i++ {
+		id := newFeature(t, d, pid, uid, fmt.Sprintf("candidate %d", i))
+		last = id
+		if _, err := d.ExecContext(ctx,
+			`INSERT INTO arena_entries (arena_id, entity_type, entity_id, r, rd, sigma, games,
+			 is_baseline, parent_entry_id, updated_at) VALUES (?, ?, ?, 1500, 350, 0.06, 0, 0, NULL, ?)`,
+			arena.ID, EntityFeature, id, float64(time.Now().Unix())); err != nil {
+			t.Fatalf("insert entry %d: %v", i, err)
+		}
+	}
+	// Drift ONE row, named by its id. The first version of this wrote
+	// `WHERE r = (SELECT MIN(r) ...)` with every row at 1500 -- which matches ALL of
+	// them, so it drifted all 205 and the assertion below would have read 205 either
+	// way. A perturbation that hits the whole table cannot show which entries a check
+	// looked at.
+	//
+	// The row drifted is the LAST inserted, which is the entry the leaderboard's
+	// first page would sort off the end.
+	if _, err := d.ExecContext(ctx,
+		`UPDATE arena_entries SET r = 900 WHERE arena_id = ? AND entity_id = ?`,
+		arena.ID, last); err != nil {
+		t.Fatalf("drift the tail: %v", err)
+	}
+
+	checks, err := d.VerifyArenaRatings(ctx, arena.ID)
+	if err != nil {
+		t.Fatalf("VerifyArenaRatings: %v", err)
+	}
+	if len(checks) != n {
+		t.Fatalf("verified %d entries of %d: the verification is reading a page, not the arena",
+			len(checks), n)
+	}
+	divergent := 0
+	for _, c := range checks {
+		if !c.Agrees {
+			divergent++
+		}
+	}
+	if divergent != 1 {
+		t.Errorf("divergent = %d, want the one drifted entry -- and it is the LAST one the "+
+			"leaderboard would have returned", divergent)
 	}
 }

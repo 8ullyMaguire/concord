@@ -1289,10 +1289,41 @@ func (d *DB) VerifyArenaRatings(ctx context.Context, arenaID int64) ([]ArenaVeri
 	if err != nil {
 		return nil, err
 	}
-	stored, err := d.ArenaLeaderboard(ctx, arenaID, 200)
+
+	// EVERY entry, not the leaderboard's first page. The first version read through
+	// ArenaLeaderboard(ctx, arenaID, 200) and compared what it returned, so an arena
+	// with more than 200 competitors -- production has one with 327 -- was verified
+	// for the top 200 and reported `agrees: true` about the rest by saying nothing.
+	// A verification that silently covers a subset is the failure it exists to catch.
+	rows, err := d.QueryContext(ctx, `
+		SELECT entity_type, entity_id, r, rd, games, is_baseline
+		FROM arena_entries WHERE arena_id = ? ORDER BY entity_id`, arenaID)
 	if err != nil {
 		return nil, err
 	}
+	type storedRow struct {
+		entityType string
+		entityID   int64
+		r, rd      float64
+		games      int
+		baseline   bool
+	}
+	var stored []storedRow
+	for rows.Next() {
+		var s storedRow
+		var baseline int
+		if err := rows.Scan(&s.entityType, &s.entityID, &s.r, &s.rd, &s.games, &baseline); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		s.baseline = baseline == 1
+		stored = append(stored, s)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
 	byID := map[int64]ArenaReplay{}
 	for _, r := range replay {
 		byID[r.EntityID] = r
@@ -1300,12 +1331,12 @@ func (d *DB) VerifyArenaRatings(ctx context.Context, arenaID int64) ([]ArenaVeri
 	out := make([]ArenaVerification, 0, len(stored))
 	for _, e := range stored {
 		v := ArenaVerification{
-			EntityType: e.EntityType, EntityID: e.EntityID, IsBaseline: e.IsBaseline,
-			StoredR: e.R, StoredRD: e.RD, StoredGames: e.Games,
+			EntityType: e.entityType, EntityID: e.entityID, IsBaseline: e.baseline,
+			StoredR: e.r, StoredRD: e.rd, StoredGames: e.games,
 		}
-		if r, ok := byID[e.EntityID]; ok {
+		if r, ok := byID[e.entityID]; ok {
 			v.ReplayedR, v.ReplayedRD, v.ReplayedGames = r.Rating.R, r.Rating.RD, r.Games
-			v.Agrees = r.Rating.R == e.R && r.Rating.RD == e.RD && r.Games == e.Games
+			v.Agrees = r.Rating.R == e.r && r.Rating.RD == e.rd && r.Games == e.games
 		}
 		out = append(out, v)
 	}

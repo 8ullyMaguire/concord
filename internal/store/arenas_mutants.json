@@ -51,12 +51,17 @@
  },
  {
   "name": "the verification ignores the games counter",
-  "old": "\t\t\tv.Agrees = r.Rating.R == e.R && r.Rating.RD == e.RD && r.Games == e.Games",
-  "new": "\t\t\tv.Agrees = r.Rating.R == e.R && r.Rating.RD == e.RD"
+  "old": "\t\t\tv.Agrees = r.Rating.R == e.r && r.Rating.RD == e.rd && r.Games == e.games",
+  "new": "\t\t\tv.Agrees = r.Rating.R == e.r && r.Rating.RD == e.rd"
  },
  {
   "name": "the repair mirrors nothing",
   "old": "\t\tif r.EntityType == EntityFeature {\n\t\t\t_ = d.mirrorFeatureRating(ctx, r.EntityID, r.Rating, now)\n\t\t}",
   "new": "\t\tif r.EntityType == EntityFeature && false {\n\t\t\t_ = d.mirrorFeatureRating(ctx, r.EntityID, r.Rating, now)\n\t\t}"
+ },
+ {
+  "name": "the verification reads the leaderboard's first page instead of every entry",
+  "old": "\t\tFROM arena_entries WHERE arena_id = ? ORDER BY entity_id`, arenaID)",
+  "new": "\t\tFROM arena_entries WHERE arena_id = ? ORDER BY entity_id LIMIT 200`, arenaID)"
  }
 ]

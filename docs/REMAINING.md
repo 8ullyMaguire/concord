@@ -5,7 +5,7 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state (the sixteenth pass, §29):** schema 29 · 29 migrations · 82 live tables · 1087 Go
+**Measured state (the sixteenth pass, §29):** schema 29 · 29 migrations · 82 live tables · 1088 Go
 tests across 9 test-bearing packages · 297 e2e tests in 22 suite files · 48/48 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
 6 project.js/arena) · Go mutants: 20 arms, 142 killed, 0 survived · `make verify` exit 0,
@@ -3535,10 +3535,42 @@ comparison are one act), the log with each reason, and the verdict with a Recomp
   itself, and both paths would have to change together (they now share the engine, so that is one edit
   and its own pass).
 
+### 29.8 What the live instance measured, and the last defect it found
+
+Probed after deploying `a3a7837` (both instances now run it), on the public instance's own data:
+
+```
+GET /projects/blackrep/arenas/71/next-pair     200  both sides labelled, real titles, 1500/350, games 0
+GET /projects/blackrep/arenas/71/votes         200  count 0
+GET /projects/blackrep/arenas/71/verification  200  agrees true, divergent 0, entries 200   <-- 200 of 327
+GET /projects/tessera/arenas/70/verification   200  agrees true, divergent 0, entries 0
+GET /projects/lorebook/arenas/70/verification  404  (arena 70 belongs to tessera)
+POST /projects/tessera/arenas/71/recompute     401  authentication required (anonymous)
+GET /projects/tessera/arenas/999999/verification 404
+```
+
+Two things came out of it that no test had:
+
+1. **The verification covered 200 of the live arena's 327 competitors and said `agrees: true`.**
+   It read through `ArenaLeaderboard(ctx, arenaID, 200)`, so the top 200 were compared and the other
+   127 were omitted — from a response that reported a count of 200 as if it were the arena. A
+   verification that silently covers a subset is exactly the failure it exists to catch, and it is
+   now a direct `arena_entries` read of every row, with a store test that creates 205 entries, drifts
+   the LAST one (the row a first page would sort off the end) and requires it to be reported
+   (proven red by re-adding the limit: "verified 200 entries of 205"). The first version of that test
+   drifted every row instead of one — `WHERE r = (SELECT MIN(r) …)` matching all of them — so it
+   would have read 205 either way.
+2. **A live arena with votes and no entries.** Arena 70 (tessera) carries two `pairwise_votes` rows
+   about features 605/606 and 607/608 and zero `arena_entries`, so its verification is vacuously
+   true: there is nothing to verify. `CastArenaVote` resolves both entries before scoring, so the
+   current code cannot produce that shape — it is residue from an earlier writing path. Named here
+   rather than "fixed": the log is append-only (§5.2) and the replay ignores votes whose entities are
+   not entries, so the row does no harm; deleting it would be a migration that edits an audit log.
+
 ### 29.7 Where the numbers stand
 
-**Measured state:** schema 29 · 29 migrations · 82 live tables · 1087 Go tests · 297 e2e tests in 22
-suite files · 48/48 UI mutants · Go mutants: 20 arms, 142 killed, 0 survived · store exports: 233 LIVE,
+**Measured state:** schema 29 · 29 migrations · 82 live tables · 1088 Go tests · 297 e2e tests in 22
+suite files · 48/48 UI mutants · Go mutants: 20 arms, 143 killed, 0 survived · store exports: 233 LIVE,
 19 TEST-ONLY (all named with reasons), 0 UNCALLED · `make verify`, `make gates`, `make e2e` all exit 0.
 
 **Still open, and named rather than implied:** Q2 (the sum), Q3 (the pain-side multiplier), §452's
