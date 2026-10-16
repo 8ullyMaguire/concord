@@ -5,8 +5,8 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · 962 Go tests across
-9 test-bearing packages · 271 e2e tests in 19 suite files · 7/7 UI mutants killed ·
+**Measured state:** schema 25 · 25 migrations · 79 live tables · 973 Go tests across
+9 test-bearing packages · 274 e2e tests in 19 suite files · 10/10 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
@@ -737,8 +737,8 @@ Three `wait_for_timeout` calls remain in e2e, all marked `BOUNDED (justified)` b
 §11 and everything above it are history. §1, §4 and §11 are marked superseded; this
 section is the current answer, and like §11 every line was checked against the code.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · **962 Go tests** across
-9 test-bearing packages · **271 e2e tests in 19 suite files** · 7/7 UI mutants killed ·
+**Measured state:** schema 25 · 25 migrations · 79 live tables · **973 Go tests** across
+9 test-bearing packages · **274 e2e tests in 19 suite files** · **10/10 UI mutants** killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 ### 12.1 How the remaining work was found (it was not in any tracker)
@@ -1578,7 +1578,9 @@ Three things this deliberately does NOT do:
 - **It does not let the objector do anything else.** A verdict on their own block is
   still refused (`TestAnObjectorCannotResolveTheirOwnObjection`), and so is a bystander
   withdrawing somebody else's (`TestSomebodyElseCannotWithdrawAnObjection`).
-- **It does not require membership.** Creating an objection has never needed a role —
+- **It does not require membership.** Creating an objection has never needed a ROLE
+  (§19.3 later gave it §8.2 standing, which is a different question: the account must
+  be an eligible collaborator of the project, but no role is asked for) —
   any signed-in account may block — so withdrawing one asks for less: being the
   account that raised it. A rule that asked for membership would leave an objection
   standing that only a maintainer could drop, which is the bug being fixed.
@@ -1706,3 +1708,219 @@ in tests the signed-out path.**
    what counts as the objector's remedy being answered), not a defect to patch.
 4. Deliberate, unchanged: `admin-ledger` and `metrics` have no UI; the criteria page
    defers pair suggestion, a per-criterion leaderboard and deleting a criterion.
+
+Note: §19 (the seventh pass) closes item 3 for the RECORD — the override's ratio is
+evaluated, the verdict is stored, and the objection it overrides is answered — while
+the "second window" itself is still unbuilt; see §19.8.
+
+---
+
+## 19. 2026-10-16 (seventh pass): the verdict nobody recorded, and the call nobody could close
+
+Four defects of one shape: a rule that existed and nothing enforced, and a write whose
+value no reader could see. §18.5's item 3 — "an override window has no route", called
+the largest remaining gap between §6.6's prose and the product — turned out to be half a
+feature gap and half a bug: the ratio was counted, the verdict was computed, and the
+record of it was thrown away.
+
+### 19.1 The override was computed, returned, and never written
+
+Measured with a throwaway probe against the code as it stood, before anything was
+changed (the probe is deleted; its assertions survive as
+`TestACallThatPassesByOverrideRecordsTheOverride` and three siblings):
+
+```
+PROBE verdict returned to the caller: "accepted_overridden"
+PROBE stored result column: <nil>
+PROBE objection status after an ACCEPTED-OVER call: "open"
+```
+
+`CloseConsensusCall` ran `UPDATE consensus_calls SET status='closed', closed_at=?`.
+Not `result`. So:
+
+- **the verdict lived only in the HTTP response of whoever closed the call.** The
+  Consensus page renders `call.result`, so a closed call rendered with no outcome at
+  all — "closed" and nothing about how it was decided, for every reader afterwards;
+- **the objection the call was accepted OVER stayed `status='open'`.** That column is
+  what §55's bar ("no unresolved principled objection") and `TallyConsensus` count, so
+  the record contradicted its own result: a call stored as accepted still counted a
+  standing block;
+- §6.6's "with the objector's remedy answered in writing" had nowhere to be written.
+
+The close is now one transaction writing three things: the call's `status`, `closed_at`
+and `result`; every open objection → `overridden`, with the answer as its `resolution`;
+the audit entry. All three or none, because they are one decision — half of it committed
+is exactly the state above.
+
+**The note is required precisely when the verdict makes it required.** The store refuses
+an `accepted_overridden` close with no written answer, naming §6.6, and refuses it
+BEFORE any write: the refused close leaves the call open, the result NULL and the
+objection open, asserted three ways rather than one. The body is optional, because a
+call with no open block has no remedy to answer — which is why `readOptionalJSON` exists
+beside `readJSON`: `readJSON` turns an empty body into `400 invalid JSON body: EOF`, and
+requiring a note everywhere would have broken every unblocked close. A body that is not
+JSON is still a 400; "no body" and "a malformed body" are different things and only the
+first may be absent.
+
+### 19.2 The close route was gated on a session, and the call had no reader
+
+§6.8's role table gives "call and close consensus" to the maintainer. The route asked
+for a session and nothing else, so any account could fix any project's call's result —
+the same missing-gate shape as §17.3's weight proposal, found the same way.
+
+- `POST /consensus/{call_id}/close` now requires the maintainer role. The refusal names
+  it (the §18.2 work paying for itself a pass later).
+- `POST /consensus` — opening a call — had no gate either, and a call is what quorum is
+  later measured against. Same gate, same sentence.
+
+**And nothing could close a call from the browser.** The reader inventory covered
+`/consensus` with ONE coarse row: `Routes: 9`, anchor `/consensus`, which any page that
+merely reads a call satisfies. The close route sat inside that count and no reader ever
+called it. The row is split: `/close` now has its own row, its own anchor and its own
+note, and the consensus page has a **Close this call** control with the note field, the
+server's refusal shown verbatim, and a re-read on success. The control is offered to
+anyone signed in and the SERVER decides, because the page cannot know who is a
+maintainer — a hidden control would be a claim it has no way to check (§5.2's rule for
+the objection controls, applied to the same page).
+
+### 19.3 A stance was open to anyone with an account
+
+§6.6 says "Everyone eligible can record a position". Eligibility is §8.2's conjunction —
+a member of the project AND a qualifying contribution inside the activity window — and
+`IsEligibleCollaborator` has existed with a doc comment saying it is "the check §6.5's
+distinct-voter condition needs". Neither `POST /position` nor `POST /objection` called
+it. A position is counted in `Participants`, which is what `QuorumThreshold` is compared
+against, so a stance from outside the pool both met quorum and moved both ratios. A block
+is worse than a vote: an open objection holds the call below every pass condition, so a
+stranger's block was a stranger's veto.
+
+Both routes now require §8.2 standing and refuse with a sentence that names the rule and
+both of its halves.
+
+**Eight existing tests broke, and every one of them was voting as an account with no
+standing.** Their fixtures registered a fresh account and cast a stance through the real
+endpoint; those accounts were not members and had contributed nothing, and nothing had
+ever asked. The fix is `voterFor`/`makeEligible` — a members row plus a project document,
+which is route (1) of `qualifyingContributionsSQL`, the same trick the merge-gate pass
+already had as `collaborator` — and for the tests that vote as the harness actor, one
+`makeEligible` for `testuser`. The new refusals are checked in both directions: an
+outsider AND a member with no contribution (a membership-only gate would pass a test that
+only asks about the outsider), and then an account that has contributed, which must still
+be allowed (a gate that refused everybody would pass the other two).
+
+The e2e fixture had the matching belief in a comment: its closer was granted
+*contributor* rights, "closing a call needs one". The route's silence is what had taught
+it that; it is a maintainer now.
+
+### 19.4 The resolution was write-only
+
+`Objection` had no `Resolution` field and `GetObjections` selected eight columns, so
+`resolution` — written by `ResolveObjection` since migration 0001, required non-empty
+there, and written again by this pass's close — was read by nothing. Two consequences: a
+maintainer's reason for resolving an objection was invisible on the only page that shows
+objections (§17.3's "a resolution is recorded with its reason", recorded and unreadable),
+and §6.6's answer to the remedy would have gone the same way.
+
+The field exists, the read selects it as `COALESCE(resolution, '')` (an open objection
+reads as empty rather than as a missing key), and the page shows it under the objection
+it belongs to, labelled. **The assertion that found this was a read-back, not a store
+test**: the store had the value the whole time.
+
+### 19.5 The wire names were PascalCase
+
+`ConsensusSummary` and `governance.ConsensusCounts` carried no json tags, so the close
+response was `{"Call":…,"Counts":…,"Result":…}`. Every Go test decoding it into a tagged
+struct passed — `json.Unmarshal` matches field names case-insensitively — while the
+browser, which looks up `data.result`, found nothing: the page reported "Recorded:
+closed" instead of the verdict. **The e2e suite caught it**, and the Go test now asserts
+the wire names AS names: the key that must be present and the PascalCase spelling that
+must be absent. That is the check a struct-decoding test can never make, and the reason
+the assertion is written on the raw body.
+
+This is the second instance of the same trap (§15.2: `governance.Charter` has no tags and
+the settings page rendered 22 empty inputs). The rule the two share: a response struct a
+page reads is a contract, and the contract is the KEY.
+
+### 19.6 The UI mutation gate could not fail, and reported seven kills it had not earned
+
+`make e2e` ends with `tests/e2e/audit_ui_mutants.py`, which mutates `audit.js`, rebuilds
+the binary that embeds it and runs the browser suite once per mutant. Run from a shell
+whose `python3` cannot import pytest, every mutant "died": the subprocess exited
+non-zero, so it was counted as a kill — with an EMPTY tail in parentheses, because
+pytest had printed nothing. Seven false kills, printed as a green line.
+
+The fix is two rules in one shared runner (`tests/e2e/ui_mutants.py`):
+
+1. run pytest with the interpreter running the gate (`sys.executable`, or `E2E_PYTHON`
+   when the Makefile sets it), not with whatever `python3` resolves to;
+2. **require evidence that pytest ran** — a kill is only a kill if the run reported test
+   results. Anything else is `NOT RUN` and fails the gate.
+
+"Non-zero exit means the mutant died" is the same defect this whole pass is about, one
+level up: a gate that cannot distinguish "the rule was violated" from "the tool was
+broken", and reports the second as the first.
+
+### 19.7 Gates, and the mutation that turns each red
+
+Nine Go mutants, each applied to one source file and each run against the test that
+guards the rule. Every one was killed, and every file was restored byte-for-byte
+(hash-compared; the harness refuses to continue if a restore differs):
+
+| Mutant | Killed by |
+|---|---|
+| the maintainer gate on `/close` is removed | `TestTheCloseRouteNeedsAMaintainer` |
+| the maintainer gate on opening a call is removed | `TestOpeningACallNeedsAMaintainer` |
+| the §8.2 gate on a position is removed | `TestAPositionNeedsBothHalvesOfEligibility` |
+| the §8.2 gate on a block is removed | `TestABlockNeedsBothHalvesOfEligibility` |
+| the close stops writing the verdict | `TestACallThatPassesByOverrideRecordsTheOverride` |
+| the close stops answering the objection it overrides | same |
+| the override stops needing the remedy answered | `TestAnOverrideWithNoRemedyAnsweredInWritingIsRefused` |
+| the read stops selecting the resolution | `TestACallAcceptedOverABlockNeedsTheRemedyAnsweredInWriting` |
+| the close response goes back to PascalCase keys | same |
+
+Three UI mutants for `consensus.js` (see `tests/e2e/consensus_ui_mutants.py`): the close
+control offered on a closed call; the note never sent; the resolution not rendered. Each
+is a client-side rule a Go test cannot observe — the server answers 200 either way.
+
+The `resolution` field's own test is worth naming for what it is: a READ-BACK. The store
+had the value from `ResolveObjection`; asking the store again would have agreed with
+itself. The assertion that fails when the select is wrong is the one that reads the API.
+
+### 19.8 Verification
+
+Measured 2026-10-16, seventh pass. Nothing below is remembered.
+
+| Check | Result |
+|---|---|
+| `make verify` | exit 0 — vet, 973 Go tests in 9 test-bearing packages, build, doc-number gate, e2e-sync gate |
+| `make e2e` | exit 0 — 274 e2e tests in 19 suite files, then 10/10 UI mutants killed |
+| Go mutants | 9/9 killed, files restored byte-for-byte (hash-compared) |
+| UI mutants | 7/7 for `audit.js`, 3/3 for `consensus.js`, source restored byte-identical |
+| Doc-number gate | OK 14 measured numbers agree; 9 quoted-or-fenced and 5 table-row/(historical) exempted, each counted and printed |
+| Schema | 25 · 25 migrations · 79 live tables — **unchanged**: this pass adds no migration, because every column it writes (`consensus_calls.result`, `objections.resolution`) has existed since migration 0001 and was simply never written or never read |
+
+### 19.9 What is left
+
+1. **The override has no WINDOW.** §6.6 describes "a second window where ≥ 80% of
+   non-abstain participants vote to override". What exists now is one close that
+   evaluates the ratio, requires the remedy answered, records the verdict and answers
+   the objection. There is no second ballot and no second window: a call is open, then
+   it is closed. This is still the largest gap between §6.6's prose and the product —
+   §18.5 item 3, restated rather than closed.
+2. **A closed call cannot be reopened**, and `result` is written once. Combined with the
+   maintainer gate on the close, a verdict is final within the product (the admin ledger
+   records who wrote it).
+3. **A single-maintainer project** still cannot resolve a block that stands (§18.5
+   item 2) — the escape hatches are the objector's own withdrawal and, now, closing the
+   call over the block with the remedy answered.
+4. **The e2e suite runs near the rate limiter's ceiling.** 100 requests/minute per client
+   address: three new tests in this suite tipped a shared bucket and a PAGE load answered
+   `429 rate limit exceeded`, which a reader would report as a broken page. The new tests
+   present their own address (`X-Forwarded-For` from loopback, which the limiter already
+   honours) as a fixture fix, not by weakening an assertion. The suite-level fix — a
+   distinct address per browser context — is worth doing the next time it bites.
+5. Deliberate, unchanged (§18.5 item 4): `admin-ledger` and `metrics` have no UI; the
+   criteria page defers pair suggestion, a per-criterion leaderboard and deleting a
+   criterion; a standalone composite-rank view is a page of its own, not an unreachable
+   endpoint.
+

@@ -135,11 +135,16 @@ const (
 )
 
 // ConsensusCounts summarizes a call's cast positions.
+// ConsensusCounts carries json tags for the same reason ConsensusSummary does: it is
+// serialised in a response body, and a client looks up `consent`, not `Consent`.
 type ConsensusCounts struct {
-	Consent, Abstain, StandAside, Block int
-	Participants                        int // distinct position rows
-	Eligible                            int // contributor+ members
-	OpenObjections                      int
+	Consent        int `json:"consent"`
+	Abstain        int `json:"abstain"`
+	StandAside     int `json:"stand_aside"`
+	Block          int `json:"block"`
+	Participants   int `json:"participants"` // distinct position rows
+	Eligible       int `json:"eligible"`     // contributor+ members
+	OpenObjections int `json:"open_objections"`
 }
 
 // NonAbstain returns consent + stand_aside + block.

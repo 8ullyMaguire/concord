@@ -67,8 +67,16 @@ var readerInventory = []readerRow{
 		Routes: 7},
 	{Match: "/api/v1/projects/{project_id}/consensus/objections", Reader: "consensus.js",
 		Anchor: "objections/", Routes: 1, Note: "the maintainer's resolution of an objection (§6.6)"},
+	// The close route gets its own row rather than riding the fragment above it: the
+	// coarse row matched nine routes whose only anchor was the word "/consensus", which
+	// is satisfied by a page that merely reads a call. "Who can close a call, and what
+	// the close records" is a different act with its own reader, and it went unreached
+	// for exactly as long as the row was broad enough to hide it.
+	{Match: "/api/v1/projects/{project_id}/consensus/{call_id}/close", Reader: "consensus.js",
+		Anchor: "/close", Routes: 1,
+		Note: "§6.8's close, and §6.6's remedy answered in writing when a block is overridden"},
 	{Match: "/api/v1/projects/{project_id}/consensus", Reader: "consensus.js", Anchor: "/consensus",
-		Routes: 9},
+		Routes: 8},
 	{Match: "/api/v1/projects/{project_id}/criteria-profiles", Reader: "criteria.js",
 		Anchor: "/criteria-profiles", Routes: 2, Note: "saved weightings: list and create"},
 	{Match: "/api/v1/projects/{project_id}/criteria", Reader: "criteria.js", Anchor: "/criteria",

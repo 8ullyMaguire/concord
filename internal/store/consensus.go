@@ -73,12 +73,29 @@ type Objection struct {
 	Remedy    string  `json:"remedy"`
 	Status    string  `json:"status"`
 	CreatedAt float64 `json:"created_at"`
+	// Resolution is the reason a maintainer recorded for the outcome, or -- when the
+	// call was accepted over the block -- §6.6's "objector's remedy answered in
+	// writing". Empty while the objection is open.
+	//
+	// It has been written since migration 0001 (ResolveObjection requires it, and this
+	// pass's close writes it) and was read by NOTHING: GetObjections' SELECT lists
+	// eight columns and this was not one of them, so the field did not exist and the
+	// answer could not reach a page. A record no reader selects is write-only.
+	Resolution string `json:"resolution"`
 }
 
+// ConsensusSummary is what a close returns: the call as it now stands, the counts the
+// verdict was computed from, and the verdict.
+//
+// The json tags are load-bearing and were missing. `json.Unmarshal` matches a Go field
+// case-insensitively, so every Go test decoding this into a tagged struct was happy
+// while the wire carried `{"Call":…,"Counts":…,"Result":…}` and the browser -- which
+// looks up `data.result` -- found nothing. The consensus page reported "Recorded:
+// closed" instead of the verdict, and the e2e suite is what caught it.
 type ConsensusSummary struct {
-	Call   ConsensusCall
-	Counts governance.ConsensusCounts
-	Result string
+	Call   ConsensusCall              `json:"call"`
+	Counts governance.ConsensusCounts `json:"counts"`
+	Result string                     `json:"result"`
 }
 
 // CreateConsensusCall opens a call.
@@ -269,7 +286,12 @@ func (d *DB) GetObjection(ctx context.Context, id int64) (Objection, error) {
 }
 
 func (d *DB) GetObjections(ctx context.Context, callID int64) ([]Objection, error) {
-	rows, err := d.QueryContext(ctx, `SELECT id, call_id, user_id, principle, violation, remedy, status, created_at
+	// COALESCE, not a nullable scan: `resolution` is NULL for every open objection and
+	// the page distinguishes "no answer yet" by the field being empty, not by it being
+	// absent -- an absent key and an empty one look the same to a client that does not
+	// check for null.
+	rows, err := d.QueryContext(ctx, `SELECT id, call_id, user_id, principle, violation,
+		remedy, status, created_at, COALESCE(resolution, '')
 		FROM objections WHERE call_id=? ORDER BY created_at`, callID)
 	if err != nil {
 		return nil, err
@@ -278,7 +300,8 @@ func (d *DB) GetObjections(ctx context.Context, callID int64) ([]Objection, erro
 	var objections []Objection
 	for rows.Next() {
 		var o Objection
-		if err := rows.Scan(&o.ID, &o.CallID, &o.UserID, &o.Principle, &o.Violation, &o.Remedy, &o.Status, &o.CreatedAt); err != nil {
+		if err := rows.Scan(&o.ID, &o.CallID, &o.UserID, &o.Principle, &o.Violation,
+			&o.Remedy, &o.Status, &o.CreatedAt, &o.Resolution); err != nil {
 			return nil, err
 		}
 		objections = append(objections, o)
@@ -395,7 +418,7 @@ func (d *DB) TallyConsensus(ctx context.Context, c ConsensusCall) (governance.Co
 	return counts, nil
 }
 
-func (d *DB) CloseConsensusCall(ctx context.Context, callID int64) (ConsensusSummary, error) {
+func (d *DB) CloseConsensusCall(ctx context.Context, callID int64, overrideNote string) (ConsensusSummary, error) {
 	c, err := d.GetConsensusCall(ctx, callID)
 	if err != nil {
 		return ConsensusSummary{}, err
@@ -417,11 +440,6 @@ func (d *DB) CloseConsensusCall(ctx context.Context, callID int64) (ConsensusSum
 			time.Unix(int64(hold.ExpiresAt), 0).UTC().Format(time.RFC3339))
 	}
 
-	now := float64(time.Now().Unix())
-	_, err = d.ExecContext(ctx, `UPDATE consensus_calls SET status='closed', closed_at=? WHERE id=?`, now, callID)
-	if err != nil {
-		return ConsensusSummary{}, err
-	}
 	counts, err := d.TallyConsensus(ctx, c)
 	if err != nil {
 		return ConsensusSummary{}, err
@@ -438,5 +456,56 @@ func (d *DB) CloseConsensusCall(ctx context.Context, callID int64) (ConsensusSum
 		gm = governance.Collective
 	}
 	result := governance.EvaluateConsensus(counts, governance.DefaultCharter(gm))
-	return ConsensusSummary{Call: c, Counts: counts, Result: string(result)}, nil
+
+	// §6.6's override is "a second window where >= 80% of non-abstain participants
+	// vote to override, WITH THE OBJECTOR'S REMEDY ANSWERED IN WRITING". The ratio is
+	// counted from the positions; the answer is the note, and the two are the same
+	// rule -- so an override without one is refused before anything is written rather
+	// than recorded as a verdict that answered nothing.
+	//
+	// It is checked HERE, and not in the handler, for the reason the resolution
+	// vocabulary lives here (§17.3): the verdict is what decides whether the note is
+	// required, and the verdict is computed here.
+	note := strings.TrimSpace(overrideNote)
+	if result == governance.ResultAcceptedOverridden && note == "" {
+		return ConsensusSummary{}, fmt.Errorf(
+			"%w: §6.6 accepts a call over a block only with the objector's remedy "+
+				"answered in writing; this call is being accepted over %d open "+
+				"objection(s), so the close needs that answer", ErrInvalid, counts.OpenObjections)
+	}
+
+	// One transaction, because the verdict, the objections it answers and the call's
+	// own record are one decision. Half of it committed is the state that made this
+	// necessary: a call stored as accepted over a block that is still standing.
+	tx, err := d.BeginTx(ctx, nil)
+	if err != nil {
+		return ConsensusSummary{}, err
+	}
+	defer func() { _ = tx.Rollback() }()
+
+	now := float64(time.Now().Unix())
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE consensus_calls SET status='closed', closed_at=?, result=? WHERE id=?`,
+		now, string(result), callID); err != nil {
+		return ConsensusSummary{}, err
+	}
+	if result == governance.ResultAcceptedOverridden {
+		if _, err := tx.ExecContext(ctx,
+			`UPDATE objections SET status='overridden', resolution=? WHERE call_id=? AND status='open'`,
+			note, callID); err != nil {
+			return ConsensusSummary{}, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return ConsensusSummary{}, err
+	}
+
+	// Re-read so the summary describes what was written. It used to return the call as
+	// it stood BEFORE the close (status "open", result NULL), which is a response that
+	// contradicts the write it just performed.
+	closed, err := d.GetConsensusCall(ctx, callID)
+	if err != nil {
+		return ConsensusSummary{}, err
+	}
+	return ConsensusSummary{Call: closed, Counts: counts, Result: string(result)}, nil
 }

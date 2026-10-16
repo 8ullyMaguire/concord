@@ -35,6 +35,12 @@ test:
 #  3. Each line is a separate process anyway, so a suite that aborts on a port
 #     clash cannot take the ones after it with it. scout_e2e takes 8423.
 E2E_PYTEST ?= python3 -m pytest -p no:cacheprovider
+
+# The interpreter the UI mutation gates hand to pytest. They run pytest as a
+# subprocess, so "which python3" has to be answerable separately from the pytest
+# flags: with a `python3` that cannot import pytest, a gate gets a non-zero exit code
+# for every mutant and reports seven kills it did not earn.
+E2E_PYTHON ?= python3
 e2e: build
 	$(E2E_PYTEST) tests/e2e/harness_selftest_test.py -q
 	$(E2E_PYTEST) tests/e2e/e2e_test.py -q
@@ -58,7 +64,8 @@ e2e: build
 	# The audit VIEWER's mutants. Not part of `make gates` because it rebuilds
 	# the binary and runs the browser suite seven times, which is a different
 	# cost from the Go mutants: `gates` is a fast inner loop and this is not.
-	python3 tests/e2e/audit_ui_mutants.py
+	$(E2E_PYTHON) tests/e2e/audit_ui_mutants.py
+	$(E2E_PYTHON) tests/e2e/consensus_ui_mutants.py
 
 # The mutation gates. Each rewrites one source file per mutant and asserts the
 # suite goes red, so a green run means every mutant was killed. A SURVIVED entry

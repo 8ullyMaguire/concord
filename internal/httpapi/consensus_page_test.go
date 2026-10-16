@@ -33,6 +33,56 @@ const anonAuth = "" // isAnon() treats this as "no identity"
 
 // castAs records a stance as a given user, through the real endpoint, so these tests
 // cover the write path the page uses rather than inserting rows behind its back.
+// makeEligible gives `uid` §8.2 standing in `pid`: a member with a qualifying
+// contribution inside the activity window.
+//
+// The consensus routes now require it -- §6.6 opens a position to "everyone eligible"
+// and a position is counted against quorum, so a stance from outside the eligible pool
+// both meets quorum and moves both ratios (see requireEligibleCollaborator). A fixture
+// that registers an account and votes with it is testing the refusal, not the tally.
+//
+// Route (1) of qualifyingContributionsSQL is a project document, which is the cheapest
+// honest way to say "this person has contributed here" without depending on the merge
+// request flow. The membership insert is idempotent because the harness's default actor
+// is already a member of the projects it creates -- what they lack is the activity.
+func makeEligible(t *testing.T, db *store.DB, pid, uid int64, name string) {
+	t.Helper()
+	addMemberOnly(t, db, pid, uid, name, "contributor")
+	contribute(t, db, pid, uid, name)
+}
+
+// addMemberOnly is the membership half of §8.2 and nothing else, so a test can hold "a
+// member who has contributed nothing" against "an account that is not a member at all".
+// The gate is a conjunction and refuses both -- but only if it is asked about both.
+func addMemberOnly(t *testing.T, db *store.DB, pid, uid int64, name, role string) {
+	t.Helper()
+	if _, err := db.ExecContext(context.Background(),
+		`INSERT INTO members (project_id, user_id, role, joined_at) VALUES (?,?,?,?)
+		 ON CONFLICT(project_id, user_id) DO NOTHING`,
+		pid, uid, role, float64(1)); err != nil {
+		t.Fatalf("add member %s: %v", name, err)
+	}
+}
+
+// contribute is the activity half of §8.2: route (1) of qualifyingContributionsSQL is a
+// project document by the user.
+func contribute(t *testing.T, db *store.DB, pid, uid int64, name string) {
+	t.Helper()
+	if _, err := db.PutDocument(context.Background(), pid, uid,
+		store.DocumentKinds[0], "eligibility-"+name, "notes", "body"); err != nil {
+		t.Fatalf("give %s a qualifying contribution: %v", name, err)
+	}
+}
+
+// voterFor registers a new account and gives it §8.2 standing, so it can cast a
+// position through the real endpoint.
+func voterFor(t *testing.T, ts *httptest.Server, db *store.DB, pid int64, name string) string {
+	t.Helper()
+	tok := registerAndLogin(t, ts, name)
+	makeEligible(t, db, pid, userIDNamed(t, db, name), name)
+	return tok
+}
+
 func castAs(t *testing.T, ts *httptest.Server, slug string, callID int64, tok, position string) {
 	t.Helper()
 	body := mustJSON(t, map[string]any{"position": position})
@@ -88,7 +138,7 @@ func tallyFor(t *testing.T, ts *httptest.Server, slug string, callID int64, tok 
 // closeForTally closes a call so its tally becomes visible (§6.6).
 func closeForTally(t *testing.T, db *store.DB, callID int64) {
 	t.Helper()
-	if _, err := db.CloseConsensusCall(context.Background(), callID); err != nil {
+	if _, err := db.CloseConsensusCall(context.Background(), callID, ""); err != nil {
 		t.Fatalf("CloseConsensusCall: %v", err)
 	}
 }
@@ -135,7 +185,7 @@ func TestTheTallyReportsBothRatiosSeparately(t *testing.T) {
 	// 1/1 rather than the 4/3/0 split this test is about -- it would then compare
 	// two ratios that are equal, which is the opposite of the claim.
 	for i := 0; i < 7; i++ {
-		tok := registerAndLogin(t, ts, "tally-voter-"+strconv.Itoa(i))
+		tok := voterFor(t, ts, db, pid, "tally-voter-"+strconv.Itoa(i))
 		stance := "consent"
 		if i >= 4 {
 			stance = "stand_aside"
@@ -181,6 +231,11 @@ func TestTheTallyShowsQuorumProgressWhileTheCallIsOpen(t *testing.T) {
 	if call.Status != "open" {
 		t.Fatalf("fixture is wrong: the call is %q, want open", call.Status)
 	}
+	// The harness actor records this stance (a bare `Authorization: anonymous` is not
+	// a bearer token, so the harness gives the request its default identity -- see
+	// anonymousMarker). They own the project, and a position needs §8.2 standing, so
+	// the fixture has to say what they contributed.
+	makeEligible(t, db, pid, userIDNamed(t, db, "testuser"), "testuser")
 	castAs(t, ts, slug, call.ID, anonAuth, "consent")
 
 	code, raw := authGet(t, ts,

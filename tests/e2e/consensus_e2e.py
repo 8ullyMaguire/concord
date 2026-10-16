@@ -27,6 +27,11 @@ BASE = f"http://127.0.0.1:{PORT}"
 
 SLUG = "consensus-demo"
 PRIVATE = "consensus-private"
+# A public project used only by the standing tests: the closer holds CONTRIBUTOR here,
+# which lets a test about §6.8's gate use an account that already exists. Registering a
+# second account is not an option -- /auth/register is behind the same 100-per-minute
+# visitor limiter as everything else, and a 429 in a fixture reads like a broken page.
+CONTRIB = "consensus-contrib"
 
 
 def seed(db):
@@ -55,6 +60,7 @@ def seed(db):
 
     pid = project(SLUG)
     project(PRIVATE, visibility="private")
+    project(CONTRIB)
 
     # No created_at: the column does not exist. store.ConsensusCall has carried a
     # CreatedAt field since before migration 0014 rebuilt the table, and the field is
@@ -110,9 +116,25 @@ def seed(db):
 # ask for the token without re-registering (a second register is a 409).
 _closer = {}
 
+# The seeded call has one OPEN objection and a decisive ratio of 1.00, which is §6.6's
+# override branch: "a second window where >= 80% of non-abstain participants vote to
+# override, WITH THE OBJECTOR'S REMEDY ANSWERED IN WRITING". The ratio is counted from
+# the positions and this is the answer, so closing that call without it is a 400 that
+# says so -- the note is not ceremony, it is half of the rule that lets the call pass.
+OVERRIDE_NOTE = "shipping behind the flag the objector asked for, removed after two releases"
+
+# Memoised for the same reason the closer is: /auth/register is rate limited.
+_contributor = {}
+
 
 def closer_token(server):
-    """Register the closer once, grant it contributor rights, return its token."""
+    """Register the closer once, grant it MAINTAINER rights, return its token.
+
+    It was a contributor, which was enough while the close route was gated on nothing
+    but a session -- the route accepted whoever asked. §6.8 puts "call and close
+    consensus" in the maintainer's column and the route now enforces it, so a fixture
+    that closes calls has to hold the role the rule names.
+    """
     if "token" in _closer:
         return _closer["token"]
     status, out = api_allowing_error(BASE, "POST", "/api/v1/auth/register", {
@@ -121,12 +143,22 @@ def closer_token(server):
     })
     assert status == 201, f"registering the closer answered {status}: {out}"
     _closer["token"] = out["token"]
-    grant_contributor(server["db"], SLUG, "closer")
+    grant_maintainer(server["db"], SLUG, "closer")
     return _closer["token"]
 
 
-def grant_contributor(db, slug, username):
-    """Give `username` contributor rights on `slug`, creating the user if needed."""
+def grant_maintainer(db, slug, username):
+    """Give `username` maintainer rights on `slug`, creating the user if needed.
+
+    The role is per project, which is what makes the standing test possible without a
+    second registration: the same account is a maintainer of SLUG and a contributor of
+    CONTRIB.
+    """
+    grant_role(db, slug, username, "maintainer")
+
+
+def grant_role(db, slug, username, role):
+    """Give `username` `role` on `slug`, creating the user if needed."""
     con = sqlite3.connect(db)
     try:
         now = time.time()
@@ -141,7 +173,7 @@ def grant_contributor(db, slug, username):
         pid = con.execute("SELECT id FROM projects WHERE slug = ?", (slug,)).fetchone()[0]
         con.execute(
             "INSERT OR IGNORE INTO members (project_id, user_id, role, joined_at)"
-            " VALUES (?,?,'contributor',?)", (pid, uid, now))
+            " VALUES (?,?,?,?)", (pid, uid, role, now))
         con.commit()
     finally:
         con.close()
@@ -192,7 +224,7 @@ def close_seeded_call(server):
     """
     status, out = api_allowing_error(
         BASE, "POST", f"/api/v1/projects/{SLUG}/consensus/1/close",
-        token=closer_token(server))
+        {"note": OVERRIDE_NOTE}, token=closer_token(server))
     # Idempotent on purpose. The server fixture is SESSION-scoped, so the first test
     # that closes call 1 closes it for every test after it. Making this tolerant of an
     # already-closed call keeps each test independent of execution order, rather than
@@ -249,11 +281,27 @@ def test_each_ratio_explains_its_own_denominator(page, server):
 
 
 def test_open_and_resolved_objections_are_shown_apart(page, server):
-    close_seeded_call(server)
-    open_call(page)
+    # A call that closes BLOCKED, because the pair this test is about -- one still-open
+    # objection beside one already-resolved -- only survives a close on a call the vote
+    # did not carry. On the seeded call (decisive 1.00 over one open block) the close is
+    # §6.6's override, so the block is answered and marked; asserting "exactly one
+    # resolved objection" there would be asserting that the override had NOT happened.
+    call = seed_blocked_call(server)
+    status, out = api_allowing_error(
+        BASE, "POST", f"/api/v1/projects/{SLUG}/consensus/{call}/close",
+        {}, token=closer_token(server))
+    assert status == 200, f"closing the blocked call answered {status}: {out}"
+    assert out["result"] == "blocked", (
+        f"the fixture closed as {out['result']!r}, not blocked -- the objection states "
+        f"below are only meaningful on a call the vote did not carry")
+
+    open_call(page, call=call)
     expect(page.locator("#objection-list")).to_be_visible(timeout=10000)
     expect(page.locator(".objection")).to_have_count(2)
+    # One still open (the block that stopped the call), one resolved with its reason.
     expect(page.locator(".objection-resolved")).to_have_count(1)
+    expect(page.locator(".objection-status")).to_contain_text(["open", "resolved"])
+    expect(page.locator(".objection-resolution")).to_contain_text("WAL mode")
 
 
 # --- signed out (frontend-spec §8 rule 3) -----------------------------------
@@ -345,7 +393,7 @@ def test_a_closed_call_reveals_the_tally(page, server):
     # rights after.
     status, out = api_allowing_error(
         BASE, "POST", f"/api/v1/projects/{SLUG}/consensus/1/close",
-        token=closer_token(server))
+        {"note": OVERRIDE_NOTE}, token=closer_token(server))
     assert status == 200, f"closing the call answered {status}: {out}"
 
     open_call(page)
@@ -362,6 +410,221 @@ def test_a_closed_call_reveals_the_tally(page, server):
     assert support != decisive, (
         f"a closed call shows support={support}% and decisive={decisive}%, which are "
         f"equal -- the two ratios have been collapsed into one number")
+
+
+# --- closing a call from the page (§6.8's gate, §6.6's record) ---------------
+
+def seed_closable_call(server, slug=SLUG):
+    """A FRESH open call with one open block, for tests about closing itself.
+
+    The seeded call 1 is session-scoped and closed by whichever test runs first, so a
+    test about closing cannot use it -- it would pass or fail on ordering, and the
+    failure would look like a broken page. 4 consent / 1 block is a decisive ratio of
+    exactly 0.8, the default charter's override ratio, so this call can only be closed
+    by answering the objection.
+    """
+    con = sqlite3.connect(server["db"])
+    try:
+        now = time.time()
+        pid = con.execute("SELECT id FROM projects WHERE slug = ?", (slug,)).fetchone()[0]
+        owner = con.execute("SELECT id FROM users WHERE username = ?",
+                            ("consensus-owner",)).fetchone()[0]
+        call = con.execute(
+            "INSERT INTO consensus_calls (project_id, feature_id, opened_by, opens_at,"
+            " closes_at, status, question, description)"
+            " VALUES (?,NULL,?,?,?,'open','Ship the new export format?','fixture')",
+            (pid, owner, now, now + 7 * 86400)).lastrowid
+        for i, stance in enumerate(["consent"] * 4 + ["block"]):
+            uid = con.execute(
+                "INSERT INTO users (username, display_name, created_at) VALUES (?,?,?)",
+                (f"closable-voter-{call}-{i}", f"Voter {i}", now)).lastrowid
+            con.execute(
+                "INSERT INTO positions (call_id, user_id, position, updated_at)"
+                " VALUES (?,?,?,?)", (call, uid, stance, now))
+        blocker = con.execute(
+            "SELECT user_id FROM positions WHERE call_id = ? AND position = 'block'",
+            (call,)).fetchone()[0]
+        con.execute(
+            "INSERT INTO objections (call_id, user_id, principle, violation, remedy,"
+            " status, created_at) VALUES (?,?,'Reversibility',"
+            "'a half-written export cannot be undone','keep the last complete file',"
+            "'open',?)", (call, blocker, now))
+        con.commit()
+        return call
+    finally:
+        con.close()
+
+
+def seed_blocked_call(server):
+    """A call whose close does NOT override its open objection.
+
+    3 consent / 1 block is a decisive ratio of 0.75, below the default charter's 0.8
+    override ratio, so the call closes BLOCKED and its objection stays open -- which is
+    the only way a test can see an open objection beside a resolved one on a call that
+    has closed. The seeded call 1 cannot do it: it is decided by the override branch
+    (decisive 1.00 over one open block), so closing it is exactly the case where the
+    objection is answered rather than left standing.
+    """
+    con = sqlite3.connect(server["db"])
+    try:
+        now = time.time()
+        pid = con.execute("SELECT id FROM projects WHERE slug = ?", (SLUG,)).fetchone()[0]
+        owner = con.execute("SELECT id FROM users WHERE username = ?",
+                            ("consensus-owner",)).fetchone()[0]
+        call = con.execute(
+            "INSERT INTO consensus_calls (project_id, feature_id, opened_by, opens_at,"
+            " closes_at, status, question, description)"
+            " VALUES (?,NULL,?,?,?,'open','Blocked call for the objection states?',"
+            "'fixture')", (pid, owner, now, now + 7 * 86400)).lastrowid
+        for i, stance in enumerate(["consent"] * 3 + ["block"]):
+            uid = con.execute(
+                "INSERT INTO users (username, display_name, created_at) VALUES (?,?,?)",
+                (f"blocked-voter-{call}-{i}", f"Voter {i}", now)).lastrowid
+            con.execute(
+                "INSERT INTO positions (call_id, user_id, position, updated_at)"
+                " VALUES (?,?,?,?)", (call, uid, stance, now))
+        blocker = con.execute(
+            "SELECT user_id FROM positions WHERE call_id = ? AND position = 'block'",
+            (call,)).fetchone()[0]
+        con.execute(
+            "INSERT INTO objections (call_id, user_id, principle, violation, remedy,"
+            " status, created_at) VALUES (?,?,'Reversibility',"
+            "'a half-written export cannot be undone','keep the last complete file',"
+            "'open',?)", (call, blocker, now))
+        con.execute(
+            "INSERT INTO objections (call_id, user_id, principle, violation, remedy,"
+            " status, resolution, created_at) VALUES (?,?,'Storage',"
+            "'SQLite serialises writers','use WAL mode','resolved',"
+            "'WAL mode is on in the next release',?)", (call, owner, now + 60))
+        con.commit()
+        return call
+    finally:
+        con.close()
+
+
+def new_page(browser, client, token=None):
+    """A browser context that counts as its own visitor to the rate limiter.
+
+    The limiter keys on the client address and honours `X-Forwarded-For` from loopback
+    -- the standard proxy arrangement -- so a test that opens several pages can present
+    its own address instead of spending the whole suite's 100-per-minute budget. Without
+    this the third new test here failed on a 429 for a PAGE load, which looks like a
+    broken page and is actually a fixture that tipped a shared bucket. It is a fixture
+    fix, not a weaker assertion: nothing about what these tests check depends on sharing
+    the suite's budget.
+
+    `token` (when given) is stored the way the site stores one, so the page can be
+    signed in -- and a page with no token is the signed-out reader these tests also
+    need.
+    """
+    ctx = browser.new_context(extra_http_headers={"X-Forwarded-For": client})
+    if token:
+        ctx.add_init_script("localStorage.setItem('concord.token', %r);" % token)
+    pg = ctx.new_page()
+    pg.errors = []
+    pg.on("pageerror", lambda e: pg.errors.append("PAGEERROR: " + str(e)))
+    pg.on("console", lambda m: pg.errors.append("CONSOLE: " + m.text)
+          if m.type == "error" else None)
+    return pg
+
+
+def signed_in_page(browser, token, client="10.9.9.1"):
+    """A signed-in page with its own rate-limit identity."""
+    return new_page(browser, client, token=token)
+
+
+def test_the_close_control_is_offered_only_to_a_signed_in_reader(browser, server):
+    call = seed_closable_call(server)
+
+    # Signed out: read the call, and no control -- there is nobody to attribute the act
+    # to, which is the same rule the position controls follow.
+    signed_out = new_page(browser, "10.9.9.2")
+    try:
+        open_call(signed_out, call=call)
+        expect(signed_out.locator("#consensus-call")).to_be_visible(timeout=10000)
+        expect(signed_out.locator("#consensus-close")).to_be_hidden()
+    finally:
+        signed_out.close()
+
+    # Signed in: offered, on an OPEN call. It is offered to a contributor too, and this
+    # is deliberate -- see test_a_contributor_cannot_close_from_the_page.
+    closer = signed_in_page(browser, closer_token(server), client="10.9.9.3")
+    try:
+        open_call(closer, call=call)
+        expect(closer.locator("#consensus-close")).to_be_visible(timeout=10000)
+    finally:
+        closer.close()
+
+
+def test_a_close_over_a_block_needs_the_remedy_answered(browser, server):
+    call = seed_closable_call(server)
+    maintainer = signed_in_page(browser, closer_token(server), client="10.9.9.4")
+    try:
+        open_call(maintainer, call=call)
+        expect(maintainer.locator("#consensus-close")).to_be_visible(timeout=10000)
+
+        # No note. §6.6 accepts a call over a block only with the objector's remedy
+        # answered in writing, and the server refuses with the sentence that says so.
+        maintainer.fill("#consensus-close-note", "")
+        maintainer.click("#consensus-close-submit")
+        expect(maintainer.locator("#consensus-close-error")).to_contain_text(
+            "remedy", timeout=10000)
+        # Refused means unmoved: the call is still open and the control is still there.
+        expect(maintainer.locator("#consensus-close")).to_be_visible()
+
+        maintainer.fill("#consensus-close-note", OVERRIDE_NOTE)
+        maintainer.click("#consensus-close-submit")
+        expect(maintainer.locator("#consensus-close-done")).to_contain_text(
+            "accepted_overridden", timeout=10000)
+
+        # The record, on the page that reloads from the server: the result in the meta
+        # line, the objection the call was accepted over marked, and the answer kept.
+        expect(maintainer.locator("#consensus-meta")).to_contain_text(
+            "accepted_overridden", timeout=10000)
+        expect(maintainer.locator("#consensus-close")).to_be_hidden()
+        expect(maintainer.locator(".objection-status").first).to_have_text("overridden")
+        expect(maintainer.locator(".objection-resolution").first).to_contain_text(
+            OVERRIDE_NOTE)
+    finally:
+        maintainer.close()
+
+
+def test_a_contributor_cannot_close_from_the_page(browser, server):
+    """The control is offered and the SERVER refuses, naming what it wanted.
+
+    The page cannot know who is a maintainer (§6.8), so it does not try: it offers the
+    control to anyone signed in and reports the refusal verbatim. A page that hid the
+    control would be making a claim it cannot check, the same mistake §5.2's objection
+    controls avoid.
+    """
+    call = seed_closable_call(server, slug=CONTRIB)
+    # The closer holds MAINTAINER of SLUG and CONTRIBUTOR of CONTRIB. Roles are per
+    # project, so the standing this test needs comes from a role grant and not from a
+    # second registration.
+    grant_role(server["db"], CONTRIB, "closer", "contributor")
+    contributor = signed_in_page(browser, closer_token(server), client="10.9.9.5")
+    try:
+        # slug=CONTRIB, not the default: `?call=<id>` resolves inside a project, and
+        # opening the same id under SLUG would read a different project's call.
+        open_call(contributor, slug=CONTRIB, call=call)
+        expect(contributor.locator("#consensus-close")).to_be_visible(timeout=10000)
+        contributor.fill("#consensus-close-note", OVERRIDE_NOTE)
+        contributor.click("#consensus-close-submit")
+        expect(contributor.locator("#consensus-close-error")).to_contain_text(
+            "maintainer", timeout=10000)
+        # And the call really is untouched, read from the API rather than the page.
+        body = contributor.request.get(
+            f"{BASE}/api/v1/projects/{CONTRIB}/consensus/{call}").json()
+        assert body["call"]["status"] == "open", (
+            f"the call is {body['call']['status']!r} after a refused close")
+    finally:
+        # A refusal is a 403, and Chromium logs it as a console error. Filtered the way
+        # taxonomy_e2e.py does, so the page is still held to its ordinary standard
+        # rather than the assertion being widened to quieten the console.
+        contributor.errors[:] = [e for e in contributor.errors
+                                 if "Failed to load resource" not in e]
+        assert not contributor.errors, f"JS errors: {contributor.errors}"
+        contributor.close()
 
 
 def api_allowing_error(base, method, path, body=None, token=None):

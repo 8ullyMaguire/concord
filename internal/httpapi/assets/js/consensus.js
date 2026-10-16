@@ -52,6 +52,11 @@
   var positionsEl = $('consensus-positions');
   var signedOutEl = $('consensus-signed-out');
   var objectionsEl = $('consensus-objections');
+  var closeEl = $('consensus-close');
+  var closeNote = $('consensus-close-note');
+  var closeSubmit = $('consensus-close-submit');
+  var closeErr = $('consensus-close-error');
+  var closeDone = $('consensus-close-done');
 
   var slug = root.getAttribute('data-project') || '';
   var callID = root.getAttribute('data-call') || '';
@@ -327,6 +332,15 @@
         s.textContent = o.status;
         li.appendChild(s);
       }
+      // Why it is no longer open: a maintainer's reason, or -- when the call was
+      // accepted over the block -- §6.6's answer to the remedy. Labelled, because an
+      // unexplained paragraph under a resolution would read as another objection.
+      if (o.resolution) {
+        var res = document.createElement('p');
+        res.className = 'objection-resolution';
+        res.textContent = 'resolution: ' + o.resolution;
+        li.appendChild(res);
+      }
       // Signed out: the objection is readable and the control is not offered --
       // there is nobody to attribute a resolution to.
       if (token() && (!o.status || o.status === 'open')) {
@@ -340,6 +354,59 @@
     show(objectionsEl, true);
   }
 
+  // §6.8's close, and the only judgement this page makes about it: is the call open,
+  // and is there somebody signed in to attribute the act to. Who is ALLOWED to close is
+  // the server's answer -- a client-side role check would be a claim the page cannot
+  // check, exactly as with the objection controls above.
+  function closeControls(call) {
+    if (!token() || !callEl) { show(closeEl, false); return; }
+    if ((call.status || '') !== 'open') {
+      // A closed call shows its result in the meta line instead; offering a second
+      // close would be offering a second verdict on a decision that has one.
+      show(closeEl, false);
+      return;
+    }
+    show(closeEl, true);
+  }
+
+  function closeCall() {
+    var note = (closeNote.value || '').trim();
+    closeSubmit.disabled = true;
+    show(closeErr, false);
+    show(closeDone, false);
+    var url = '/api/v1/projects/' + encodeURIComponent(slug) +
+      '/consensus/' + encodeURIComponent(callID) + '/close';
+    fetch(url, {
+      method: 'POST',
+      headers: headers(),
+      // Sent even when empty: the field is the whole request, and the server decides
+      // whether THIS call needed it. A page that decided would decide wrongly about
+      // which call is being accepted over a block.
+      body: JSON.stringify({ note: note })
+    }).then(function (r) {
+      return r.text().then(function (txt) {
+        var data = {};
+        try { data = txt ? JSON.parse(txt) : {}; } catch (e) { data = {}; }
+        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+        return data;
+      });
+    }).then(function (data) {
+      // The server's result, quoted rather than derived: whether the call passed is
+      // EvaluateConsensus's judgement and the stored `result` is the record of it.
+      closeDone.textContent = 'Recorded: ' + (data.result || 'closed') + '.';
+      show(closeDone, true);
+      closeSubmit.disabled = false;
+      // Re-read rather than patch the page: closing changes the tally's visibility,
+      // the objections' statuses and the call's own record, and the page should show
+      // what the store now holds.
+      load();
+    }).catch(function (e) {
+      closeSubmit.disabled = false;
+      closeErr.textContent = e.message;
+      show(closeErr, true);
+    });
+  }
+
   function render(data) {
     var call = data.call || {};
     $('consensus-question').textContent =
@@ -348,6 +415,7 @@
     // `tally_visible` is the server's answer, not this page's.
     renderTally(data.tally || {}, data.tally_visible === true);
     renderObjections(data.objections, data.tally_visible === true);
+    closeControls(call);
     show(callEl, true);
 
     // Signed out: read-only, with a prompt where each write control would be.
@@ -486,6 +554,7 @@
 
   var retry = $('consensus-retry');
   if (retry) retry.addEventListener('click', function () { load(); });
+  if (closeSubmit) closeSubmit.addEventListener('click', closeCall);
 
   load();
 })();

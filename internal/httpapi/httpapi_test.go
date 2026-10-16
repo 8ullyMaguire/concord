@@ -496,7 +496,7 @@ func TestVoteRoundTrip(t *testing.T) {
 }
 
 func TestConsensusFiveOutcomes(t *testing.T) {
-	ts := newTestServer(t)
+	ts, db := newTestServerWithStore(t)
 	resp, projBody := doJSON(t, ts, "POST", "/api/v1/projects", map[string]any{
 		"slug": "consensus-project", "name": "Consensus Project", "description": "x",
 	})
@@ -504,6 +504,10 @@ func TestConsensusFiveOutcomes(t *testing.T) {
 		t.Fatalf("create project: %d", resp.StatusCode)
 	}
 	projID := int64(projBody["id"].(float64))
+	// Every stance below is recorded by the harness actor, and §6.6 opens positions to
+	// eligible collaborators (§8.2): creating the project made them a member, and this
+	// makes them active.
+	makeEligible(t, db, projID, userIDNamed(t, db, "testuser"), "testuser")
 
 	resp, compBody := doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/complaints", map[string]any{
 		"title": "Consensus complaint", "body": "x", "severity": 1, "frequency": 0.5,
@@ -750,7 +754,7 @@ func TestPermissionDenial(t *testing.T) {
 }
 
 func TestObjectionLifecycle(t *testing.T) {
-	ts := newTestServer(t)
+	ts, db := newTestServerWithStore(t)
 
 	resp, projBody := doJSON(t, ts, "POST", "/api/v1/projects", map[string]any{
 		"slug": "obj-test", "name": "Objection Test", "description": "x",
@@ -759,6 +763,8 @@ func TestObjectionLifecycle(t *testing.T) {
 		t.Fatalf("create project: %d", resp.StatusCode)
 	}
 	projID := int64(projBody["id"].(float64))
+	// A block is a stance (§6.6) and takes the same §8.2 standing as a position.
+	makeEligible(t, db, projID, userIDNamed(t, db, "testuser"), "testuser")
 
 	resp, compBody := doJSON(t, ts, "POST", "/api/v1/projects/"+slugOf(t, ts, projID)+"/complaints", map[string]any{
 		"title": "Obj complaint", "body": "x", "severity": 1, "frequency": 0.5,

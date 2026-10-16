@@ -5,10 +5,22 @@ For the implementing agent taking over from here. Read this, then
 then `docs/ARCHITECTURE.md`. `docs/PLAN.md` covers the pre-r4 milestones (all
 complete) and `docs/concord-spec.md` is superseded — do not plan from either.
 
-**What is left is `docs/REMAINING.md` §18.5** (measured 2026-10-16). Everything
-before it in that file is history, and §1/§4/§11 are explicitly marked superseded —
-§11's "nothing else is outstanding" was verified by hand and was wrong twice over. If
-a tracker and the tree disagree, the tree wins and the tracker is the bug.
+**What is left is `docs/REMAINING.md` §19.8** (measured 2026-10-16, seventh pass).
+Everything before it in that file is history, and §1/§4/§11 are explicitly marked
+superseded — §11's "nothing else is outstanding" was verified by hand and was wrong
+twice over. If a tracker and the tree disagree, the tree wins and the tracker is the bug.
+
+**§6.6's override now leaves a record, and a call can be closed from the page** (§19).
+Three defects in the same pass, one shape: a rule that existed and nothing enforced. The
+close computed `accepted_overridden` and never wrote `result`, so a closed call rendered
+with no outcome and the objection it was accepted over stayed open (§19.1); the close
+route asked only for a session, so any account could fix any project's call's result,
+and no reader called it at all (§19.2); `POST /position` and `POST /objection` asked for
+nothing but a session too, so a stance from outside §8.2's eligible pool met quorum and
+moved both ratios, and a stranger's block was a stranger's veto (§19.3). Found on the
+way: the objection `resolution` column was write-only (§19.4) and the close response
+carried PascalCase keys a browser cannot read (§19.5). Spec:
+`docs/specs/consensus-page-spec.md` §5.3.
 
 **§5.7's merge gate now runs** (§16). It was implemented, unit-tested in
 `governance`, and called by nothing: `ExecuteMerge` required only a non-zero actor id
@@ -36,7 +48,7 @@ store tests and no page.
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 962 tests, schema 25, 79 tables,
+Measured, not remembered: `make verify` green, 973 tests, schema 25, 79 tables,
 25 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 

@@ -267,7 +267,7 @@ func TestAnOpenConsensusCallPublishesNoCountsInTheFeed(t *testing.T) {
 		t.Fatalf("CreateConsensusCall: %v", err)
 	}
 	for i := 0; i < 4; i++ {
-		castAs(t, ts, slug, call.ID, registerAndLogin(t, ts, "feed-voter-"+itoaTest(i)), "consent")
+		castAs(t, ts, slug, call.ID, voterFor(t, ts, db, pid, "feed-voter-"+itoaTest(i)), "consent")
 	}
 
 	for _, path := range []string{

@@ -49,7 +49,7 @@ func TestAnOpenCallDoesNotLeakTheRunningTally(t *testing.T) {
 		t.Fatalf("CreateConsensusCall: %v", err)
 	}
 	for i := 0; i < 4; i++ {
-		tok := registerAndLogin(t, ts, "hidden-tally-"+strconv.Itoa(i))
+		tok := voterFor(t, ts, db, pid, "hidden-tally-"+strconv.Itoa(i))
 		stance := "consent"
 		if i == 3 {
 			stance = "stand_aside"
@@ -106,8 +106,8 @@ func TestAnOpenCallShowsOnlyYourOwnPosition(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateConsensusCall: %v", err)
 	}
-	mine := registerAndLogin(t, ts, "hidden-tally-mine")
-	theirs := registerAndLogin(t, ts, "hidden-tally-theirs")
+	mine := voterFor(t, ts, db, pid, "hidden-tally-mine")
+	theirs := voterFor(t, ts, db, pid, "hidden-tally-theirs")
 	castAs(t, ts, slug, call.ID, mine, "block")
 	castAs(t, ts, slug, call.ID, theirs, "consent")
 
@@ -140,14 +140,14 @@ func TestAClosedCallRevealsTheTally(t *testing.T) {
 		t.Fatalf("CreateConsensusCall: %v", err)
 	}
 	for i := 0; i < 4; i++ {
-		tok := registerAndLogin(t, ts, "closed-tally-"+strconv.Itoa(i))
+		tok := voterFor(t, ts, db, pid, "closed-tally-"+strconv.Itoa(i))
 		stance := "consent"
 		if i == 3 {
 			stance = "stand_aside"
 		}
 		castAs(t, ts, slug, call.ID, tok, stance)
 	}
-	if _, err := db.CloseConsensusCall(ctx, call.ID); err != nil {
+	if _, err := db.CloseConsensusCall(ctx, call.ID, ""); err != nil {
 		t.Fatalf("CloseConsensusCall: %v", err)
 	}
 

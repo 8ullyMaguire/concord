@@ -4,11 +4,13 @@
 package httpapi
 
 import (
+	"bytes"
 	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"net/http"
 	"sort"
@@ -832,6 +834,34 @@ func readJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, 1<<20)
 	dec := json.NewDecoder(r.Body)
 	if err := dec.Decode(dst); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body: " + err.Error()})
+		return false
+	}
+	return true
+}
+
+// readOptionalJSON decodes a body if there is one, and answers true when there is
+// nothing to read.
+//
+// `readJSON` treats an empty body as a 400 ("invalid JSON body: EOF"), which is right
+// for an endpoint whose whole request IS the body. It is wrong for an endpoint whose
+// body is optional: closing a consensus call takes a note, but only a call that is
+// being accepted over a block HAS anything to answer, and the close control has been
+// usable with no body since it was written. Requiring one would break callers to make
+// a rare case simpler.
+//
+// Malformed JSON is still a 400 -- the difference is between "no body" and "a body
+// that is not JSON", and only the first is allowed to be absent.
+func readOptionalJSON(w http.ResponseWriter, r *http.Request, dst any) bool {
+	body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, 1<<20))
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "could not read body: " + err.Error()})
+		return false
+	}
+	if len(bytes.TrimSpace(body)) == 0 {
+		return true
+	}
+	if err := json.Unmarshal(body, dst); err != nil {
 		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON body: " + err.Error()})
 		return false
 	}

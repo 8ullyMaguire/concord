@@ -111,7 +111,7 @@ func TestEmergencyHoldSuspendsTheCallAndCannotForceAResult(t *testing.T) {
 	}
 
 	// Now it cannot resolve, even with unanimous consent behind it.
-	if _, err := store.CloseConsensusCall(ctx, callID); err == nil {
+	if _, err := store.CloseConsensusCall(ctx, callID, ""); err == nil {
 		t.Fatal("held call closed: got nil, want refusal")
 	} else if !errors.Is(err, ErrConflict) {
 		t.Errorf("close error = %v, want ErrConflict", err)
@@ -159,7 +159,7 @@ func TestEmergencyHoldExpiresOnItsOwn(t *testing.T) {
 			t.Fatalf("CastPosition: %v", err)
 		}
 	}
-	if _, err := store.CloseConsensusCall(ctx, callID); err != nil {
+	if _, err := store.CloseConsensusCall(ctx, callID, ""); err != nil {
 		t.Errorf("close after hold expiry: %v, want success", err)
 	}
 }

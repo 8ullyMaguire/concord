@@ -1300,6 +1300,12 @@ func (s *Server) handleCreateConsensus(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// §6.8 puts "call and close consensus" in the maintainer's column; calling a call
+	// and closing one are the same power, so they carry the same gate.
+	if err := s.requireRole(projectID, "maintainer", r); err != nil {
+		mapError(w, err)
+		return
+	}
 	var req createConsensusRequest
 	if !readJSON(w, r, &req) {
 		return
@@ -1456,9 +1462,14 @@ func (s *Server) handleCastConsensusPosition(w http.ResponseWriter, r *http.Requ
 	if !ok {
 		return
 	}
-	_ = projectID
 	if getActorID(r) == 0 {
 		mapError(w, fmt.Errorf("authentication required"))
+		return
+	}
+	// §6.6 opens a position to "everyone eligible", and a position is counted against
+	// quorum -- see requireEligibleCollaborator for why that makes the pool the gate.
+	if err := s.requireEligibleCollaborator(projectID, r); err != nil {
+		mapError(w, err)
 		return
 	}
 	var req struct {
@@ -1481,9 +1492,15 @@ func (s *Server) handleCreateObjection(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	_ = projectID
 	if getActorID(r) == 0 {
 		mapError(w, store.ErrAuth)
+		return
+	}
+	// A block is a stance as well as a record: it is an open objection, so it holds
+	// the call below its pass conditions (§6.6 condition 4) until it is withdrawn or
+	// overridden. The same eligibility gate as a position, for the same reason.
+	if err := s.requireEligibleCollaborator(projectID, r); err != nil {
+		mapError(w, err)
 		return
 	}
 	var req struct {
@@ -1502,6 +1519,42 @@ func (s *Server) handleCreateObjection(w http.ResponseWriter, r *http.Request) {
 	_ = s.Store.AddAudit(r.Context(), 0, getActorID(r), "create_objection", "objection", obj.ID, req.Principle)
 	writeJSON(w, http.StatusCreated, obj)
 }
+
+// requireEligibleCollaborator refuses a caller who is not in §8.2's population.
+//
+// §6.6 opens a position to "everyone eligible", and eligibility is a defined thing --
+// a member of the project WITH a qualifying contribution inside the activity window --
+// not "anyone with an account". The distinction is load-bearing rather than tidy: a
+// position is counted in `Participants`, and `QuorumThreshold` is compared against it,
+// so a position from outside the eligible pool both meets quorum and moves both ratios.
+// Crediting it means a stranger can decide a project's call.
+//
+// It is a named refusal for the same reason roleRefusal is: the person who just lost
+// the ability to act needs to know which of the two conditions they are missing.
+func (s *Server) requireEligibleCollaborator(projectID int64, r *http.Request) error {
+	actorID := getActorID(r)
+	if actorID == 0 {
+		return store.ErrAuth
+	}
+	ok, err := s.Store.IsEligibleCollaborator(r.Context(), projectID, actorID)
+	if err != nil {
+		return err
+	}
+	if !ok {
+		return &eligibilityRefusal{}
+	}
+	return nil
+}
+
+// eligibilityRefusal names §8.2, which is the part a page cannot see.
+type eligibilityRefusal struct{}
+
+func (e *eligibilityRefusal) Error() string {
+	return "permission denied: this action needs an eligible collaborator (§8.2) -- " +
+		"a member of this project with a qualifying contribution inside the activity window"
+}
+
+func (e *eligibilityRefusal) Unwrap() error { return store.ErrPerm }
 
 // objectionOutcomeNeedsMaintainer reports whether recording `status` against `obj`
 // by `actorID` needs the maintainer role.
@@ -1585,16 +1638,35 @@ func (s *Server) handleCloseConsensus(w http.ResponseWriter, r *http.Request) {
 		mapError(w, fmt.Errorf("authentication required"))
 		return
 	}
-	callID, _, ok := s.requireCallInProject(w, r)
+	callID, projectID, ok := s.requireCallInProject(w, r)
 	if !ok {
 		return
 	}
-	summary, err := s.Store.CloseConsensusCall(r.Context(), callID)
+	// §6.8 puts "call and close consensus" in the maintainer's column. Closing is the
+	// act that fixes a call's result, so an ungated close let any account with a
+	// session decide any project's call -- the same missing-gate shape as §17.3's
+	// weight proposal, found the same way.
+	if err := s.requireRole(projectID, "maintainer", r); err != nil {
+		mapError(w, err)
+		return
+	}
+	// The note is §6.6's "objector's remedy answered in writing", and it is required
+	// only when the verdict is an override -- which the store decides, because the
+	// verdict is what makes it required. So the body is optional here and the refusal
+	// comes back from the store as a 400 naming the missing answer.
+	var req struct {
+		Note string `json:"note"`
+	}
+	if !readOptionalJSON(w, r, &req) {
+		return
+	}
+	summary, err := s.Store.CloseConsensusCall(r.Context(), callID, req.Note)
 	if err != nil {
 		mapError(w, err)
 		return
 	}
-	_ = s.Store.AddAudit(r.Context(), summary.Call.ProjectID, getActorID(r), "close_consensus", "consensus_call", callID, summary.Result)
+	_ = s.Store.AddAudit(r.Context(), projectID, getActorID(r), "close_consensus",
+		"consensus_call", callID, summary.Result)
 	writeJSON(w, http.StatusOK, summary)
 }
 

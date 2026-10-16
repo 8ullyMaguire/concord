@@ -103,6 +103,29 @@ if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(4);}})();
       <h3>Objections</h3>
       <ul id="objection-list" class="objection-list"></ul>
     </section>
+
+    <!--
+      §6.8 puts "call and close consensus" in the maintainer's column, and §6.6 needs
+      one thing from whoever closes: when a call is accepted OVER an open block the
+      override is recorded "with the objector's remedy answered in writing". This note
+      is where that answer goes.
+
+      Offered to anyone signed in, not only to maintainers: the page cannot know who is
+      a maintainer, and a client-side role check would be a claim it has no way to
+      check. The server decides, and says so in its refusal. Empty is the normal case --
+      a call with no open block has no remedy to answer.
+    -->
+    <section class="consensus-close" id="consensus-close" hidden>
+      <h3>Close this call</h3>
+      <p class="hint">Closing fixes the result. If the call is accepted over an open
+        block, §6.6 requires the objector's remedy answered in writing — that answer is
+        the note below, and it is recorded on the objection.</p>
+      <label class="field-label" for="consensus-close-note">How the objection was answered</label>
+      <textarea id="consensus-close-note" rows="2"></textarea>
+      <button type="button" class="btn btn-primary" id="consensus-close-submit">Close the call</button>
+      <p class="consensus-close-error" id="consensus-close-error" role="alert" hidden></p>
+      <p class="consensus-close-done" id="consensus-close-done" hidden></p>
+    </section>
   </article>
 </div>
 

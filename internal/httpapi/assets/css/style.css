@@ -1700,9 +1700,19 @@ textarea:focus-visible {
 
 .objection-violation,
 .objection-remedy,
-.objection-status {
+.objection-status,
+.objection-resolution {
   margin: 0.25rem 0 0;
   font-size: 0.92rem;
+}
+
+/* Why the objection is closed: a maintainer's reason, or the answer to the remedy
+   when §6.6 accepted the call over the block. Set apart from the objection's own
+   words, because it is somebody else's answer to them. */
+.objection-resolution {
+  border-left: 2px solid var(--border, #e2e8f0);
+  padding-left: 0.6rem;
+  font-style: italic;
 }
 
 .objection-status {
@@ -1732,6 +1742,32 @@ textarea:focus-visible {
 .objection-resolve-error {
   margin: 0;
   color: var(--danger, #b91c1c);
+  font-size: 0.9rem;
+}
+
+.consensus-close {
+  margin-top: var(--space-md, 1.5rem);
+  padding-top: var(--space-sm, 0.75rem);
+  border-top: 1px solid var(--border, #e2e8f0);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-width: 40rem;
+}
+
+.consensus-close textarea {
+  width: 100%;
+  font: inherit;
+}
+
+.consensus-close-error {
+  margin: 0;
+  color: var(--danger, #b91c1c);
+  font-size: 0.9rem;
+}
+
+.consensus-close-done {
+  margin: 0;
   font-size: 0.9rem;
 }
 
