@@ -1,0 +1,17 @@
+[
+ {
+  "name": "expired themes still count (read filter inverted)",
+  "old": "\t\tWHERE project_id = ? AND expires_at > ?",
+  "new": "\t\tWHERE project_id = ? AND expires_at < ?"
+ },
+ {
+  "name": "the proposer may consent to their own proposal",
+  "old": "\tif p.ProposedBy == userID {",
+  "new": "\tif p.ProposedBy == -1 {"
+ },
+ {
+  "name": "a renewal no longer updates the live weight",
+  "old": "\t\t\tweight = excluded.weight,",
+  "new": "\t\t\tweight = weight,"
+ }
+]

@@ -105,7 +105,9 @@
     { title: "Ranking", note: "How priority and Glicko-2 ratings are computed.",
       keys: ["Lam", "Mu", "PainHalflifeDays", "RepHalflifeDays", "GlickoTau", "VoteWeightCap"] },
     { title: "Solution calls", note: "§6.5's three conditions for opening a call on the leading solution.",
-      keys: ["SolutionCallMinVoters", "SolutionCallConfidence", "SolutionStableHours"] }
+      keys: ["SolutionCallMinVoters", "SolutionCallConfidence", "SolutionStableHours"]},
+    { title: "Themes", note: "§6.2: a ratified theme expires after this many days unless it is renewed.",
+      keys: ["ThemeLifetimeDays"] }
   ];
 
   function field(name, value) {
@@ -229,6 +231,7 @@
     }
     var proposals = s.proposals || [];
     var themes = s.themes || [];
+    var themeProposals = s.themeProposals || [];
     // §6.2's propose form. The route has existed since the strategy panel was added
     // and the panel could only CONSENT to proposals other people had made: there was
     // no way to open one. Same class as the rest of this pass -- a write with a
@@ -268,7 +271,9 @@
             "<td>#" + esc(p.feature_id) + "</td>" +
             "<td>" + esc(p.weight_before) + " &rarr; " + esc(p.weight_after) + "</td>" +
             "<td>" + esc(p.rationale) + "</td>" +
-            '<td><button type="button" class="btn" data-consent="' + esc(p.id) + '">Consent</button></td>' +
+            '<td><button type="button" class="btn" data-consent="' + esc(p.id) + '">Consent</button>' +
+            '<button type="button" class="btn btn-quiet" data-withdraw-weight="' + esc(p.id) +
+            '">Withdraw</button></td>' +
             "</tr>";
         }).join("") + "</tbody></table>"
       : '<div class="empty-state"><p class="empty-state-title">No weight proposals open</p>' +
@@ -277,14 +282,70 @@
 
     var liveThemes = themes.length
       ? '<table class="table" data-strategy-themes><thead><tr><th>Theme</th><th>Weight</th>' +
-        "<th>Rationale</th></tr></thead><tbody>" +
+        "<th>Rationale</th><th>Expires</th><th></th></tr></thead><tbody>" +
         themes.map(function (t) {
-          return "<tr><td>" + esc(t.namespace ? t.namespace + "/" + t.tag : t.tag) + "</td>" +
-            "<td>" + esc(t.weight) + "</td><td>" + esc(t.rationale) + "</td></tr>";
+          // §366: a theme "expires at the next release cycle unless renewed". A table
+          // showing the weight and not the expiry showed a permanent-looking dial -- the
+          // one thing that rule exists to prevent. Renewal is another proposal for the
+          // same tag, so that is what the button offers.
+          return '<tr data-theme="' + esc(t.tag) + '"><td>' +
+            esc(t.namespace ? t.namespace + "/" + t.tag : t.tag) + "</td>" +
+            "<td>" + esc(t.weight) + "</td><td>" + esc(t.rationale) + "</td>" +
+            "<td>" + esc(t.expires_at ? whenUnix(t.expires_at) : "") + "</td>" +
+            '<td><button type="button" class="btn btn-quiet" data-renew="' + esc(t.tag) +
+            '">Renew</button></td></tr>';
         }).join("") + "</tbody></table>"
       : '<div class="empty-state"><p class="empty-state-title">No ratified themes</p>' +
-        "<p>A theme is a multiplier on every feature carrying its tag, and it expires at " +
-        "the next release cycle rather than being switched off by hand.</p></div>";
+        "<p>A theme is a weight on every feature carrying its tag, and it expires rather " +
+        "than being switched off by hand.</p></div>";
+
+    // §6.2's propose form, the theme half. The panel could CONSENT to weight proposals and
+    // could do nothing at all with themes: the GET existed, the POST did not, and no route
+    // in any revision had ever created a theme.
+    var lifetime = (s.charter && s.charter.ThemeLifetimeDays) || 90;
+    var themePropose = '<form id="propose-theme-form" class="card">' +
+      '<h3 class="form-title">Propose a theme</h3>' +
+      '<p class="form-note">A theme is a weight on a TAG, so "security-hardening: +2" moves ' +
+      "every feature carrying that tag. It is consensus-ratified like a weight, and it " +
+      "expires: a theme nobody renews stops counting " + esc(lifetime) + " days after it " +
+      "is ratified (the charter's theme lifetime). Nothing changes until the quorum " +
+      "consents.</p>" +
+      '<div class="field-row">' +
+      '<div class="field"><label class="form-label" for="theme-tag">Tag</label>' +
+      '<input id="theme-tag" name="theme_tag" required maxlength="60" ' +
+      'placeholder="an existing tag, e.g. security-hardening"></div>' +
+      '<div class="field"><label class="form-label" for="theme-weight">Weight</label>' +
+      '<input id="theme-weight" name="weight" type="number" step="0.1" min="-2" max="3" ' +
+      'value="1" required></div>' +
+      "</div>" +
+      '<div class="field"><label class="form-label" for="theme-rationale">Why</label>' +
+      '<input id="theme-rationale" name="rationale" required maxlength="300" ' +
+      'placeholder="why this tag should steer the roadmap"></div>' +
+      '<div class="detail-actions"><button type="submit" class="btn btn-primary">' +
+      "Open the proposal</button></div>" +
+      '<p class="form-status" data-status hidden></p>' +
+      "</form>";
+
+    var themePending = themeProposals.length
+      ? '<table class="table" data-theme-proposals><thead><tr><th>Tag</th><th>Weight</th>' +
+        "<th>Rationale</th><th>Status</th><th></th></tr></thead><tbody>" +
+        themeProposals.map(function (p) {
+          var open = p.status === "pending";
+          return '<tr data-theme-proposal="' + esc(p.id) + '">' +
+            "<td>" + esc(p.theme_namespace ? p.theme_namespace + "/" + p.theme_tag : p.theme_tag) + "</td>" +
+            "<td>" + esc(p.weight_before == null ? "none" : p.weight_before) +
+            " &rarr; " + esc(p.weight_after) + "</td>" +
+            "<td>" + esc(p.rationale) + "</td>" +
+            "<td>" + esc(p.status) + "</td>" +
+            "<td>" + (open
+              ? '<button type="button" class="btn" data-consent-theme="' + esc(p.id) + '">Consent</button>' +
+                '<button type="button" class="btn btn-quiet" data-withdraw-theme="' + esc(p.id) +
+                '">Withdraw</button>'
+              : "") + "</td></tr>";
+        }).join("") + "</tbody></table>"
+      : '<div class="empty-state"><p class="empty-state-title">No theme proposals</p>' +
+        "<p>A proposal opens a decision: a tag's weight moves only once the project " +
+        "consents, and the proposer's own consent does not count.</p></div>";
 
     return '<section class="panel"><h2>Strategic weights</h2>' +
       '<p class="form-note">A weight proposal is ratified by consensus: contributors ' +
@@ -292,7 +353,11 @@
       "does not move until the quorum is reached.</p>" +
       propose +
       "<h3>Open proposals</h3>" + pending +
-      "<h3>Ratified themes</h3>" + liveThemes + "</section>";
+      "<h3>Themes</h3>" +
+      '<p class="form-note">A theme applies to every feature carrying its tag and counts ' +
+      "toward that feature's priority beside its own weight. It lapses on the date shown " +
+      "unless it is renewed.</p>" +
+      themePropose + themePending + liveThemes + "</section>";
   }
 
   // A failed fetch must cost its own panel and nothing else. The page previously used
@@ -306,6 +371,11 @@
     return '<div class="empty-state"><p class="empty-state-title">Could not load ' + esc(what) +
       '</p><p>' + esc(v.__failed) + "</p></div>";
   }
+  // Unix seconds to a date, as consensus.js renders a hold's expiry.
+  function whenUnix(seconds) {
+    return new Date(seconds * 1000).toISOString().slice(0, 10);
+  }
+
   function getOrNull(path) {
     return get(path).catch(function (e) { return { __failed: e.message || String(e) }; });
   }
@@ -470,6 +540,9 @@
   }
 
   function render(charter, members, profiles, completeness, strategy, project, tags, languages, invites) {
+    // The charter reaches the strategy panel because §6.2's themes expire on the charter's
+    // release cycle; a user deciding whether to renew needs the number in front of them.
+    if (strategy && !strategy.__failed) strategy.charter = failed(charter) ? null : charter;
     root.innerHTML =
       (failed(charter) ? '<section class="panel"><h2>Charter</h2>' + failedNote(charter, "charter") + "</section>"
                        : '<section class="panel"><h2>Charter</h2>' + charterForm(charter || {}) + "</section>") +
@@ -515,8 +588,14 @@
         // The propose form needs the features to choose from. A number input asking
         // for a feature id would be a control that requires the reader to know
         // something the page is holding.
-        getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/features/")
-      ]).then(function (s) { return { proposals: s[0], themes: s[1], features: s[2] }; }),
+        getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/features/"),
+        // §6.2's themes: the proposals beside the live weights, so a reader can see a
+        // pending change to a tag and consent to it. The live list alone shows only what
+        // already won.
+        getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/theme-proposals")
+      ]).then(function (s) {
+        return { proposals: s[0], themes: s[1], features: s[2], themeProposals: s[3] };
+      }),
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug)),
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/tags"),
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/languages"),
@@ -526,6 +605,7 @@
       wireSave();
       wireConsent();
       wirePropose();
+      wireThemes();
       wireVisibility();
       wireTags();
       wireLanguages();
@@ -730,6 +810,118 @@
             btn.disabled = false;
             say("Could not reach the server: " + (err.message || String(err)), true);
           });
+      });
+    });
+  }
+
+  // The theme half of the strategy panel: propose, consent, withdraw, renew.
+  //
+  // 202 and 200 must not be collapsed. A 202 means the consent was RECORDED and the quorum
+  // is not reached; reporting it as ratified tells a user the roadmap moved when nothing
+  // did. The e2e mutant that treats the two alike is why this branch is spelled out.
+  function wireThemes() {
+    var form = document.getElementById("propose-theme-form");
+    if (form) {
+      form.addEventListener("submit", function (ev) {
+        ev.preventDefault();
+        var fd = new FormData(form);
+        var btn = form.querySelector("button[type=submit]");
+        write("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/themes",
+          "POST", {
+            theme_tag: String(fd.get("theme_tag") || "").trim(),
+            theme_namespace: "topic",
+            weight: Number(fd.get("weight") || 0),
+            rationale: String(fd.get("rationale") || "").trim()
+          },
+          function (body) {
+            say("Theme proposed. " + (body.message ||
+              "It takes effect when the project consents."));
+            load();
+          }, btn);
+      });
+    }
+    root.querySelectorAll("[data-consent-theme]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var id = btn.getAttribute("data-consent-theme");
+        btn.disabled = true;
+        fetch("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/themes/" +
+              encodeURIComponent(id) + "/consent",
+              { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }) })
+          .then(function (r) {
+            return r.text().then(function (txt) {
+              var body = {};
+              try { body = JSON.parse(txt); } catch (e) { /* a non-JSON body is reported raw */ }
+              if (r.status === 401 || r.status === 403) {
+                say(body.error || ("Not allowed to consent (" + r.status + ")."), true);
+                btn.disabled = false;
+                return;
+              }
+              if (r.status === 202) {
+                say("Consent recorded. " + (body.message || "The quorum is not reached yet."));
+                return;
+              }
+              if (!r.ok) {
+                say("The server refused the consent: " + (body.error || txt || r.status), true);
+                btn.disabled = false;
+                return;
+              }
+              say("Ratified. " + (body.message || "The theme is now in force."));
+              load();
+            });
+          })
+          .catch(function (err) {
+            btn.disabled = false;
+            say("Could not reach the server: " + (err.message || String(err)), true);
+          });
+      });
+    });
+    // One withdrawal wiring for both halves: the theme routes and the weight routes differ
+    // only in the path.
+    function withdrawAll(attr, path, note) {
+      root.querySelectorAll("[" + attr + "]").forEach(function (btn) {
+        btn.addEventListener("click", function () {
+          var id = btn.getAttribute(attr);
+          btn.disabled = true;
+          fetch("/api/v1/projects/" + encodeURIComponent(slug) + path +
+                encodeURIComponent(id) + "/withdraw",
+                { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }) })
+            .then(function (r) {
+              return r.text().then(function (txt) {
+                var body = {};
+                try { body = JSON.parse(txt); } catch (e) { /* a non-JSON body is reported raw */ }
+                if (!r.ok) {
+                  say("The server refused the withdrawal: " + (body.error || txt || r.status), true);
+                  btn.disabled = false;
+                  return;
+                }
+                say(note);
+                load();
+              });
+            })
+            .catch(function (err) {
+              btn.disabled = false;
+              say("Could not reach the server: " + (err.message || String(err)), true);
+            });
+        });
+      });
+    }
+    withdrawAll("data-withdraw-theme", "/strategy/themes/",
+      "Proposal withdrawn. No weight changed.");
+    // The weight proposals' withdrawal: a store function that existed with no caller, so a
+    // proposer who changed their mind had no way to cancel one.
+    withdrawAll("data-withdraw-weight", "/strategy/weight-proposals/",
+      "Proposal withdrawn. The weight did not move.");
+    // Renew fills the propose form for a tag already in force. The weight field is left
+    // alone on purpose: pre-filling it invites renewing at the current value without anyone
+    // deciding what it should be now.
+    root.querySelectorAll("[data-renew]").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var tag = btn.getAttribute("data-renew");
+        var form = document.getElementById("propose-theme-form");
+        if (!form) return;
+        form.querySelector("#theme-tag").value = tag;
+        form.querySelector("#theme-rationale").focus();
+        say("Renewing " + tag + ": say why it should stay in force, then open the proposal.");
       });
     });
   }

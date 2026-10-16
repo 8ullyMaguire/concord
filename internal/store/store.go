@@ -132,16 +132,25 @@ func (d *DB) GetCharterForProject(ctx context.Context, projectID int64) (governa
 		       override_ratio,
 		       vote_window_days, merge_requires_quorum, merge_quorum_min,
 		       merge_quorum_ratio, require_reviewer_approval, wip_in_progress,
-		       wip_review, lam, mu, pain_halflife_days, rep_halflife_days,
+		       wip_review, lam, mu, theme_lifetime_days, pain_halflife_days, rep_halflife_days,
 		       glicko_tau, vote_weight_cap,
-		       solution_call_min_voters, solution_call_confidence,
-		       solution_stable_hours
+		       -- §6.5's three solution-call columns were added to the schema as NULLABLE,
+		       -- and the scan below reads them into ints and floats. A row that has them
+		       -- NULL -- one written before the columns existed, or by a fixture that
+		       -- inserts only the columns it means to set -- therefore made the WHOLE
+		       -- charter unreadable: not one defaulted field, but every charter read in
+		       -- the project, failing with "converting NULL to int is unsupported". Found
+		       -- by an e2e fixture doing exactly that. COALESCE to the default charter, so
+		       -- an absent value means the default rather than an error.
+		       COALESCE(solution_call_min_voters, 3),
+		       COALESCE(solution_call_confidence, 0.66),
+		       COALESCE(solution_stable_hours, 24)
 		FROM charters WHERE project_id = ?`, projectID).Scan(
 		&c.QuorumRatio, &c.QuorumMin, &c.ConsentRatio, &c.SupportRatioMin,
 		&c.OverrideRatio,
 		&c.VoteWindowDays, &c.MergeRequiresQuorum, &c.MergeQuorumMin,
 		&c.MergeQuorumRatio, &c.RequireReviewerApproval, &c.WIPInProgress,
-		&c.WIPReview, &c.Lam, &c.Mu, &c.PainHalflifeDays, &c.RepHalflifeDays,
+		&c.WIPReview, &c.Lam, &c.Mu, &c.ThemeLifetimeDays, &c.PainHalflifeDays, &c.RepHalflifeDays,
 		&c.GlickoTau, &c.VoteWeightCap,
 		&c.SolutionCallMinVoters, &c.SolutionCallConfidence,
 		&c.SolutionStableHours)
@@ -176,6 +185,15 @@ func (d *DB) UpdateCharter(ctx context.Context, projectID int64, charter governa
 		return fmt.Errorf("%w: solution_stable_hours must be positive, got %v",
 			ErrInvalid, charter.SolutionStableHours)
 	}
+	// §6.2's themes expire after this many days. Zero or negative would mean every theme
+	// lapses the instant it is ratified -- ratified, applied, and contributing nothing,
+	// with the UI showing a live theme whose weight counts for 0 -- so it is refused here
+	// rather than silently disabling the third steering input. The upper bound is a
+	// century: past that the field is a typo, not a policy.
+	if charter.ThemeLifetimeDays < 1 || charter.ThemeLifetimeDays > 36500 {
+		return fmt.Errorf("%w: theme_lifetime_days must be between 1 and 36500, got %v",
+			ErrInvalid, charter.ThemeLifetimeDays)
+	}
 
 	_, err := d.ExecContext(ctx, `
 		UPDATE charters SET
@@ -183,7 +201,7 @@ func (d *DB) UpdateCharter(ctx context.Context, projectID int64, charter governa
 			support_ratio_min = ?, override_ratio = ?,
 			vote_window_days = ?, merge_requires_quorum = ?, merge_quorum_min = ?,
 			merge_quorum_ratio = ?, require_reviewer_approval = ?, wip_in_progress = ?,
-			wip_review = ?, lam = ?, mu = ?, pain_halflife_days = ?, rep_halflife_days = ?,
+			wip_review = ?, lam = ?, mu = ?, theme_lifetime_days = ?, pain_halflife_days = ?, rep_halflife_days = ?,
 			glicko_tau = ?, vote_weight_cap = ?,
 			solution_call_min_voters = ?, solution_call_confidence = ?,
 			solution_stable_hours = ?
@@ -192,7 +210,8 @@ func (d *DB) UpdateCharter(ctx context.Context, projectID int64, charter governa
 		charter.SupportRatioMin, charter.OverrideRatio,
 		charter.VoteWindowDays, charter.MergeRequiresQuorum, charter.MergeQuorumMin,
 		charter.MergeQuorumRatio, charter.RequireReviewerApproval, charter.WIPInProgress,
-		charter.WIPReview, charter.Lam, charter.Mu, charter.PainHalflifeDays, charter.RepHalflifeDays,
+		charter.WIPReview, charter.Lam, charter.Mu, charter.ThemeLifetimeDays,
+		charter.PainHalflifeDays, charter.RepHalflifeDays,
 		charter.GlickoTau, charter.VoteWeightCap,
 		charter.SolutionCallMinVoters, charter.SolutionCallConfidence,
 		charter.SolutionStableHours, projectID)
@@ -370,6 +389,7 @@ func (d *DB) CreateProject(ctx context.Context, userID int64, slug, name, descri
 		"merge_quorum_ratio", "require_reviewer_approval", "wip_in_progress",
 		"wip_review", "lam", "mu", "pain_halflife_days", "rep_halflife_days",
 		"glicko_tau", "vote_weight_cap",
+		"theme_lifetime_days",
 		"solution_call_min_voters", "solution_call_confidence", "solution_stable_hours",
 	}
 	charterVals := []any{
@@ -380,6 +400,7 @@ func (d *DB) CreateProject(ctx context.Context, userID int64, slug, name, descri
 		charter.WIPInProgress, charter.WIPReview,
 		charter.Lam, charter.Mu, charter.PainHalflifeDays,
 		charter.RepHalflifeDays, charter.GlickoTau, charter.VoteWeightCap,
+		charter.ThemeLifetimeDays,
 		charter.SolutionCallMinVoters, charter.SolutionCallConfidence,
 		charter.SolutionStableHours,
 	}

@@ -1,0 +1,7 @@
+[
+ {
+  "name": "the theme sum dropped from the mu term",
+  "old": "\t\tprio := ranking.PriorityScore(f.EloR, f.EloRD, painSum,\n\t\t\tf.StrategicWeight+themeWeight, charter.Lam, charter.Mu)",
+  "new": "\t\tprio := ranking.PriorityScore(f.EloR, f.EloRD, painSum,\n\t\t\tf.StrategicWeight, charter.Lam, charter.Mu)"
+ }
+]

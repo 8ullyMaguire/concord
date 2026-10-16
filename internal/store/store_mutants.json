@@ -1,0 +1,7 @@
+[
+ {
+  "name": "the theme lifetime accepts a value that makes every theme born expired",
+  "old": "\tif charter.ThemeLifetimeDays < 1 || charter.ThemeLifetimeDays > 36500 {",
+  "new": "\tif false {"
+ }
+]

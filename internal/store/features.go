@@ -46,7 +46,10 @@ type FeaturePriority struct {
 	EloRD           float64 `json:"elo_rd"`
 	PainScore       float64 `json:"pain_score"`
 	StrategicWeight float64 `json:"strategic_weight"`
-	PriorityScore   float64 `json:"priority_score"`
+	// ThemeWeight is §6.2's tag-scoped half of the μ term, summed from the live themes the
+	// feature's tags match. Reported beside StrategicWeight so the μ term is explainable.
+	ThemeWeight   float64 `json:"theme_weight"`
+	PriorityScore float64 `json:"priority_score"`
 }
 
 // FeatureComplaintLink links a feature to a complaint.
@@ -213,7 +216,31 @@ func (d *DB) GetFeaturePriorities(ctx context.Context, projectID int64, charter 
 			}
 			painSum += p
 		}
-		prio := ranking.PriorityScore(f.EloR, f.EloRD, painSum, f.StrategicWeight, charter.Lam, charter.Mu)
+		// §6.2's third steering input. `priority = … + μ·theme_weight`, and theme_weight is
+		// the sum of the two things this project has ratified for this feature: its own
+		// weight (§12.3's proposals) and the live themes its TAGS match (§6.2's own words:
+		// "tag-based weights such as 'security hardening: +2'").
+		//
+		// The theme half had no caller at all before this line -- ThemeWeightTotal was
+		// written, documented as §6.2's input, and reachable from nothing, so every ranking
+		// this server has ever produced had a theme_weight of 0 and the spec's third
+		// steering input did not exist. Summing both rather than choosing is recorded as
+		// docs/QUESTIONS.md Q2: §366 names only themes, and dropping the per-feature half
+		// would make the weight-proposal mechanism inert instead.
+		// The feature's tags come from feature_tags, not a column: a feature has no `tags`
+		// field, and until this pass nothing could even put a row in that table (0029).
+		// So the input the spec's third steering input reads had no writer either --
+		// ThemeWeightTotal was unreachable AND unfillable.
+		tags, err := d.GetFeatureTags(ctx, f.ID)
+		if err != nil {
+			return nil, err
+		}
+		themeWeight, err := d.ThemeWeightTotal(ctx, projectID, tags)
+		if err != nil {
+			return nil, err
+		}
+		prio := ranking.PriorityScore(f.EloR, f.EloRD, painSum,
+			f.StrategicWeight+themeWeight, charter.Lam, charter.Mu)
 		result = append(result, FeaturePriority{
 			ID:              f.ID,
 			Title:           f.Title,
@@ -221,7 +248,11 @@ func (d *DB) GetFeaturePriorities(ctx context.Context, projectID int64, charter 
 			EloRD:           f.EloRD,
 			PainScore:       painSum,
 			StrategicWeight: f.StrategicWeight,
-			PriorityScore:   prio,
+			// Sent separately as well as summed, because a score a reader cannot take
+			// apart is the defect this repository keeps finding: the ranking page can
+			// show that a tag is worth +2 and WHICH tag it was.
+			ThemeWeight:   themeWeight,
+			PriorityScore: prio,
 		})
 	}
 	sort.Slice(result, func(i, j int) bool {

@@ -63,10 +63,15 @@ type Charter struct {
 	WIPInProgress           int
 	WIPReview               int
 	Lam, Mu                 float64 // priority score weights (spec §6.2)
-	PainHalflifeDays        float64
-	RepHalflifeDays         float64
-	GlickoTau               float64
-	VoteWeightCap           float64
+	// §6.2: themes "expire at the next release cycle unless renewed". No release cadence
+	// is modelled anywhere in this schema, so the cycle IS this number -- a per-project
+	// judgement like SolutionStableHours, and the charter is where §580 puts the themes
+	// process.
+	ThemeLifetimeDays float64
+	PainHalflifeDays  float64
+	RepHalflifeDays   float64
+	GlickoTau         float64
+	VoteWeightCap     float64
 
 	// §6.5's three conditions for opening a call on the leading solution. All
 	// three are charter-configurable because all three encode a judgement about
@@ -96,7 +101,11 @@ func DefaultCharter(m GovernanceModel) Charter {
 		RequireReviewerApproval: true,
 		WIPInProgress:           3, WIPReview: 4,
 		Lam: 20.0, Mu: 100.0,
-		PainHalflifeDays: 90, RepHalflifeDays: 180,
+		// A quarter. The spec says "the next release cycle" and does not name one; 90 days
+		// is the smallest cadence that phrase plausibly means, and the charter is where a
+		// project that releases monthly or yearly says so.
+		ThemeLifetimeDays: 90,
+		PainHalflifeDays:  90, RepHalflifeDays: 180,
 		GlickoTau: 0.5, VoteWeightCap: 3.0,
 	}
 	if m == MaintainerLed {

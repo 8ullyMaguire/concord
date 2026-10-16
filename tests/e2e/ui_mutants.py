@@ -19,8 +19,10 @@ reason this is one shared runner rather than a copy per page:
      non-zero" is how a broken toolchain impersonates a killed mutant.
 """
 
+import atexit
 import os
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -52,6 +54,31 @@ def run_mutants(js_rel, suite_rel, mutants, label):
     """
     js = os.path.join(REPO, js_rel)
     original = open(js).read()
+
+    # PREFLIGHT: does the page already carry one of these mutants?
+    #
+    # `original` is read from disk, so a mutation left behind by an interrupted run (or by
+    # a hand-edit while debugging a survivor) becomes the state this harness restores TO,
+    # and the byte-comparison at the end then reports "restored" for a corrupted file --
+    # the check that exists to catch a bad restore ratifies it instead. Observed, not
+    # imagined: the swap below was found in the tree and this gate kept reporting a clean
+    # restore. Refuse to run against a source that already contains a mutant.
+    for name, old, new in mutants:
+        if new in original and old not in original:
+            print(f"[{label}] REFUSING TO RUN: the page already carries the mutant "
+                  f"{name!r}. Restore {js_rel} and run again -- a byte-compared restore "
+                  f"would otherwise ratify it.")
+            return 1
+
+    def _emergency(*_a):
+        open(js, "w").write(original)
+        sys.exit(1)
+    for _sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        try:
+            signal.signal(_sig, _emergency)
+        except (ValueError, OSError):
+            pass
+    atexit.register(lambda: open(js, "w").write(original))
     # A backup of the SOURCE, byte-compared on restore. A backup taken from a tree
     # already carrying a previous run's mutation is how a gate reports "restore
     # verified" against its own corruption.

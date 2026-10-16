@@ -1,0 +1,12 @@
+[
+ {
+  "name": "the tag-existence check removed",
+  "old": "\ttagID, err := d.globalTagID(ctx, tag)\n\tif err != nil {",
+  "new": "\ttagID, err := d.globalTagID(ctx, tag)\n\tif false && err != nil {"
+ },
+ {
+  "name": "removing a tag that is not there reports success",
+  "old": "\tif n, _ := res.RowsAffected(); n == 0 {",
+  "new": "\tif n, _ := res.RowsAffected(); n == -1 {"
+ }
+]

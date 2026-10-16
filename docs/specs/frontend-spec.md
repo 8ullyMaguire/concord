@@ -528,16 +528,25 @@ migration `0010` — this is the number the whole ranked list is sorted on);
 `elo_r` with `elo_rd` shown as an uncertainty bar rather than a bare number
 (idea #37: "new and unsure" must not read as "ranked low"); pain term and
 strategic term with the sources shown (idea #10, "Why this rank?"); linked
-complaints; consensus status; kanban card.
+complaints; consensus status; kanban card; **tags**, with an add control and a Remove
+button per tag.
 
-Every field here is already in the API response. The page is assembly.
+Every field here is already in the API response. The page is assembly — except the tags
+panel, added in §25 of `docs/REMAINING.md`: a feature's tags are the input §6.2's themes
+steer by (a ratified `security-hardening: +2` moves every feature carrying that tag), so the
+panel shows them, adds one from the existing taxonomy, and lets a wrong one be removed.
+Before that pass the table behind it (`feature_tags`) had no writer in the whole tree, so
+"which themes apply to this feature" had no answer for any feature on the instance.
 
 ### 3.5 Project settings — `/{project}/settings`
 
-Four sections, all shipped, all currently unreachable: **visibility** (four
-levels, a `<select>` plus a live preview of what an anonymous visitor sees —
-the 404 behaviour is confusing enough to need explaining), **tags and
-languages**, **charter**, **invites**.
+Five sections: **visibility** (four levels, a `<select>` plus a live preview of what an
+anonymous visitor sees — the 404 behaviour is confusing enough to need explaining), **tags
+and languages**, **charter**, **invites**, and the **strategy panel**: §6.2's two steering
+mechanisms side by side — weight proposals (list, consent, withdraw, propose) and themes
+(propose, consent below quorum, withdraw, renew), with each live theme's **expiry date**
+shown, because §366's "unless renewed" is only meaningful if the reader can see when it
+lapses.
 
 Visibility deserves care: a private project 404s for anonymous users, which is
 correct and indistinguishable from a nonexistent slug by design. The settings

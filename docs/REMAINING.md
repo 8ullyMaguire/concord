@@ -5,9 +5,9 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state (the eleventh pass, §24):** schema 27 · 27 migrations · 81 live tables · 1034 Go
-tests across 9 test-bearing packages · 285 e2e tests in 20 suite files · 27/27 UI mutants killed
-(7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 4 project.js) ·
+**Measured state (the twelfth pass, §25):** schema 29 · 29 migrations · 82 live tables · 1053 Go
+tests across 9 test-bearing packages · 289 e2e tests in 21 suite files · 33/33 UI mutants killed
+(7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 4 project.js, 3 settings.js, 3 feature.js) ·
 `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
@@ -2649,7 +2649,7 @@ holding namespaces is a squatting vector), and creating or revoking an invite (i
 
 ### 23.9 Where the numbers stood after this pass
 
-**Measured state after the tenth pass:** schema 27 · 27 migrations · 81 live tables · 1028 Go
+**Measured state after the tenth pass:** (historical) schema 27 · 27 migrations · 81 live tables · 1028 Go
 tests across 9 test-bearing packages · 282 e2e tests in 20 suite files · 23/23 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js) · `make verify` exit 0, `make gates` exit 0,
 `make e2e` exit 0. (historical)
@@ -2858,12 +2858,19 @@ binary four times).
 **§6.2's ratified themes are inert, and building them is the next work item.** The spec has three
 steering inputs — pain, pairwise votes, ratified themes — and the third is a reader with no writer:
 `strategic_themes` exists, `GET /themes` lists it, `store.ThemeWeightTotal` sums the weights a
-feature's tags match, and **nothing calls `ThemeWeightTotal`**, so a theme cannot reach a ranking; no
-route creates a theme, and the TABLE has no `expires_at` column although §366 requires themes to
-expire at the next release cycle and §649 lists `themes(tag, weight, expires_at)`. That is not a
-route to add: it needs a propose/consent/ratify path at the Normal tier, expiry, application in the
-ranking, and a settings surface — so it gets a spec + a plan before code, per the standing rule.
-Recorded here as **open**, with the schema/spec divergence as the first thing to settle.
+feature's tags match, and **nothing calls `ThemeWeightTotal`**, so a theme cannot reach a ranking;
+no route creates a theme, and `strategic_theme_proposals` has no `proposed_by` column, so §5.1's
+"nobody votes on their own item" could not even be expressed against a theme change.
+
+**§24.7 CORRECTED (2026-10-16, §25).** The first version of this paragraph claimed
+`strategic_themes` "has no `expires_at` column". That was wrong, and the correction matters more
+than the error: the column **exists** (`expires_at REAL NOT NULL`, 0012, with a comment explaining
+why it may not be NULL) and `ListStrategicThemes` **does** filter on it. What was missing was the
+WRITER — nothing has ever put a row in that table — and the number the expiry is computed from.
+"A requirement whose data model landed first" reads as done in every schema dump, which is exactly
+how this one was reported as missing when it was present-but-unused. Checked against the schema
+this time (`sqlite3 <db> "select sql from sqlite_master where name='strategic_themes'"`), not
+against the note that said so.
 
 **A feature's link to a complaint can only be made at creation.** `feature_complaints` is a
 many-to-many join and `store.LinkComplaint` implements the extra-link path, but no route calls it, so
@@ -2882,9 +2889,10 @@ with `gofmt` and the suite as the check, or leave them named here.
 
 ### 24.8 Where the numbers stand after this pass
 
-**Measured state:** schema 27 · 27 migrations · 81 live tables · 1034 Go tests across 9 test-bearing
-packages · 285 e2e tests in 20 suite files · 27/27 UI mutants killed (7 audit.js, 9 consensus.js,
-5 consent.js, 2 auth.js, 4 project.js) · `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
+**Measured state:** (historical) schema 27 · 27 migrations · 81 live tables · 1034 Go tests across
+9 test-bearing packages · 285 e2e tests in 20 suite files · 27/27 UI mutants killed · `make verify`
+exit 0, `make gates` exit 0, `make e2e` exit 0. **Superseded by §25.5**, which is where the current
+numbers are.
 
 New here: 5 Go tests (2 store, 3 httpapi), 3 browser tests, and a fourth UI-mutant file. The Go
 mutation count is unchanged at 128 because no ranked or governance logic changed — the new Go code is
@@ -2893,3 +2901,189 @@ guards**: the reject gate ignored (the non-member test went red), the URL/projec
 cross-project test went red), the route deleted (the member test went red), and both reader anchors
 replaced by strings the wiring also contains (the reachability gate went red). A guard that cannot be
 made to fail is decoration, and the first version of one of these four was.
+
+## 25. §6.2's strategic themes, end to end (2026-10-16)
+
+Spec: `docs/specs/strategic-themes-spec.md`. Plan: `docs/plans/strategic-themes.md`. Both written
+before any code, in that order, because §24.7 said this work needed exactly that.
+
+### 25.1 What was actually missing, in layers
+
+The pillar looked implemented from every angle a reader would check:
+
+| layer | state before | state now |
+|---|---|---|
+| `strategic_themes` table | exists, `expires_at NOT NULL`, a comment about expiry | unchanged |
+| writing a theme | **nothing, in any revision** | propose → consent → ratify, at the Normal tier |
+| `strategic_theme_proposals` | exists, no `proposed_by`, no `weight_before` | reshaped in 0028 with both |
+| consent records | none | `strategic_theme_consents` |
+| `ThemeWeightTotal` | written, documented as §6.2's input, **no caller anywhere** | called by the ranking |
+| a theme's effect on a score | none: `theme_weight` was 0 in every project | the μ term is `feature weight + Σ live theme weights` |
+| the lifetime | no number for "the next release cycle" | charter field `ThemeLifetimeDays`, default 90, bounds 1–36500 |
+| feature tags | `feature_tags` exists, **0 writers, 0 rows in 537 live features** | add/remove routes, UI control, tests |
+| the settings panel | GET themes, consent weight proposals | propose/consent/withdraw themes, live themes with their expiry, withdraw weights |
+
+Three layers of the same defect stacked: the wire was missing (`ThemeWeightTotal` unreachable), the
+DATA was missing (`feature_tags` had no writer), and the NUMBER was missing (no release cycle). Fixing
+any one alone would have shipped another inert mechanism.
+
+### 25.2 Decisions (all recorded in the spec, none silent)
+
+1. **`theme_weight` is the SUM of both ratified inputs.** §366 names one input; the tree has two
+   mechanisms reaching for the same slot (a feature's own ratified weight, and tag-scoped themes).
+   Summing keeps neither inert. **Filed as Q2 for the spec owner** — if §366 means themes only, the
+   change is one line, which is why it is a question rather than a silent reading.
+2. **The lifetime is a charter field**, not a constant: no release cadence is modelled anywhere, and
+   §580 puts the themes process in the charter. Default 90 days, bounds 1–36500, refused by name.
+3. **Expiry is enforced at READ time** (`expires_at > now` in both reads). There is no scheduler in
+   this server, and a lapsed weight is only wrong when it is read.
+4. **One live row per (project, tag, namespace)**, enforced by `idx_theme_identity` and an upsert, so
+   a RENEWAL moves the expiry instead of doubling the weight. Without the index, renewing a +2 theme
+   would silently make it +4 — verified by a mutant that removes the weight update.
+5. **Contributor to propose, eligible collaborator to consent**, mirroring the weight path clause for
+   clause: one ratification path, not two that drift.
+6. **A global theme (§452's Major tier) is not built**; nor is the pain-side `theme_multiplier`
+   (§348–350), because complaints have no tags in the schema and "which themes apply here" has no
+   answer yet. **Filed as Q3.**
+
+### 25.3 Two defects found while building, and fixed
+
+**A feature's tags had no writer at all.** `feature_tags` has existed since 0001 and every INSERT in
+the tree is in a test; the live instance holds 537 features and 0 rows. So the theme mechanism's
+INPUT was missing as well as its wire. Added `AddFeatureTag`/`RemoveFeatureTag`/`GetFeatureTags`,
+routes (contributor, existing tags only — inventing taxonomy through a metadata field is the §4.3
+lesson), a panel on the feature page, and attribution (`feature_tags.applied_by`, 0029) so a
+steering input can be attributed.
+
+**A charter row with the nullable `solution_*` columns NULL made EVERY charter read fail.** Found by
+an e2e fixture that inserted only the columns it meant to set: `GetCharterForProject` scanned
+`solution_call_min_voters` (added to the schema as NULLABLE) into an int and returned
+`converting NULL to int is unsupported`. Not one defaulted field — every charter read in the
+project, including the one the settings page needs. Now `COALESCE`d to the default charter, so an
+absent value means the default. Also: `CreateProject`'s charter INSERT omitted the new
+`theme_lifetime_days`, so a creator's value would have been silently replaced by the column default
+— the dropped-field class, caught while wiring the field.
+
+### 25.4 Proved by mutation, not by assertion
+
+New Go mutants (7, all killed): the theme sum dropped from the μ term; the expiry filter inverted;
+the proposer-cannot-consent guard removed; a renewal no longer updating the live weight; the
+tag-existence check removed; a removal that is not there reporting success; and the tag lookup no
+longer normalising.
+
+**One survived first, and it was right to.** "The proposer may consent to their own proposal"
+survived because the project's creator is not an ELIGIBLE collaborator, so the eligibility check
+refused with the same error the guard would have — the test asserted only `ErrPerm` and could not
+tell the two apart. Rewritten so the proposer IS eligible (a merged merge request), which leaves the
+self-consent guard as the only thing that can refuse. A second survivor, "feature tags are no longer
+case-normalised", was worse than missing coverage: it exposed a REAL bug — `AddFeatureTag` re-selected
+the tag by exact name after lowercasing it, so an uppercase spelling matched no tag row, inserted
+zero rows and returned nil. A write that reports success and changes nothing. Fixed by resolving the
+tag once through `globalTagID` (which normalises and follows aliases) and inserting by id.
+
+New UI mutants (6, all killed): a 202 consent reported as "ratified"; the theme propose form never
+wired; the expiry column dropped; the tags panel never rendered; the add-tag form never wired; the
+remove control posting to the ADD endpoint — the last one answers 200 with the tag unchanged, which
+only a browser can see.
+
+### 25.5 Where the numbers stand
+
+**Measured state:** schema 29 · 29 migrations · 82 live tables · 1053 Go tests across 9 test-bearing
+packages · 289 e2e tests in 21 suite files · 35/35 UI mutants killed (7 audit.js, 9 consensus.js,
+5 consent.js, 2 auth.js, 4 project.js, 5 settings.js, 3 feature.js) · Go mutants: 17 arms, 122
+killed, 0 survived · `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
+
+Every number above is read off a run, not added up by hand: the two totals that changed during this
+pass (the Go test count and the e2e count) moved as the tests were written, and the mutant total is
+the sum of the per-arm lines in the `make gates` output rather than a figure carried forward.
+
+New here: 18 Go tests (themes and feature tags, store and httpapi), 3 browser tests (two for the
+theme panel, one for the tag panel), 12 mutants (6 Go, 6 UI), two migration files, and one new
+charter field.
+
+## §25.6 The gate harness that left a mutant in the tree, twice over
+
+**The incident.** A `make gates` run was killed mid-mutant by a command timeout. The
+harness writes each mutation into the Go source and restores it after the test run, so a
+kill inside that window leaves the mutation in place — and it did: `governance.go`'s
+`SupportRatio()` came back as `return 1.0` where `float64(cc.Consent) / float64(n)`
+belongs, a line that reads as plausible in a 2000-line file.
+
+The symptom was not "the gate failed". It was **three unrelated tests failing twenty
+minutes later** in `override_window_test.go` and `strategy_test.go` — files the gate never
+names — on a suite that had passed an hour earlier, with messages about override ratios
+and stand-asides. The diagnosis path was: the failures were deterministic, so not a flake;
+the diffs of every file I had touched contained nothing suspicious, so not my edit; and the
+only remaining candidate was a file whose content differed from HEAD in a way I had not
+written. That is what `git diff` on the *mutated* file showed.
+
+**Why it is worse than a leftover.** `run_gate` reads its baseline with
+`original = open(src_path).read()` — from disk. A stale mutation therefore becomes the state
+the harness restores *to*, and every later verdict in that arm is a statement about source
+that is not the source under test. The run that had been killed reported
+`[governance.go] ---- 7/7 killed, 0 survived`, and three of those seven kills may have been
+earned by a tree that already carried one of its mutant's neighbours.
+
+**Two guards, and both were proven by execution.**
+
+1. **Preflight** (`REFUSING TO RUN`): if the file already contains one of the armed mutants'
+   replacement strings while no longer containing its original, the arm stops and names the
+   mutant and the file. This is the real guarantee, because SIGKILL cannot be caught.
+   *Proved* by planting `themes.go`'s first mutant by hand and running the arm: exit 1, the
+   message naming `expired themes still count (read filter inverted)`, tree left untouched.
+
+2. **Restore on interrupt**: SIGTERM/SIGINT/SIGHUP handlers plus `atexit` restore the source,
+   and the final restore **compares bytes and fails loudly** (`FAIL: the source could not be
+   restored`) instead of assuming the write landed. *Proved* decisively rather than by
+   timing: the arm was started, the file was polled until the mutated window was observed
+   open (11.4 s in — so the probe cannot pass by luck), SIGTERM was delivered, and the file
+   came back byte-identical with an empty `git diff`. The same test before the change is
+   what left the mutant in `governance.go`.
+
+A restore that "wrote something" and a restore that restored are not the same verdict —
+the same rule as exit 1 = DRIFTED vs exit 2 = UNREACHABLE, and the same rule that put
+`NOT APPLIED` and `UNUSABLE` on the failing side of this gate.
+
+### Also in this pass
+
+- **A test for the charter bounds** (`TestTheThemeLifetimeComesFromTheCharterAndIsBounded`):
+  the lifetime is read back from the charter (the dropped-field class), and `0`, `-1` and
+  `99999` are refused **by name**. Its mutant arm is new — `internal/store/store_mutants.json`,
+  bound check replaced with `if false` — because a refusal no test exercises is decoration.
+- **The third browser test**, and the harness self-test is why it exists: `settings_themes_e2e.py`
+  collected 2 tests, and the repo's own floor for a suite is 3 ("a suite that collects one
+  test is a suite that has lost its tests"). It also claimed port 8492, which
+  `taxonomy_e2e.py` already held — both found by `harness_selftest_test.py` before any of my
+  new assertions ran. The added test covers the §366 **renewal** control: it pre-fills the
+  TAG and explicitly does not decide the WEIGHT, asserted against a live theme whose weight
+  is *not* the form's default so "carried the theme's weight" and "left alone" are
+  distinguishable.
+- **Two more UI mutants** for that control (`renew prepares the weight for the reader as
+  well as the tag`, `renew fills nothing, so the tag never reaches the form`) — 5/5 killed.
+
+### 25.7 A mutant that was right to survive, and the assertion that could not fail
+
+`the remove control posts to the add endpoint` — the copy/paste defect where "Remove" posts to
+the ADD route, which answers 200 because the tag is already there — survived the feature gate,
+twice, on a file verified byte-identical to the intended source. It was reproduced by hand
+(mutant applied, binary rebuilt, the one test run alone: it PASSED) and the cause was in the
+test, not the mutant:
+
+    expect(pg.locator(".tag-pill", has_text="keyboard-only")).to_have_count(0, timeout=10000)
+
+A successful removal RELOADS the page (`send` re-reads, because a tag change moves the priority
+the page is explaining), and **during the reload the document is torn down — so a count of zero
+is satisfied by the transition itself.** The assertion passed for exactly the defect it was
+written to catch. The replacement asserts the whole list: `to_have_count(1)` over all
+`.tag-pill`s, with the seeded tag visible — one pill cannot be satisfied by an empty document.
+3/3 killed, verified by re-running the gate.
+
+This is the same shape as the tautology rule: an assertion that a *change* cannot be seen by,
+because it also passes while nothing is there. A count of zero, a "not visible", and an "absent"
+are all satisfied by a page that has not rendered yet.
+
+**Still open, and named rather than implied:** Q2 (the sum), Q3 (the pain-side multiplier), §452's
+global themes, and the items §24.7 lists under its own heading — `LinkComplaint`'s missing route and
+the three store methods with no caller (`GetMember`, `GetBoardCard`, `ApplyProjectTag`). The last
+three are NOT touched here: a scripted span deletion already ate a neighbouring type once, and that
+is a by-hand edit with the suite as the check.

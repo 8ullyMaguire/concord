@@ -543,3 +543,117 @@ def test_a_bogus_complaint_id_says_so_instead_of_spinning(server, page):
     root = page.locator("#complaint-root")
     expect(root).to_contain_text("No such complaint")
     assert not page.errors, page.errors
+
+
+# --------------------------------------------------------------- §6.2's steering input
+#
+# A feature's tags decide which ratified themes count toward its priority, and until this
+# pass NOTHING could put a row in feature_tags: the table has existed since 0001 with no
+# INSERT outside a Go test. So this is the browser half of the writer, and the pill is what
+# the Go reader-inventory anchor names.
+
+def _mint_token(db, username):
+    """A token row for `username`, the way the login handler would write one."""
+    import base64
+    import hashlib
+    # "clt_" not "clt-": ResolveToken rejects a value that does not start with the
+    # prefix newToken() writes, BEFORE it looks the token up -- so a dash here made the page
+    # GET answer {"error":"authentication required"} instead of acting as the reader, which
+    # reads as a broken page rather than as a malformed token.
+    raw = "clt_feattags-" + username
+    con = sqlite3.connect(db)
+    uid = con.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()[0]
+    digest = hashlib.sha256(raw.encode()).digest()
+    con.execute(
+        "INSERT OR REPLACE INTO api_tokens (token_hash, user_id, created_at, last_used_at)"
+        " VALUES (?,?,?,?)",
+        (base64.b64encode(digest).decode().rstrip("="), uid, time.time(), time.time()))
+    con.commit()
+    con.close()
+    return raw
+
+
+def _seed_tags(db, feature_id, tag="security-hardening", other="keyboard-only"):
+    """A global tag, a second one to add, and the feature's existing tag.
+
+    Both tags are GLOBAL (project_id NULL): AddFeatureTag and the theme route both refuse a
+    tag that does not exist, and inventing taxonomy through a metadata field is the rule
+    §4.3 records.
+    """
+    con = sqlite3.connect(db)
+    now = time.time()
+    ids = {}
+    for name in (tag, other):
+        row = con.execute("SELECT id FROM tags WHERE name=?", (name,)).fetchone()
+        ids[name] = row[0] if row else con.execute(
+            "INSERT INTO tags (project_id, name) VALUES (NULL, ?)", (name,)).lastrowid
+    pid = con.execute("SELECT project_id FROM features WHERE id=?", (feature_id,)).fetchone()[0]
+    # The owner needs the contributor role the route requires.
+    owner = con.execute("SELECT id FROM users WHERE username='feat-owner'").fetchone()[0]
+    if con.execute("SELECT 1 FROM members WHERE project_id=? AND user_id=?",
+                   (pid, owner)).fetchone() is None:
+        con.execute("INSERT INTO members (project_id, user_id, role, joined_at)"
+                    " VALUES (?,?,'contributor',?)", (pid, owner, now))
+    if con.execute("SELECT 1 FROM feature_tags WHERE feature_id=? AND tag_id=?",
+                   (feature_id, ids[tag])).fetchone() is None:
+        con.execute("INSERT INTO feature_tags (feature_id, tag_id, created_at)"
+                    " VALUES (?,?,?)", (feature_id, ids[tag], now))
+    con.commit()
+    con.close()
+    return ids
+
+
+def test_the_tags_panel_shows_adds_and_removes_the_steering_tags(browser, server):
+    """A tag is visible, addable and removable -- the three halves of one control.
+
+    Reads the id out of the page's own table rather than hardcoding it: the fixture's row
+    order is not part of any contract, and a test that guessed it would break on an
+    unrelated seed change with a message about tags.
+    """
+    token = _mint_token(server["db"], "feat-owner")
+    ctx = browser.new_context(
+        extra_http_headers={"X-Forwarded-For": "10.88.1.1"})
+    # The token goes in BEFORE the page loads, as the other signed-in suites do: session.js
+    # builds its headers when the page's own script first asks for them, and setting
+    # localStorage afterwards left the writes going out with no Authorization header at all
+    # (they arrived as a guest and were refused for the wrong reason).
+    ctx.add_init_script("localStorage.setItem('concord.token', %r);" % token)
+    ctx.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
+    pg = ctx.new_page()
+    pg.errors = []
+    pg.on("pageerror", lambda e: pg.errors.append(str(e)))
+
+    con = sqlite3.connect(server["db"])
+    feature_id = con.execute(
+        "SELECT id FROM features WHERE project_id=(SELECT id FROM projects WHERE slug=?)"
+        " ORDER BY id LIMIT 1", (SLUG,)).fetchone()[0]
+    con.close()
+    ids = _seed_tags(server["db"], feature_id)
+
+    open_feature(pg, feature_id)
+
+    # The seeded tag renders as a pill, which is the anchor the Go inventory names.
+    pill = pg.locator(".tag-pill", has_text="security-hardening")
+    expect(pill).to_be_visible(timeout=10000)
+
+    # Add the second tag through the form.
+    pg.locator("#add-tag").fill("keyboard-only")
+    pg.locator("#add-tag-form button[type=submit]").click()
+    expect(pg.locator(".tag-pill", has_text="keyboard-only")).to_be_visible(timeout=10000)
+
+    # Remove it again: a tag decides the priority, so a wrong one has to be undoable.
+    #
+    # The assertion is "exactly the seeded tag remains", NOT "keyboard-only has a count of
+    # zero". A removal SUCCEEDS by reloading the page (the handler re-reads, because a tag
+    # change moves the priority it is explaining), and during that reload the document is
+    # torn down -- so `to_have_count(0)` is satisfied by the transition itself and passes
+    # for a remove control that posted to the ADD endpoint and left both tags in place.
+    # It did: this mutant survived the gate, and the empty-document explanation was
+    # confirmed by applying the swap by hand and watching this test pass. A count of ONE
+    # over the whole list cannot be satisfied by an empty document.
+    pg.locator(".tag-pill", has_text="keyboard-only").locator("[data-tag-remove]").click()
+    expect(pg.locator(".tag-pill")).to_have_count(1, timeout=10000)
+    expect(pg.locator(".tag-pill", has_text="security-hardening")).to_be_visible()
+    expect(pg.locator(".tag-pill", has_text="keyboard-only")).to_have_count(0)
+    assert not pg.errors, pg.errors
+    ctx.close()

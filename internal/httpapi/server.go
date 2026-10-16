@@ -628,6 +628,13 @@ func (s *Server) Router() http.Handler {
 			// maintainer dial).
 			r.Put("/strategic-weight", s.handleSetStrategicWeight)
 			r.Put("/status", s.handleSetFeatureStatus)
+			// §6.2's steering input reads these tags, so they are not decoration:
+			// the theme half of a feature's priority is the sum of the ratified
+			// themes its tags match. The read half exists so a user can see what
+			// steers their own feature.
+			r.Get("/tags", s.handleGetFeatureTags)
+			r.Post("/tags", s.handleAddFeatureTag)
+			r.Post("/tags/remove", s.handleRemoveFeatureTag)
 		})
 	})
 
@@ -682,7 +689,16 @@ func (s *Server) Router() http.Handler {
 		r.Get("/weight-proposals", s.handleListStrategicWeightProposals)
 		r.Post("/weight-proposals", s.handleProposeStrategicWeight)
 		r.Post("/weight-proposals/{proposal_id}/consent", s.handleConsentStrategicWeight)
+		// §5.1 gives a proposer the right to change their mind; the store has had
+		// WithdrawStrategicWeightProposal since the proposals existed and no route
+		// ever reached it, so a pending proposal could only be consented into force.
+		r.Post("/weight-proposals/{proposal_id}/withdraw", s.handleWithdrawStrategicWeightProposal)
+		// §6.2's themes: the third steering input, consensus-ratified, expiring.
 		r.Get("/themes", s.handleListStrategicThemes)
+		r.Post("/themes", s.handleProposeStrategicTheme)
+		r.Post("/themes/{id}/consent", s.handleConsentStrategicTheme)
+		r.Post("/themes/{id}/withdraw", s.handleWithdrawStrategicTheme)
+		r.Get("/theme-proposals", s.handleListStrategicThemeProposals)
 	})
 
 	// §9.3 public admin-action ledger. Instance-wide, unauthenticated on

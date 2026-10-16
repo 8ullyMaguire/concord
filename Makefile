@@ -51,6 +51,9 @@ e2e: build
 	$(E2E_PYTEST) tests/e2e/feeds_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/audit_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/feature_e2e.py -q
+	# §6.2's themes: the propose form, the consent state, and the expiry a reader has to be
+	# able to see. Its own suite because it needs a signed-in page and a charter of its own.
+	$(E2E_PYTEST) tests/e2e/settings_themes_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/requests_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/lists_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/board_e2e.py -q
@@ -72,6 +75,10 @@ e2e: build
 	# to /validate with every Go test green.
 	$(E2E_PYTHON) tests/e2e/project_ui_mutants.py
 	$(E2E_PYTHON) tests/e2e/guest_ui_mutants.py
+	# §6.2's themes and tags. The Go gates cannot see a 202 reported as "ratified" or a
+	# remove button posting to the add endpoint: both answer 200.
+	$(E2E_PYTHON) tests/e2e/settings_ui_mutants.py
+	$(E2E_PYTHON) tests/e2e/feature_ui_mutants.py
 
 # The mutation gates. Each rewrites one source file per mutant and asserts the
 # suite goes red, so a green run means every mutant was killed. A SURVIVED entry
@@ -81,6 +88,12 @@ gates:
 	python3 internal/mutate.py internal/finder/finder.go ./internal/finder/ internal/finder/finder_test.go internal/finder/mutants.json
 	python3 internal/mutate.py internal/httpapi/finder.go ./internal/httpapi/ internal/httpapi/finder_test.go internal/httpapi/finder_mutants.json
 	python3 internal/mutate.py internal/store/capabilities.go ./internal/store/ internal/store/capabilities_test.go internal/store/capabilities_mutants.json
+	python3 internal/mutate.py internal/store/themes.go ./internal/store/ internal/store/themes_test.go internal/store/themes_mutants.json
+	python3 internal/mutate.py internal/store/feature_tags.go ./internal/store/ internal/store/feature_tags_test.go internal/store/feature_tags_mutants.json
+	python3 internal/mutate.py internal/store/features.go ./internal/store/ internal/store/themes_test.go internal/store/features_mutants.json
+	# The charter's own bounds: a lifetime that makes every theme born expired is refused here,
+	# and an unproven refusal is decoration.
+	python3 internal/mutate.py internal/store/store.go ./internal/store/ internal/store/themes_test.go internal/store/store_mutants.json
 	python3 internal/mutate.py internal/store/field_reports.go ./internal/store/ internal/store/field_reports_test.go internal/store/field_reports_mutants.json
 	python3 internal/mutate.py internal/store/solutions.go ./internal/store/ internal/store/solutions_test.go,internal/store/solutions_count_test.go internal/store/solutions_mutants.json
 	python3 internal/mutate.py internal/store/arenas.go ./internal/store/ internal/store/arenas_test.go internal/store/arenas_mutants.json

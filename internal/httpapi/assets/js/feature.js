@@ -140,6 +140,68 @@
     }
   }
 
+  // Adding and removing a feature's tags. Both are contributor writes, and both re-read the
+  // page: the tag changes which themes apply, so the priority the page is explaining has
+  // just changed, and a locally patched list would show the old one.
+  //
+  // The refusal is reported in the server's words, because the interesting refusals here are
+  // specific: an unknown tag names the route that proposes one, and a non-contributor is
+  // told which role is needed.
+  function wireTags(base, featureID) {
+    var err = root.querySelector('[data-tag-error]');
+    function fail(msg) {
+      if (err) { err.textContent = msg; err.hidden = false; }
+    }
+    function headers() {
+      // authHeaders() from session.js, the one place that knows the key.
+      var h = { 'Content-Type': 'application/json' };
+      var sess = window.ConcordSession && window.ConcordSession.instance();
+      if (sess) {
+        var auth = sess.authHeaders();
+        for (var k in auth) {
+          if (Object.prototype.hasOwnProperty.call(auth, k)) h[k] = auth[k];
+        }
+      }
+      return h;
+    }
+    function send(path, payload, btn) {
+      if (btn) btn.disabled = true;
+      fetch(path, { method: 'POST', headers: headers(), body: JSON.stringify(payload) })
+        .then(function (r) {
+          return r.text().then(function (txt) {
+            var body = {};
+            try { body = txt ? JSON.parse(txt) : {}; } catch (e) { body = {}; }
+            if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+            window.location.reload();
+          });
+        })
+        .catch(function (e) {
+          if (btn) btn.disabled = false;
+          fail(e.message || String(e));
+        });
+    }
+    var form = document.getElementById('add-tag-form');
+    if (form) {
+      form.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        var input = form.querySelector('#add-tag');
+        var tag = input ? String(input.value || '').trim() : '';
+        if (!tag) { fail('Type a tag first: an empty tag steers nothing.'); return; }
+        send(base + '/features/' + encodeURIComponent(featureID) + '/tags', { tag: tag },
+          form.querySelector('button[type=submit]'));
+      });
+    }
+    var removes = root.querySelectorAll('[data-tag-remove]');
+    for (var i = 0; i < removes.length; i++) {
+      (function (btn) {
+        btn.addEventListener('click', function () {
+          send(base + '/features/' + encodeURIComponent(featureID) + '/tags/remove',
+            { tag: btn.getAttribute('data-tag-remove') }, btn);
+        });
+      })(removes[i]);
+    }
+  }
+
   // A rating that has never been compared is not zero. Zero is a real rating that
   // lost every comparison, and the two must not look alike.
   function rating(f) {
@@ -273,7 +335,11 @@
     // the feature object does not carry them and reading f.linked_complaints yields
     // undefined -- which rendered as "no complaints", the exact opposite of the
     // truth for a feature whose whole rank rests on a complaint.
-    json(base + '/features/' + encodeURIComponent(at.id) + '/complaints')
+    json(base + '/features/' + encodeURIComponent(at.id) + '/complaints'),
+    // §6.2's steering input, read on the page it steers: a feature's tags decide which
+    // ratified themes count toward its priority. The read half was missing too -- the
+    // table that stores them had no writer AND no reader.
+    json(base + '/features/' + encodeURIComponent(at.id) + '/tags')
   ]).then(function (res) {
     var f = res[0];
     if (!f) {
@@ -343,9 +409,29 @@
         : '<p class="muted">No validated complaint is linked to this feature, so ' +
           'its rank rests on comparison alone rather than on reported pain.</p>');
 
+    // The tags section, always rendered: a feature with no tags scores with no theme at
+    // all, and that is the answer to "why does this not move with the theme we ratified?".
+    var tagList = (res[4] && res[4].tags) || [];
+    html += section('Tags (' + tagList.length + ')',
+      (tagList.length
+        ? '<ul class="tag-list" data-feature-tags>' + tagList.map(function (tg) {
+            return '<li class="tag-pill">' + esc(tg) +
+              ' <button type="button" class="btn btn-quiet" data-tag-remove="' + esc(tg) +
+              '">Remove</button></li>';
+          }).join('') + '</ul>'
+        : '<p class="muted">No tags. A tag is what connects this feature to a ratified ' +
+          'theme, so a theme only steers a feature that carries its tag.</p>') +
+      '<form id="add-tag-form" class="inline-form">' +
+      '<label class="form-label" for="add-tag">Add a tag</label>' +
+      '<input id="add-tag" name="tag" maxlength="60" placeholder="an existing tag">' +
+      '<button type="submit" class="btn">Add</button>' +
+      '</form>' +
+      '<p class="form-status" data-tag-error hidden></p>');
+
     root.innerHTML = html;
     done();
     wireContests(base, at.id);
+    wireTags(base, at.id);
   }).catch(function (err) {
     // aria-busy is cleared on the error path too: a skeleton that spins forever
     // over an error message reads as "still loading".

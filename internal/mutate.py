@@ -21,10 +21,12 @@ that does not take, is reported NOT APPLIED. Never SURVIVED. The two are
 indistinguishable from the output alone, and conflating them is what makes a
 reader stop believing the gate.
 """
+import atexit
 import json
 import os
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -34,12 +36,63 @@ import tempfile
 BUILD_FAILED = re.compile(r"\[build failed\]|build failed|declared and not used|cannot use|undefined:")
 
 
+def _restore(src_path, original):
+    """Put the source back, and prove it landed.
+
+    A restore that silently fails is indistinguishable from a restore that
+    worked, and the next gate run then backs up the corruption as its baseline
+    -- which is how a mutation harness starts reporting results about code that
+    is not the code under test. The comparison is the point, not the write.
+    """
+    if open(src_path).read() != original:
+        open(src_path, "w").write(original)
+    return open(src_path).read() == original
+
+
 def run_gate(src, test_pkg, test_file, mutants, label, repo=None):
     repo = repo or os.path.expanduser("~/code/projects/concord")
     src_path = os.path.join(repo, src)
     original = open(src_path).read()
     bak = tempfile.mktemp()
     shutil.copy(src_path, bak)
+
+    # PREFLIGHT: does the file already carry one of these mutants?
+    #
+    # This harness writes each mutation into the source and restores it after
+    # the test run. Nothing protected the window in between: a run killed by a
+    # tool timeout, a Ctrl-C or SIGTERM -- i.e. exactly what happens when the
+    # gate is run under a command timeout, which is the normal way to run it --
+    # left the mutant in the tree. The symptom is not "the gate failed": it is
+    # unrelated tests failing later, in a file the gate never names, because
+    # `return 1.0` where `float64(cc.Consent) / float64(n)` belongs is a
+    # plausible-looking line in a 2000-line file (it happened: governance.go's
+    # SupportRatio() carried a survivor into the next test run and produced
+    # three failures in ratio tests that had passed twenty minutes earlier).
+    #
+    # Worse than the leftover is what the next run does with it: `original` is
+    # read from disk, so a stale mutant becomes the baseline to restore TO, and
+    # every later verdict is a statement about the wrong source.
+    for m in mutants:
+        if m["new"] in original and m["old"] not in original:
+            print(f"[{label}] REFUSING TO RUN: the source already carries the mutant "
+                  f"{m['name']!r}. A previous run was interrupted between writing a "
+                  f"mutation and restoring it. Restore {src} (git checkout or by hand) "
+                  f"and run again -- results from this tree would describe code that is "
+                  f"not the code under test.")
+            return 1
+
+    # RESTORE ON INTERRUPT: SIGTERM/SIGINT/SIGHUP and uncaught exceptions run
+    # the same restore the normal path does. SIGKILL cannot be caught, which is
+    # why the preflight above -- not this -- is the real guarantee.
+    def _emergency(*_a):
+        _restore(src_path, original)
+        sys.exit(1)
+    for _sig in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+        try:
+            signal.signal(_sig, _emergency)
+        except (ValueError, OSError):
+            pass
+    atexit.register(_restore, src_path, original)
 
     # Derive the suite from the test file. A hand-written -run list is how the
     # first gate reported two mutants SURVIVED that its own suite could never
@@ -122,7 +175,10 @@ def run_gate(src, test_pkg, test_file, mutants, label, repo=None):
 
     total = len(mutants)
     print(f"[{label}] ---- {killed}/{total} killed, {survived} survived, {notapplied} not applicable")
-    shutil.copy(bak, src_path)
+    if not _restore(src_path, original):
+        print(f"[{label}] FAIL: the source could not be restored after the run. The tree "
+              f"is now a mutant and every later reading of it is wrong.")
+        return 1
     os.remove(bak)
 
     # A NOT APPLIED mutant fails the gate, deliberately. It is the one verdict

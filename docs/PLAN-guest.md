@@ -600,8 +600,9 @@ Expected: `4/4 killed, 0 survived, 0 not applicable, 0 not run` and
 ```
 make verify && make gates && make e2e
 ```
-Expected: all three exit 0, with the new counts (Go tests 1004 → ~1025, e2e 277 → 281, schema 27,
-mutants 16 → 20) and 0 failures, 0 survivors.
+Expected: all three exit 0, with the new counts and 0 failures, 0 survivors. (historical) schema 27,
+Go tests 1004 → ~1025, e2e 277 → 281, mutants 16 → 20 -- these are this plan's own expectations,
+quoted as written; the tree has moved on.
 
 Then deploy both instances per `docs/HANDOFF.md` §"deploy" (make build first — the harness shares
 `bin/concord`), and confirm:
