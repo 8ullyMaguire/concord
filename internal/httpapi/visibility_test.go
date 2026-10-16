@@ -12,11 +12,16 @@ package httpapi
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"git.polarisocial.xyz/concord/concord/internal/ranking"
+	"git.polarisocial.xyz/concord/concord/internal/store"
 )
 
 // registerAndLogin returns an Authorization header value for a fresh account.
@@ -481,4 +486,22 @@ func projectVisibility(t *testing.T, body []byte) string {
 		t.Fatalf("decode project: %v (body %s)", err, body)
 	}
 	return out.Visibility
+}
+
+// backdateAccounts moves fixture identities past §12.3's account-age ramp, in one
+// place, so a test that is about a vote's mechanics does not accidentally depend on
+// the gate being absent.
+//
+// The ramp is AgeGateMultiplier over the account's first AccountAgeGateDays, so a user
+// registered by a test has a weight of approximately zero -- correctly. Tests that
+// assert a rating MOVED need accounts the gate considers established.
+func backdateAccounts(t *testing.T, db *store.DB, usernames ...string) {
+	t.Helper()
+	old := time.Now().AddDate(0, 0, -int(ranking.AccountAgeGateDays)-1).Unix()
+	for _, name := range usernames {
+		if _, err := db.ExecContext(context.Background(),
+			`UPDATE users SET created_at = ? WHERE username = ?`, old, name); err != nil {
+			t.Fatalf("backdate %s: %v", name, err)
+		}
+	}
 }

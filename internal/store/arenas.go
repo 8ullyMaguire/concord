@@ -1082,6 +1082,11 @@ func rateArenaPair(a, b ranking.ArenaRating, aScore, weight float64) (
 // voter whose weight the account-age ramp had put at 0.4 was recorded in `games`
 // as no game at all -- a comparison that moved the rating and did not count.
 func gameCount(weight float64) int {
+	if weight <= 0 {
+		// §30: an influence-free vote is not a comparison the entry played. The
+		// vote is still in the log; nothing was measured by it.
+		return 0
+	}
 	n := int(weight)
 	if n < 1 {
 		return 1

@@ -1,0 +1,12 @@
+[
+ {
+  "name": "the alternatives vote skips the age gate",
+  "old": "\tweight := ranking.VoteWeight(reputation, ranking.RoleMultiplier(role), charter.VoteWeightCap)\n\ts.applyAgeGate(r.Context(), actorID, &weight)",
+  "new": "\tweight := ranking.VoteWeight(reputation, ranking.RoleMultiplier(role), charter.VoteWeightCap)"
+ },
+ {
+  "name": "the arena's own project may be voted against another project",
+  "old": "\t\tif id == arena.ProjectID {\n\t\t\twriteJSON(w, http.StatusBadRequest, map[string]string{",
+  "new": "\t\tif false && id == arena.ProjectID {\n\t\t\twriteJSON(w, http.StatusBadRequest, map[string]string{"
+ }
+]

@@ -102,6 +102,13 @@ gates:
 	python3 internal/mutate.py internal/store/field_reports.go ./internal/store/ internal/store/field_reports_test.go internal/store/field_reports_mutants.json
 	python3 internal/mutate.py internal/store/solutions.go ./internal/store/ internal/store/solutions_test.go,internal/store/solutions_count_test.go internal/store/solutions_mutants.json
 	python3 internal/mutate.py internal/store/arenas.go ./internal/store/ internal/store/arenas_test.go internal/store/arenas_mutants.json
+	# §30's weight rule lives in internal/ranking/arena.go, and its own arm is the only
+	# place a mutant of THAT file can be killed: the store arm mutates the store's copy of
+	# the call, so a mutation of the engine's rule would read as NOT APPLIED there.
+	python3 internal/mutate.py internal/ranking/arena.go ./internal/ranking/ internal/ranking/arena_test.go internal/ranking/arenas_mutants.json
+	# §30: the alternatives vote route is where the age gate was MISSING, and the other
+	# four vote routes share one helper now -- so this arm holds the call, not the formula.
+	python3 internal/mutate.py internal/httpapi/alternatives.go ./internal/httpapi/ internal/httpapi/alternatives_test.go internal/httpapi/alternatives_mutants.json
 	python3 internal/mutate.py internal/store/consensus.go ./internal/store/ internal/store/consensus_solutions_test.go,internal/store/consensus_quorum_test.go,internal/store/override_window_test.go internal/store/consensus_mutants.json
 	# §6.6's second window has its own gates, because its rules live in override.go and
 	# the tests that hold them are in override_window_test.go / consensus_override_test.go

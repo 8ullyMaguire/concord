@@ -377,11 +377,16 @@ func (s *Server) handleCastAlternativesVote(w http.ResponseWriter, r *http.Reque
 	// feature and solution vote handlers, for the same reason: a client-supplied
 	// weight is a client-supplied influence.
 	//
-	// Reputation and role only, with NO expertise multiplier and no age gate.
-	// Those two are solution-specific: expertise is tag-scoped to the solutions
-	// being judged, and there are no solution tags on a project. Applying
-	// `ranking.ExpertiseMultiplier` with an empty tag set would multiply by a
+	// Reputation and role, then §12.3's age gate LAST. NO expertise multiplier:
+	// expertise is tag-scoped to the solutions being judged and there are no solution
+	// tags on a project, so applying it with an empty tag set would multiply by a
 	// neutral 1.0 and pretend to have done something.
+	//
+	// §30: this comment used to read "NO expertise multiplier and no age gate ... those
+	// two are solution-specific", and the second half was false. The age gate is §12.3's
+	// Sybil defence and belongs on every vote; on this route it was simply missing, so a
+	// brand-new account's project comparison was cast at full weight. A correct sentence
+	// about one multiplier carried an incorrect one about another.
 	actorID := getActorID(r)
 	charter, err := s.Store.GetCharterForProject(r.Context(), projectID)
 	if err != nil {
@@ -404,6 +409,7 @@ func (s *Server) handleCastAlternativesVote(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	weight := ranking.VoteWeight(reputation, ranking.RoleMultiplier(role), charter.VoteWeightCap)
+	s.applyAgeGate(r.Context(), actorID, &weight)
 
 	vote, err := s.Store.CastArenaVote(r.Context(), arenaID, actorID,
 		store.EntityProject, req.AProjectID,

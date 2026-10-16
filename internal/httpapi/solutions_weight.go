@@ -2,7 +2,6 @@ package httpapi
 
 import (
 	"context"
-	"time"
 
 	"git.polarisocial.xyz/concord/concord/internal/governance"
 	"git.polarisocial.xyz/concord/concord/internal/ranking"
@@ -54,10 +53,7 @@ func (s *Server) solutionVoteWeight(ctx context.Context, projectID, actorID int6
 	weight *= expertise
 
 	// The age gate, last, for the reason in the comment above.
-	createdAt, err := s.Store.GetUserCreatedAt(ctx, actorID)
-	if err == nil {
-		weight *= ranking.AgeGateMultiplier(ranking.AccountAgeDays(createdAt, float64(time.Now().Unix())))
-	}
+	s.applyAgeGate(ctx, actorID, &weight)
 
 	// The product bound. Scaling the cap by the age gate keeps a new account's
 	// weight at or below what the gate alone allows; scaling by role and expertise

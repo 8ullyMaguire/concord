@@ -1,0 +1,17 @@
+[
+ {
+  "name": "a zero weight is treated as a full weight",
+  "old": "\tif weight <= 0 {\n\t\treturn ArenaRating{R: r, RD: rd, Sigma: sigma}\n\t}",
+  "new": "\tif weight <= 0 {\n\t\tweight = 1\n\t}"
+ },
+ {
+  "name": "a fractional weight does not scale the rating",
+  "old": "\tif weight < 1 {\n\t\tnr = r + weight*(nr-r)\n\t\tnrd = rd + weight*(nrd-rd)\n\t\tns = sigma + weight*(ns-sigma)\n\t}",
+  "new": "\tif false {\n\t\tnr = r + weight*(nr-r)\n\t\tnrd = rd + weight*(nrd-rd)\n\t\tns = sigma + weight*(ns-sigma)\n\t}"
+ },
+ {
+  "name": "a fractional weight leaves the deviation undamped",
+  "old": "\t\tnrd = rd + weight*(nrd-rd)",
+  "new": "\t\tnrd = nrd"
+ }
+]

@@ -123,9 +123,17 @@ def seed(db):
     cur = con.cursor()
     now = time.time()
 
+    # Thirty days old: §12.3's account-age ramp takes a brand-new account's vote weight
+    # to approximately zero, so a fixture that registered itself seconds ago would be
+    # asserting that a vote which is SUPPOSED to be powerless moves the ranking. The
+    # gate has its own tests (internal/httpapi/alternatives_test.go and
+    # internal/ranking/arena_test.go); this suite is about what the panel shows and does
+    # with a vote that counts.
+    established = now - 30*24*3600
+
     def user(username):
         cur.execute("INSERT INTO users (username, display_name, created_at) VALUES (?,?,?)",
-                    (username, username, now))
+                    (username, username, established))
         return cur.lastrowid
 
     def project(slug, name, owner_id):
@@ -287,6 +295,10 @@ def test_judging_a_pair_moves_the_rating_and_records_the_vote(page, server):
     log = arena.locator(".arena-log-list")
     expect(log).to_be_visible()
     expect(log).to_contain_text("fewer moving parts")
+    # And the weight it moved the ranking by: §5.2's audit view is where an appeal is
+    # argued from, and §30 found the weight being computed, stored, and shown nowhere --
+    # a reader could not tell a full vote from a ramped-down one.
+    expect(log).to_contain_text("weight 1")
     expect(log).to_contain_text("audit logs are the whole point")
     assert not page.errors, page.errors
 

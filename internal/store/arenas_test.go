@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math"
 	"strings"
 	"testing"
 	"time"
@@ -1497,5 +1498,148 @@ func TestVerificationCoversEveryEntryNotTheLeaderboardPage(t *testing.T) {
 	if divergent != 1 {
 		t.Errorf("divergent = %d, want the one drifted entry -- and it is the LAST one the "+
 			"leaderboard would have returned", divergent)
+	}
+}
+
+// --- §30: the influence of a vote -------------------------------------------
+//
+// §5.1 says "weight scales the update's influence" and §12.3 derives the
+// account-age gate from it: a new account's weight ramps from zero so "a throwaway
+// account cannot buy influence". Both sentences are only true if a small weight
+// produces a small update, and three separate places made that false.
+
+// TestAZeroWeightVoteChangesNothingButIsStillRecorded is §12.3's gate, at the
+// engine: a weight of zero is what AgeGateMultiplier returns for an account minutes
+// old -- its own test asserts "brand new account has no weight" -- and the engine
+// turned that into a FULL update with `if weight <= 0 { weight = 1 }`.
+//
+// RD and volatility are asserted as well as the rating, because they are what makes
+// this a defence rather than a formality: a mass of throwaway accounts that never
+// moves a rating can still collapse the uncertainty, and §5.1 scores priority on the
+// conservative estimate r - 2*RD.
+func TestAZeroWeightVoteChangesNothingButIsStillRecorded(t *testing.T) {
+	d, uid, pid, fid := arenaFixture(t)
+	ctx := context.Background()
+	arena, err := d.EnsureArena(ctx, ArenaFeaturePriority, pid, 0, "", "")
+	if err != nil {
+		t.Fatalf("EnsureArena: %v", err)
+	}
+	other := newFeature(t, d, pid, uid, "the other one")
+	for _, id := range []int64{fid, other} {
+		if err := d.UpsertArenaEntry(ctx, arena.ID, EntityFeature, id); err != nil {
+			t.Fatalf("UpsertArenaEntry: %v", err)
+		}
+	}
+	before, _ := d.GetArenaEntry(ctx, arena.ID, EntityFeature, fid)
+	otherBefore, _ := d.GetArenaEntry(ctx, arena.ID, EntityFeature, other)
+
+	voter := createStranger(t, d)
+	if _, err := d.CastArenaVote(ctx, arena.ID, voter, EntityFeature, fid,
+		EntityFeature, other, "a", "a throwaway account's opinion", 0.0); err != nil {
+		t.Fatalf("CastArenaVote: %v", err)
+	}
+
+	after, _ := d.GetArenaEntry(ctx, arena.ID, EntityFeature, fid)
+	otherAfter, _ := d.GetArenaEntry(ctx, arena.ID, EntityFeature, other)
+	if after != before {
+		t.Errorf("a zero-weight vote moved the winner: %+v -> %+v", before, after)
+	}
+	if otherAfter != otherBefore {
+		t.Errorf("a zero-weight vote moved the loser: %+v -> %+v", otherBefore, otherAfter)
+	}
+
+	// And the participation is still recorded: §5.2 makes the log append-only and
+	// §12.3's gate refuses influence, not the vote.
+	var n int
+	if err := d.QueryRowContext(ctx,
+		`SELECT COUNT(*) FROM pairwise_votes WHERE arena_id = ? AND voter_id = ?`,
+		arena.ID, voter).Scan(&n); err != nil {
+		t.Fatalf("count votes: %v", err)
+	}
+	if n != 1 {
+		t.Errorf("votes recorded = %d, want the zero-weight vote in the log", n)
+	}
+}
+
+// TestAFractionalWeightMovesTheRatingByThatFraction is §5.1's sentence, at the
+// engine: a 0.25-weight vote moves the rating a quarter of the way a 1.0-weight vote
+// does, from the identical starting state. The assertion is exact (1e-9) because the
+// model is exact: one game, delta scaled by w.
+//
+// Before §30 both deltas were IDENTICAL -- repeatedGame builds int(weight) games with
+// a floor of one, so 0.25 and 1.0 were the same vote. In production that made a
+// brand-new account's 0.0004-weight vote 2500 times its nominal influence.
+func TestAFractionalWeightMovesTheRatingByThatFraction(t *testing.T) {
+	d, uid, pid, fid := arenaFixture(t)
+	ctx := context.Background()
+	other := newFeature(t, d, pid, uid, "the other one")
+	voter := createStranger(t, d)
+
+	// One arena PER weight, not one arena reset between runs: pairwise_votes refuses
+	// DELETE with a trigger ("pairwise_votes is append-only: a vote cannot be
+	// deleted"), which is §5.2 working. Each arena carries the same two entries at
+	// the same prior, so the only difference between the two runs is the weight.
+	weigh := func(weight float64) (delta float64, games int) {
+		t.Helper()
+		arena, err := d.EnsureArena(ctx, ArenaUseCase, pid, 0,
+			fmt.Sprintf("weighing %.2f", weight), "")
+		if err != nil {
+			t.Fatalf("EnsureArena: %v", err)
+		}
+		for _, id := range []int64{fid, other} {
+			if err := d.UpsertArenaEntry(ctx, arena.ID, EntityFeature, id); err != nil {
+				t.Fatalf("UpsertArenaEntry: %v", err)
+			}
+		}
+		start, _ := d.GetArenaEntry(ctx, arena.ID, EntityFeature, fid)
+		if _, err := d.CastArenaVote(ctx, arena.ID, voter, EntityFeature, fid,
+			EntityFeature, other, "a", "", weight); err != nil {
+			t.Fatalf("CastArenaVote(w=%v): %v", weight, err)
+		}
+		end, _ := d.GetArenaEntry(ctx, arena.ID, EntityFeature, fid)
+		return end.R - start.R, end.Games
+	}
+
+	full, fullGames := weigh(1.0)
+	quarter, quarterGames := weigh(0.25)
+	if math.Abs(quarter-full/4) > 1e-9 {
+		t.Errorf("weight 0.25 moved the rating %.6f and weight 1.0 moved %.6f: the weight is not "+
+			"scaling the update's influence (§5.1), it is only deciding how many whole games to play",
+			quarter, full)
+	}
+	if full == 0 {
+		t.Fatal("weight 1.0 moved the rating by nothing: the fixture proves nothing")
+	}
+	// A fractional weight scales the influence; it does not unmake the comparison.
+	if fullGames != 1 || quarterGames != 1 {
+		t.Errorf("games after the full and the quarter vote = %d and %d, want 1 and 1",
+			fullGames, quarterGames)
+	}
+}
+
+// TestAWeightTwoVoteIsTwoGames pins §5.1's stated example ("a weight-2 voter is
+// recorded as two games"), which §30 deliberately leaves alone: the repetition model
+// is what the spec describes for weights at or above one.
+func TestAWeightTwoVoteIsTwoGames(t *testing.T) {
+	d, uid, pid, fid := arenaFixture(t)
+	ctx := context.Background()
+	arena, err := d.EnsureArena(ctx, ArenaFeaturePriority, pid, 0, "", "")
+	if err != nil {
+		t.Fatalf("EnsureArena: %v", err)
+	}
+	other := newFeature(t, d, pid, uid, "the other one")
+	for _, id := range []int64{fid, other} {
+		if err := d.UpsertArenaEntry(ctx, arena.ID, EntityFeature, id); err != nil {
+			t.Fatalf("UpsertArenaEntry: %v", err)
+		}
+	}
+	voter := createStranger(t, d)
+	if _, err := d.CastArenaVote(ctx, arena.ID, voter, EntityFeature, fid,
+		EntityFeature, other, "a", "", 2.0); err != nil {
+		t.Fatalf("CastArenaVote: %v", err)
+	}
+	got, _ := d.GetArenaEntry(ctx, arena.ID, EntityFeature, fid)
+	if got.Games != 2 {
+		t.Errorf("games after one weight-2 vote = %d, want 2 (§5.1)", got.Games)
 	}
 }

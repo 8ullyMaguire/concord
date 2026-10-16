@@ -39,11 +39,18 @@ func (o Outcome) ScorePair() (float64, float64) {
 
 // ApplyPairwiseVote updates both features for one pairwise vote.
 //
-// Concord's voter-weight model (spec §4): the *rating change* is scaled by
-// the voter's weight — r” = r + w·(r' − r), which is standard Glicko-2 at
-// w = 1. The RD/volatility update is always standard. Outcomes that do not
-// apply a rating change ("neither", "skip") leave both features untouched
-// but remain recorded for audit.
+// Concord's voter-weight model (spec §4): the *update* is scaled by the voter's
+// weight — r” = r + w·(r' − r), and the same interpolation on RD and volatility,
+// which is standard Glicko-2 at w = 1. Outcomes that do not apply a rating change
+// ("neither", "skip") leave both features untouched but remain recorded for audit.
+//
+// "The RD/volatility update is always standard" was the original sentence here, and
+// §30 superseded it with a measurement: at weight 3e-6 a vote moved the rating by
+// 5e-4 and still collapsed RD from 350 to 290, and priority is scored on the
+// conservative estimate r − 2·RD, so a brand-new account moved the number that RANKS
+// a feature by 119 points while looking like it had done nothing. §12.3's gate has to
+// hold in the metric that ranks, and UpdateArenaRating (arena.go) implements the same
+// rule for the generic arena path — one rule, two callers.
 //
 // A zero weight is a complete no-op on the ratings, RD and volatility alike,
 // and the vote is still recorded. That case is the account-age gate
@@ -63,13 +70,13 @@ func ApplyPairwiseVote(a, b Feature, out Outcome, weight, tau float64) (Feature,
 
 	a2 := a
 	a2.R = a.R + weight*(ra-a.R)
-	a2.RD = rdA
-	a2.Vol = volA
+	a2.RD = a.RD + weight*(rdA-a.RD)
+	a2.Vol = a.Vol + weight*(volA-a.Vol)
 
 	b2 := b
 	b2.R = b.R + weight*(rb-b.R)
-	b2.RD = rdB
-	b2.Vol = volB
+	b2.RD = b.RD + weight*(rdB-b.RD)
+	b2.Vol = b.Vol + weight*(volB-b.Vol)
 
 	return a2, b2
 }

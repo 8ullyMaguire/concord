@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -1269,11 +1268,7 @@ func (s *Server) handleCastVote(w http.ResponseWriter, r *http.Request) {
 	// Ramp a new account's weight from zero over its first week (spec §12.3).
 	// A throwaway account cannot buy influence; a real new contributor is not
 	// locked out of the vote it came to cast.
-	createdAt, err := s.Store.GetUserCreatedAt(r.Context(), actorID)
-	if err == nil {
-		age := ranking.AccountAgeDays(createdAt, float64(time.Now().Unix()))
-		weight *= ranking.AgeGateMultiplier(age)
-	}
+	s.applyAgeGate(r.Context(), actorID, &weight)
 	vote, err := s.Store.RecordVote(r.Context(), projectID, actorID, req.FeatureA, req.FeatureB, req.Outcome, weight, charter)
 	if err != nil {
 		mapError(w, err)

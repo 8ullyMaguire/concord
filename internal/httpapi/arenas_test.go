@@ -40,8 +40,8 @@ func voteInAlternativesArena(t *testing.T, ts *httptest.Server, slug, token stri
 }
 
 func TestArenaNextPairLabelsBothSides(t *testing.T) {
-	ts, _ := newTestServerWithStore(t)
-	arenaID, projA, projB, asker := seedAlternatives(t, ts, "pairlabels", "teams needing audit logs")
+	ts, db := newTestServerWithStore(t)
+	arenaID, projA, projB, asker := seedAlternatives(t, db, ts, "pairlabels", "teams needing audit logs")
 
 	code, body := authJSON(t, ts, http.MethodGet,
 		"/api/v1/projects/pairlabels-owner/arenas/"+itoa(arenaID)+"/next-pair", asker, nil)
@@ -104,8 +104,8 @@ func TestArenaNextPairLabelsBothSides(t *testing.T) {
 }
 
 func TestArenaNextPairSaysWhenEveryPairIsJudged(t *testing.T) {
-	ts, _ := newTestServerWithStore(t)
-	arenaID, projA, projB, asker := seedAlternatives(t, ts, "judged", "teams needing audit logs")
+	ts, db := newTestServerWithStore(t)
+	arenaID, projA, projB, asker := seedAlternatives(t, db, ts, "judged", "teams needing audit logs")
 
 	// The asker is the only identity that owns neither competitor, so they are the
 	// one who can vote here. One pair, one vote: the arena is exhausted for them.
@@ -122,8 +122,8 @@ func TestArenaNextPairSaysWhenEveryPairIsJudged(t *testing.T) {
 }
 
 func TestArenaVotesCarriesTheComparisonAndItsReason(t *testing.T) {
-	ts, _ := newTestServerWithStore(t)
-	arenaID, projA, projB, asker := seedAlternatives(t, ts, "logread", "teams needing audit logs")
+	ts, db := newTestServerWithStore(t)
+	arenaID, projA, projB, asker := seedAlternatives(t, db, ts, "logread", "teams needing audit logs")
 
 	before, body := authJSON(t, ts, http.MethodGet,
 		"/api/v1/projects/logread-owner/arenas/"+itoa(arenaID)+"/votes", asker, nil)
@@ -176,8 +176,8 @@ func TestArenaVotesCarriesTheComparisonAndItsReason(t *testing.T) {
 }
 
 func TestTheRecomputeIsANoOpOnAHealthyArena(t *testing.T) {
-	ts, _ := newTestServerWithStore(t)
-	arenaID, projA, projB, asker := seedAlternatives(t, ts, "noop", "teams needing audit logs")
+	ts, db := newTestServerWithStore(t)
+	arenaID, projA, projB, asker := seedAlternatives(t, db, ts, "noop", "teams needing audit logs")
 	voteInAlternativesArena(t, ts, "noop", asker, arenaID, projA, projB, "a", "")
 
 	// The verification first: the live path wrote the ratings, and the log has to
@@ -234,7 +234,7 @@ func TestTheRecomputeIsANoOpOnAHealthyArena(t *testing.T) {
 
 func TestArenaVerificationNamesTheEntryThatDrifted(t *testing.T) {
 	ts, db := newTestServerWithStore(t)
-	arenaID, _, _, asker := seedAlternatives(t, ts, "drift", "teams needing audit logs")
+	arenaID, _, _, asker := seedAlternatives(t, db, ts, "drift", "teams needing audit logs")
 
 	// Drift is made real, not simulated: the log is append-only, so a stored rating
 	// the log does not produce can only come from a write that scored something the
@@ -291,8 +291,8 @@ func TestArenaVerificationNamesTheEntryThatDrifted(t *testing.T) {
 }
 
 func TestEveryArenaRouteRefusesAnotherProjectsArena(t *testing.T) {
-	ts, _ := newTestServerWithStore(t)
-	arenaID, _, _, asker := seedAlternatives(t, ts, "owned", "teams needing audit logs")
+	ts, db := newTestServerWithStore(t)
+	arenaID, _, _, asker := seedAlternatives(t, db, ts, "owned", "teams needing audit logs")
 	createTestProjectWithAuth(t, ts, asker, "somebody-else")
 
 	for _, tc := range []struct {
@@ -313,8 +313,8 @@ func TestEveryArenaRouteRefusesAnotherProjectsArena(t *testing.T) {
 }
 
 func TestArenaRecomputeNeedsAnAccountAndAContributor(t *testing.T) {
-	ts, _ := newTestServerWithStore(t)
-	arenaID, _, _, _ := seedAlternatives(t, ts, "guarded", "teams needing audit logs")
+	ts, db := newTestServerWithStore(t)
+	arenaID, _, _, _ := seedAlternatives(t, db, ts, "guarded", "teams needing audit logs")
 	audience := registerAndLogin(t, ts, "guarded-audience") // an account, no role on the project
 	url := "/api/v1/projects/guarded-owner/arenas/" + itoa(arenaID) + "/recompute"
 

@@ -452,9 +452,18 @@ function apiAuth(extra) {
     }
     return '<ul class="arena-log-list">' + votes.map(function (v) {
       var winner = v.outcome === 'a' ? v.a.label : (v.outcome === 'b' ? v.b.label : v.outcome);
+      // The WEIGHT is shown, because it is the number that decides how far the vote
+      // moved the ranking and §5.2 makes this view the audit trail an appeal is argued
+      // from. §30 found the weight being computed, stored, and honoured by nothing;
+      // a reader who cannot see it cannot tell a full vote from a ramped-down one, and
+      // those two are the difference between a vote and a formality.
+      var w = (typeof v.weight === 'number') ? v.weight : Number(v.weight);
+      var shown = isFinite(w) ? (w >= 1 ? String(Math.round(w * 100) / 100)
+                                       : w.toFixed(4)) : '?';
       return '<li class="arena-log-row">' +
         '<span class="log-winner">' + esc(winner) + '</span>' +
         '<span class="log-pair">' + esc(v.a.label) + ' vs ' + esc(v.b.label) + '</span>' +
+        '<span class="log-weight">weight ' + esc(shown) + '</span>' +
         (v.reason ? '<span class="log-reason">' + esc(v.reason) + '</span>' : '') +
         '</li>';
     }).join('') + '</ul>';

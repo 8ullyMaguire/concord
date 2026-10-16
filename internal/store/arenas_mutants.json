@@ -46,8 +46,8 @@
  },
  {
   "name": "a fractional-weight vote counts as no game at all",
-  "old": "func gameCount(weight float64) int {\n\tn := int(weight)\n\tif n < 1 {\n\t\treturn 1\n\t}\n\treturn n\n}",
-  "new": "func gameCount(weight float64) int {\n\treturn int(weight)\n}"
+  "old": "\tn := int(weight)\n\tif n < 1 {\n\t\treturn 1\n\t}\n\treturn n",
+  "new": "\treturn int(weight)"
  },
  {
   "name": "the verification ignores the games counter",
@@ -63,5 +63,10 @@
   "name": "the verification reads the leaderboard's first page instead of every entry",
   "old": "\t\tFROM arena_entries WHERE arena_id = ? ORDER BY entity_id`, arenaID)",
   "new": "\t\tFROM arena_entries WHERE arena_id = ? ORDER BY entity_id LIMIT 200`, arenaID)"
+ },
+ {
+  "name": "a zero-weight vote still counts as a game",
+  "old": "\tif weight <= 0 {\n\t\t// \u00a730: an influence-free vote is not a comparison the entry played. The\n\t\t// vote is still in the log; nothing was measured by it.\n\t\treturn 0\n\t}",
+  "new": "\tif false {\n\t\treturn 0\n\t}"
  }
 ]

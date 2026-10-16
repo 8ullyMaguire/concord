@@ -68,18 +68,43 @@ func BeatsBy(r1, rd1, r2, rd2 float64) float64 {
 	return p
 }
 
-// UpdateArenaRating runs one period and returns the new triple.
+// UpdateArenaRating applies one weighted comparison and returns the new triple.
 //
-// A thin wrapper over Rate so callers name the concept they mean. weight scales
-// the influence of the period (§5.1's fractional-game treatment): the caller
-// passes the same games repeated, and weight is used for the audit and for
-// arena_games accounting. It is NOT applied to the score, because scaling a
-// 0-1 game score by a weight and feeding that to Rate would be a different
-// (and wrong) model -- the weight is expressed as repetition, not magnitude.
+// §5.1: "weight scales the update's influence". This function used to say
+// `if weight <= 0 { weight = 1 }`, which is that sentence upside down -- zero is
+// exactly what AgeGateMultiplier returns for an account minutes old, so §12.3's
+// Sybil defence was handing the fullest possible update to the accounts it exists
+// to stop.
+//
+// The rule, and it is the only implementation of it in the arena path:
+//
+//	w <= 0     nothing changes: rating, RD and volatility alike. A mass of
+//	           throwaway accounts that never moves a rating can still collapse the
+//	           uncertainty, and priority is scored on r - 2*RD, so collapsing RD is
+//	           itself a way to move a competitor up the board. ApplyPairwiseVote
+//	           (score.go) says this in the same words; this is the generic-arena
+//	           half of one rule.
+//	0 < w < 1  one game, and the WHOLE update is scaled by w: rating, RD and
+//	           volatility alike. §4's comment on ApplyPairwiseVote says "the
+//	           RD/volatility update is always standard"; that sentence is
+//	           superseded, and the measurement that superseded it is that a
+//	           brand-new account's vote (weight ~3e-6, an invisible rating move of
+//	           5e-4) still collapsed RD from 350 to 290 -- and priority is scored on
+//	           r - 2*RD, so the conservative score jumped 119 points on a vote that
+//	           was supposed to carry none of the account's influence. §12.3's
+//	           defence has to hold in the metric that ranks, not only in the
+//	           rating. Continuous at w = 1.
+//	w >= 1     the caller's repeated games, unchanged: §5.1 says a weight-2 voter
+//	           "is recorded as two games".
 func UpdateArenaRating(r, rd, sigma float64, games []Game, weight float64) ArenaRating {
 	if weight <= 0 {
-		weight = 1
+		return ArenaRating{R: r, RD: rd, Sigma: sigma}
 	}
 	nr, nrd, ns := Rate(r, rd, sigma, games, DefaultTau)
+	if weight < 1 {
+		nr = r + weight*(nr-r)
+		nrd = rd + weight*(nrd-rd)
+		ns = sigma + weight*(ns-sigma)
+	}
 	return ArenaRating{R: nr, RD: nrd, Sigma: ns}
 }

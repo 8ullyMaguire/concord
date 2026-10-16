@@ -15,6 +15,7 @@ package httpapi
 import (
 	"context"
 	"encoding/json"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -29,7 +30,7 @@ import (
 // Two competitors, not one: an arena with a single entry cannot produce a ranking,
 // and a test asserting "the leaderboard has one row" would pass whether or not
 // the arena ranks at all.
-func seedAlternatives(t *testing.T, ts *httptest.Server, slug, useCase string) (int64, int64, int64, string) {
+func seedAlternatives(t *testing.T, db *store.DB, ts *httptest.Server, slug, useCase string) (int64, int64, int64, string) {
 	t.Helper()
 	// Three projects, THREE owners — and that is not incidental.
 	//
@@ -43,6 +44,14 @@ func seedAlternatives(t *testing.T, ts *httptest.Server, slug, useCase string) (
 	// then read the resulting refusal as a bug in the vote handler.
 	asker := registerAndLogin(t, ts, slug+"-asker")
 	rival := registerAndLogin(t, ts, slug+"-rival-owner")
+
+	// §30: these two identities are backdated past the account-age ramp, so the tests
+	// built on this fixture are about the vote's mechanics. Without it they asserted
+	// that a brand-new account's vote moves a rating, which is exactly what §12.3
+	// forbids -- and they passed only while the gate was inert on this route. The gate
+	// itself is tested by TestABrandNewAccountsAlternativesVoteMovesNothing, which
+	// registers its voter fresh on purpose.
+	backdateAccounts(t, db, slug+"-asker", slug+"-rival-owner")
 
 	createTestProjectWithAuth(t, ts, asker, slug+"-owner")
 	createTestProjectWithAuth(t, ts, rival, slug+"-rival-a")
@@ -105,7 +114,7 @@ func seedAlternatives(t *testing.T, ts *httptest.Server, slug, useCase string) (
 // there, which "works" and is completely wrong.
 func TestAnAlternativesArenaRanksProjectsNotFeatures(t *testing.T) {
 	ts, db := newTestServerWithStore(t)
-	arenaID, _, _, _ := seedAlternatives(t, ts, "ranked", "teams needing audit logs")
+	arenaID, _, _, _ := seedAlternatives(t, db, ts, "ranked", "teams needing audit logs")
 
 	entries, err := db.ArenaLeaderboard(context.Background(), arenaID, 10)
 	if err != nil {
@@ -125,8 +134,8 @@ func TestAnAlternativesArenaRanksProjectsNotFeatures(t *testing.T) {
 // And through the API, so the handler is what is proven rather than the store the
 // handler happens to call.
 func TestTheAlternativesEndpointRanksCompetingProjects(t *testing.T) {
-	ts, _ := newTestServerWithStore(t)
-	seedAlternatives(t, ts, "viaapi", "teams needing audit logs")
+	ts, db := newTestServerWithStore(t)
+	seedAlternatives(t, db, ts, "viaapi", "teams needing audit logs")
 
 	status, raw := authGet(t, ts, "/api/v1/projects/viaapi-owner/alternatives", "")
 	if status != http.StatusOK {
@@ -180,7 +189,7 @@ func TestTheAlternativesEndpointRanksCompetingProjects(t *testing.T) {
 // The mirror-image of the existing TestAVoteCannotCrossIntoAnotherFeatureArena.
 func TestAVoteOnAProjectPairMovesBothProjectsRatings(t *testing.T) {
 	ts, db := newTestServerWithStore(t)
-	arenaID, a, b, asker := seedAlternatives(t, ts, "moves", "use case one")
+	arenaID, a, b, asker := seedAlternatives(t, db, ts, "moves", "use case one")
 
 	before, err := db.ArenaLeaderboard(context.Background(), arenaID, 10)
 	if err != nil {
@@ -220,7 +229,7 @@ func TestAVoteOnAProjectPairMovesBothProjectsRatings(t *testing.T) {
 func TestTheSameVoteDoesNotTouchAnyFeaturesRating(t *testing.T) {
 	ts, db := newTestServerWithStore(t)
 	ctx := context.Background()
-	arenaID, a, b, asker := seedAlternatives(t, ts, "nomirror", "use case two")
+	arenaID, a, b, asker := seedAlternatives(t, db, ts, "nomirror", "use case two")
 
 	// A feature to be corrupted if the mirror fires.
 	featSlug, pid := makeProject(t, ts, "nomirror-feature-owner")
@@ -291,7 +300,7 @@ func TestTheArenaCannotContainTheProjectItIsAbout(t *testing.T) {
 func TestAnAlternativesArenaHasNoDoNothingEntry(t *testing.T) {
 	ts, db := newTestServerWithStore(t)
 	ctx := context.Background()
-	arenaID, a, b, asker := seedAlternatives(t, ts, "nobaseline", "use case three")
+	arenaID, a, b, asker := seedAlternatives(t, db, ts, "nobaseline", "use case three")
 
 	// There is no `SetArenaBaseline` in this tree — the baseline row is created by
 	// `EnsureArena` for SOLUTION arenas only, so there is nothing to call.
@@ -841,4 +850,122 @@ func insiderIDOf(t *testing.T, db *store.DB, username string) int64 {
 		t.Fatalf("look up %s: %v", username, err)
 	}
 	return id
+}
+
+// §30: the age gate is not solution-specific, and this route was the one that omitted
+// it.
+//
+// The handler carried a comment saying "reputation and role only, with NO expertise
+// multiplier and no age gate ... those two are solution-specific". Expertise is; the
+// age gate is §12.3's Sybil defence and belongs on every vote. So a brand-new account's
+// project comparison was cast with the ungated weight -- on the one arena kind the panel
+// can judge -- and the account-age ramp did nothing there.
+func TestABrandNewAccountsAlternativesVoteMovesNothing(t *testing.T) {
+	ts, db := newTestServerWithStore(t)
+	arenaID, a, b, _ := seedAlternatives(t, db, ts, "agegate", "a use case nobody has judged")
+	ctx := context.Background()
+
+	// A FRESH account -- seedAlternatives backdates its own identities past the ramp, so
+	// this one is registered here and is seconds old -- made a contributor by hand, which
+	// is the guard the route enforces. The gate is about ACCOUNT age, so a member
+	// registered a moment ago is exactly the case §12.3 is about.
+	voter := registerAndLogin(t, ts, "agegate-brand-new")
+	voterRow, err := db.GetUser(ctx, "agegate-brand-new")
+	if err != nil {
+		t.Fatalf("GetUser: %v", err)
+	}
+	var asking struct {
+		ID int64 `json:"id"`
+	}
+	code, body := authJSON(t, ts, http.MethodGet, "/api/v1/projects/agegate-owner", voter, nil)
+	if code != http.StatusOK {
+		t.Fatalf("read the asking project: %d body=%s", code, body)
+	}
+	decodeInto(t, body, &asking)
+	addMemberOnly(t, db, asking.ID, voterRow.ID, "agegate-brand-new", "contributor")
+
+	before, err := db.ArenaLeaderboard(ctx, arenaID, 10)
+	if err != nil {
+		t.Fatalf("ArenaLeaderboard: %v", err)
+	}
+	ratings := map[int64]store.ArenaEntry{}
+	for _, e := range before {
+		ratings[e.EntityID] = e
+	}
+	if len(ratings) != 2 {
+		t.Fatalf("expected 2 rated entries, got %d", len(ratings))
+	}
+
+	code, body = authJSON(t, ts, http.MethodPost,
+		"/api/v1/projects/agegate-owner/alternatives/"+itoa(arenaID)+"/vote", voter,
+		map[string]any{"a_project_id": a, "b_project_id": b, "outcome": "a",
+			"reason": "my first vote ever"})
+	if code != http.StatusOK {
+		t.Fatalf("vote: %d body=%s", code, body)
+	}
+	var resp struct {
+		Vote struct {
+			Weight float64 `json:"weight"`
+		} `json:"vote"`
+	}
+	decodeInto(t, body, &resp)
+	// The ramp at a few seconds of age is a number near zero, not exactly zero. What
+	// matters is that it is not a full vote.
+	if resp.Vote.Weight > 0.001 {
+		t.Errorf("a new account's alternatives vote was cast with weight %v, want the ramp's "+
+			"near-zero value: §12.3's account-age gate is not applied on this route",
+			resp.Vote.Weight)
+	}
+
+	after, err := db.ArenaLeaderboard(ctx, arenaID, 10)
+	if err != nil {
+		t.Fatalf("ArenaLeaderboard after: %v", err)
+	}
+	for _, e := range after {
+		was := ratings[e.EntityID]
+		// The RATING move must be invisible -- and, §30, so must the RD collapse. A
+		// 3e-6 weight used to leave r alone to five decimal places while taking RD from
+		// 350 to 290, and priority is scored on r - 2*RD: the conservative score jumped
+		// 119 points on a vote that carried none of the account's influence.
+		if math.Abs(e.R-was.R) > 0.01 {
+			t.Errorf("project %d moved %.4f on a near-zero-weight vote (r %.3f->%.3f)",
+				e.EntityID, e.R-was.R, was.R, e.R)
+		}
+		if math.Abs(e.RD-was.RD) > 0.01 {
+			t.Errorf("project %d lost %.4f of its deviation on a near-zero-weight vote "+
+				"(rd %.3f->%.3f): the conservative score r-2*RD moved %.1f points, and that is the "+
+				"number §5.1 ranks features by",
+				e.EntityID, was.RD-e.RD, was.RD, e.RD, 2*(was.RD-e.RD))
+		}
+	}
+}
+
+// The vote handler's own copy of the "not against itself" rule, which had no test: the
+// entry path had one (TestTheArenaCannotContainTheProjectItIsAbout) and the vote path did
+// not, so a mutation that dropped the refusal from the VOTE route survived this gate.
+// Found by the mutant, not by reading.
+func TestAVoteCannotNameTheArenasOwnProject(t *testing.T) {
+	ts, db := newTestServerWithStore(t)
+	arenaID, _, b, asker := seedAlternatives(t, db, ts, "selfvote", "use case four")
+
+	var own struct {
+		ID int64 `json:"id"`
+	}
+	code, body := authJSON(t, ts, http.MethodGet, "/api/v1/projects/selfvote-owner", asker, nil)
+	if code != http.StatusOK {
+		t.Fatalf("read the asking project: %d body=%s", code, body)
+	}
+	decodeInto(t, body, &own)
+
+	code, body = authJSON(t, ts, http.MethodPost,
+		"/api/v1/projects/selfvote-owner/alternatives/"+itoa(arenaID)+"/vote", asker,
+		map[string]any{"a_project_id": own.ID, "b_project_id": b, "outcome": "a"})
+	if code != http.StatusBadRequest {
+		t.Errorf("voting the arena's own project against a competitor: %d body=%s, want 400 -- "+
+			"an alternatives arena ranks OTHER projects, and a comparison against the asker "+
+			"itself is not one of them", code, body)
+	}
+	if !strings.Contains(string(body), "cannot be voted against another") {
+		t.Errorf("the refusal does not say what was refused: %s", body)
+	}
 }

@@ -270,6 +270,10 @@ func TestAVoteInTheSolutionArenaReordersTheBoard(t *testing.T) {
 	registerOn(t, ts, "solauthor1")
 	author := registerOn(t, ts, "solauthor2")
 	voter := registerOn(t, ts, "solvoter1")
+	// §30: the voter is backdated past §12.3's account-age ramp so this test is about
+	// the board reordering, not about the gate. A brand-new account's vote is now
+	// correctly too weak to reorder anything, and the gate has its own tests.
+	backdateAccounts(t, st, "solvoter1")
 
 	rewrite := fileSolution(t, ts, featureID, "Rewrite the exporter", "build-new", "", author)
 	workaround := fileSolution(t, ts, featureID, "Document the workaround", "config-or-docs-only", "", author)

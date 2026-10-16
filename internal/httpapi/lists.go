@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 
@@ -413,11 +412,7 @@ func (s *Server) answerVoteWeight(ctx context.Context, projectID, actorID int64,
 	// The age gate last, for §12.3's Sybil defence and the same reason as the
 	// solution vote: a defence a 2.0x expertise multiplier can halve is not a
 	// defence.
-	createdAt, err := s.Store.GetUserCreatedAt(ctx, actorID)
-	if err == nil {
-		weight *= ranking.AgeGateMultiplier(
-			ranking.AccountAgeDays(createdAt, float64(time.Now().Unix())))
-	}
+	s.applyAgeGate(ctx, actorID, &weight)
 
 	if weight > charter.VoteWeightCap {
 		weight = charter.VoteWeightCap
@@ -836,11 +831,7 @@ func (s *Server) entryVoteWeight(ctx context.Context, projectID, actorID int64, 
 
 	// The age gate last, for §12.3's Sybil defence: a defence a reputation multiplier
 	// can be cancelled by is not a defence.
-	createdAt, err := s.Store.GetUserCreatedAt(ctx, actorID)
-	if err == nil {
-		weight *= ranking.AgeGateMultiplier(
-			ranking.AccountAgeDays(createdAt, float64(time.Now().Unix())))
-	}
+	s.applyAgeGate(ctx, actorID, &weight)
 
 	if weight > charter.VoteWeightCap {
 		weight = charter.VoteWeightCap

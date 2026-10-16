@@ -5,10 +5,10 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state (the sixteenth pass, §29):** schema 29 · 29 migrations · 82 live tables · 1088 Go
-tests across 9 test-bearing packages · 298 e2e tests in 22 suite files · 49/49 UI mutants killed
+**Measured state (the seventeenth pass, §30):** schema 29 · 29 migrations · 82 live tables · 1096 Go
+tests across 9 test-bearing packages · 298 e2e tests in 22 suite files · 50/50 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
-7 project.js/arena) · Go mutants: 20 arms, 142 killed, 0 survived · `make verify` exit 0,
+8 project.js/arena) · Go mutants: 22 arms, 149 killed, 0 survived · `make verify` exit 0,
 `make gates` exit 0, `make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
@@ -3577,9 +3577,127 @@ Two things came out of it that no test had:
 
 ### 29.7 Where the numbers stand
 
-**Measured state:** schema 29 · 29 migrations · 82 live tables · 1088 Go tests · 298 e2e tests in 22
-suite files · 48/48 UI mutants · Go mutants: 20 arms, 143 killed, 0 survived · store exports: 233 LIVE,
-19 TEST-ONLY (all named with reasons), 0 UNCALLED · `make verify`, `make gates`, `make e2e` all exit 0.
+**Measured state (historical) — §29's, superseded by §30.7.** Every number below is that pass's, kept
+as the record of what it ended at:
+
+- 1088 Go tests (historical)
+- 298 e2e tests in 22 suite files (historical)
+- 49/49 UI mutants (historical)
+- Go mutants: 20 arms, 143 killed, 0 survived (historical)
+- store exports: 233 LIVE, 19 TEST-ONLY (all named with reasons), 0 UNCALLED (historical)
+- `make verify`, `make gates`, `make e2e` all exit 0 (historical)
+
+## 30. §5.1's weight, and the gate it was supposed to carry (2026-10-16)
+
+Spec `docs/specs/arena-weight-spec.md`, plan `docs/plans/arena-weight.md`, both written before any code.
+
+### 30.1 The claim, and the whole vote log
+
+§5.1: *"Weight scales the update's influence: a weight-2 voter is recorded as two games."* §12.3:
+*"a vote weight ramps from zero over the account's first days, so a throwaway account cannot buy
+influence."* The second sentence is derived from the first, so both stand or fall together.
+
+Production, in full:
+
+```
+sqlite> SELECT COUNT(*) total, SUM(CASE WHEN weight<1 THEN 1 ELSE 0 END) fractional FROM pairwise_votes;
+2|2
+```
+
+Both votes carry `weight` 0.0004 and 0.016 — the ramp's first steps. Three separate places made those
+weights do nothing:
+
+1. **The engine inverted the zero case.** `ranking.UpdateArenaRating` opened with
+   `if weight <= 0 { weight = 1 }`: a voter whose gated weight is exactly 0 — what
+   `AgeGateMultiplier` returns for an account minutes old, and what its own test asserts
+   (*"brand new account has no weight" → 0.0*) — got the **fullest** update available. Measured:
+   `1500 → 1662.311`, `rd 350 → 290.319`.
+2. **A fractional weight rounded up to a whole game.** `repeatedGame` builds `int(weight)` games with a
+   floor of one, so 0.0004 was one full game. Measured: weight 1.0 and weight 0.25 moved a rating by
+   **the same 162.310894**.
+3. **One route never applied the gate at all.** `alternatives.go` cast with
+   `VoteWeight(reputation, RoleMultiplier(role), cap)` and nothing else. Measured: a brand-new account's
+   project comparison was cast at **weight 1.75** and moved both competitors fully
+   (`1500 → 1662.311 / 1337.689`). Its comment said *"reputation and role only, with NO expertise
+   multiplier and no age gate ... those two are solution-specific"* — expertise is; the age gate is
+   §12.3's Sybil defence and belongs on every vote. **A correct sentence about one multiplier carried an
+   incorrect one about another**, which is why the omission survived review.
+
+So on every arena ranking — feature-priority, solution and alternatives alike — §12.3's gate did not
+change an outcome. The class is §29's: one rule, several implementations, and the one production uses is
+not the one that was tested.
+
+### 30.2 One rule, and the correction it forced
+
+`ranking.UpdateArenaRating` now states and implements the whole rule: `w <= 0` changes **nothing** —
+rating, RD and volatility alike, matching `ApplyPairwiseVote`'s documented reasoning ("collapsing RD is
+itself a way to move a feature up the board"); `0 < w < 1` plays one game and interpolates the **whole**
+update toward the result; `w >= 1` keeps §5.1's repetition. `gameCount` returns 0 for a no-op vote, so
+an influence-free comparison is not counted as one the entry played. The vote is recorded either way:
+§5.2 makes the log append-only, and the gate refuses influence, not participation.
+
+**The measurement that changed the spec's §4 sentence.** My own first cut followed §4's "the
+RD/volatility update is always standard" and left RD alone below 1. That is half a fix, and the number
+says why: at weight `2.9e-06` a brand-new account's vote moved the rating by `5e-04` — invisible — and
+still took RD from 350 to 290. §5.1 scores priority on the conservative estimate `r − 2·RD`, so the vote
+moved **the number that orders the board by 119 points** while looking like it had done nothing. §4's
+sentence is now marked superseded where it sits (`internal/ranking/score.go`), and both implementations
+apply the same interpolation — one rule, two callers, and the arena path's version is the only one that
+ranks.
+
+### 30.3 The gate, applied last, in one place
+
+`s.applyAgeGate(ctx, actorID, &weight)` replaces four in-line copies (feature votes, entry votes, answer
+votes, solution votes) and one omission (alternatives). "Last" is load-bearing and is why it is a helper:
+§12.3's defence must not be cancellable by the role or expertise multiplier that precedes it, and a rule
+that lives in five copies is a rule that one of the copies does not have. The comment that justified the
+omission is corrected where it was written.
+
+### 30.4 What the tests had been asserting
+
+Three existing tests **failed** the moment the gate worked — each was asserting that a brand-new
+account's vote moves something:
+
+- `TestAVoteOnAProjectPairMovesBothProjectsRatings` and `TestTheSameVoteDoesNotTouchAnyFeaturesRating`
+  (alternatives): the fixture's identities are registered by the test, so their votes are ramped to
+  effectively zero.
+- `TestAVoteInTheSolutionArenaReordersTheBoard` (solutions): same.
+- The browser suite's judging test: same, and it is the one that would have been *reported* as a
+  regression in the panel.
+
+The fix is not to weaken the assertion but to age the fixture: `backdateAccounts` (one helper, one
+comment) moves a fixture's identities past `AccountAgeGateDays` when the test is about a vote's
+mechanics, and the gate keeps its own tests with accounts that are fresh **on purpose**. Those three
+failures are the gate being corrected, not new bugs.
+
+### 30.5 Gates, and the gap a mutant found
+
+New: a ranking arm (3 mutants, killed by three new engine tests), an alternatives arm (2 mutants) and one
+store mutant (`gameCount`'s zero case). The alternatives arm immediately produced a **survivor** —
+*"the arena's own project may be voted against another project"* — because the vote-handler's copy of
+that refusal had no test at all (the entry path had one). The missing test was written, the mutant died,
+and the rule is now covered on both paths.
+
+Panel: §5.2's audit view shows **the weight** on every log row. It was computed, stored, sent in the
+response — and rendered nowhere, so a reader could not tell a full vote from a ramped-down one.
+
+### 30.6 Still open, and named
+
+- **A sub-1 weight still counts as one game** in `games`, which §5.1 defines as how many comparisons the
+  entry played, not how much influence they carried. Deliberate.
+- **The cap is still applied before the gate** on the two lists.go routes (`if weight > cap`), so a
+  capped voter's gated weight can fall below the cap but never exceed it. Unchanged from before; noted
+  because §30 touched every one of those call sites.
+- **`pairwise_votes.weight` is never recomputed.** A vote cast at weight 0.0004 keeps that weight
+  forever, even once the account is a year old. §5.2's log is append-only, so this is a design question
+  (should the weight be read at replay time instead?) rather than a defect — and the replay reads the
+  stored weight, so today's ranking is self-consistent.
+
+### 30.7 Where the numbers stand
+
+**Measured state (the seventeenth pass, §30):** schema 29 · 29 migrations · 82 live tables · 1096 Go
+tests across 9 test-bearing packages · 298 e2e tests in 22 suite files · 50/50 UI mutants · Go mutants:
+22 arms, 149 killed, 0 survived, 0 not applicable · `make verify`, `make gates`, `make e2e` all exit 0.
 
 **Still open, and named rather than implied:** Q2 (the sum), Q3 (the pain-side multiplier), §452's
 global themes, and the items §24.7 lists under its own heading — `LinkComplaint`'s missing route (built in
