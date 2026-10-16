@@ -126,10 +126,14 @@ def pidfile_for(port):
     return os.path.join(tempfile.gettempdir(), f"concord-e2e-{port}.pid")
 
 
-def start_server(port, dbdir, logdir):
+def start_server(port, dbdir, logdir, extra_env=None):
     """Start a real concord on `port` with a throwaway DB, and reap it after.
 
     Returns (proc, db_path, base_url).
+
+    `extra_env` is for suites that need the server to be configured a particular
+    way -- the guest suite runs a second instance with CONCORD_GUEST_MAU_LIMIT=0 to
+    show what a visitor is told once the door is shut.
     """
     db = os.path.join(dbdir, "concord.db")
     pidfile = pidfile_for(port)
@@ -145,6 +149,8 @@ def start_server(port, dbdir, logdir):
             f"pattern-kill reach it.")
 
     env = dict(os.environ, CONCORD_DB=db, CONCORD_LISTEN=f"127.0.0.1:{port}")
+    if extra_env:
+        env.update(extra_env)
     logpath = os.path.join(logdir, f"concord-{port}.log")
     log = open(logpath, "w")
     proc = subprocess.Popen([BIN], env=env, stdout=log, stderr=subprocess.STDOUT)
@@ -181,16 +187,32 @@ def stop_server(proc):
         proc.wait(timeout=5)
 
 
-def api(base, method, path, body=None, token=None):
+def api_raw(base, method, path, body=None, token=None, cookie=None):
+    """One HTTP call, with exactly the Cookie header the caller asks for.
+
+    Separate from api() because some tests are ABOUT the cookie notice: api()
+    always sends the acceptance (every other test needs it to be able to write at
+    all), and a test that must see the refusal has to be able to send nothing.
+    """
     data = json.dumps(body).encode() if body is not None else None
     headers = {"Content-Type": "application/json"}
     if token:
         headers["Authorization"] = "Bearer " + token
+    if cookie:
+        headers["Cookie"] = cookie
     req = urllib.request.Request(base + path, data=data, method=method,
                                  headers=headers)
     with urllib.request.urlopen(req, timeout=5) as resp:
         raw = resp.read()
         return json.loads(raw) if raw else None
+
+
+def api(base, method, path, body=None, token=None):
+    # The cookie notice is accepted, because every mutating request needs it and
+    # this is the one place the suite's direct HTTP calls are built. A visitor who
+    # has accepted the notice sends it on every request, so the harness does too;
+    # the tests that are about the refusal use api_raw with no cookie.
+    return api_raw(base, method, path, body=body, token=token, cookie="concord_consent=1")
 
 
 # ---------------------------------------------------------------- synchronising

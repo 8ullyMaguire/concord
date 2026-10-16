@@ -149,6 +149,11 @@ func TestEveryMutatingRouteIsGuarded(t *testing.T) {
 		"POST /api/v1/hooks/forgejo":      "authenticated by HMAC over the body, and fails closed",
 		"POST /api/v1/auth/redeem-invite": "the invite IS the credential",
 		"POST /api/v1/finder/sessions":    "§4.1: the finder works without an account",
+		// Minting a guest identity is the whole point of "a visitor may act": the
+		// caller has no identity yet BY DEFINITION, so requiring one is a deadlock.
+		// The gate that does apply is the interaction gate (an accepted cookie
+		// notice) plus the instance's own MAU limit, both checked in the handler.
+		"POST /api/v1/guest": "a visitor claiming a guest identity has no identity yet, by definition",
 		// The session id is the credential, and it is a random token, not a row id --
 		// so these cannot be enumerated and cannot touch another visitor's session.
 		"POST /api/v1/finder/sessions/{session_id}/answers": "operates on the caller's own session id",

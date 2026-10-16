@@ -23,7 +23,30 @@
      document at exactly that point -- a 506-byte page ending mid-head, with a 200. -->
 <link rel="alternate" type="application/atom+xml" title="Concord projects" href="/atom.xml">
 </head>
-<body>
+<body data-consent="{{if .ConsentAccepted}}accepted{{else}}required{{end}}"
+      data-consent-version="{{.ConsentVersion}}">
+{{if not .ConsentAccepted}}
+<!-- The cookie notice (docs/specs/guest-interactions-spec.md).
+     Rendered by the server from the request's own cookie, so the state is
+     correct in the first paint rather than after a fetch. It is a NOTICE with a
+     consequence: until it is accepted the server refuses every write, and the
+     client-side guard in session.js refuses to send one, so the sentence under
+     the buttons is the same one the server would have answered with.
+     The Accept button is the only control; there is no "reject" that leaves the
+     site crippled, because declining already means "read only". -->
+<div id="cookie-notice" class="cookie-notice" role="dialog" aria-labelledby="cookie-notice-text">
+  <p id="cookie-notice-text">
+    Concord sets two cookies, and nothing else. <code>concord_nav</code> lets a page
+    you are already signed in to render as signed in — it is never accepted on an
+    action, so it cannot be used to make you do anything. <code>concord_consent</code>
+    records this choice. No advertising, no analytics, no third parties.
+    <strong>Interactions are off until you accept.</strong>
+  </p>
+  <div class="cookie-notice-actions">
+    <button type="button" id="cookie-accept" class="btn btn-primary">Accept and continue</button>
+  </div>
+</div>
+{{end}}
 <header class="site-header">
   <div class="container">
     <a href="/" class="brand" aria-label="Concord home">
@@ -81,6 +104,7 @@
   </div>
 </footer>
 <script src="{{ asset "/assets/js/session.js" }}"></script>
+<script src="{{ asset "/assets/js/consent.js" }}"></script>
 {{if .Scripts}}
 <script src="{{.Scripts}}"></script>
 {{end}}

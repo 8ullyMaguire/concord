@@ -35,6 +35,11 @@ func (s *Server) handleCreateProject(w http.ResponseWriter, r *http.Request) {
 		mapError(w, store.ErrAuth)
 		return
 	}
+	// A project is a namespace with a slug, a charter and a page: a nameless party
+	// holding namespaces is a squatting vector, so this one write needs an account.
+	if s.requireAccount(w, r, "creating a project needs an account; a guest identity cannot hold a name") {
+		return
+	}
 	p, err := s.Store.CreateProject(r.Context(), actorID, req.Slug, req.Name,
 		req.Description, req.GovernanceModel, req.License)
 	if err != nil {
@@ -163,6 +168,11 @@ func (s *Server) handleCreateProjectInvite(w http.ResponseWriter, r *http.Reques
 		mapError(w, store.ErrAuth)
 		return
 	}
+	// Invites are §8.2's trust mechanism: they are how a stranger becomes a
+	// member. A guest has no standing to extend trust, so this needs an account.
+	if s.requireAccount(w, r, "creating an invite needs an account; a guest identity cannot extend membership") {
+		return
+	}
 	role, err := s.Store.GetRoleForProject(r.Context(), proj.ID, actorID)
 	if err != nil || !s.isProjectMember(role) {
 		mapError(w, store.ErrNotFound)
@@ -229,6 +239,11 @@ func (s *Server) handleRevokeProjectInvite(w http.ResponseWriter, r *http.Reques
 	actorID := getActorID(r)
 	if actorID == 0 {
 		mapError(w, store.ErrAuth)
+		return
+	}
+	// Symmetric with creating one: withdrawing an invite is the same trust, taken
+	// back, and a guest never had it.
+	if s.requireAccount(w, r, "revoking an invite needs an account") {
 		return
 	}
 	role, err := s.Store.GetRoleForProject(r.Context(), proj.ID, actorID)

@@ -168,6 +168,18 @@ type Server struct {
 	WebhookSecret string
 	pages         map[string]*template.Template
 
+	// GuestMAULimit is how many monthly active accounts the instance may have
+	// before guest interactions close (CONCORD_GUEST_MAU_LIMIT, default 1000; 0
+	// switches guests off). ConsentVersion is the version of the cookie notice a
+	// visitor must have accepted (CONCORD_CONSENT_VERSION, default "1").
+	//
+	// Fields rather than reads of the environment at request time: a value that
+	// could change under a running request would make the gate's answer depend on
+	// which request asked, and it lets a test set the limit without touching the
+	// process environment every other test shares.
+	GuestMAULimit  int
+	ConsentVersion string
+
 	// Finder sessions are process-local and guarded by finderMu rather than
 	// held in a map read without a lock. Lazy construction under the mutex means
 	// NewServer stays the only constructor and no test has to remember to
@@ -186,7 +198,12 @@ func NewServer(store *store.DB, version string, webhookSecret ...string) (*Serve
 	// first, so the dependency is stated here where it is visible.
 	loadAssetHashes(staticFS)
 
-	s := &Server{Store: store, Version: version}
+	s := &Server{
+		Store:          store,
+		Version:        version,
+		GuestMAULimit:  guestMAULimitFromEnv(),
+		ConsentVersion: consentVersionFromEnv(),
+	}
 	if len(webhookSecret) > 0 {
 		s.WebhookSecret = webhookSecret[0]
 	}
@@ -331,6 +348,11 @@ func (s *Server) Router() http.Handler {
 	// authenticate must come after rateLimit: an unauthenticated flood of bad
 	// tokens should be rate limited, not turned into 64 MiB argon2 verifications.
 	r.Use(s.authenticate)
+	// The interaction gate needs the actor (to stamp consent, and to know whether
+	// this is a guest), so it comes after authenticate. It covers the whole
+	// mutating surface in one place rather than per handler, so a route added
+	// later is gated without anyone remembering to gate it.
+	r.Use(s.interactionGate)
 	r.Use(noStoreAPI)
 	r.Use(middleware.RequestID)
 	r.Use(middleware.RealIP)
@@ -362,6 +384,16 @@ func (s *Server) Router() http.Handler {
 	r.Post("/api/v1/auth/login", s.handleLogin)
 	r.Post("/api/v1/auth/logout", s.handleLogout)
 	r.Get("/api/v1/auth/me", s.handleMe)
+
+	// Guest interactions and the cookie notice (docs/specs/guest-interactions-spec.md).
+	//
+	// The consent route is on the gate's exempt list (a visitor must be able to
+	// accept), and both guest routes are reads-or-mints rather than project
+	// writes: claiming an identity is how a visitor stops being anonymous, so it
+	// is the first thing the gate lets through once consent exists.
+	r.Post("/api/v1/consent", s.handleAcceptConsent)
+	r.Get("/api/v1/guest", s.handleGuestStatus)
+	r.Post("/api/v1/guest", s.handleClaimGuest)
 	// Redeeming an invite is an auth-flow action, not a project action: the
 	// caller has no project context yet, which is why the token identifies the
 	// project rather than the other way round.
@@ -952,6 +984,17 @@ type pageData struct {
 	Flash   string
 	Scripts string
 
+	// ConsentAccepted and ConsentVersion are the cookie notice's state, decided by
+	// the SERVER from the request's own cookie.
+	//
+	// Server-side rather than a fetch on load: the notice has to be right in the
+	// first paint, and a page that has to ask whether it may ask is a page that
+	// shows nothing when the answer does not arrive. The state is published on
+	// <body> as data-consent so the client-side guard reads the same answer the
+	// server's gate would give.
+	ConsentAccepted bool
+	ConsentVersion  string
+
 	// Path is the request path, used by the shared layout to render the project
 	// tab bar without every page handler having to thread a slug through its own
 	// anonymous struct.
@@ -963,7 +1006,7 @@ type pageData struct {
 }
 
 func (s *Server) page(title string) pageData {
-	return pageData{Title: title, Version: s.Version}
+	return pageData{Title: title, Version: s.Version, ConsentVersion: s.ConsentVersion}
 }
 
 func (s *Server) pageWithScript(title, script string) pageData {
@@ -979,6 +1022,10 @@ func (s *Server) pageFor(r *http.Request, title string) pageData {
 	p := s.page(title)
 	if r != nil {
 		p.Path = r.URL.Path
+		// The notice's state, from the request's own cookie. Read here, where the
+		// request is, so every page that already calls pageFor carries it without
+		// a per-handler field to forget.
+		p.ConsentAccepted = s.consentAccepted(r)
 	}
 	return p
 }

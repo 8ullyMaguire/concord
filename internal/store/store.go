@@ -64,6 +64,11 @@ type User struct {
 	DisplayName string  `json:"display_name"`
 	Role        string  `json:"role"`
 	CreatedAt   float64 `json:"created_at"`
+	// IsGuest marks an identity that may act but cannot log in: password_hash is
+	// empty and usernames are synthetic ("guest-<8 hex>"). It is reported so a
+	// page or an operator can tell a guest's contribution from an account's, and
+	// so the fold knows which identity has to disappear into the other.
+	IsGuest bool `json:"is_guest"`
 }
 
 func (d *DB) CreateUser(ctx context.Context, username, displayName string) (User, error) {
@@ -94,6 +99,29 @@ func (d *DB) GetUser(ctx context.Context, username string) (User, error) {
 	}
 	u.Role = "member"
 	return u, err
+}
+
+// GetUserByID loads a user by id, including whether the identity is a guest.
+//
+// It exists alongside GetUser because the two callers differ in what they know:
+// a registration handler has a username, while everything that follows a token
+// has an id and nothing else. Reading is_guest here is what lets the limiter ask
+// "is this actor a guest" without a second query on the hot path.
+func (d *DB) GetUserByID(ctx context.Context, id int64) (User, error) {
+	var u User
+	var guest int
+	err := d.QueryRowContext(ctx,
+		`SELECT id, username, COALESCE(display_name,''), created_at, is_guest
+		 FROM users WHERE id = ?`, id).Scan(&u.ID, &u.Username, &u.DisplayName, &u.CreatedAt, &guest)
+	if errors.Is(err, sql.ErrNoRows) {
+		return User{}, fmt.Errorf("%w: user %d", ErrNotFound, id)
+	}
+	if err != nil {
+		return User{}, err
+	}
+	u.IsGuest = guest == 1
+	u.Role = "member"
+	return u, nil
 }
 
 // GetCharterForProject loads the charter for a project by project_id.

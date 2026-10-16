@@ -61,11 +61,13 @@ e2e: build
 	$(E2E_PYTEST) tests/e2e/criteria_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/merge_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/readers_e2e.py -q
+	$(E2E_PYTEST) tests/e2e/guest_e2e.py -q
 	# The audit VIEWER's mutants. Not part of `make gates` because it rebuilds
 	# the binary and runs the browser suite seven times, which is a different
 	# cost from the Go mutants: `gates` is a fast inner loop and this is not.
 	$(E2E_PYTHON) tests/e2e/audit_ui_mutants.py
 	$(E2E_PYTHON) tests/e2e/consensus_ui_mutants.py
+	$(E2E_PYTHON) tests/e2e/guest_ui_mutants.py
 
 # The mutation gates. Each rewrites one source file per mutant and asserts the
 # suite goes red, so a green run means every mutant was killed. A SURVIVED entry

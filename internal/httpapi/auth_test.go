@@ -73,7 +73,10 @@ func newAuthServer(t *testing.T) *httptest.Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := httptest.NewServer(srv.Router())
+	// consenting: the cookie notice is accepted on behalf of the visitor, because
+	// every mutating request needs it and a suite that answered 403 everywhere
+	// would be testing the gate rather than the handlers.
+	ts := httptest.NewServer(consentingRoutes(srv.Router()))
 	t.Cleanup(ts.Close)
 	return ts
 }

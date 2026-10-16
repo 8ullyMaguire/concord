@@ -85,9 +85,22 @@
         payload.display_name = dn ? dn.value.trim() : '';
       }
 
+      // The token the visitor ALREADY holds, if any. This is what makes the fold
+      // work: a visitor who has been acting as a guest registers with their guest
+      // token still attached, and the server promotes that identity in place, so
+      // everything they did as a guest is theirs without moving. Without this
+      // header the server has no way to know the visitor had done anything -- the
+      // guest token is the only credential that says so, and there is deliberately
+      // no cookie that could.
+      var headers = { 'Content-Type': 'application/json' };
+      if (window.ConcordSession) {
+        var auth = window.ConcordSession.instance().authHeaders();
+        if (auth.Authorization) headers.Authorization = auth.Authorization;
+      }
+
       fetch('/api/v1' + path, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: headers,
         body: JSON.stringify(payload)
       }).then(function (res) {
         return res.json().catch(function () { return null; }).then(function (body) {
@@ -107,9 +120,16 @@
   document.addEventListener('DOMContentLoaded', function () {
     // Already signed in? Go straight through rather than showing a form whose
     // submission would replace a working token.
+    //
+    // A GUEST is the exception, and it is the whole reason this test exists: a
+    // guest holds a token because that is how it acts, but it has no account, and
+    // these two pages are exactly how it gets one. Bouncing on any token sent
+    // guests to /projects and made the fold -- "what you did as a guest becomes
+    // your account's" -- unreachable through the interface.
     var s = session();
     var existing = s ? s.token : null;
-    if (existing) {
+    var isGuest = !!(s && s.user && s.user.is_guest);
+    if (existing && !isGuest) {
       fetch('/api/v1/auth/me', { headers: { Authorization: 'Bearer ' + existing } })
         .then(function (r) {
           if (r.ok) { window.location.assign(nextUrl()); return; }

@@ -33,6 +33,16 @@ type authResponse struct {
 	User   store.User `json:"user"`
 	Token  string     `json:"token"`
 	Expiry string     `json:"token_note"`
+	// Fold reports what happened to work done as a guest before this identity
+	// existed: rows that became the account's, and rows it already had. Present
+	// only when there was guest work to fold, so a response says nothing about a
+	// path the caller did not take.
+	Fold *store.FoldReport `json:"fold,omitempty"`
+	// FoldError says, in words, that the guest's work could NOT be folded. The
+	// login or registration still succeeded -- the caller proved who they are --
+	// so this is a report, not a refusal. Silence here would be the worst
+	// outcome: work done under one identity that nobody can find.
+	FoldError string `json:"fold_error,omitempty"`
 }
 
 const tokenNote = "Store this token. It cannot be retrieved again; only its hash is kept."
@@ -106,6 +116,26 @@ func (s *Server) handleRegister(w http.ResponseWriter, r *http.Request) {
 		mapError(w, store.ErrInvalid)
 		return
 	}
+	// A visitor who has been acting as a guest registers INTO their guest
+	// identity: the row becomes the account, so everything they did as a guest is
+	// theirs without a copy, and the history stays one identity's ("this account
+	// took these positions while it had no name").
+	if guestID := s.guestActorID(r); guestID != 0 {
+		u, tok, err := s.Store.PromoteGuest(r.Context(), guestID, req.Username, req.DisplayName, req.Password)
+		if err != nil {
+			mapError(w, err)
+			return
+		}
+		_ = s.Store.AddAudit(r.Context(), 0, u.ID, "register_user", "user", u.ID,
+			"promoted guest "+u.Username)
+		setNavCookie(w, r, tok)
+		writeJSON(w, http.StatusCreated, authResponse{User: u, Token: tok, Expiry: tokenNote})
+		return
+	}
+	// A caller who is ALREADY an account takes the ordinary path below: registering
+	// again creates a second account, which is unusual but not wrong, and the
+	// caller is signed in either way. (PromoteGuest is not reachable from here for
+	// an account, because guestActorID returns 0 unless the actor IS a guest.)
 	u, tok, err := s.Store.RegisterUser(r.Context(), req.Username, req.DisplayName, req.Password)
 	if err != nil {
 		mapError(w, err)
@@ -126,8 +156,20 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	// Here a second identity already holds the credential, so the guest's rows
+	// genuinely have to move. The login has succeeded either way: a fold failure
+	// must not strand someone who has just proved they own an account, so it is
+	// reported in the response rather than turned into an error.
+	fold, foldErr := s.foldOnLogin(r, u.ID)
 	setNavCookie(w, r, tok)
-	writeJSON(w, http.StatusOK, authResponse{User: u, Token: tok, Expiry: tokenNote})
+	resp := authResponse{User: u, Token: tok, Expiry: tokenNote}
+	if fold.Moved > 0 || fold.Superseded > 0 {
+		resp.Fold = &fold
+	}
+	if foldErr != nil {
+		resp.FoldError = foldErr.Error()
+	}
+	writeJSON(w, http.StatusOK, resp)
 }
 
 // handleLogout revokes the presented token. Idempotent: a client that logs out

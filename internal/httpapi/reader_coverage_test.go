@@ -157,6 +157,15 @@ var readerInventory = []readerRow{
 	{Match: "/api/v1/search", Reader: "search.js", Anchor: "/search", Routes: 1},
 	{Match: "/api/v1/similar", Reader: "project.js", Anchor: "/similar", Routes: 1},
 	{Match: "/api/v1/taxonomy", Reader: "taxonomy.js", Anchor: "/taxonomy", Routes: 4},
+	// --- guests, and the notice that gates them --------------------------------
+	//
+	// Both routes are read by consent.js, which every page loads from base.html.
+	// The anchor is the Accept button: it is the control the file exists for, and
+	// the one a page cannot render without the file.
+	{Match: "/api/v1/guest", Reader: "consent.js", Anchor: "cookie-accept", Routes: 2,
+		Note: "mint a guest identity for a visitor who has accepted the notice, and read whether guest interaction is still open"},
+	{Match: "/api/v1/consent", Reader: "consent.js", Anchor: "cookie-accept", Routes: 1,
+		Note: "accepting the cookie notice; the interaction gate's own door, so it is exempt from the gate it opens"},
 	// --- surfaces that are not a page's business ------------------------------
 	{Match: "/api/v1/hooks", Routes: 1, Note: "a forge POSTs here; nothing in the browser may"},
 	{Match: "/api/v1/emergency-holds", Routes: 1, Note: "an operator releases a hold out of band; the ledger records it. This route had NO caller AND a project id its URL does not carry, so it answered 404 for everyone and nothing could notice -- the API test is the caller of record now (§21.7)"},

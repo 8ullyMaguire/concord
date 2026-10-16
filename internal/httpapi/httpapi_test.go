@@ -8,6 +8,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+
 	"git.polarisocial.xyz/concord/concord/internal/db"
 	"git.polarisocial.xyz/concord/concord/internal/store"
 )
@@ -49,16 +51,80 @@ func newTestServer(t *testing.T) *httptest.Server {
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
-	ts := httptest.NewServer(authenticated(srv.Router(), tok))
+	ts := httptest.NewServer(consentingRoutes(authenticated(srv.Router(), tok)))
 	t.Cleanup(ts.Close)
 	return ts
+}
+
+// consenting wraps a handler so every request carries an accepted cookie notice.
+//
+// The interaction gate is real: without this, every mutating request in the suite
+// would answer 403 and the suite would be testing the gate instead of the handler.
+// A real browser that clicked Accept sends this cookie on every later request, so
+// the harness models the visitor, not a loophole.
+//
+// The cookie is APPENDED to an existing Cookie header rather than skipped when one
+// is present: the navigation-cookie test sends its own cookie to prove a cookie
+// cannot authorize a write, and it must keep proving that WITH the notice accepted
+// (which is the state a visitor is in when the attack would matter).
+//
+// "X-No-Consent" opts out, for the tests that are about the refusal itself.
+func consenting(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("X-No-Consent") != "" {
+			r.Header.Del("X-No-Consent")
+			next.ServeHTTP(w, r)
+			return
+		}
+		cookie := consentCookieName + "=" + defaultConsentVersion
+		if existing := r.Header.Get("Cookie"); existing != "" {
+			r.Header.Set("Cookie", existing+"; "+cookie)
+		} else {
+			r.Header.Set("Cookie", cookie)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// consentingRoutes is consenting for a SERVER handler, and it stays a chi.Routes.
+//
+// Three tests walk the router that the binary actually serves -- the reader
+// inventory, the write-guard inventory and the list-shape walk -- and they reach it
+// by asserting `ts.Config.Handler.(chi.Routes)`. A plain function wrapper fails that
+// assertion, so the suite that checks "every route has a reader" would stop being
+// able to see any route at all: the guard would break silently at exactly the moment
+// it matters most. Embedding chi.Routes and overriding only ServeHTTP keeps both
+// halves true.
+// chiRoutesHandler is what a chi mux actually is: chi.Routes (for the walk) AND an
+// http.Handler (for serving). chi.Routes alone is only the lookup half, which is why
+// the assertion has to name both.
+type chiRoutesHandler interface {
+	chi.Routes
+	http.Handler
+}
+
+func consentingRoutes(h http.Handler) http.Handler {
+	rh, ok := h.(chiRoutesHandler)
+	if !ok {
+		return consenting(h)
+	}
+	return &consentingMux{chiRoutesHandler: rh, handler: consenting(rh)}
+}
+
+type consentingMux struct {
+	chiRoutesHandler
+	handler http.Handler
+}
+
+func (c *consentingMux) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	c.handler.ServeHTTP(w, r)
 }
 
 // authenticated wraps a handler so every request carries tok. This models a
 // client that logged in once and is now making ordinary calls; the token is
 // still resolved by the real middleware on each request.
 func authenticated(next http.Handler, tok string) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return consenting(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Only supply the default identity when the request does not already
 		// carry one. Overwriting unconditionally would silently impersonate the
 		// project creator for every request, including the ones a test makes
@@ -77,7 +143,7 @@ func authenticated(next http.Handler, tok string) http.Handler {
 			r.Header.Set("Authorization", "Bearer "+tok)
 		}
 		next.ServeHTTP(w, r)
-	})
+	}))
 }
 
 // registerOn creates an additional account on an existing server and returns
@@ -137,7 +203,7 @@ func newTestServerWithStore(t *testing.T) (*httptest.Server, *store.DB) {
 	if err != nil {
 		t.Fatalf("login: %v", err)
 	}
-	ts := httptest.NewServer(authenticated(srv.Router(), tok))
+	ts := httptest.NewServer(consentingRoutes(authenticated(srv.Router(), tok)))
 	t.Cleanup(ts.Close)
 	return ts, st
 }
@@ -157,7 +223,9 @@ func newTestServerNoActor(t *testing.T) *httptest.Server {
 	if err != nil {
 		t.Fatal(err)
 	}
-	ts := httptest.NewServer(srv.Router())
+	// consenting on purpose: this server's whole job is to answer "no actor" the
+	// way production does, and the notice is a separate question from identity.
+	ts := httptest.NewServer(consentingRoutes(srv.Router()))
 	t.Cleanup(ts.Close)
 	return ts
 }
