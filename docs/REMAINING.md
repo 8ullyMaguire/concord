@@ -2694,3 +2694,35 @@ Open, each with the decision made and the reason NOT to revisit it yet:
   the per-address limiter applies, and once the MAU limit is reached no more are minted. It is a
   number the operator can see (`guests`), and it is the same number the retention question above
   is about, so the two are decided together or not at all.
+
+### 23.11 Follow-up to §23: the session write path, and a gate that pinned a mechanism
+
+Two things §23 left in a state the docs did not admit, both closed at `4d51580`.
+
+**§4.4 of the frontend spec claimed `session.js` was "the only module that touches
+`localStorage`". It never was.** Eight scripts still READ `localStorage.getItem('concord.token')` —
+`consensus.js`, `list.js`, `comments.js`, `requests.js`, `rank.js`, `finder.js`, `scout.js`, and the
+pages that seed state from it. The sentence was aspirational, in the section about exactly this
+hazard. It now names the eight, marks the reads as deliberately unswept, and separates them from the
+writes.
+
+**And the write half was real work, not a doc fix.** `auth.js` wrote
+`localStorage.setItem('concord.token', …)` itself, under a comment saying that repeating the
+literals is how it and `session.js` drift apart and a person ends up "signed in" to a header that
+cannot see the token that signed them in; `consent.js`'s guest mint then copied the same two lines.
+Both writers were correct, which is the point — the hazard is the next writer, and a comment naming
+a hazard is not a guard (`HANDOFF.md`, "Things that will bite you", item 9). `session.js` now owns
+the write path: `store(token, user)` writes both keys, ADOPTS the values in memory, and reports
+whether the browser kept them, so a caller cannot store a credential the shared session has not
+seen. `TestOnlySessionOwnsTheSessionWritePath` holds it in both directions, and both directions were
+proved by mutating the real files.
+
+**The part worth more than either fix: a gate went red for the improvement and would have stayed
+green for the defect.** `pages_test.go` required the literal `ConcordSession.instance().refresh()`
+after `auth.js` stored the token — that pinned the mechanism (`auth.js` writes the keys, then
+refreshes), and it would have passed the original defect unchanged, because the defect was the first
+half of the sequence it was asserting. Mechanism assertions are green for the bug they were written
+for whenever the bug and the fix share the mechanism. It now asserts the property (the store goes
+through the shared session; the caller notices a refused store; `store()` adopts in memory), and its
+comment records why the old assertion was the wrong shape. When a gate fails on a refactor, the
+first question is which of the two it was measuring.
