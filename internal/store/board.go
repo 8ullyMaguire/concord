@@ -43,9 +43,10 @@ type BoardCard struct {
 // placed in the phase that status names.
 //
 // This is why the board shows anything at all. board_cards was empty for all 70
-// projects and no code path had ever inserted a row: MoveCard and GetBoardCard
-// both operated on rows that could not exist, and every board rendered nine
-// columns of "0". A user's first reaction to an all-zero kanban cannot
+// projects and no code path had ever inserted a row: MoveCard and the single-card
+// reader (§27 deleted it; the page reads GetBoardCards, below) both operated on
+// rows that could not exist, and every board rendered nine columns of "0". A
+// user's first reaction to an all-zero kanban cannot
 // distinguish "no work" from "broken", and here it was the second.
 //
 // Deriving rather than backfilling is a deliberate choice. A migration would put
