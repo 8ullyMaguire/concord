@@ -48,7 +48,7 @@ proposals; collaborative lists; documents; search with facets; the moderation an
 A visitor with no account can take part (§7) until the instance passes its configured monthly-active
 threshold, and the cookie notice states what is stored and why before anything is.
 
-Verified rather than asserted: in-memory test databases per test, 1074 Go tests, several hundred
+Verified rather than asserted: in-memory test databases per test, 1087 Go tests, several hundred
 browser tests, and 134 Go mutation gates plus 33 JavaScript ones — every mutant must be killed, so a
 green run means the rule it names was actually exercised rather than merely declared. `make verify`,
 `make gates` and `make e2e` are the three commands, and `docs/HANDOFF.md` carries the counts this

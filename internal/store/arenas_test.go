@@ -1056,3 +1056,384 @@ func TestTheLeaderboardCarriesTheBaselineFlag(t *testing.T) {
 		t.Fatal("the competitor is missing from the leaderboard entirely")
 	}
 }
+
+// richArena is the log the two rating paths have to agree on, built with the
+// facts each divergence needs: three competitors, §6.3's permanent baseline (so
+// the "neither" rule has somewhere to land), a SKIP (recorded and meaningless),
+// a fractional weight (the common case in production: weight comes from a
+// voter's reputation), a heavy weight (two games), and two voters whose votes
+// interleave in time.
+func richArena(t *testing.T) (*DB, int64, []int64, int64) {
+	t.Helper()
+	d, uid, pid, fid := arenaFixture(t)
+	ctx := context.Background()
+	arena, err := d.EnsureArena(ctx, ArenaFeaturePriority, pid, 0, "", "")
+	if err != nil {
+		t.Fatalf("EnsureArena: %v", err)
+	}
+	ids := []int64{fid,
+		newFeature(t, d, pid, uid, "second"),
+		newFeature(t, d, pid, uid, "third")}
+	for _, id := range ids {
+		if err := d.UpsertArenaEntry(ctx, arena.ID, EntityFeature, id); err != nil {
+			t.Fatalf("UpsertArenaEntry(%d): %v", id, err)
+		}
+	}
+	baseline := addBaselineEntry(t, d, arena.ID)
+
+	alice := createStranger(t, d)
+	bob := createStranger(t, d)
+	votes := []struct {
+		voter   int64
+		a, b    int64
+		outcome string
+		weight  float64
+	}{
+		{alice, ids[0], ids[1], "a", 1.0},
+		{bob, ids[1], ids[2], "a", 0.6},
+		{alice, ids[0], ids[2], "b", 2.5},
+		{bob, ids[0], ids[1], "both", 1.0},
+		{alice, ids[1], ids[2], "neither", 1.0},
+		{bob, ids[0], ids[2], "skip", 1.0},
+		{alice, ids[0], ids[1], "b", 0.6},
+	}
+	for _, v := range votes {
+		if _, err := d.CastArenaVote(ctx, arena.ID, v.voter, EntityFeature, v.a,
+			EntityFeature, v.b, v.outcome, "", v.weight); err != nil {
+			t.Fatalf("CastArenaVote(%s): %v", v.outcome, err)
+		}
+	}
+	return d, arena.ID, ids, baseline.EntityID
+}
+
+// TestTheReplayReproducesTheLiveRatingsExactly is §2.5 and §5.1: "ratings are
+// recomputed deterministically from the append-only vote log. Anyone can verify a
+// ranking."
+//
+// It compares r, RD and games PER ENTITY and EXACTLY. The order-only test beside
+// it passed while the replay was wrong in three ways, because a uniform drift
+// preserves order and a baseline-less arena never enters the branch that was
+// broken. Both paths run the same update on the same numbers, so a tolerance
+// would hide the drift this test exists to find.
+func TestTheReplayReproducesTheLiveRatingsExactly(t *testing.T) {
+	d, arenaID, ids, baselineID := richArena(t)
+	// Declared, not computed from the code under test: the point of this map is
+	// that the number comes from the LOG, by hand rather than by agreement.
+	wantRichGames := map[int64]int{
+		ids[0]:     5, // a(w1.0)=1 + b(w2.5)=2 + both(w1.0)=1 + b(w0.6)=1
+		ids[1]:     5, // a(w1.0)=1 + a(w0.6)=1 + both(w1.0)=1 + neither(w1.0)=1 + b(w0.6)=1
+		ids[2]:     4, // a(w0.6)=1 + b(w2.5)=2 + neither(w1.0)=1
+		baselineID: 2, // one game against each competitor of the "neither" vote
+	}
+	_ = baselineID
+	ctx := context.Background()
+
+	incremental, err := d.ArenaLeaderboard(ctx, arenaID, 10)
+	if err != nil {
+		t.Fatalf("ArenaLeaderboard: %v", err)
+	}
+	replayed, err := d.RecomputeArenaRatings(ctx, arenaID)
+	if err != nil {
+		t.Fatalf("RecomputeArenaRatings: %v", err)
+	}
+	byID := map[int64]ArenaEntry{}
+	for _, e := range replayed {
+		byID[e.EntityID] = e
+	}
+	if len(incremental) != len(replayed) {
+		t.Fatalf("board sizes differ: %d live, %d replayed", len(incremental), len(replayed))
+	}
+	for _, live := range incremental {
+		got, ok := byID[live.EntityID]
+		if !ok {
+			t.Errorf("entity %d is in the live board and not in the replay", live.EntityID)
+			continue
+		}
+		if got.R != live.R || got.RD != live.RD {
+			t.Errorf("entity %d (baseline=%v): live r=%.3f rd=%.3f, replay r=%.3f rd=%.3f -- "+
+				"the vote log does not reproduce the live rating, so §5.1 is false",
+				live.EntityID, live.IsBaseline, live.R, live.RD, got.R, got.RD)
+		}
+		if got.Games != live.Games {
+			t.Errorf("entity %d: live games=%d, replay games=%d -- the replay's games counter "+
+				"is not the games that were played", live.EntityID, live.Games, got.Games)
+		}
+		// AGREEMENT IS NOT ENOUGH. A mutation that breaks the games counter in BOTH
+		// paths leaves them agreeing with each other, which is exactly what happened
+		// when gameCount was replaced by int(weight): a fractional-weight vote
+		// stopped counting as a game everywhere, and this test stayed green.
+		//
+		// Declared from richArena's log, by hand:
+		//   ids[0]: a(w1.0)=1 + b(w2.5)=2 + both(w1.0)=1 + b(w0.6)=1          = 5
+		//   ids[1]: a(w1.0)=1 + a(w0.6)=1 + both(w1.0)=1 + neither(w1.0)=1
+		//           + b(w0.6)=1                                               = 5
+		//   ids[2]: a(w0.6)=1 + b(w2.5)=2 + neither(w1.0)=1                  = 4
+		//   baseline: neither vs ids[1] and vs ids[2]                        = 2
+		if want := wantRichGames[live.EntityID]; want != live.Games {
+			t.Errorf("entity %d (baseline=%v): games=%d, want %d from the log",
+				live.EntityID, live.IsBaseline, live.Games, want)
+		}
+	}
+}
+
+// TestTheReplayAppliesTheBaselineRule is §5.1's "In arenas with a baseline,
+// Neither counts as both competitors losing to the baseline", which the live path
+// applies and the replay did not: the replay scored the pair as a 0.5 draw, so
+// the baseline kept its prior while two competitors gained from each other in an
+// arena where neither beat anything.
+func TestTheReplayAppliesTheBaselineRule(t *testing.T) {
+	d, uid, pid, fid := arenaFixture(t)
+	ctx := context.Background()
+	arena, err := d.EnsureArena(ctx, ArenaFeaturePriority, pid, 0, "", "")
+	if err != nil {
+		t.Fatalf("EnsureArena: %v", err)
+	}
+	other := newFeature(t, d, pid, uid, "the other one")
+	for _, id := range []int64{fid, other} {
+		if err := d.UpsertArenaEntry(ctx, arena.ID, EntityFeature, id); err != nil {
+			t.Fatalf("UpsertArenaEntry: %v", err)
+		}
+	}
+	baseline := addBaselineEntry(t, d, arena.ID)
+
+	prior, err := d.GetArenaEntry(ctx, arena.ID, EntityFeature, baseline.EntityID)
+	if err != nil {
+		t.Fatalf("GetArenaEntry(baseline): %v", err)
+	}
+	stranger := createStranger(t, d)
+	if _, err := d.CastArenaVote(ctx, arena.ID, stranger, EntityFeature, fid,
+		EntityFeature, other, "neither", "both are unsatisfying", 1.0); err != nil {
+		t.Fatalf("CastArenaVote(neither): %v", err)
+	}
+
+	replayed, err := d.RecomputeArenaRatings(ctx, arena.ID)
+	if err != nil {
+		t.Fatalf("RecomputeArenaRatings: %v", err)
+	}
+	for _, e := range replayed {
+		if !e.IsBaseline {
+			continue
+		}
+		if e.R <= prior.R {
+			t.Errorf("the baseline's rating is %.3f after a 'neither' vote, and was %.3f before: "+
+				"§5.1 says neither counts as BOTH competitors losing to the baseline, so the "+
+				"baseline has to win it", e.R, prior.R)
+		}
+		return
+	}
+	t.Fatal("the baseline is missing from the replayed leaderboard")
+}
+
+// TestTheReplayAppliesVotesInLogOrder pins the application ORDER. The live path
+// applies each vote as it arrives; the replay grouped votes by (voter, day) and
+// applied each group together, which puts two voters who voted in the same second
+// in a different order from the log's. The update is order-dependent, so the two
+// paths disagreed for exactly the crowd §5.2 describes.
+func TestTheReplayAppliesVotesInLogOrder(t *testing.T) {
+	d, uid, pid, fid := arenaFixture(t)
+	ctx := context.Background()
+	arena, err := d.EnsureArena(ctx, ArenaFeaturePriority, pid, 0, "", "")
+	if err != nil {
+		t.Fatalf("EnsureArena: %v", err)
+	}
+	ids := []int64{fid, newFeature(t, d, pid, uid, "b"), newFeature(t, d, pid, uid, "c")}
+	for _, id := range ids {
+		if err := d.UpsertArenaEntry(ctx, arena.ID, EntityFeature, id); err != nil {
+			t.Fatalf("UpsertArenaEntry: %v", err)
+		}
+	}
+	alice := createStranger(t, d)
+	bob := createStranger(t, d)
+	// Interleaved, and deliberately ORDER-SENSITIVE: the two voters disagree about
+	// the same pair, with different weights, and their other votes sit between. A
+	// replay that groups by (voter, day) applies alice's two votes together and
+	// then bob's, which is not the order these were applied in.
+	for _, v := range []struct {
+		voter   int64
+		a, b    int64
+		outcome string
+		weight  float64
+	}{
+		{alice, ids[0], ids[1], "a", 2.5},
+		{bob, ids[0], ids[1], "b", 0.6},
+		{alice, ids[0], ids[2], "b", 2.5},
+		{bob, ids[1], ids[2], "a", 0.6},
+	} {
+		if _, err := d.CastArenaVote(ctx, arena.ID, v.voter, EntityFeature, v.a,
+			EntityFeature, v.b, v.outcome, "", v.weight); err != nil {
+			t.Fatalf("CastArenaVote: %v", err)
+		}
+	}
+
+	live, err := d.ArenaLeaderboard(ctx, arena.ID, 10)
+	if err != nil {
+		t.Fatalf("ArenaLeaderboard: %v", err)
+	}
+	replayed, err := d.RecomputeArenaRatings(ctx, arena.ID)
+	if err != nil {
+		t.Fatalf("RecomputeArenaRatings: %v", err)
+	}
+	byID := map[int64]ArenaEntry{}
+	for _, e := range replayed {
+		byID[e.EntityID] = e
+	}
+	for _, e := range live {
+		got, ok := byID[e.EntityID]
+		if !ok {
+			t.Fatalf("entity %d missing from the replay", e.EntityID)
+		}
+		if got.R != e.R {
+			t.Errorf("entity %d: live r=%.3f, replay r=%.3f -- the replay applied the votes in a "+
+				"different ORDER from the log, and the update is order-dependent", e.EntityID, e.R, got.R)
+		}
+	}
+}
+
+// TestVerificationAgreesAndReportsDisagreement is §5.1's "Anyone can verify a
+// ranking": the stored ratings must be the ones the log produces, and when they are
+// not, the verification has to SAY SO and name the entries.
+//
+// The second half is the one that matters. A verification that can only agree is a
+// tautology -- it would report a green board for a ranking that had drifted, which
+// is the failure mode this whole pass exists to close.
+func TestVerificationAgreesAndReportsDisagreement(t *testing.T) {
+	d, arenaID, ids, _ := richArena(t)
+	ctx := context.Background()
+
+	checks, err := d.VerifyArenaRatings(ctx, arenaID)
+	if err != nil {
+		t.Fatalf("VerifyArenaRatings: %v", err)
+	}
+	if len(checks) != len(ids)+1 { // the three competitors and the baseline
+		t.Errorf("verified %d entries, want %d (the arena's four)", len(checks), len(ids)+1)
+	}
+	for _, c := range checks {
+		if !c.Agrees {
+			t.Errorf("entity %d: the live path wrote r=%.3f and the log replays to %.3f, "+
+				"so the ranking is not derivable from the record", c.EntityID, c.StoredR, c.ReplayedR)
+		}
+	}
+
+	// A hand-written rating is what drift looks like: the log is append-only, so a
+	// stored value the log does not produce can only come from a write that
+	// changed a rating without recording a game.
+	if _, err := d.ExecContext(ctx,
+		`UPDATE arena_entries SET r = r + 25 WHERE arena_id = ? AND entity_id = ?`,
+		arenaID, ids[0]); err != nil {
+		t.Fatalf("perturb: %v", err)
+	}
+	again, err := d.VerifyArenaRatings(ctx, arenaID)
+	if err != nil {
+		t.Fatalf("VerifyArenaRatings (after perturbation): %v", err)
+	}
+	divergent := 0
+	for _, c := range again {
+		if c.Agrees {
+			continue
+		}
+		divergent++
+		if c.EntityID != ids[0] {
+			t.Errorf("entity %d is reported as divergent and was not touched", c.EntityID)
+		}
+		if c.StoredR == c.ReplayedR {
+			t.Errorf("entity %d is divergent with stored r = replayed r = %.3f", c.EntityID, c.StoredR)
+		}
+	}
+	if divergent != 1 {
+		t.Errorf("divergent entries = %d, want exactly the one that was perturbed", divergent)
+	}
+
+	// The games counter is part of the record, so a verification that only compares
+	// ratings would report agreement for an entry whose game count the log does not
+	// produce -- which is how the replay's `games = 1` write survived every test.
+	if _, err := d.ExecContext(ctx, `
+		UPDATE arena_entries SET r = ?, rd = ?, games = games + 7
+		WHERE arena_id = ? AND entity_id = ?`,
+		replayedRAfterRepair(t, d, arenaID, ids[1]), rdAfterRepair(t, d, arenaID, ids[1]),
+		arenaID, ids[1]); err != nil {
+		t.Fatalf("perturb games: %v", err)
+	}
+	gamesOnly, err := d.VerifyArenaRatings(ctx, arenaID)
+	if err != nil {
+		t.Fatalf("VerifyArenaRatings (games perturbation): %v", err)
+	}
+	found := false
+	for _, c := range gamesOnly {
+		if c.EntityID != ids[1] {
+			continue
+		}
+		found = true
+		if c.Agrees {
+			t.Error("an entry whose game count the log does not produce is reported as agreeing: " +
+				"`games` is part of the record and the verification has to compare it")
+		}
+	}
+	if !found {
+		t.Fatalf("entity %d is missing from the verification", ids[1])
+	}
+}
+
+// replayedRAfterRepair / rdAfterRepair read an entry's current stored rating, so a
+// perturbation can move `games` alone. The first version of the assertion above read
+// ids[0]'s rating and wrote it onto ids[1], which changed r as well -- so it passed
+// with a verification that ignored `games` entirely, and the mutant that removes the
+// games comparison survived. A fixture that moves two things proves neither.
+func replayedRAfterRepair(t *testing.T, d *DB, arenaID, entityID int64) float64 {
+	t.Helper()
+	e, err := d.GetArenaEntry(context.Background(), arenaID, EntityFeature, entityID)
+	if err != nil {
+		t.Fatalf("GetArenaEntry: %v", err)
+	}
+	return e.R
+}
+
+func rdAfterRepair(t *testing.T, d *DB, arenaID, entityID int64) float64 {
+	t.Helper()
+	e, err := d.GetArenaEntry(context.Background(), arenaID, EntityFeature, entityID)
+	if err != nil {
+		t.Fatalf("GetArenaEntry: %v", err)
+	}
+	return e.RD
+}
+
+// TestTheRecomputeMirrorsFeatureRatings is the feature-mirror half of the replay:
+// features keep their own rating columns (features.elo_r), and the project priority
+// endpoint reads THOSE, so a recompute that did not mirror would leave the two
+// rankings disagreeing. The old code mirrored only when the last entry it happened
+// to read was a feature, because it kept the entity type in a variable that
+// outlived the loop that set it.
+func TestTheRecomputeMirrorsFeatureRatings(t *testing.T) {
+	d, arenaID, ids, _ := richArena(t)
+	ctx := context.Background()
+
+	// The live votes already mirrored their ratings onto features.elo_r, so a
+	// recompute that mirrored NOTHING would leave those columns correct and this
+	// test green -- which is how "the repair mirrors nothing" survived its first
+	// run. The columns are disturbed first so the recompute is the only thing that
+	// can restore them.
+	if _, err := d.ExecContext(ctx,
+		`UPDATE features SET elo_r = 0, elo_rd = 0 WHERE id IN (?, ?, ?)`,
+		ids[0], ids[1], ids[2]); err != nil {
+		t.Fatalf("disturb the feature ratings: %v", err)
+	}
+
+	entries, err := d.RecomputeArenaRatings(ctx, arenaID)
+	if err != nil {
+		t.Fatalf("RecomputeArenaRatings: %v", err)
+	}
+	byID := map[int64]ArenaEntry{}
+	for _, e := range entries {
+		byID[e.EntityID] = e
+	}
+	for _, id := range ids {
+		f, err := d.GetFeature(ctx, id)
+		if err != nil {
+			t.Fatalf("GetFeature(%d): %v", id, err)
+		}
+		if f.EloR != byID[id].R {
+			t.Errorf("feature %d: elo_r = %.3f and the arena rating is %.3f -- the recompute did "+
+				"not mirror, so the priority endpoint ranks from a different number",
+				id, f.EloR, byID[id].R)
+		}
+	}
+}

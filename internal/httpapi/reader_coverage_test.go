@@ -122,6 +122,21 @@ var readerInventory = []readerRow{
 	{Match: "/api/v1/projects/{project_id}/consensus", Reader: "consensus.js", Anchor: "/consensus",
 		Routes: 4,
 		Note:   "open a call, read it, take a position, raise an objection"},
+	// §29's arena loop. Four routes, and the anchors are the RENDERED controls
+	// (the buttons and the vote form the panel builds), not the fetch paths: an
+	// anchor that is a path stays satisfied after the control is deleted.
+	{Match: "/api/v1/projects/{project_id}/arenas/{arena_id}/next-pair", Reader: "project.js",
+		Anchor: "data-arena-pair", Routes: 1,
+		Note: "§5.1 pair selection: the comparison a voter is asked to judge"},
+	{Match: "/api/v1/projects/{project_id}/arenas/{arena_id}/votes", Reader: "project.js",
+		Anchor: "data-arena-log", Routes: 1,
+		Note: "§5.2's per-user vote audit view, rendered behind the Vote log control"},
+	{Match: "/api/v1/projects/{project_id}/arenas/{arena_id}/verification", Reader: "project.js",
+		Anchor: "arena-agrees", Routes: 1,
+		Note: "§5.1 Anyone can verify a ranking; arena-agrees is the verdict the panel renders"},
+	{Match: "/api/v1/projects/{project_id}/arenas/{arena_id}/recompute", Reader: "project.js",
+		Anchor: "data-arena-recompute", Routes: 1,
+		Note: "the repair; its control is rendered with the verification verdict"},
 	{Match: "/api/v1/projects/{project_id}/criteria-profiles", Reader: "criteria.js",
 		Anchor: "/criteria-profiles", Routes: 2, Note: "saved weightings: list and create"},
 	{Match: "/api/v1/projects/{project_id}/criteria", Reader: "criteria.js", Anchor: "/criteria",

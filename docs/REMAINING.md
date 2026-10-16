@@ -5,11 +5,11 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state (the fifteenth pass, §28):** schema 29 · 29 migrations · 82 live tables · 1074 Go
-tests across 9 test-bearing packages · 292 e2e tests in 21 suite files · 42/42 UI mutants killed
-(7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js) ·
-Go mutants: 20 arms, 136 killed, 0 survived · `make verify` exit 0, `make gates` exit 0,
-`make e2e` exit 0.
+**Measured state (the sixteenth pass, §29):** schema 29 · 29 migrations · 82 live tables · 1087 Go
+tests across 9 test-bearing packages · 297 e2e tests in 22 suite files · 48/48 UI mutants killed
+(7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
+6 project.js/arena) · Go mutants: 20 arms, 142 killed, 0 survived · `make verify` exit 0,
+`make gates` exit 0, `make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
 gated and correct; the e2e half was reconciled by nothing and was wrong twice over — the
@@ -3412,10 +3412,134 @@ test ORDER rather than the refusal. It now counts before the click and asserts t
 
 ### 28.7 Where the numbers stand
 
-**Measured state:** schema 29 · 29 migrations · 82 live tables · 1074 Go tests · 292 e2e tests in 21
+**Measured state (historical) — §28's, superseded by §29.7:** schema 29 · 29 migrations · 82 live tables · 1074 Go tests · 292 e2e tests in 21
 suite files · 42/42 UI mutants · Go mutants: 20 arms, 136 killed, 0 survived · store exports: 229
 LIVE, 22 TEST-ONLY (all named with reasons), 0 UNCALLED · `make verify`, `make gates`, `make e2e` all
 exit 0.
+
+## 29. §5.1's verifier did not verify (2026-10-16)
+
+Spec `docs/specs/arena-verification-spec.md`, plan `docs/plans/arena-verification.md`, both written
+before any code.
+
+### 29.1 The claim, and what it was worth
+
+§5.1 promises:
+
+> **Batch rating periods:** ratings are recomputed deterministically from the **append-only vote log**.
+> Anyone can verify a ranking.
+
+The recomputation existed — `store.RecomputeArenaRatings`, whose own comment said it "is the check that
+the incremental path has not drifted" — and nothing outside tests called it. The one test that compared
+the two paths compared **order only**, on a **feature** arena with **no baseline**, which is the one
+shape in which the differences cancel.
+
+Measured with a throwaway probe before anything was written (three features **and a baseline** — §6.3
+says every solution arena has one — six votes: `a>b` ×3, `b>c` ×3, one `neither`, one `skip`):
+
+```
+incremental  entity=0 baseline=true  r=1880.800 rd=242.649 games=2
+incremental  entity=3 baseline=false r=1601.024 rd=219.896 games=4
+incremental  entity=1 baseline=false r=1584.013 rd=230.510 games=4
+incremental  entity=2 baseline=false r=1142.866 rd=208.414 games=6
+recomputed   entity=1 baseline=false r=1717.831 rd=219.146 games=1
+recomputed   entity=3 baseline=false r=1694.875 rd=216.523 games=1
+recomputed   entity=0 baseline=true  r=1500.000 rd=350.000 games=1
+recomputed   entity=2 baseline=false r=1142.866 rd=208.414 games=1
+order_changed=true   DRIFT entity=1 +133.818  entity=3 +93.851  entity=0 -380.800
+```
+
+Two competitors swapped places, the baseline was frozen at its prior having won nothing, and every
+entry reported one game. And the recompute **writes**: §5.1 says recomputes "run frequently so the UI
+feels live", so running it replaced a correct leaderboard with a wrong one in a way indistinguishable
+from a fresh measurement. **The verifier was a saboteur**, and the arena kind it sabotaged is the one
+§6.3 requires a baseline in.
+
+### 29.2 Three defects, one cause
+
+The rating rule was implemented **twice** — `CastArenaVote` → `applyGame`, and the replay — and the two
+disagreed in every part that is not "update a rating":
+
+1. **§5.1's baseline rule** ("In arenas with a baseline, Neither counts as both competitors losing to
+   the baseline"): the live path implements it as two baseline-vs-competitor games; the replay scored
+   `neither` as a 0.5 draw, so both competitors gained from each other in an arena where neither beat
+   anything.
+2. **`games`**: the live path added `int(weight)` per side; the replay's final write set `games = 1` for
+   every entry in the arena, whatever it had played.
+3. **Application order**: the replay grouped votes by `(voter, day)` and applied each group together,
+   while the live path applies each vote as it arrives. The update is order-dependent, so the two paths
+   disagreed for exactly the crowd §5.2 describes — measured on an interleaved two-voter log, entity 3
+   differed by 91 points.
+
+A fourth, smaller one: the replay mirrored a rating onto `features.elo_r` only when the last entry it
+happened to read was a feature, because it kept the entity type in a variable that outlived the loop
+that set it.
+
+### 29.3 One engine, two callers
+
+`rateArenaPair` is now the only place a comparison changes a rating, and both paths call it;
+`gameCount` is the only place a weight becomes games. `replayArenaRatings` applies votes in
+`(created_at, id)` order with the baseline resolved from `arena_entries.is_baseline` — the same source
+the live path reads. `RecomputeArenaRatings` became replay-then-write, and writes `games` absolutely
+instead of `games + 1`.
+
+A rule implemented once cannot drift. That is the whole fix; the rest of the pass is reachability.
+
+### 29.4 The loop, reachable
+
+Four routes under `/api/v1/projects/{project_id}/arenas/{arena_id}/…`, deliberately not nested under
+`/alternatives/…`: the store's arena functions are generic, and nesting them under one kind would say
+they only work for that kind.
+
+| route | actor | why |
+|---|---|---|
+| `GET …/next-pair` | anyone who can read the project | §5.1 pair selection. A signed-out reader has judged nothing, so they get the honest active-learning pair. |
+| `GET …/votes` | anyone who can read the project | §5.2's "per-user vote audit view feed appeals". An audit view only insiders can read is not one. |
+| `GET …/verification` | anyone who can read the project | §5.1's "Anyone can verify a ranking". **It writes nothing.** |
+| `POST …/recompute` | authenticated + contributor, auth first | the repair. It reports how many entries it CHANGED, measured before the write, so a healthy arena demonstrates the no-op §5.1 promises instead of asserting it. |
+
+Every route proves the arena belongs to `{project_id}` and answers a missing arena's bare 404
+otherwise: arena ids are global, and a distinct refusal is an existence oracle (§26's rule, §28's
+route). The panel's three controls render the loop — the pair with both sides labelled and their
+ratings, the vote control (wired to the arena's existing vote route: judging a pair and casting a
+comparison are one act), the log with each reason, and the verdict with a Recompute control.
+
+### 29.5 Three surviving mutants, and the two bugs the browser found
+
+- **Agreement is not an absolute.** `gameCount → int(weight)` SURVIVED the exact-equality test: it
+  broke the games counter in BOTH paths, so they still agreed with each other. The test now also
+  asserts a **declared** games count per entry, computed by hand from the log (5, 5, 4, and 2 for the
+  baseline).
+- **A fixture that moves two things proves neither.** The `games`-only divergence assertion wrote
+  ids[0]'s rating onto ids[1], so it moved `r` as well — and it passed with a verification that ignored
+  `games` entirely. Reading the same entity's stored rating fixed it, and the mutant died.
+- **A mutant can die for the fixture's reason.** "The repair mirrors nothing" survived because the live
+  votes had already mirrored the feature ratings, so the columns were correct before the recompute ran.
+  The test now disturbs `features.elo_r` first, so the recompute is the only thing that can restore it.
+- **Two real bugs, both caught in the browser and by nothing else.** The panel's controls were built
+  from `a.id` while the alternatives response spells it `arena_id`, so every control posted to
+  `/arenas/undefined/…` and the server answered 400 — every Go test passed. And the Recompute control
+  is rendered *with the verdict*, after the wiring runs, so its click listener was attached to an
+  element that did not exist yet: the button appeared and did nothing. Both are now delegated.
+
+### 29.6 Still open, and named rather than implied
+
+- **No generic per-arena vote route.** Filing a comparison stays on the alternatives route and the
+  feature/solution pages, because each kind's weight and visibility rules differ. The panel therefore
+  judges alternatives arenas; the pair/log/verify routes work for every kind.
+- **`RemoveArenaEntry` has no route** (no removal flow exists; §6.3 makes the baseline unremovable).
+- **The log is one page of 50**, newest first.
+- **§5.1's fractional weights are still not fractional.** `repeatedGame` repeats an integer number of
+  games, so a voter whose weight the account-age ramp put at 0.4 counts as ONE full game: "weight scales
+  the update's influence" is only true above 1. Named, not fixed — it changes the ranking arithmetic
+  itself, and both paths would have to change together (they now share the engine, so that is one edit
+  and its own pass).
+
+### 29.7 Where the numbers stand
+
+**Measured state:** schema 29 · 29 migrations · 82 live tables · 1087 Go tests · 297 e2e tests in 22
+suite files · 48/48 UI mutants · Go mutants: 20 arms, 142 killed, 0 survived · store exports: 233 LIVE,
+19 TEST-ONLY (all named with reasons), 0 UNCALLED · `make verify`, `make gates`, `make e2e` all exit 0.
 
 **Still open, and named rather than implied:** Q2 (the sum), Q3 (the pain-side multiplier), §452's
 global themes, and the items §24.7 lists under its own heading — `LinkComplaint`'s missing route (built in

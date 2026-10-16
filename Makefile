@@ -65,6 +65,10 @@ e2e: build
 	$(E2E_PYTEST) tests/e2e/merge_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/readers_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/guest_e2e.py -q
+	# §5's arena loop: the pair to judge, the log, the verdict and the repair, all of
+	# them on the alternatives panel. Its own suite because it needs an arena with two
+	# competitors owned by somebody else (a self-vote is refused, correctly).
+	$(E2E_PYTEST) tests/e2e/arena_e2e.py -q
 	# The audit VIEWER's mutants. Not part of `make gates` because it rebuilds
 	# the binary and runs the browser suite seven times, which is a different
 	# cost from the Go mutants: `gates` is a fast inner loop and this is not.
@@ -74,6 +78,7 @@ e2e: build
 	# these: it asserts project.js MENTIONS the route, and a swapped verb posts Reject
 	# to /validate with every Go test green.
 	$(E2E_PYTHON) tests/e2e/project_ui_mutants.py
+	$(E2E_PYTHON) tests/e2e/arena_ui_mutants.py
 	$(E2E_PYTHON) tests/e2e/guest_ui_mutants.py
 	# §6.2's themes and tags. The Go gates cannot see a 202 reported as "ratified" or a
 	# remove button posting to the add endpoint: both answer 200.

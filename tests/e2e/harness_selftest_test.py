@@ -136,6 +136,27 @@ def test_the_documented_e2e_counts_are_the_measured_ones():
         f"{sorted(set(suites) - set(counts))} are not collected at all")
 
 
+def test_every_suite_is_invoked_by_the_makefile():
+    """A suite that `make e2e` does not run is a suite nobody has.
+
+    Everything else in this file is about which tests a COLLECTION finds. This one is
+    about which of them the TARGET runs, and the gap is invisible from both sides: the
+    directory-level count includes the file, so the documented numbers stay honest, and
+    the suite passes when it is run by hand. `make e2e` enumerates its suites, and the
+    first version of §29's arena suite was in the tree, in the count, and in no recipe
+    line -- found by reading `make e2e`'s log and noticing 292 tests where a collection
+    said 296.
+    """
+    makefile = open(os.path.join(REPO, "Makefile")).read()
+    target = makefile[makefile.index("\ne2e:"):]
+    target = target[:target.index("\n\n")]
+    missing = [name for name in sorted(os.listdir(E2E))
+               if name.endswith("_e2e.py") and f"tests/e2e/{name}" not in target]
+    assert not missing, (
+        f"make e2e never runs {missing}: they are in the tree and in the collected "
+        f"count, and nothing in CI would notice them failing")
+
+
 
 def test_the_two_browser_suites_cannot_share_one_pytest_process():
     """Why `make e2e` runs three processes instead of one.

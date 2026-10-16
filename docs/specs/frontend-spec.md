@@ -530,7 +530,10 @@ migration `0010` — this is the number the whole ranked list is sorted on);
 strategic term with the sources shown (idea #10, "Why this rank?"); linked
 field reports, with a **filing form** (outcome, version, environment, use case, the successor
 required by one outcome) and a **reply control** per report — §4.7's write half; before §28 the
-panel rendered a rate nothing could move; complaints, with an **attach control** for a second validated complaint — §354 requires "at
+panel rendered a rate nothing could move; arenas, with the **loop controls** §29 added — *judge the next pair* (the two sides with their
+ratings, deviation and win probability, and the vote control), *vote log* (§5.2's audit view, each
+comparison with its reason), *verify ranking* (§5.1's replay: whether the log reproduces every
+rating, which entries do not, and the member-only *recompute* that repairs them); complaints, with an **attach control** for a second validated complaint — §354 requires "at
 least one", and the join is many-to-many, so a complaint that later turns out to bear on the same
 work must be attachable after creation; consensus status; kanban card; **tags**, with an add
 control and a Remove button per tag.

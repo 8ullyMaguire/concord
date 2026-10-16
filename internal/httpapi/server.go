@@ -582,6 +582,19 @@ func (s *Server) Router() http.Handler {
 		r.Post("/{arena_id}/vote", s.handleCastAlternativesVote)
 	})
 
+	// §5's arena loop, generic across arena kinds: which comparison to judge next
+	// (§5.1 pair selection), the append-only log (§5.2's audit view), the replay
+	// that proves a ranking (§5.1 "Anyone can verify a ranking"), and the repair.
+	//
+	// NOT nested under /alternatives/...: the store's arena functions are generic,
+	// and nesting them under one kind would say they only work for that kind.
+	r.Route("/api/v1/projects/{project_id}/arenas", func(r chi.Router) {
+		r.Get("/{arena_id}/next-pair", s.handleArenaNextPair)
+		r.Get("/{arena_id}/votes", s.handleArenaVotes)
+		r.Get("/{arena_id}/verification", s.handleVerifyArena)
+		r.Post("/{arena_id}/recompute", s.handleRecomputeArena)
+	})
+
 	r.Route("/api/v1/projects/{project_id}/criteria-profiles", func(r chi.Router) {
 		r.Get("/", s.handleListCriteriaProfiles)
 		r.Post("/", s.handleSaveCriteriaProfile)

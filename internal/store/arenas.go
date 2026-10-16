@@ -799,28 +799,26 @@ func (d *DB) applyGame(ctx context.Context, arenaID int64, a, b ArenaEntry, aSco
 		return err
 	}
 
-	// Fractional-game treatment (§5.1: "weight scales the update's influence").
-	// A weight-2 voter is recorded as two games, so the update is twice as large
-	// and RD falls twice as fast, which is the intended meaning of a
-	// reputation-weighted vote.
-	gamesA := repeatedGame(ranking.ArenaRating{R: entryB.R, RD: entryB.RD, Sigma: entryB.Sigma}, aScore, weight)
-	gamesB := repeatedGame(ranking.ArenaRating{R: entryA.R, RD: entryA.RD, Sigma: entryA.Sigma}, 1-aScore, weight)
-
-	newA := ranking.UpdateArenaRating(entryA.R, entryA.RD, entryA.Sigma, gamesA, weight)
-	newB := ranking.UpdateArenaRating(entryB.R, entryB.RD, entryB.Sigma, gamesB, weight)
+	// One engine, two callers: this and replayArenaRatings both go through
+	// rateArenaPair, because doing this arithmetic in two places is how the
+	// replay lost the baseline rule (see rateArenaPair).
+	newA, newB, games := rateArenaPair(
+		ranking.ArenaRating{R: entryA.R, RD: entryA.RD, Sigma: entryA.Sigma},
+		ranking.ArenaRating{R: entryB.R, RD: entryB.RD, Sigma: entryB.Sigma},
+		aScore, weight)
 
 	if _, err := d.ExecContext(ctx, `
 		UPDATE arena_entries
 		SET r = ?, rd = ?, sigma = ?, games = games + ?, updated_at = ?
 		WHERE arena_id = ? AND entity_type = ? AND entity_id = ?`,
-		newA.R, newA.RD, newA.Sigma, int(weight), now, arenaID, aType, aID); err != nil {
+		newA.R, newA.RD, newA.Sigma, games, now, arenaID, aType, aID); err != nil {
 		return err
 	}
 	if _, err := d.ExecContext(ctx, `
 		UPDATE arena_entries
 		SET r = ?, rd = ?, sigma = ?, games = games + ?, updated_at = ?
 		WHERE arena_id = ? AND entity_type = ? AND entity_id = ?`,
-		newB.R, newB.RD, newB.Sigma, int(weight), now, arenaID, bType, bID); err != nil {
+		newB.R, newB.RD, newB.Sigma, games, now, arenaID, bType, bID); err != nil {
 		return err
 	}
 
@@ -1048,134 +1046,270 @@ func (d *DB) ListArenaVotes(ctx context.Context, arenaID int64, limit int) ([]Ar
 	return votes, nil
 }
 
-// RecomputeArenaRatings rebuilds every rating in an arena from its vote log.
-//
-// §5.1: "ratings are recomputed deterministically from the append-only vote
-// log. Anyone can verify a ranking." This is that recomputation, and it is the
-// check that the incremental path has not drifted: running it after votes have
-// been cast must produce the same order.
-//
-// Votes are applied in created_at order, in rating periods grouped by
-// (voter, day), which is the Glicko-2 batch model. Applying every vote as its
-// own period would let a single voter move a rating arbitrarily far in one go,
-// so the day grouping is load-bearing rather than a batching nicety.
-func (d *DB) RecomputeArenaRatings(ctx context.Context, arenaID int64) ([]ArenaEntry, error) {
-	rows, err := d.QueryContext(ctx, `
-		SELECT voter_id, a, b, outcome, weight, created_at
-		FROM pairwise_votes
-		WHERE arena_id = ? AND outcome != 'skip'
-		ORDER BY created_at ASC, id ASC`, arenaID)
-	if err != nil {
-		return nil, err
-	}
-	type rawVote struct {
-		voter, a, b int64
-		outcome     string
-		weight      float64
-		day         int64
-	}
-	var all []rawVote
-	for rows.Next() {
-		var v rawVote
-		var created float64
-		if err := rows.Scan(&v.voter, &v.a, &v.b, &v.outcome, &v.weight, &created); err != nil {
-			rows.Close()
-			return nil, err
-		}
-		all = append(all, rawVote{voter: v.voter, a: v.a, b: v.b,
-			outcome: v.outcome, weight: v.weight, day: int64(created / 86400)})
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
+// ArenaReplay is one entry's rating after replaying the arena's vote log.
+type ArenaReplay struct {
+	EntityType string
+	EntityID   int64
+	Rating     ranking.ArenaRating
+	Games      int
+}
 
-	// Collect the competitors, then reset them to the prior. Read first and write
-	// after, because the cursor is open above.
+// rateArenaPair is the ONE place a comparison changes a rating.
+//
+// §5.1's update, §5.1's fractional-game treatment and the games each side played
+// are computed here so that the incremental path (CastArenaVote -> applyGame) and
+// the replay (replayArenaRatings) cannot disagree. They disagreed by computing one
+// rule twice, and the replay lost three of them: it scored "neither" as a 0.5 draw
+// in arenas whose baseline makes it two losses, it wrote `games = 1` for every
+// entry regardless of how many games that entry played, and it applied the log in
+// (voter, day) groups instead of in the order the votes arrived -- which is a
+// different order from the live one whenever two voters vote in the same day.
+// Measured before the fix: two competitors swapped places, the baseline sat at its
+// prior instead of leading, and every entry reported one game.
+func rateArenaPair(a, b ranking.ArenaRating, aScore, weight float64) (
+	newA, newB ranking.ArenaRating, games int) {
+	games = gameCount(weight)
+	newA = ranking.UpdateArenaRating(a.R, a.RD, a.Sigma, repeatedGame(b, aScore, weight), weight)
+	newB = ranking.UpdateArenaRating(b.R, b.RD, b.Sigma, repeatedGame(a, 1-aScore, weight), weight)
+	return newA, newB, games
+}
+
+// gameCount is how many games one comparison counts as, for one side.
+//
+// A weight-2 vote is two games (§5.1: "weight scales the update's influence: a
+// weight-2 voter is recorded as two games"), and a weight BELOW 1 is still one
+// game: the comparison was made. applyGame used to add int(weight), so a vote by a
+// voter whose weight the account-age ramp had put at 0.4 was recorded in `games`
+// as no game at all -- a comparison that moved the rating and did not count.
+func gameCount(weight float64) int {
+	n := int(weight)
+	if n < 1 {
+		return 1
+	}
+	return n
+}
+
+// replayArenaRatings rebuilds every rating in an arena from its vote log, WITHOUT
+// writing. It is the read half of §5.1's "anyone can verify a ranking" and the
+// single implementation behind both RecomputeArenaRatings and VerifyArenaRatings.
+//
+// Two properties are load-bearing, and both are what the incremental path does:
+//
+//   - Votes are applied in (created_at, id) order, one game per side. The update
+//     depends on the ratings the pair had when the vote was cast, so the order is
+//     the whole answer; the (voter, day) grouping this used to do batched two
+//     voters' same-day votes together, which is not the order they arrived in.
+//   - The baseline is resolved from arena_entries.is_baseline -- the same source
+//     CastArenaVote reads -- and "neither" in an arena that has one is two losses
+//     to the baseline, not a draw between the competitors.
+func (d *DB) replayArenaRatings(ctx context.Context, arenaID int64) ([]ArenaReplay, error) {
+	// The competitors first, at the prior. Read and closed before the next query:
+	// the pool is MaxOpenConns(1) (PLAN.md rule 6) and a second cursor deadlocks.
 	entryRows, err := d.QueryContext(ctx,
-		`SELECT entity_type, entity_id FROM arena_entries WHERE arena_id = ?`, arenaID)
+		`SELECT entity_type, entity_id FROM arena_entries WHERE arena_id = ? ORDER BY entity_id`, arenaID)
 	if err != nil {
 		return nil, err
 	}
-	var entityType string
 	type ident struct {
 		typ string
 		id  int64
 	}
 	var idents []ident
 	for entryRows.Next() {
-		var id int64
-		if err := entryRows.Scan(&entityType, &id); err != nil {
+		var it ident
+		if err := entryRows.Scan(&it.typ, &it.id); err != nil {
 			entryRows.Close()
 			return nil, err
 		}
-		idents = append(idents, ident{typ: entityType, id: id})
+		idents = append(idents, it)
 	}
 	entryRows.Close()
 	if err := entryRows.Err(); err != nil {
 		return nil, err
 	}
 
-	now := float64(time.Now().Unix())
-	if _, err := d.ExecContext(ctx, `
-		UPDATE arena_entries
-		SET r = ?, rd = ?, sigma = ?, games = 0, updated_at = ?
-		WHERE arena_id = ?`,
-		ranking.DefaultRating, ranking.DefaultDeviation, ranking.DefaultVolatility,
-		now, arenaID); err != nil {
-		return nil, err
-	}
-
 	rating := map[int64]ranking.ArenaRating{}
-	for _, id := range idents {
-		rating[id.id] = ranking.ArenaRating{
+	games := map[int64]int{}
+	for _, it := range idents {
+		rating[it.id] = ranking.ArenaRating{
 			R: ranking.DefaultRating, RD: ranking.DefaultDeviation,
 			Sigma: ranking.DefaultVolatility,
 		}
 	}
 
-	// Group into rating periods: one per (voter, day), in chronological order.
-	periods := map[string][]rawVote{}
-	var order []string
-	for _, v := range all {
-		k := fmt.Sprintf("%d/%d", v.voter, v.day)
-		if _, seen := periods[k]; !seen {
-			order = append(order, k)
-		}
-		periods[k] = append(periods[k], v)
-	}
-	for _, k := range order {
-		for _, v := range periods[k] {
-			ra, okA := rating[v.a]
-			rb, okB := rating[v.b]
-			if !okA || !okB || v.a == v.b {
-				continue
-			}
-			score := outcomeScore(v.outcome)
-			w := v.weight
-			if w < 1 {
-				w = 1
-			}
-			rating[v.a] = ranking.UpdateArenaRating(ra.R, ra.RD, ra.Sigma,
-				repeatedGame(rb, score, w), w)
-			rating[v.b] = ranking.UpdateArenaRating(rb.R, rb.RD, rb.Sigma,
-				repeatedGame(ra, 1-score, w), w)
-		}
+	baseline, err := d.baselineEntry(ctx, arenaID)
+	if err != nil {
+		return nil, err
 	}
 
-	for id, r := range rating {
-		if _, err := d.ExecContext(ctx, `
-			UPDATE arena_entries
-			SET r = ?, rd = ?, sigma = ?, games = games + 1, updated_at = ?
-			WHERE arena_id = ? AND entity_id = ?`,
-			r.R, r.RD, r.Sigma, now, arenaID, id); err != nil {
+	type rawVote struct {
+		a, b    int64
+		outcome string
+		weight  float64
+	}
+	voteRows, err := d.QueryContext(ctx, `
+		SELECT a, b, outcome, weight
+		FROM pairwise_votes
+		WHERE arena_id = ? AND outcome != 'skip'
+		ORDER BY created_at ASC, id ASC`, arenaID)
+	if err != nil {
+		return nil, err
+	}
+	var votes []rawVote
+	for voteRows.Next() {
+		var v rawVote
+		if err := voteRows.Scan(&v.a, &v.b, &v.outcome, &v.weight); err != nil {
+			voteRows.Close()
 			return nil, err
 		}
-		if entityType == EntityFeature {
-			_ = d.mirrorFeatureRating(ctx, id, r, now)
+		votes = append(votes, v)
+	}
+	voteRows.Close()
+	if err := voteRows.Err(); err != nil {
+		return nil, err
+	}
+
+	for _, v := range votes {
+		ra, okA := rating[v.a]
+		rb, okB := rating[v.b]
+		if !okA || !okB || v.a == v.b {
+			// A vote about something that is not in the arena is not scored. It
+			// cannot happen through CastArenaVote (it resolves both entries
+			// first), so this is a log that was written by something else.
+			continue
+		}
+		if v.outcome == "neither" && baseline != nil {
+			// §5.1: "In arenas with a baseline, Neither counts as both
+			// competitors losing to the baseline." The shape below mirrors
+			// CastArenaVote's branch game for game, including the case where a
+			// side IS the baseline.
+			if baseline.EntityID == v.a {
+				na, nb, g := rateArenaPair(ra, rb, 0.0, v.weight)
+				rating[v.a], rating[v.b] = na, nb
+				games[v.a] += g
+				games[v.b] += g
+			} else {
+				rbl := rating[baseline.EntityID]
+				nbl, na, g := rateArenaPair(rbl, ra, 1.0, v.weight)
+				rating[baseline.EntityID], rating[v.a] = nbl, na
+				games[baseline.EntityID] += g
+				games[v.a] += g
+			}
+			if baseline.EntityID == v.b {
+				ra, rb = rating[v.a], rating[v.b]
+				na, nb, g := rateArenaPair(ra, rb, 1.0, v.weight)
+				rating[v.a], rating[v.b] = na, nb
+				games[v.a] += g
+				games[v.b] += g
+			} else {
+				rbl := rating[baseline.EntityID]
+				nbl, nb, g := rateArenaPair(rbl, rb, 1.0, v.weight)
+				rating[baseline.EntityID], rating[v.b] = nbl, nb
+				games[baseline.EntityID] += g
+				games[v.b] += g
+			}
+			continue
+		}
+		na, nb, g := rateArenaPair(ra, rb, outcomeScore(v.outcome), v.weight)
+		rating[v.a], rating[v.b] = na, nb
+		games[v.a] += g
+		games[v.b] += g
+	}
+
+	out := make([]ArenaReplay, 0, len(idents))
+	for _, it := range idents {
+		out = append(out, ArenaReplay{
+			EntityType: it.typ, EntityID: it.id,
+			Rating: rating[it.id], Games: games[it.id],
+		})
+	}
+	return out, nil
+}
+
+// RecomputeArenaRatings rebuilds every rating in an arena from its vote log and
+// writes the result back.
+//
+// §5.1: "ratings are recomputed deterministically from the append-only vote log.
+// Anyone can verify a ranking." This is the WRITE half (the check that does not
+// write is VerifyArenaRatings). On an arena whose incremental path is correct this
+// is a no-op; before 2026-10-16 it was not, and it was not obvious: see
+// rateArenaPair for what the replay got wrong and the measured drift it caused.
+func (d *DB) RecomputeArenaRatings(ctx context.Context, arenaID int64) ([]ArenaEntry, error) {
+	replay, err := d.replayArenaRatings(ctx, arenaID)
+	if err != nil {
+		return nil, err
+	}
+	now := float64(time.Now().Unix())
+	for _, r := range replay {
+		if _, err := d.ExecContext(ctx, `
+			UPDATE arena_entries
+			SET r = ?, rd = ?, sigma = ?, games = ?, updated_at = ?
+			WHERE arena_id = ? AND entity_type = ? AND entity_id = ?`,
+			r.Rating.R, r.Rating.RD, r.Rating.Sigma, r.Games, now,
+			arenaID, r.EntityType, r.EntityID); err != nil {
+			return nil, err
+		}
+		// The type comes from the entry, not from a variable left over from the
+		// previous loop: the old version mirrored only when the LAST entry it read
+		// happened to be a feature.
+		if r.EntityType == EntityFeature {
+			_ = d.mirrorFeatureRating(ctx, r.EntityID, r.Rating, now)
 		}
 	}
 	return d.ArenaLeaderboard(ctx, arenaID, 200)
+}
+
+// ArenaVerification is one entry's stored rating beside the replay of the log it
+// should have come from.
+type ArenaVerification struct {
+	EntityType    string  `json:"entity_type"`
+	EntityID      int64   `json:"entity_id"`
+	IsBaseline    bool    `json:"is_baseline"`
+	StoredR       float64 `json:"stored_r"`
+	StoredRD      float64 `json:"stored_rd"`
+	StoredGames   int     `json:"stored_games"`
+	ReplayedR     float64 `json:"replayed_r"`
+	ReplayedRD    float64 `json:"replayed_rd"`
+	ReplayedGames int     `json:"replayed_games"`
+	Agrees        bool    `json:"agrees"`
+}
+
+// VerifyArenaRatings replays the arena's vote log and compares the result with the
+// stored ratings. It does not write, so it can be run by anyone: §5.1 says
+// "Anyone can verify a ranking", and a verification only the server may perform is
+// the promise this whole function exists to keep.
+//
+// A stored rating the log does not reproduce means the ranking is not derivable
+// from the record, which is the property §2.5 and §5.1 both rest on. It is not
+// necessarily wrong -- a rating can be right and derived from a log that no longer
+// matches -- but it IS unverifiable, and the answer to "which entries" is the
+// divergence report.
+func (d *DB) VerifyArenaRatings(ctx context.Context, arenaID int64) ([]ArenaVerification, error) {
+	replay, err := d.replayArenaRatings(ctx, arenaID)
+	if err != nil {
+		return nil, err
+	}
+	stored, err := d.ArenaLeaderboard(ctx, arenaID, 200)
+	if err != nil {
+		return nil, err
+	}
+	byID := map[int64]ArenaReplay{}
+	for _, r := range replay {
+		byID[r.EntityID] = r
+	}
+	out := make([]ArenaVerification, 0, len(stored))
+	for _, e := range stored {
+		v := ArenaVerification{
+			EntityType: e.EntityType, EntityID: e.EntityID, IsBaseline: e.IsBaseline,
+			StoredR: e.R, StoredRD: e.RD, StoredGames: e.Games,
+		}
+		if r, ok := byID[e.EntityID]; ok {
+			v.ReplayedR, v.ReplayedRD, v.ReplayedGames = r.Rating.R, r.Rating.RD, r.Games
+			v.Agrees = r.Rating.R == e.R && r.Rating.RD == e.RD && r.Games == e.Games
+		}
+		out = append(out, v)
+	}
+	return out, nil
 }
 
 // repeatedGame builds the game list for one weighted comparison.

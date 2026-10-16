@@ -247,6 +247,9 @@ var storeExportInventory = map[string]exportNote{
 	// --- The ILLUSTRATED-BY-TEST half of a surface with no route. This is the §25/§26 class at
 	// its largest: the store is complete, the tests exercise it, and nothing a user does reaches it.
 	//
+	// §29 took the three arena-loop reads and writes out of this list: the pair to
+	// judge, the log, and the replay that proves the ranking all have routes now.
+	//
 	// §28 took the two biggest out of this list by building their routes (CreateFieldReport and
 	// RespondToFieldReport -- field reports had a READ route and no write, so the panel's "No field
 	// reports yet" was the state the code guaranteed). What is left below is the same class, named
@@ -265,9 +268,6 @@ var storeExportInventory = map[string]exportNote{
 	"HasQualifyingContribution": {testOnly, "IsEligibleCollaborator without the role check; the live eligibility paths call the role-checking form"},
 	"ListArases":                {testOnly, "the unscoped, pre-project variant (name included) of ListProjectArases, which is what the routes call; one store test still reads through it"},
 	"GetListsByProject":         {testOnly, "the scoped read that GetListsByProjectForDisplay wraps; kept as the narrow form the scoping invariants are tested against (lists_test.go)"},
-	"ListArenaVotes":            {testOnly, "the pairwise arena's tally has no route; the live arena path is CastArenaVote (alternatives)"},
-	"NextArenaPair":             {testOnly, "the next pair for a pairwise arena has no route; GetNextPair serves the feature-priority vote"},
-	"RecomputeArenaRatings":     {testOnly, "nothing recomputes arena ratings outside tests"},
 	"RemoveArenaEntry":          {testOnly, "no route removes a competitor"},
 	"ListCriterionRatings":      {testOnly, "the criteria ratings are read through AllCriterionRatings (CompositeRank's path), not per criterion"},
 	"RankByCriterion":           {testOnly, "running a rating period over a project's unrated games has no route and no scheduler"},
