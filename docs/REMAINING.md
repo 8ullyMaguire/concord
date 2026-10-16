@@ -5,7 +5,7 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state:** schema 27 · 27 migrations · 81 live tables · 1028 Go tests across
+**Measured state:** schema 27 · 27 migrations · 81 live tables · 1029 Go tests across
 9 test-bearing packages · 282 e2e tests in 20 suite files · 23/23 UI mutants killed (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js) ·
 `make verify` exit 0, `make e2e` exit 0.
 
@@ -2627,7 +2627,7 @@ holding namespaces is a squatting vector), and creating or revoking an invite (i
 
 ### 23.9 Where the numbers stood after this pass
 
-**Measured state:** schema 27 · 27 migrations · 81 live tables · 1028 Go tests across
+**Measured state:** schema 27 · 27 migrations · 81 live tables · 1029 Go tests across
 9 test-bearing packages · 282 e2e tests in 20 suite files · 23/23 UI mutants killed (7 audit.js,
 9 consensus.js, 5 consent.js, 2 auth.js) · `make verify` exit 0, `make gates` exit 0,
 `make e2e` exit 0.

@@ -5,7 +5,7 @@ proves it, and the output that proves the command worked. Steps are ordered so t
 later is needed to verify anything earlier.
 
 Baseline before step 1 (measured on this tree, `c145179`):
-`make verify` exit 0 / 1028 Go tests; `make gates` exit 0 / 13 lines, 128 mutants killed;
+`make verify` exit 0 / 1029 Go tests; `make gates` exit 0 / 13 lines, 128 mutants killed;
 `make e2e` exit 0 / 282 e2e tests; schema 27, 27 migrations, 81 tables.
 
 ---
@@ -627,7 +627,7 @@ Recorded because a plan that only ever records the intended path cannot be used 
 one, and because three of the differences below are the substance of the pass.
 
 1. **Step 4's expected counts were wrong in the small and right in the kind.** The plan guessed
-   "Go tests 1004 → ~1025, e2e 277 → 281, schema 27, mutants 16 → 20". Actual: 1028 Go tests, 282
+   "Go tests 1004 → ~1025, e2e 277 → 281, schema 27, mutants 16 → 20". Actual: 1029 Go tests, 282
    e2e in 20 suite files, 23/23 UI mutants (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js),
    13 Go mutation gates armed. The guesses were close because they were guesses about the SIZE of
    work already done; the numbers a gate reads are the ones that matter.

@@ -30,7 +30,7 @@ Code hosting is the substrate. Decisions are the product.
 
 6. **Lists are objects, not files.** Awesome lists become collaborative databases: anyone proposes entries, quorum admits them, pairwise ranking orders them, and search finds entries across every list on the instance.
 
-7. **Users run the site.** Instance admins keep the lights on — uptime, configuration, backups, legal — and hold no content authority. Moderation, curation, tags, and direction all run through the same user-driven quorum machinery, and every use of admin power is logged and auditable.
+7. **Users run the site.** Instance admins keep the lights on — uptime, configuration, backups, legal — and hold no content authority. Moderation, curation, tags, and direction all run through the same user-driven quorum machinery, and every use of admin power is logged and auditable. And taking part does not begin with an account: a visitor can file a complaint, comment or vote as a nameless guest until the instance reaches a configurable size, and registering moves what they did into their account rather than abandoning it. The door closes by being asked to (create an account, once the place is big enough to be worth signing up for), not by a form.
 
 8. **Fork-friendly.** Consensus failing is a feature, not a crisis: fork the project or the instance. Federation (ActivityPub/ForgeFed) is on the roadmap, so forks can still share complaints, lists, and code.
 
@@ -40,4 +40,24 @@ It is not a GitHub clone with extra buttons, and it does not replace git. It sta
 
 ## Status
 
-The spec is written and the skeleton exists: Go, chi, SQLite, with the Glicko-2 engine, the consensus rules, the merge gate, and the search surface under test. If this sounds like your kind of forge, read `concord-spec-r4.md` and join in — the whole point is that direction is decided by the people who show up.
+Built and running: a live instance at <https://concord.polarisocial.xyz>. Go, chi, SQLite; the
+complaint board and request board; the Glicko-2 pairwise ranking, including the per-project
+criteria table; the full consent round (stances, stand-asides, blocks with remedies, quorum, the
+second override window, and a decision record written as an ADR); the merge gate; taxonomy and tag
+proposals; collaborative lists; documents; search with facets; the moderation and audit surfaces.
+A visitor with no account can take part (§7) until the instance passes its configured monthly-active
+threshold, and the cookie notice states what is stored and why before anything is.
+
+Verified rather than asserted: in-memory test databases per test, 1029 Go tests, several hundred
+browser tests, and 128 Go mutation gates plus 23 JavaScript ones — every mutant must be killed, so a
+green run means the rule it names was actually exercised rather than merely declared. `make verify`,
+`make gates` and `make e2e` are the three commands, and `docs/HANDOFF.md` carries the counts this
+paragraph deliberately does not repeat: a number written in two places is a number that disagrees
+with itself eventually, and this file is the one a stranger reads first.
+
+Not built yet, stated plainly: federation (ActivityPub/ForgeFed) — today a fork is a fork with no
+shared state; email verification and captcha — so the guest door is rate-limited by address rather
+than proven-human; and there is no retention policy for guests who never register.
+
+If this sounds like your kind of forge, read `concord-spec-r4.md` and join in — the whole point is
+that direction is decided by the people who show up.

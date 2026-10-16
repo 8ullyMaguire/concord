@@ -71,13 +71,15 @@ halves. The tracker's §6/§13 items about routes with no reader are the real wo
 left: `merge requests`, `criteria` and `composite rank` have handlers, guards and
 store tests and no page.
 
-## What exists right now (verified 2026-10-05, `9310506`)
+## What exists right now (verified 2026-10-16; `git rev-parse --short HEAD` is the
+tree these numbers were measured against — a hash written here is stale the moment it
+lands, which is why this file does not carry one)
 
 > The per-milestone detail below is from 2026-10-02 and is **frozen history**, not
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 1028 tests, schema 27, 81 tables,
+Measured, not remembered: `make verify` green, 1029 tests, schema 27, 81 tables,
 27 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 
@@ -226,6 +228,18 @@ Quick web tour:
 8. **Do not trust a doc comment as evidence the caller uses it.** The store's
    `FindSimilar` documented instance-wide search and the filing path passed a
    project id anyway, for a full milestone. Read the call site.
+9. **A comment that names a hazard is not a guard.** `auth.js` wrote
+   `localStorage.setItem('concord.token', …)` itself, under a comment explaining that
+   repeating the literals is how it and `session.js` drift apart and a person ends up
+   "signed in" to a header that cannot see the token that signed them in — and then
+   the guest mint in `consent.js` copied the same two lines. Nothing failed, because
+   both writers were correct; the hazard is what the next writer does. The write path
+   now lives in `session.js` (`store`/`clear`), and
+   `TestOnlySessionOwnsTheSessionWritePath` fails if any other script writes the
+   session keys, in both directions (removing the write path from `session.js` fails
+   too). Note what the same pass did to `pages_test.go`: it had pinned the old
+   MECHANISM (`auth.js` must call `.refresh()`), so it went red for the improvement and
+   would have gone green for the defect. Assert the property, not the call.
 
 ## How the reviewer (Hermes) will check your work
 

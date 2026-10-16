@@ -234,10 +234,30 @@ func TestSessionIsASingleSharedInstance(t *testing.T) {
 	if !strings.Contains(js, "TOKEN_KEY = 'concord.token'") {
 		t.Error("session.js no longer defines the canonical token key")
 	}
-	// auth.js may still write the key, but must refresh the shared instance so
-	// the header is correct without a reload.
-	if !strings.Contains(auth, "ConcordSession.instance().refresh()") {
-		t.Error("auth.js does not refresh the shared session after storing the token")
+	// auth.js stores through the shared instance's write path, so the header is
+	// correct without a reload.
+	//
+	// This assertion used to require the literal `ConcordSession.instance().refresh()`
+	// after auth.js wrote the keys ITSELF. That pinned the mechanism, and the tenth
+	// pass replaced the mechanism: session.js now owns the write path (store() writes
+	// the keys AND adopts the values), because two files writing `localStorage.setItem`
+	// by hand is how the drift this test is about starts. A text assertion on the old
+	// call would have gone red for an improvement and green for the defect it was
+	// written for (auth.js writing the keys itself, with a refresh that says the token
+	// is somewhere the header cannot see it).
+	if !strings.Contains(auth, "ConcordSession.instance().store(") {
+		t.Error("auth.js does not store the token through the shared session, so the header " +
+			"will not know about it without a reload")
+	}
+	if !strings.Contains(auth, "if (!kept)") {
+		t.Error("auth.js ignores whether the browser kept the session, so a blocked-storage " +
+			"sign-in is reported as if it persisted")
+	}
+	// And the adopt half, which is what makes the header correct without a reload:
+	// the write path must set the in-memory session, not only the storage.
+	if !strings.Contains(js, "this.token = token") || !strings.Contains(js, "this.user = user") {
+		t.Error("session.js's store() does not adopt the values in memory, so every caller " +
+			"that stores has to refresh() afterwards to be seen")
 	}
 }
 

@@ -221,6 +221,19 @@ is still open without attempting a write. It is the surface the toast's "why" co
 added for §7's retention decision: it needs a number, and a number nobody prints is a decision made
 in the dark.
 
+Three `audit_log` action names carry this feature, and they are recorded here because the audit
+viewer filters by exact `action=` and its page is where an operator looks first:
+
+| action | written by | detail |
+|---|---|---|
+| `guest_identity` | the mint | the guest's own username (`guest-ab12cd34`) |
+| `accept_cookies` | accepting the notice, for a SIGNED-IN identity only | the consent version accepted |
+| `guest-followed-into-account` | the login fold | `{moved, superseded}` — what moved and what collided |
+
+Registration that promotes a guest writes the ordinary `register_user` action against the same
+`users.id`, so an identity's history reads as one column of rows either way. No row anywhere in this
+path records an address: the guest row is a random name, a timestamp, and nothing else.
+
 ## 7. Explicitly not shipping, and why
 
 - **Email verification, captcha, rate-limiting guests harder.** The rate limiter already applies

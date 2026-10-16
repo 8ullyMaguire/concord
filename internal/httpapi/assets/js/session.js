@@ -68,6 +68,33 @@
     if (!shared) shared = new ConcordSession();
     return shared;
   };
+
+  // store adopts a credential — from a login, a registration, or a guest mint —
+  // and makes it this session's, writing the two keys this file owns.
+  //
+  // It exists because the alternative was worse in a specific way: auth.js and
+  // consent.js both wrote `localStorage.setItem('concord.token', …)` themselves,
+  // with auth.js carrying a comment about how repeating the literals is how the
+  // two files drift apart and a person ends up "signed in" to a header that
+  // cannot see the token that signed them in. A file that documents a hazard
+  // while committing it is the shape this codebase keeps finding and fixing;
+  // the write path belongs where the key names live.
+  //
+  // Returns whether the browser KEPT it. Storage can be blocked (private mode, a
+  // policy), and the token still works for this page's requests either way, so
+  // the in-memory session is updated first and the caller decides what to say
+  // about persistence — that decision needs words, and words belong to the page.
+  ConcordSession.prototype.store = function (token, user) {
+    this.token = token || null;
+    this.user = user || null;
+    try {
+      localStorage.setItem(TOKEN_KEY, token);
+      localStorage.setItem(USER_KEY, JSON.stringify(user || {}));
+      return true;
+    } catch (e) {
+      return false;
+    }
+  };
   // The token is written by auth.js after a successful login, so an instance
   // created before that would keep reporting "signed out" for the life of the
   // page. Reloading from storage on demand makes the value current.

@@ -100,11 +100,14 @@
       return res.json().then(function (body) {
         var session = window.ConcordSession ? window.ConcordSession.instance() : null;
         if (session) {
-          try {
-            localStorage.setItem('concord.token', body.token);
-            localStorage.setItem('concord.user', JSON.stringify(body.user));
-            session.refresh();
-          } catch (e) { /* storage unavailable: the action will be refused, and says why */ }
+          // The session's own write path, so the key names live in one file. It
+          // reports whether the browser KEPT it; either way the identity is this
+          // page's, and a visitor whose storage is blocked can still act until
+          // the tab closes -- which is what they are told if it matters.
+          if (!session.store(body.token, body.user)) {
+            tell('Your browser is not storing this session, so what you do now is ' +
+                 'kept until you close the tab. Creating an account keeps it.');
+          }
         }
         document.dispatchEvent(new CustomEvent('concord:guest', { detail: body.user }));
         return body.token;

@@ -573,15 +573,45 @@ failure).
 and leaves it on every path, including failure. This is the single most
 consistent fix available.
 
-**4.4 Auth.** `session.js` is the only module that touches `localStorage`; other
-scripts go through `ConcordSession.instance()`. Keep the key names in one file —
-`project.js` already comments on the hazard of a second script reaching into
-storage directly.
+**4.4 Auth.** `session.js` owns the session: the key names, and — since the tenth
+pass — the WRITE path. `ConcordSession.instance().store(token, user)` and `.clear()`
+are the only places that write or remove `concord.token`/`concord.user`, and
+`TestOnlySessionOwnsTheSessionWritePath` fails if another script writes them. That
+test exists because this paragraph used to be aspirational: `auth.js` wrote the keys
+directly under a comment saying that repeating the literals is how the two files
+drift apart, and the guest mint in `consent.js` then copied the same two lines. A
+file that documents a hazard while committing it is the version a reader trusts.
+
+What the pass did NOT sweep, so nobody reads this as done: several scripts still
+READ `localStorage.getItem('concord.token')` directly (`consensus.js`, `list.js`,
+`comments.js`, `requests.js`, `rank.js`, `finder.js`, `scout.js`). Those reads work
+and are not a bug today, but they are eight places the key name is spelled, and
+`session.js` is the file that would change them all.
 
 **4.5 Mutations reload.** As §1.1 explains. Keep it.
 
 **4.6 Assets are versioned.** `{{ asset "..." }}` in `base.html`. Any new script
 goes through it or it will be cached stale.
+
+**4.7 Consent and guest identity belong to no page.** `consent.js` is loaded from
+`base.html` BEFORE every page's own script, and it does two things no page should
+ever do for itself:
+
+- **It wraps `window.fetch`**, so every mutating request in the product — from ~25
+  page scripts and ~70 endpoints — is refused with a sentence the visitor can act on
+  when the cookie notice has not been accepted, and waited for rather than refused
+  when an acceptance is in flight. A page added later is covered by construction;
+  that is the whole reason it is a wrapper and not a helper each page must remember
+  to call.
+- **It mints the guest identity** (a bearer token stored through
+  `ConcordSession.store`, exactly where an account's goes), and tells the visitor
+  where they stand when the instance has closed the guest door.
+
+The three rules for a new page are: do not call `/api/v1/consent` or `/api/v1/guest`
+yourself, do not treat `/api/v1/auth/*` as an ordinary interaction (registering is
+how a guest STOPS being one, and minting a fresh identity before it strands the work
+they already did), and do not write the session's storage keys — `session.js` owns
+them.
 
 ---
 

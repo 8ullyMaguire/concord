@@ -43,17 +43,17 @@
   }
 
   function store(token, user) {
-    try {
-      // session.js owns the keys. Repeating the literals here is how the two
-      // files drift apart and a user ends up "signed in" to a header that
-      // cannot see the token that signed them in.
-      localStorage.setItem('concord.token', token);
-      localStorage.setItem('concord.user', JSON.stringify(user || {}));
-      if (window.ConcordSession) window.ConcordSession.instance().refresh();
-    } catch (e) {
-      // Private mode or a storage policy that blocks writes. The session will
-      // not persist, so say so rather than leaving a form that silently
-      // forgets the token on the next click.
+    // session.js owns the key names AND the write path (it used to own only the
+    // names, which meant this file repeated the literals with a comment about
+    // how repeating them is how the two drift apart). It updates the shared
+    // session either way and reports whether the browser kept it, because the
+    // in-memory session is what this page's requests use.
+    var kept = !!(window.ConcordSession &&
+      window.ConcordSession.instance().store(token, user));
+    if (!kept) {
+      // Private mode, or a storage policy that blocks writes. The session works
+      // for this page and will end when the tab does, so say that rather than
+      // leaving a form that silently forgets the token on the next click.
       showError('Signed in, but this browser will not store the session. It will end when you close the tab.');
     }
   }
