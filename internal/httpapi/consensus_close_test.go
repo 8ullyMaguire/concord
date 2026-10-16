@@ -356,6 +356,23 @@ func TestABlockNeedsBothHalvesOfEligibility(t *testing.T) {
 	}
 }
 
+func TestRecordingTheDecisionNeedsAMaintainer(t *testing.T) {
+	// §6.5's outcome CLOSES the call and moves the board: the adopted solution goes to
+	// 'ready', the displaced one to 'rejected'. That is §6.8's "close consensus" with a
+	// different verb -- and the route asked only for a session while the close route
+	// beside it asked for a maintainer, so any account could decide any project's
+	// solution.
+	f := newCloseFixture(t)
+	contributor := voterFor(t, f.ts, f.db, f.pid, "outcome-contributor")
+
+	code, out := authJSON(t, f.ts, http.MethodPost, f.callPath()+"/outcome", contributor,
+		map[string]any{"outcome": "accepted"})
+	if code != http.StatusForbidden || !strings.Contains(string(out), "maintainer") {
+		t.Errorf("a contributor recorded the decision: %d %s -- the refusal must name "+
+			"the role the rule is in", code, out)
+	}
+}
+
 func TestOpeningACallNeedsAMaintainer(t *testing.T) {
 	f := newCloseFixture(t)
 	contributor := voterFor(t, f.ts, f.db, f.pid, "open-contributor")

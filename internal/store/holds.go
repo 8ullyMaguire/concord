@@ -92,8 +92,19 @@ func (d *DB) PlaceEmergencyHold(ctx context.Context, projectID, callID, userID i
 	if days > MaxHoldDays {
 		return EmergencyHold{}, fmt.Errorf("%w: a hold may not exceed %d days", ErrInvalid, MaxHoldDays)
 	}
-	if _, err := d.GetConsensusCall(ctx, callID); err != nil {
+	call, err := d.GetConsensusCall(ctx, callID)
+	if err != nil {
 		return EmergencyHold{}, err
+	}
+	// The call must belong to the project the hold is filed under. The HTTP layer checks
+	// this too (callerCall), and this is the last point before the row is written: a hold
+	// that names one project while suspending another's call should not be representable,
+	// whatever route asked for it. The defect this closes was measured at the API -- a
+	// maintainer of project B suspended project A's call through B's URL -- and the store
+	// accepted the mismatch without a word.
+	if call.ProjectID != projectID {
+		return EmergencyHold{}, fmt.Errorf("%w: call %d does not belong to project %d",
+			ErrInvalid, callID, projectID)
 	}
 
 	now := float64(time.Now().Unix())

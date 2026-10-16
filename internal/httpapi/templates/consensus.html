@@ -159,6 +159,81 @@ if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(4);}})();
       <p class="consensus-override-error" id="consensus-override-error" role="alert" hidden></p>
       <p class="consensus-override-done" id="consensus-override-done" hidden></p>
     </section>
+    <!--
+      §6.6's emergency hold: a call can be suspended, and a suspended call resolves
+      nothing -- the close, the window and an outcome are all refused while it is in
+      force. Read from the server rather than inferred: a page that looks ordinary
+      while every write is refused is the worst version of this, and the page cannot
+      know from the call alone.
+    -->
+    <p class="consensus-hold" id="consensus-hold" role="status" hidden></p>
+
+    <!--
+      §6.5's fallback chain, BEFORE the decision.
+
+      "The ranking is the fallback chain. If the call stalls or a block is upheld,
+      the next-ranked solution is the pre-agreed fallback." Pre-agreed is the whole
+      word: a chain shown only after a call stalls is a chain nobody agreed to. So
+      this is read while the call is open, from the same route a close would consult.
+    -->
+    <section class="consensus-fallback" id="consensus-fallback" hidden>
+      <h3>If this call stalls or is blocked</h3>
+      <p class="hint">§6.5: the ranking is the fallback chain, so this is where the
+        call goes next — strongest first, with the baseline last. Adopting the next
+        one down needs no second vote.</p>
+      <ol class="fallback-chain" id="fallback-chain"></ol>
+    </section>
+
+    <!--
+      §6.5's decision, and the record of it.
+
+      A close (§6.8) writes the VERDICT on the call; this records what the call
+      decided about the SOLUTION — accepted, amended, fallen back, rejected or sent
+      back — and writes the decision record attached to the feature. The two are
+      different facts: a call can pass and still fall back to #2, and the record is
+      where "why this and not the runner-up" is written down.
+
+      Offered to anyone signed in, like the close and for the same reason: the page
+      cannot know who a maintainer is, so the server decides and says so.
+    -->
+    <section class="consensus-outcome" id="consensus-outcome" hidden>
+      <h3>Record the decision</h3>
+      <p class="hint">§6.5: the record carries the outcome, the positions, the
+        objections, the remedies and the ranking it was decided against. It is
+        written when you record one, and it cannot be recorded twice.</p>
+      <div class="outcome-buttons" id="outcome-buttons" role="group" aria-label="Outcome">
+        <button type="button" class="btn outcome-btn" data-outcome="accepted">Accepted</button>
+        <button type="button" class="btn outcome-btn" data-outcome="accepted-with-amendments">Accepted with amendments</button>
+        <button type="button" class="btn outcome-btn" data-outcome="fall-back">Fall back to the next solution</button>
+        <button type="button" class="btn outcome-btn" data-outcome="rejected">Rejected</button>
+        <button type="button" class="btn outcome-btn" data-outcome="sent-back">Sent back</button>
+      </div>
+      <label class="field-label" for="consensus-outcome-summary">Why (the record keeps it)</label>
+      <textarea id="consensus-outcome-summary" rows="2"></textarea>
+
+      <div id="consensus-outcome-fallback" hidden>
+        <label class="field-label" for="consensus-outcome-fallback-select">Falls back to</label>
+        <select id="consensus-outcome-fallback-select"></select>
+        <p class="hint">The baseline is not in this list: rejecting the proposal is
+          “Rejected”, which is §6.5's “the baseline wins”.</p>
+      </div>
+
+      <div id="consensus-outcome-amend" hidden>
+        <label class="field-label" for="consensus-outcome-amend-title">The amended solution's title</label>
+        <input type="text" id="consensus-outcome-amend-title">
+        <label class="field-label" for="consensus-outcome-amend-body">What it now says</label>
+        <textarea id="consensus-outcome-amend-body" rows="3"></textarea>
+      </div>
+
+      <button type="button" class="btn btn-primary" id="consensus-outcome-submit">Record the decision</button>
+      <p class="consensus-outcome-error" id="consensus-outcome-error" role="alert" hidden></p>
+    </section>
+
+    <!-- Outside the section on purpose. The panel hides itself once the call carries an
+      outcome (a second decision is refused), so a confirmation kept inside it would be
+      hidden the moment it was written -- the record's name is the one thing that has to
+      survive the re-read. -->
+    <p class="consensus-outcome-done" id="consensus-outcome-done" hidden></p>
   </article>
 </div>
 

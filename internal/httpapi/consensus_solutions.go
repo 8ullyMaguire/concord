@@ -119,23 +119,22 @@ func (s *Server) handleRecordCallOutcome(w http.ResponseWriter, r *http.Request)
 		mapError(w, store.ErrAuth)
 		return
 	}
-	projectID, ok := s.requireProjectID(w, r)
+	// The call's own project is the authority, not the URL's, and callerCall enforces
+	// both halves: a call id from another project must not be decided through this
+	// endpoint, and the answer matches every other route's -- 404, because a 403 would
+	// confirm the id is real.
+	call, ok := s.callerCall(w, r)
 	if !ok {
 		return
 	}
-	callID, ok := s.requireCallID(w, r)
-	if !ok {
-		return
-	}
-	call, err := s.Store.GetConsensusCall(r.Context(), callID)
-	if err != nil {
+	callID := call.ID
+	projectID := call.ProjectID
+	// §6.8's maintainer, for the same reason the close route requires one: recording
+	// an outcome CLOSES the call and moves the board -- the adopted solution to
+	// 'ready', the displaced one to 'rejected'. That is "close consensus" with a
+	// different verb, and it was open to any account with a session.
+	if err := s.requireRole(projectID, "maintainer", r); err != nil {
 		mapError(w, err)
-		return
-	}
-	// The call's own project is the authority, not the URL's. A call id from
-	// another project must not be decided through this project's endpoint.
-	if call.ProjectID != projectID {
-		mapError(w, store.ErrPerm)
 		return
 	}
 	var req recordOutcomeRequest
@@ -164,23 +163,11 @@ func (s *Server) handleRecordCallOutcome(w http.ResponseWriter, r *http.Request)
 // handleCallFallback serves §6.5's chain: where a stalled or blocked call goes
 // next, strongest first, baseline last.
 func (s *Server) handleCallFallback(w http.ResponseWriter, r *http.Request) {
-	projectID, ok := s.requireProjectID(w, r)
+	call, ok := s.callerCall(w, r)
 	if !ok {
 		return
 	}
-	callID, ok := s.requireCallID(w, r)
-	if !ok {
-		return
-	}
-	call, err := s.Store.GetConsensusCall(r.Context(), callID)
-	if err != nil {
-		mapError(w, err)
-		return
-	}
-	if call.ProjectID != projectID {
-		mapError(w, store.ErrPerm)
-		return
-	}
+	callID := call.ID
 	chain, err := s.Store.CallFallback(r.Context(), callID)
 	if err != nil {
 		mapError(w, err)

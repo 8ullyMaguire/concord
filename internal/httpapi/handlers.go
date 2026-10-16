@@ -540,14 +540,17 @@ func (s *Server) handlePlaceEmergencyHold(w http.ResponseWriter, r *http.Request
 	if _, ok := s.requireWriteActor(w, r); !ok {
 		return
 	}
-	callID, _ := strconv.ParseInt(chi.URLParam(r, "call_id"), 10, 64)
-	projectID, ok := s.requireProjectID(w, r)
+	// The call is resolved FIRST, so the role is asked for on the project that owns it.
+	// Asking for the role against the URL's project while loading the call by its id
+	// alone let a maintainer of one project suspend another's call (§21).
+	call, ok := s.callerCall(w, r)
 	if !ok {
 		return
 	}
+	callID := call.ID
 	// §8.1 limits the maintainer role to "run security embargo, emergency hold",
 	// so this is the only content-level power a maintainer keeps.
-	if err := s.requireRole(projectID, "maintainer", r); err != nil {
+	if err := s.requireRole(call.ProjectID, "maintainer", r); err != nil {
 		mapError(w, err)
 		return
 	}
@@ -571,11 +574,6 @@ func (s *Server) handlePlaceEmergencyHold(w http.ResponseWriter, r *http.Request
 		})
 		return
 	}
-	call, err := s.Store.GetConsensusCall(r.Context(), callID)
-	if err != nil {
-		mapError(w, err)
-		return
-	}
 	hold, err := s.Store.PlaceEmergencyHold(r.Context(), call.ProjectID, callID,
 		getActorID(r), req.Grounds, req.Reason, req.Days)
 	if err != nil {
@@ -594,11 +592,17 @@ func (s *Server) handleReleaseEmergencyHold(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	holdID, _ := strconv.ParseInt(chi.URLParam(r, "hold_id"), 10, 64)
-	projectID, ok := s.requireProjectID(w, r)
-	if !ok {
+	// The hold is resolved FIRST, because this URL carries no project: a hold belongs to
+	// the project that placed it, and that is the project whose maintainer §8.1 lets lift
+	// it. The route previously asked for a role against `chi.URLParam(r, "project_id")`
+	// on a path without one, so it answered 404 for EVERY caller -- the defect was hiding
+	// a second one, that the hold was released by its id alone.
+	existing, err := s.Store.GetEmergencyHold(r.Context(), holdID)
+	if err != nil {
+		mapError(w, err)
 		return
 	}
-	if err := s.requireRole(projectID, "maintainer", r); err != nil {
+	if err := s.requireRole(existing.ProjectID, "maintainer", r); err != nil {
 		mapError(w, err)
 		return
 	}
@@ -606,6 +610,16 @@ func (s *Server) handleReleaseEmergencyHold(w http.ResponseWriter, r *http.Reque
 		Reason string `json:"reason"`
 	}
 	if !readJSON(w, r, &req) {
+		return
+	}
+	// Lifting a security or legal embargo is an accountability event: §9.3's ledger
+	// carries the reason, and a release with nothing written in it leaves the ledger
+	// saying only that someone did it.
+	if strings.TrimSpace(req.Reason) == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]string{
+			"error": "a written reason is required to lift a hold: the ledger records who " +
+				"did it, and with no reason it records nothing else",
+		})
 		return
 	}
 	if err := s.Store.ReleaseEmergencyHold(r.Context(), holdID, getActorID(r), req.Reason); err != nil {
@@ -623,10 +637,17 @@ func (s *Server) handleReleaseEmergencyHold(w http.ResponseWriter, r *http.Reque
 // handleGetCallHold returns the hold on a call, if any, so a client can show
 // why a call is not resolving.
 func (s *Server) handleGetCallHold(w http.ResponseWriter, r *http.Request) {
-	if _, ok := s.requireProjectID(w, r); !ok {
+	callID, _, ok := s.requireCallInProject(w, r)
+	if !ok {
 		return
 	}
-	callID, _ := strconv.ParseInt(chi.URLParam(r, "call_id"), 10, 64)
+	// The call's OWN project answers, not the URL's. Without this, a hold's grounds
+	// and expiry could be read through any project's URL by anyone who could read that
+	// project: the id is sequential and the URL was the only thing naming which call was
+	// meant. callerCall closes the whole class, not this one route.
+	if _, ok := s.callerCall(w, r); !ok {
+		return
+	}
 	hold, err := s.Store.ActiveHoldForCall(r.Context(), callID)
 	if err != nil {
 		mapError(w, err)
@@ -1342,6 +1363,35 @@ func (s *Server) handleCreateConsensus(w http.ResponseWriter, r *http.Request) {
 // helper does not, because a write's own store call is what surfaces the mismatch;
 // doing the check in one place for reads and in another for writes is how the two
 // drift apart. handleRecordCallOutcome already did both by hand and is left alone.
+// callerCall resolves the call named in the URL AND proves it belongs to the project in
+// the SAME URL, then returns it.
+//
+// The two halves of the path are independent parameters: {project_id} names a project and
+// {call_id} names a call, and nothing in the router ties them together. A route that asks
+// for the role against one and loads the row from the other hands its power across
+// projects -- measured twice in one pass (§21): a maintainer of project B could PLACE a
+// hold on project A's call, and could LIFT one, because the role was checked against the
+// URL's project while the row was resolved by its id alone. Every route that names a call
+// goes through this.
+func (s *Server) callerCall(w http.ResponseWriter, r *http.Request) (store.ConsensusCall, bool) {
+	callID, projectID, ok := s.requireCallInProject(w, r)
+	if !ok {
+		return store.ConsensusCall{}, false
+	}
+	call, err := s.Store.GetConsensusCall(r.Context(), callID)
+	if err != nil {
+		mapError(w, err)
+		return store.ConsensusCall{}, false
+	}
+	if call.ProjectID != projectID {
+		// The call exists but not under this project, so the answer is the same 404 as
+		// for a call that does not exist. A 403 would confirm the id is real.
+		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
+		return store.ConsensusCall{}, false
+	}
+	return call, true
+}
+
 func (s *Server) requireCallInProject(w http.ResponseWriter, r *http.Request) (callID, projectID int64, ok bool) {
 	projectID, ok = s.requireProjectID(w, r)
 	if !ok {
@@ -1358,21 +1408,11 @@ func (s *Server) requireCallInProject(w http.ResponseWriter, r *http.Request) (c
 }
 
 func (s *Server) handleGetConsensus(w http.ResponseWriter, r *http.Request) {
-	callID, projectID, ok := s.requireCallInProject(w, r)
+	c, ok := s.callerCall(w, r)
 	if !ok {
 		return
 	}
-	c, err := s.Store.GetConsensusCall(r.Context(), callID)
-	if err != nil {
-		mapError(w, err)
-		return
-	}
-	if c.ProjectID != projectID {
-		// The call exists but not under this project, so the answer is the same 404
-		// as for a call that does not exist. Anything else confirms the id is real.
-		writeJSON(w, http.StatusNotFound, map[string]string{"error": "not found"})
-		return
-	}
+	callID := c.ID
 	positions, err := s.Store.GetPositions(r.Context(), callID)
 	if err != nil {
 		mapError(w, err)

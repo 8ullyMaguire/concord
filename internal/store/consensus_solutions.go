@@ -418,8 +418,33 @@ func (d *DB) RecordCallOutcome(ctx context.Context, callID int64, outcome, summa
 	if err != nil {
 		return ConsensusCall{}, err
 	}
-	if call.Status != "open" {
-		return ConsensusCall{}, fmt.Errorf("%w: call %d is already %s", ErrConflict, callID, call.Status)
+	// The guard is "this call is already decided", NOT "this call is open".
+	//
+	// It was `call.Status != "open"`, and that made §6.5's decision record
+	// unreachable in the flow the page actually offers: the maintainer closes the
+	// call (§6.8, which writes the verdict and sets status='closed'), and then
+	// recording the outcome -- positions, objections, remedies, the ranking it was
+	// decided against -- was refused as "already closed". The record was writable
+	// only by NOT closing the call, which is the opposite of the spec's "the
+	// call's result ... auto-written into a decision record".
+	//
+	// What the guard is for is unchanged and is what it now says: a second outcome
+	// would overwrite the first and rewrite the board under it.
+	if call.Outcome != nil {
+		return ConsensusCall{}, fmt.Errorf(
+			"%w: call %d was already decided: %s", ErrConflict, callID, *call.Outcome)
+	}
+	// §6.6's hold suspends the call, and recording an outcome RESOLVES it -- the
+	// write below sets status='closed'. Refusing it is the same reasoning
+	// CloseConsensusCall and the override window already follow: a hold that can be
+	// walked around by choosing a different route is not a pause.
+	if held, hold, err := d.CallIsHeld(ctx, callID); err != nil {
+		return ConsensusCall{}, err
+	} else if held {
+		return ConsensusCall{}, fmt.Errorf(
+			"%w: consensus call %d is suspended by an emergency hold (%s ground) until %s",
+			ErrConflict, callID, hold.Grounds,
+			time.Unix(int64(hold.ExpiresAt), 0).UTC().Format(time.RFC3339))
 	}
 	if call.SolutionID == nil {
 		return ConsensusCall{}, fmt.Errorf(
@@ -486,7 +511,7 @@ func (d *DB) RecordCallOutcome(ctx context.Context, callID int64, outcome, summa
 	if err := d.applyOutcomeToSolutions(ctx, call, outcome, amendedSolution, fallbackTo, now); err != nil {
 		return ConsensusCall{}, err
 	}
-	if err := d.writeDecisionRecord(ctx, call, outcome, summary, fallbackTo, amendedSolution); err != nil {
+	if err := d.writeDecisionRecord(ctx, call, outcome, summary, fallbackTo, amendedSolution, now); err != nil {
 		return ConsensusCall{}, err
 	}
 	return d.GetConsensusCall(ctx, callID)
@@ -549,14 +574,30 @@ func callFeatureID(call ConsensusCall) int64 {
 }
 
 // writeDecisionRecord is §6.5's "decision record attached to the feature".
+//
+// It is written the moment the outcome is recorded, which is when the call has
+// been decided -- and after the fix in this pass that can be after §6.8's close,
+// which is the order the page produces. The record carries the ranking the
+// decision was made against, because §6.5's next sentence is "the ranking is the
+// fallback chain": the runner-up is the pre-agreed fallback, so "we adopted #1"
+// without "#2 was the runner-up, at these scores" is a decision a reader cannot
+// check and a fallback nobody agreed to.
+//
+// decidedAt is passed rather than read from call.ClosedAt: the call is read
+// before this write, so for the record-before-close order ClosedAt is still NULL
+// and the record claimed the epoch.
 func (d *DB) writeDecisionRecord(ctx context.Context, call ConsensusCall,
-	outcome, summary string, fallbackTo, amendedSolution int64) error {
+	outcome, summary string, fallbackTo, amendedSolution int64, decidedAt float64) error {
 
 	positions, err := d.GetPositions(ctx, call.ID)
 	if err != nil {
 		return err
 	}
 	objections, err := d.GetObjections(ctx, call.ID)
+	if err != nil {
+		return err
+	}
+	ranking, err := d.ListSolutions(ctx, callFeatureID(call), 50)
 	if err != nil {
 		return err
 	}
@@ -575,13 +616,60 @@ func (d *DB) writeDecisionRecord(ctx context.Context, call ConsensusCall,
 		fmt.Fprintf(&b, "- **Summary:** %s\n", summary)
 	}
 	if fallbackTo != 0 {
-		fmt.Fprintf(&b, "- **Fell back to:** solution %d\n", fallbackTo)
+		fmt.Fprintf(&b, "- **Fell back to:** %s\n", d.solutionLabel(ctx, fallbackTo))
 	}
 	if amendedSolution != 0 {
-		fmt.Fprintf(&b, "- **Amended into:** solution %d\n", amendedSolution)
+		fmt.Fprintf(&b, "- **Amended into:** %s\n", d.solutionLabel(ctx, amendedSolution))
 	}
-	fmt.Fprintf(&b, "- **Closed at:** %s\n",
-		time.Unix(int64(derefFloat(call.ClosedAt)), 0).UTC().Format(time.RFC3339))
+	fmt.Fprintf(&b, "- **Decided at:** %s\n",
+		time.Unix(int64(decidedAt), 0).UTC().Format(time.RFC3339))
+
+	// §6.5's chain, as a snapshot of the arena at the decision.
+	//
+	// A snapshot, not a live read: asked for a year later, the ranking answers
+	// "what would we do now", which is a different question from the one this
+	// record exists to answer -- "why this and not the runner-up, then".
+	if len(ranking) > 0 {
+		fmt.Fprintf(&b, "\n## The ranking this decision was made against\n\n")
+		fmt.Fprintf(&b, "§6.5: the ranking is the fallback chain, so this order is where a\n")
+		fmt.Fprintf(&b, "stalled or blocked call falls back to, without a second vote. Recorded as it\n")
+		fmt.Fprintf(&b, "stood when the call was decided.\n\n")
+		fmt.Fprintf(&b, "| # | Solution | Score | Rating | Coverage | Voters | |\n")
+		fmt.Fprintf(&b, "|---|---|---|---|---|---|---|\n")
+		preAgreed := false
+		for i, s := range ranking {
+			note := ""
+			switch {
+			case call.SolutionID != nil && s.SolutionID == *call.SolutionID:
+				note = "the solution this call was about"
+				if adopted(outcome) {
+					note += " (adopted)"
+				} else {
+					note += " (not adopted)"
+				}
+			case s.IsBaseline:
+				// §6.3's do-nothing competitor: ranked against everything,
+				// selectable by nothing. Last in the chain, because a chain that
+				// ends in "build nothing" is the honest worst case.
+				note = "the baseline: ranked, never adopted"
+			case !preAgreed:
+				note = "the pre-agreed fallback"
+				preAgreed = true
+			}
+			if s.Title == "" {
+				s.Title = d.solutionLabel(ctx, s.SolutionID)
+			}
+			fmt.Fprintf(&b, "| %d | %s | %.1f | %.1f | %.2f | %d | %s |\n",
+				i+1, s.Title, s.Score, s.Rating, s.Coverage, s.DistinctVoters, note)
+		}
+		if preAgreed {
+			fmt.Fprintf(&b, "\nThe pre-agreed fallback is where this call goes if it stalls or is blocked;\n")
+			fmt.Fprintf(&b, "the ranking already decided it, so adopting it needs no second vote.\n")
+		} else {
+			fmt.Fprintf(&b, "\nThe baseline is the only alternative, so a stalled call has nowhere to fall\n")
+			fmt.Fprintf(&b, "back to but \"do nothing\".\n")
+		}
+	}
 
 	fmt.Fprintf(&b, "\n## Positions\n\n")
 	if len(positions) == 0 {
@@ -602,8 +690,14 @@ func (d *DB) writeDecisionRecord(ctx context.Context, call ConsensusCall,
 	} else {
 		for _, o := range objections {
 			fmt.Fprintf(&b, "### %s\n\n", o.Status)
-			fmt.Fprintf(&b, "- **Principle:** %s\n- **Why it is violated:** %s\n- **Remedy:** %s\n\n",
+			fmt.Fprintf(&b, "- **Principle:** %s\n- **Why it is violated:** %s\n- **Remedy:** %s\n",
 				o.Principle, o.Violation, o.Remedy)
+			// §17.3: "a resolution is recorded with its reason". The remedy is
+			// what the objector asked for; the resolution is what happened to it.
+			if o.Resolution != "" {
+				fmt.Fprintf(&b, "- **Resolution:** %s\n", o.Resolution)
+			}
+			fmt.Fprintf(&b, "\n")
 		}
 	}
 
@@ -615,15 +709,32 @@ func (d *DB) writeDecisionRecord(ctx context.Context, call ConsensusCall,
 	return nil
 }
 
-func adrTitle(call ConsensusCall, outcome string) string {
-	return fmt.Sprintf("Decision %d — %s", call.ID, outcome)
+// adopted reports whether an outcome leaves the solution the call was about in
+// force. §6.5's five outcomes split into these two, and the record marks the
+// ranking with which one happened, because "accepted" and "sent back" can leave
+// the same ranking behind them.
+func adopted(outcome string) bool {
+	return outcome == OutcomeAccepted || outcome == OutcomeAmended
 }
 
-func derefFloat(f *float64) float64 {
-	if f == nil {
-		return 0
+// solutionLabel names a solution in the record, for a solution that is named
+// outside the ranking it was ranked in: the one that took over on a fall-back,
+// or the one an amendment spawned.
+//
+// The id is a fallback rather than an error: a record that says "fell back to
+// solution 7" is worse than one that names the proposal, and much better than a
+// decision with no record at all.
+func (d *DB) solutionLabel(ctx context.Context, id int64) string {
+	var title string
+	if err := d.QueryRowContext(ctx,
+		`SELECT title FROM solutions WHERE id = ?`, id).Scan(&title); err != nil || title == "" {
+		return fmt.Sprintf("solution %d", id)
 	}
-	return *f
+	return fmt.Sprintf("%s (#%d)", title, id)
+}
+
+func adrTitle(call ConsensusCall, outcome string) string {
+	return fmt.Sprintf("Decision %d — %s", call.ID, outcome)
 }
 
 // CallFallback is §6.5's fallback chain: the solutions in the order a stalled or

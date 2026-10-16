@@ -90,6 +90,11 @@ gates:
 	python3 internal/mutate.py internal/store/consensus.go ./internal/store/ internal/store/consensus_override_test.go internal/store/consensus_override_mutants.json
 	python3 internal/mutate.py internal/httpapi/handlers.go ./internal/httpapi/ internal/httpapi/override_window_test.go internal/httpapi/override_mutants.json
 	python3 internal/mutate.py internal/store/audit.go ./internal/store/ internal/store/audit_test.go internal/store/audit_mutants.json
+	# §6.5's decision record: the outcome guard, the hold, the ranking the record
+	# carries, and the date on it. The record's own gate because consensus_solutions.go
+	# holds a whole pillar and one mutant list per file is how the others are kept
+	# readable.
+	python3 internal/mutate.py internal/store/consensus_solutions.go ./internal/store/ internal/store/consensus_decision_record_test.go internal/store/consensus_decision_record_mutants.json
 	python3 internal/mutate.py internal/governance/governance.go ./internal/governance/ internal/governance/governance_test.go internal/governance/consensus_mutants.json
 
 fmt:

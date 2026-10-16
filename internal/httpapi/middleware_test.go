@@ -63,6 +63,56 @@ func TestRateLimit(t *testing.T) {
 	}
 }
 
+func TestStaticAssetsAreExemptFromTheRateLimit(t *testing.T) {
+	// The limiter's worst case was a blank page. A visitor loading ~13 pages in a minute
+	// exhausts the budget, and when the request that overflows is an ASSET it answered
+	// JSON with `Content-Type: application/json` -- which a browser REFUSES to execute as
+	// a script, so the page rendered nothing at all: no error state, no content, and one
+	// console line saying the MIME type was wrong. This is the assertion that the asset
+	// keeps being served after the budget is spent, because a rate limiter that can blank
+	// a page is worse than the flood it prevents.
+	origLimiter := limiter
+	limiter = &rateLimiter{visitors: make(map[string]*visitorRate)}
+	origMax := maxRequests
+	maxRequests = func() int { return 2 }
+	defer func() {
+		limiter = origLimiter
+		maxRequests = origMax
+	}()
+
+	handler := rateLimit(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	ts := httptest.NewServer(handler)
+	defer ts.Close()
+
+	asset := ts.URL + "/assets/js/consensus.js"
+	api := ts.URL + "/api/v1/healthz"
+
+	// Spend the budget on the API, which is what the limit is for.
+	for i := 0; i < 3; i++ {
+		resp, err := http.Get(api)
+		if err != nil {
+			t.Fatalf("API GET %d: %v", i, err)
+		}
+		if i >= 2 && resp.StatusCode != http.StatusTooManyRequests {
+			t.Errorf("API request %d = %d, want 429: the budget was not spent", i, resp.StatusCode)
+		}
+	}
+	// The asset is served anyway, ten times over.
+	for i := 0; i < 10; i++ {
+		resp, err := http.Get(asset)
+		if err != nil {
+			t.Fatalf("asset GET %d: %v", i, err)
+		}
+		if resp.StatusCode != http.StatusOK {
+			t.Fatalf("asset request %d after the budget was spent = %d, want 200: "+
+				"a 429 here is a JSON body the browser refuses to run as a script",
+				i, resp.StatusCode)
+		}
+	}
+}
+
 func TestRateLimitPerVisitor(t *testing.T) {
 	// Fresh limiter; each visitor keyed by CF-Connecting-IP behind the
 	// loopback proxy must get its own bucket.

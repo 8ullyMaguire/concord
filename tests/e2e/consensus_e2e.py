@@ -252,7 +252,13 @@ def browser(server):
 
 @pytest.fixture()
 def page(browser):
-    ctx = browser.new_context()
+    # Its own rate-limit identity, like new_page below. The limiter keys on the client
+    # address, and this fixture's page loads (the HTML plus every asset plus the API reads)
+    # otherwise share the 127.0.0.1 bucket with every direct API call in the file -- so as
+    # the suite grew, the bucket ran dry MID-LOAD. Assets are exempt from the limiter now
+    # (see rateLimit), but the page's own HTML and reads are not, and a page that cannot
+    # read its call is a page that never leaves aria-busy.
+    ctx = browser.new_context(extra_http_headers={"X-Forwarded-For": "10.9.8.1"})
     pg = ctx.new_page()
     pg.errors = []
     pg.on("pageerror", lambda e: pg.errors.append("PAGEERROR: " + str(e)))
@@ -264,8 +270,14 @@ def page(browser):
 
 def open_call(pg, slug=SLUG, call=1):
     pg.goto(f"{BASE}/projects/{slug}/consensus?call={call}")
-    expect(pg.locator("#consensus-root")).to_have_attribute("aria-busy", "false",
-                                                            timeout=15000)
+    try:
+        expect(pg.locator("#consensus-root")).to_have_attribute("aria-busy", "false",
+                                                               timeout=15000)
+    except AssertionError as e:
+        # The page's own console output, attached to the failure. The JS catches its own
+        # read errors, so "the page never became ready" carries no reason on its own and
+        # costs a re-run (or an instrumented probe) to diagnose. This is the evidence.
+        raise AssertionError(f"{e}\npage errors: {getattr(pg, 'errors', None)}") from None
 
 
 def close_seeded_call(server):
@@ -279,7 +291,7 @@ def close_seeded_call(server):
     """
     status, out = api_allowing_error(
         BASE, "POST", f"/api/v1/projects/{SLUG}/consensus/1/close",
-        {}, token=closer_token(server))
+        {}, token=closer_token(server), client="10.9.10.2")
     # Idempotent on purpose. The server fixture is SESSION-scoped, so the first test
     # that closes call 1 closes it for every test after it. Making this tolerant of an
     # already-closed call keeps each test independent of execution order, rather than
@@ -446,9 +458,13 @@ def test_a_closed_call_reveals_the_tally(page, server):
     # logging in instead returns 401, because a user inserted by SQL has no password
     # and store.SetPassword hashes in Go. closer_token() registers over HTTP and grants
     # rights after.
+    # Its own rate-limit identity: the limiter keys on the client address, and every
+    # request from 127.0.0.1 shares one 100-per-minute bucket with the `page` fixture's
+    # loads. A 429 here reads as "closing a call is a conflict" and is a fixture
+    # spending a bucket it shares with the whole file.
     status, out = api_allowing_error(
         BASE, "POST", f"/api/v1/projects/{SLUG}/consensus/1/close",
-        {}, token=closer_token(server))
+        {}, token=closer_token(server), client="10.9.10.3")
     assert status == 200, f"closing the call answered {status}: {out}"
 
     open_call(page)
@@ -809,3 +825,216 @@ def seed_extra_open_call(db):
         return call
     finally:
         con.close()
+
+
+# --- §6.5's decision record, the chain, and §6.6's hold ------------------------
+#
+# Three surfaces that had routes, handlers and store tests and NO reader: /outcome
+# (which writes §6.5's decision record), /fallback (the pre-agreed fallback chain) and
+# /hold (the emergency hold). The coarse reader-inventory row for "/consensus" was
+# satisfied by any page that merely read a call, so nothing noticed -- and the record
+# could not have been written from the page anyway, because the route refused a call
+# that had been closed, which is the order the page itself produces.
+
+def seed_solution_call(server, slug=SLUG):
+    """A call about a SOLUTION, with a ranked arena behind it. Returns (call, ids).
+
+    §6.5's chain is the ARENA leaderboard, not the solutions table: ListSolutions reads
+    arena_entries, so a solution with no arena row is invisible to the chain (the same
+    way the feature page's first fixture rendered nothing and looked broken). The
+    ratings are chosen so the conservative score (r - 2*rd) orders them unambiguously.
+    """
+    db = server["db"]
+    con = sqlite3.connect(db)
+    try:
+        cur = con.cursor()
+        now = time.time()
+        pid = cur.execute(
+            "SELECT id FROM projects WHERE slug = ?", (slug,)).fetchone()[0]
+        author = cur.execute(
+            "SELECT id FROM users WHERE username = 'consensus-owner'").fetchone()[0]
+
+        feature = cur.execute(
+            "INSERT INTO features (project_id, author_id, title, body, effort, status,"
+            " strategic_weight, created_at, updated_at)"
+            " VALUES (?,?,?,?,'M','consensus',1,?,?)",
+            (pid, author, "Lossless export", "body", now, now)).lastrowid
+
+        def solution(title, kind):
+            return cur.execute(
+                "INSERT INTO solutions (feature_id, author_id, title, body, type,"
+                " relationship, status, created_at, updated_at)"
+                " VALUES (?,?,?,?,?,'exclusive','draft',?,?)",
+                (feature, author, title, "body", kind, now, now)).lastrowid
+
+        leader = solution("Rewrite the exporter", "build-new")
+        runner = solution("Document the workaround", "workaround")
+        baseline = solution("Do nothing", "do-nothing")
+
+        arena = cur.execute(
+            "INSERT INTO arenas (type, project_id, feature_id, question, created_at)"
+            " VALUES ('solution',?,?,?,?)",
+            (pid, feature, "Which approach should we build?", now)).lastrowid
+        for sid, rating, rd, base in ((leader, 1900.0, 30.0, 0),
+                                      (runner, 1200.0, 30.0, 0),
+                                      (baseline, 900.0, 360.0, 1)):
+            cur.execute(
+                "INSERT INTO arena_entries (arena_id, entity_type, entity_id, r, rd,"
+                " sigma, games, is_baseline, updated_at)"
+                " VALUES (?,'solution',?,?,?,0.06,0,?,?)",
+                (arena, sid, rating, rd, base, now))
+
+        call = cur.execute(
+            "INSERT INTO consensus_calls (project_id, feature_id, solution_id, opened_by,"
+            " summary, status, opens_at, closes_at)"
+            " VALUES (?,?,?,?,?,'open',?,?)",
+            (pid, feature, leader, author, "Adopt the rewritten exporter?",
+             now - 100, now + 7 * 86400)).lastrowid
+        con.commit()
+        return call, {"leader": leader, "runner": runner, "baseline": baseline}
+    finally:
+        con.close()
+
+
+def test_the_page_says_where_a_call_falls_back(browser, server):
+    """§6.5's chain, shown BEFORE the decision.
+
+    "If the call stalls or a block is upheld, the next-ranked solution is the pre-agreed
+    fallback." Pre-agreed is the whole word: the chain has to be readable while the call
+    is open, not only after it stalls. The call's own solution is deliberately absent --
+    falling back to what is already on the table is a no-op the store refuses.
+    """
+    call, _ = seed_solution_call(server)
+    pg = new_page(browser, "10.9.11.1")
+    try:
+        open_call(pg, call=call)
+        expect(pg.locator("#consensus-call")).to_be_visible(timeout=10000)
+        expect(pg.locator("#consensus-fallback")).to_be_visible(timeout=10000)
+        items = pg.locator("#fallback-chain li")
+        expect(items).to_have_count(2)
+        expect(items.nth(0)).to_contain_text("Document the workaround")
+        expect(items.nth(1)).to_contain_text("Do nothing")
+        # The baseline is marked as the baseline: it is ranked and never adopted, and a
+        # chain that presents "build nothing" as an ordinary alternative invites it.
+        expect(items.nth(1)).to_contain_text("baseline")
+    finally:
+        pg.close()
+
+    # And absent where there is no chain to show. Call 1 has no feature (the seed's
+    # calls are process decisions), so §6.5's ranking does not apply to it -- asserted
+    # in both directions, because a panel that renders wherever it likes is the same
+    # defect as one that never renders.
+    other = new_page(browser, "10.9.11.4")
+    seen = {}
+    other.on("response", lambda r: seen.__setitem__(r.url.split("/consensus/1/")[-1], r.status))
+    try:
+        open_call(other, call=1)
+        expect(other.locator("#consensus-call")).to_be_visible(timeout=10000)
+        expect(other.locator("#consensus-fallback")).to_be_hidden()
+        # Asserted on the RESPONSES rather than on the console. A closed-blocked call
+        # also asks §6.6's window for its state, and "there is no window" is a 404 by
+        # design (§20.3), which Chromium logs as a console error -- so a console
+        # assertion here would be asserting that the page never asks the question. What
+        # matters is that the chain is not requested at all for a call with no feature,
+        # and that the hold is asked for and answered.
+        assert seen.get("hold") == 200, seen
+        assert "fallback" not in seen, seen
+    finally:
+        other.close()
+
+
+def test_closing_a_call_leaves_the_decision_record_writable(browser, server):
+    """§6.8's close, THEN §6.5's decision, in the order the page produces them.
+
+    This is the defect the ninth pass fixed. The outcome route refused any call whose
+    status was not 'open', and the close sets status='closed' -- so §6.5's decision
+    record (positions, objections, remedies, the ranking it was decided against) could
+    be written only by NOT closing the call, while the page offered the close and
+    nothing else. Both facts now coexist: the verdict stays on `result`, the decision
+    lands on `outcome`.
+    """
+    call, _ = seed_solution_call(server)
+    token = closer_token(server)
+    pg = signed_in_page(browser, token, client="10.9.11.2")
+    try:
+        open_call(pg, call=call)
+        expect(pg.locator("#consensus-call")).to_be_visible(timeout=10000)
+
+        # §6.8: the close, from the page. Its "Recorded: ..." line is transient BY
+        # DESIGN -- the page re-reads, sees a closed call, and hides the whole close
+        # section -- so what is asserted is the effect: the verdict is on the meta line,
+        # and §6.5's panel appears on the now-closed call, which is this test's subject.
+        pg.click("#consensus-close-submit")
+        expect(pg.locator("#consensus-meta")).to_contain_text("result:", timeout=10000)
+        expect(pg.locator("#consensus-outcome")).to_be_visible(timeout=10000)
+        pg.click("#outcome-buttons [data-outcome='accepted']")
+        pg.fill("#consensus-outcome-summary", "the rewrite is cheaper than the workaround")
+        pg.click("#consensus-outcome-submit")
+
+        done = pg.locator("#consensus-outcome-done")
+        expect(done).to_be_visible(timeout=10000)
+        expect(done).to_contain_text("decision record is written")
+        # The record is NAMED, not merely announced: a decision that says "saved" is a
+        # decision nobody can find again.
+        expect(done).to_contain_text(f"call-{call}")
+
+        # Both facts are on the page after the re-read, and neither replaced the other.
+        meta = pg.locator("#consensus-meta")
+        expect(meta).to_contain_text("outcome: accepted")
+        # And the record is a project document a reader can open. Read through the API
+        # rather than asserted from the page's copy: the claim is that the RECORD exists
+        # as a document, and the page's own sentence is the thing under test.
+        status, docs = api_allowing_error(
+            BASE, "GET", f"/api/v1/projects/{SLUG}/documents?kind=adr", client="10.9.11.9")
+        assert status == 200, f"reading the documents answered {status}: {docs}"
+        slugs = [(d.get("kind"), d.get("slug")) for d in docs]
+        assert ("adr", f"call-{call}") in slugs, (
+            f"the decision record is not a project document: {slugs}")
+        # No console errors: this flow provokes none, and a page that logs one is a page
+        # that failed silently somewhere.
+        assert not pg.errors, pg.errors
+    finally:
+        pg.close()
+
+
+def test_a_suspended_call_says_so_and_resolves_nothing(browser, server):
+    """§6.6's hold, said out loud on the page.
+
+    A held call looks entirely ordinary: the close control is offered, the position
+    buttons are offered, and every one of them is refused. The page reads the hold so it
+    can say why -- and the refusal that follows is the server's, not a client-side
+    guess.
+    """
+    call, _ = seed_solution_call(server)
+    token = closer_token(server)
+    con = sqlite3.connect(server["db"])
+    try:
+        now = time.time()
+        owner = con.execute(
+            "SELECT id FROM users WHERE username = 'consensus-owner'").fetchone()[0]
+        pid = con.execute("SELECT id FROM projects WHERE slug = ?", (SLUG,)).fetchone()[0]
+        con.execute(
+            "INSERT INTO emergency_holds (project_id, call_id, held_by, reason, grounds,"
+            " created_at, expires_at) VALUES (?,?,?,?,?,?,?)",
+            (pid, call, owner, "a live vulnerability in the exporter", "security",
+             now, now + 7 * 86400))
+        con.commit()
+    finally:
+        con.close()
+
+    pg = signed_in_page(browser, token, client="10.9.11.3")
+    try:
+        open_call(pg, call=call)
+        hold = pg.locator("#consensus-hold")
+        expect(hold).to_be_visible(timeout=10000)
+        expect(hold).to_contain_text("emergency hold")
+        expect(hold).to_contain_text("security")
+
+        # And the hold is a real refusal, not a caption: the close is refused by the
+        # server with the hold named.
+        pg.click("#consensus-close-submit")
+        err = pg.locator("#consensus-close-error")
+        expect(err).to_be_visible(timeout=10000)
+        expect(err).to_contain_text("emergency hold")
+    finally:
+        pg.close()

@@ -5,10 +5,26 @@ For the implementing agent taking over from here. Read this, then
 then `docs/ARCHITECTURE.md`. `docs/PLAN.md` covers the pre-r4 milestones (all
 complete) and `docs/concord-spec.md` is superseded — do not plan from either.
 
-**What is left is `docs/REMAINING.md` §20.7** (measured 2026-10-16, eighth pass).
+**What is left is `docs/REMAINING.md` §21.6** (measured 2026-10-16, ninth pass).
 Everything before it in that file is history, and §1/§4/§11 are explicitly marked
 superseded — §11's "nothing else is outstanding" was verified by hand and was wrong
 twice over. If a tracker and the tree disagree, the tree wins and the tracker is the bug.
+
+**§6.5's decision record was made unwritable by §6.8's close** (§21). The close writes the
+verdict and sets `status='closed'`; the route that writes the ADR refused any call that was
+not `open` — so the record could be written only by NOT closing the call, while the page
+offered the close and nothing else. Both orders work now: the verdict stays on `result`,
+the decision lands on `outcome`, and a second decision is still refused. The record also
+carries **the ranking the decision was made against** (§21.2) — §6.5's "the ranking is the
+fallback chain", so the runner-up is marked as the pre-agreed fallback and "why this and not
+the runner-up" is answerable from the record instead of from memory. Found in the same
+pass: `/outcome`, `/fallback` and `/hold` all had handlers, store tests and **no reader**
+(hidden by a coarse reader-inventory row that any page reading a call satisfies — the
+fourth, fifth and sixth time that shape has cost this repository); the hold handler did not
+check that the call belonged to the project in the URL, so a hold's grounds were readable
+through any project's URL; recording an outcome required only a session although it closes
+the call and moves the board; and it ignored §6.6's hold, which made the pause walk-able by
+choosing a different menu item.
 
 **§6.6's override is now the second window the spec describes** (§20, spec:
 `docs/specs/override-window-spec.md`). §19 had made a first-window close compute the
@@ -61,7 +77,7 @@ store tests and no page.
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 991 tests, schema 26, 81 tables,
+Measured, not remembered: `make verify` green, 1003 tests, schema 26, 81 tables,
 26 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 

@@ -573,8 +573,185 @@
     }).catch(overrideFailure);
   }
 
+  // --- §6.5: the chain, the hold, and the decision ---------------------------
+
+  var holdEl = $('consensus-hold');
+  var fallbackEl = $('consensus-fallback');
+  var fallbackChainEl = $('fallback-chain');
+  var outcomeEl = $('consensus-outcome');
+  var outcomeButtons = $('outcome-buttons');
+  var outcomeSummary = $('consensus-outcome-summary');
+  var outcomeFallbackWrap = $('consensus-outcome-fallback');
+  var outcomeFallbackSel = $('consensus-outcome-fallback-select');
+  var outcomeAmendWrap = $('consensus-outcome-amend');
+  var outcomeAmendTitle = $('consensus-outcome-amend-title');
+  var outcomeAmendBody = $('consensus-outcome-amend-body');
+  var outcomeSubmit = $('consensus-outcome-submit');
+  var outcomeErr = $('consensus-outcome-error');
+  var outcomeDone = $('consensus-outcome-done');
+
+  /* The chain as the server ordered it, and the outcome about to be recorded. Both
+     live here rather than in the DOM so the two routes cannot disagree: the select's
+     options and the request body are the same list. */
+  var chain = [];
+  var outcomeChoice = '';
+  var currentCall = {};
+
+  function solURL(suffix) {
+    return '/api/v1/projects/' + encodeURIComponent(slug) +
+      '/consensus/' + encodeURIComponent(callID) + (suffix || '');
+  }
+
+  function getJSON(url) {
+    return fetch(url, { headers: headers() }).then(function (r) {
+      return r.text().then(function (txt) {
+        var data = {};
+        try { data = txt ? JSON.parse(txt) : {}; } catch (e) { data = {}; }
+        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+        return data;
+      });
+    });
+  }
+
+  // §6.6's hold, read rather than inferred. A call whose every write is refused and
+  // which says nothing about why is the state this exists to prevent.
+  function loadHold() {
+    if (!holdEl) return;
+    getJSON(solURL('/hold')).then(function (data) {
+      var hold = data.hold;
+      if (!hold) { show(holdEl, false); return; }
+      var until = hold.expires_at
+        ? new Date(hold.expires_at * 1000).toISOString().slice(0, 10) : '';
+      holdEl.textContent = 'This call is suspended by an emergency hold (' +
+        (hold.grounds || 'unspecified') + ' ground)' + (until ? ' until ' + until : '') +
+        '. Nothing resolves it — not a close, not an outcome — while the hold stands.';
+      show(holdEl, true);
+    }).catch(function () { show(holdEl, false); });
+  }
+
+  // §6.5's chain before the decision. The list is rendered in the server's order and
+  // never sorted here: the chain IS the ranking, and a client that reordered it would
+  // be inventing a different fallback.
+  function loadFallback() {
+    if (!fallbackEl) return;
+    getJSON(solURL('/fallback')).then(function (data) {
+      chain = data.fallback || [];
+      fallbackChainEl.innerHTML = '';
+      if (!chain.length) { show(fallbackEl, false); return; }
+      for (var i = 0; i < chain.length; i++) {
+        var s = chain[i];
+        var li = document.createElement('li');
+        li.className = 'fallback-entry' + (s.is_baseline ? ' fallback-baseline' : '');
+        li.textContent = (s.title || ('solution ' + s.solution_id)) +
+          ' — score ' + Math.round(s.score) +
+          (s.is_baseline ? ' (the baseline: build nothing)' : '');
+        fallbackChainEl.appendChild(li);
+      }
+      show(fallbackEl, true);
+      renderFallbackOptions();
+    }).catch(function () {
+      // A call that is not about a solution has no chain: §6.5's ranking is per
+      // feature. The server says so; the page shows nothing rather than an error.
+      chain = [];
+      show(fallbackEl, false);
+    });
+  }
+
+  /* The fall-back select: the chain minus the baseline. §6.5 lists "fall back to #2"
+     and "rejected (baseline wins)" as separate outcomes, so the baseline is spelled
+     "Rejected" and must not appear here as a second way to say it. */
+  function renderFallbackOptions() {
+    if (!outcomeFallbackSel) return;
+    var keep = outcomeFallbackSel.value;
+    outcomeFallbackSel.innerHTML = '';
+    for (var i = 0; i < chain.length; i++) {
+      if (chain[i].is_baseline) continue;
+      var o = document.createElement('option');
+      o.value = chain[i].solution_id;
+      o.textContent = chain[i].title || ('solution ' + chain[i].solution_id);
+      outcomeFallbackSel.appendChild(o);
+    }
+    if (keep) outcomeFallbackSel.value = keep;
+  }
+
+  // outcomeControls offers §6.5's five outcomes, and only where they mean something:
+  // a call about a solution (§6.5's subject) that has no outcome yet. A process
+  // decision -- a hold confirmation, a charter amendment -- has no solution to decide
+  // about, and a call whose outcome is recorded cannot be decided twice.
+  function outcomeControls(call) {
+    if (!outcomeEl) return;
+    var solvable = !!call.solution_id;
+    if (!token() || !solvable || call.outcome) { show(outcomeEl, false); return; }
+    show(outcomeEl, true);
+  }
+
+  function chooseOutcome(o) {
+    outcomeChoice = o;
+    if (outcomeButtons) {
+      var btns = outcomeButtons.querySelectorAll('.outcome-btn');
+      for (var i = 0; i < btns.length; i++) {
+        var mine = btns[i].getAttribute('data-outcome') === o;
+        btns[i].setAttribute('aria-pressed', mine ? 'true' : 'false');
+        if (mine) btns[i].classList.add('is-active'); else btns[i].classList.remove('is-active');
+      }
+    }
+    // The two outcomes with extra fields reveal them; every other outcome hides both,
+    // so a stale answer cannot ride along in the request.
+    show(outcomeFallbackWrap, o === 'fall-back');
+    show(outcomeAmendWrap, o === 'accepted-with-amendments');
+  }
+
+  function submitOutcome() {
+    if (!outcomeChoice) {
+      outcomeErr.textContent = 'Choose an outcome first.';
+      show(outcomeErr, true);
+      return;
+    }
+    var body = { outcome: outcomeChoice };
+    if (outcomeSummary.value.trim()) body.summary = outcomeSummary.value.trim();
+    if (outcomeChoice === 'fall-back') {
+      body.fallback_to = parseInt(outcomeFallbackSel.value, 10) || 0;
+    }
+    if (outcomeChoice === 'accepted-with-amendments') {
+      body.amendment = {
+        title: outcomeAmendTitle.value.trim(),
+        body: outcomeAmendBody.value.trim(),
+        type: 'build-new'
+      };
+    }
+    outcomeSubmit.disabled = true;
+    show(outcomeErr, false);
+    show(outcomeDone, false);
+    fetch(solURL('/outcome'), {
+      method: 'POST',
+      headers: overrideHeaders(),
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      return r.text().then(function (txt) {
+        var data = {};
+        try { data = txt ? JSON.parse(txt) : {}; } catch (e) { data = {}; }
+        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
+        return data;
+      });
+    }).then(function () {
+      outcomeSubmit.disabled = false;
+      // The record is named rather than described: a decision that says "saved" is a
+      // decision nobody can find again.
+      outcomeDone.innerHTML = 'The decision record is written: ' +
+        '<a href="/projects/' + encodeURIComponent(slug) + '/documents">' +
+        esc('Decision ' + callID) + '</a>, kind adr, slug call-' + esc(callID) + '.';
+      show(outcomeDone, true);
+      load();
+    }).catch(function (e) {
+      outcomeSubmit.disabled = false;
+      outcomeErr.textContent = e.message;
+      show(outcomeErr, true);
+    });
+  }
+
   function render(data) {
     var call = data.call || {};
+    currentCall = call;
     $('consensus-question').textContent =
       call.question || call.summary || 'Untitled call';
     renderMeta(call);
@@ -583,6 +760,17 @@
     renderObjections(data.objections, data.tally_visible === true);
     closeControls(call);
     overrideControls(call);
+    // §6.6's hold and §6.5's chain are separate reads, because neither is part of
+    // the call: a hold is its own record and the chain is the feature's ranking.
+    loadHold();
+    // The chain belongs to a FEATURE (§6.5's ranking is the feature's solution
+    // arena). A call with no feature -- a §6.6 process decision, or a call opened
+    // before solutions existed -- has no chain, and asking anyway is a 400 in the
+    // reader's console for the ordinary case. The test that asserts the chain is
+    // absent there is also the test that keeps this from being a silent gap.
+    if (call.feature_id) loadFallback();
+    else show(fallbackEl, false);
+    outcomeControls(call);
     show(callEl, true);
 
     // Signed out: read-only, with a prompt where each write control would be.
@@ -738,6 +926,18 @@
       });
     }
   }
+
+  // §6.5's decision: the outcome buttons carry the value they submit, and the
+  // submit is the only thing that talks to /outcome.
+  if (outcomeButtons) {
+    var uBtns = outcomeButtons.querySelectorAll('.outcome-btn');
+    for (var k = 0; k < uBtns.length; k++) {
+      uBtns[k].addEventListener('click', function (ev) {
+        chooseOutcome(ev.currentTarget.getAttribute('data-outcome'));
+      });
+    }
+  }
+  if (outcomeSubmit) outcomeSubmit.addEventListener('click', submitOutcome);
 
   load();
 })();

@@ -5,8 +5,8 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state:** schema 26 · 26 migrations · 81 live tables · 991 Go tests across
-9 test-bearing packages · 274 e2e tests in 19 suite files · 12/12 UI mutants killed ·
+**Measured state:** schema 26 · 26 migrations · 81 live tables · 1003 Go tests across
+9 test-bearing packages · 277 e2e tests in 19 suite files · 16/16 UI mutants killed (7 audit.js, 9 consensus.js) ·
 `make verify` exit 0, `make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
@@ -737,8 +737,8 @@ Three `wait_for_timeout` calls remain in e2e, all marked `BOUNDED (justified)` b
 §11 and everything above it are history. §1, §4 and §11 are marked superseded; this
 section is the current answer, and like §11 every line was checked against the code.
 
-**Measured state:** schema 26 · 26 migrations · 81 live tables · **991 Go tests** across
-9 test-bearing packages · **274 e2e tests in 19 suite files** · **12/12 UI mutants** killed ·
+**Measured state:** schema 26 · 26 migrations · 81 live tables · **1003 Go tests** across
+9 test-bearing packages · **277 e2e tests in 19 suite files** · **16/16 UI mutants** killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 ### 12.1 How the remaining work was found (it was not in any tracker)
@@ -2080,7 +2080,7 @@ Measured 2026-10-16, eighth pass. Nothing below is remembered.
 
 | Check | Result |
 |---|---|
-| `make verify` | exit 0 — vet, 991 Go tests in 9 test-bearing packages, build, doc-number gate, e2e-sync gate |
+| `make verify` | exit 0 — vet, 1003 Go tests in 9 test-bearing packages, build, doc-number gate, e2e-sync gate |
 | `make e2e` | exit 0 — 274 e2e tests in 19 suite files, then 12/12 UI mutants killed |
 | Go mutants (`make gates`) | **every gate clean, 0 survived, 0 not applicable** — see §20.6 for what it took to make that line mean something |
 | UI mutants | 7/7 for `audit.js` and 5/5 for `consensus.js` = 12/12 (two new: the window shown on any call, and the window's state never read), source restored byte-identical |
@@ -2153,3 +2153,185 @@ ungated number gets introduced. 16 measured numbers now, 2 of them new.
 5. Deliberate, unchanged: `admin-ledger` and `metrics` have no UI; the criteria page
    defers pair suggestion, a per-criterion leaderboard and deleting a criterion; a
    standalone composite-rank view is a page of its own.
+
+
+---
+
+## 21. 2026-10-16 (ninth pass): §6.5's decision record, which the close made unwritable
+
+This pass started from the placeholder PLAN-r4 has carried since 2026-10-05: *"R4's
+`decision_records` ... the part of the outcome a reader most needs later -- why we did this
+instead of the runner-up -- is recorded nowhere."* The record existed by then, as a
+`project_documents` row of kind `adr`. What the note described was still true, and the
+reason was worse than a missing field.
+
+### 21.1 Two facts the code made mutually exclusive
+
+- §6.8 gives the maintainer "close consensus", and the close writes the verdict. It sets
+  `status = 'closed'`.
+- §6.5 says *"the call's result, positions, objections, and remedies are auto-written into
+  a decision record (ADR) attached to the feature"*. `RecordCallOutcome` writes exactly
+  that — and it refused any call whose status was not `open`.
+
+So the maintainer's own close was what made the record unwritable. Measured first, against
+the code as it stood:
+
+```
+FAIL: RecordCallOutcome after a close: conflicts with current state: call 1 is already closed
+FAIL: the decision record does not mention "Document the workaround"   # the runner-up
+```
+
+The page offered the close and nothing else: no reader anywhere called `/outcome`, which is
+the third instalment of this repository's most expensive shape. The record was reachable
+only by **not** closing the call — the opposite of "auto-written".
+
+**Fixed** by making the guard say what it is for. It is not "this call is open", it is "this
+call is already decided":
+
+```go
+if call.Outcome != nil {   // was: if call.Status != "open"
+```
+
+Both orders now work and neither erases the other: the verdict stays on `result`, the
+decision on `outcome`. A second outcome is still refused — which was always the guard's
+real concern, since a second one would overwrite the first and move the board under it.
+
+### 21.2 The record said what was chosen and never why
+
+§6.5's next sentence is *"the ranking is the fallback chain. If the call stalls or a block
+is upheld, the next-ranked solution is the pre-agreed fallback."* The record carried the
+outcome, the positions, the objections and the remedies — and not the ranking, so "why this
+and not the runner-up" had no answer in it.
+
+The record now carries **the ranking the decision was made against**: rank, title, score,
+rating, coverage and distinct voters for each solution, with the one the call was about
+marked *adopted*/*not adopted*, the runner-up marked **the pre-agreed fallback**, and the
+baseline last, marked *ranked, never adopted*. It is a **snapshot** — the arena keeps
+moving, and a chain asked for a year later answers "what would we do now" rather than "why
+this, then". `- **Fell back to:**` names the solution (`Document the workaround (#7)`), not
+its id.
+
+Two smaller things in the same function:
+
+- **The record claimed the epoch.** `- **Closed at:**` read `call.ClosedAt`, and in the only
+  order that worked (record a call that was never closed) that column is still NULL, so
+  every such record was dated `1970-01-01T00:00:00Z`. It is now `- **Decided at:**` from
+  the timestamp of the write, passed in rather than read off a row that has not been
+  updated yet.
+- **An objection's `resolution` was never in the record** even though §17.3 requires one to
+  be recorded with its reason and the column has been written since 0001. The record shows
+  it under the objection now.
+
+### 21.3 Three routes with no reader, and one of them leaked
+
+`/outcome`, `/fallback` and `/hold` all rode the coarse `"/consensus"` reader-inventory
+row — the row that is satisfied by *any page that merely reads a call*, which is the row
+that already hid `/close` and §6.6's window in earlier passes. Each now has its own row,
+with an anchor in `consensus.js` and a counted route total, and the page reads all three:
+
+| Surface | What the page does with it |
+|---|---|
+| `GET …/fallback` | §6.5's chain, rendered **while the call is open** — "pre-agreed" means knowable before the decision, not after it stalls |
+| `POST …/outcome` | **Record the decision**: the five outcomes, the fall-back picker (the chain minus the baseline, because `rejected` is §6.5's "the baseline wins"), the amendment fields, and the name of the record it wrote |
+| `GET …/hold` | §6.6's hold, said out loud: a suspended call looks entirely ordinary while every write is refused |
+
+**The hold handler did not check that the call belonged to the project in the URL.** It
+resolved `{call_id}` and read the hold, so a hold's *grounds* and expiry were readable
+through **any** project's URL by anyone who could read that project. Ids are sequential;
+the URL was the only thing naming which call was meant. It now resolves the call through
+the same guard every sibling route uses.
+
+### 21.4 Two more routes that answered to a session rather than a role
+
+- **`POST …/outcome` accepted any account.** Recording an outcome *closes the call* and
+  moves the board — the adopted solution to `ready`, the displaced one to `rejected`. That
+  is §6.8's "close consensus" with a different verb, and it was open to any session while
+  the close route beside it required a maintainer. It requires the maintainer now, and a
+  test names the role in the refusal.
+- **It ignored §6.6's hold.** The hold suspends a call; an outcome resolves one. The close
+  and the override window both refuse a held call for exactly this reason, so leaving this
+  route open made the hold walk-able by choosing a different menu item. Refused now, with
+  the grounds and the expiry in the message.
+
+### 21.5 Verification
+
+| Check | Result |
+|---|---|
+| `make verify` | exit 0 — vet, the Go suites, build, doc-number gate, e2e-sync gate |
+| `make e2e` | exit 0 — 277 e2e tests in 19 suite files, then 16/16 UI mutants killed (9 of them the consensus page's) |
+| `make gates` | every gate clean; the new decision-record gate is 8/8 killed |
+| Reader inventory | `/outcome`, `/fallback` and `/hold` have their own rows; the coarse row is 4 |
+| Schema | 26 · 26 migrations · 81 tables — **unchanged**: this pass needed no migration, because every column it writes has existed since 0001–0013 |
+
+The mutation gate earned its keep on the new tests: mutating the row marker (*"the record
+stops saying which alternative is the agreed fallback"*) **survived**, because the
+assertion asked whether the words appear anywhere in the document and the paragraph under
+the table also contains them. The assertion is now on the runner-up's own row, and the
+survivor is killed. Same lesson as §20.6, one layer deeper: *where* a string is matters as
+much as whether it is there.
+
+### 21.6 What is left, after this pass
+
+1. Everything in §20.7, unchanged.
+2. **A call closed with no outcome recorded writes no decision record.** That is the
+   design and not an oversight — §6.5's five outcomes include choices the verdict cannot
+   derive ("fall back to #2", "sent back", "accepted with amendments"), so the record is a
+   decision a maintainer makes, not a rendering of the tally — but it does mean a project
+   that never records outcomes has calls with no ADR. The page now offers the control on
+   every solution call that has no outcome, which is the most that can be done without
+   inventing the decision.
+3. **The outcome panel is offered to anyone signed in**, and refused by the server to
+   everyone but a maintainer. That is the house rule (a client-side role check is a claim
+   it cannot verify), and it is worth restating here because the refusal is the only thing
+   standing between the control and the rule.
+4. **`rejected` and "fall back to the baseline" are two spellings kept apart on purpose**:
+   the fall-back picker hides the baseline, because §6.5 lists them as different outcomes.
+
+### 21.7 The other two hold routes: one wrote across projects, the other answered 404 for everyone
+
+The hold had a third and fourth defect, found by asking the question §21.1 asks, of the
+route §21.3 had just given a reader. Measured first, both against the tree as it stood:
+
+```
+FAIL: a maintainer of project B suspended project A's call through B's URL (201 Created):
+      {"hold":{"id":1,"project_id":1,"call_id":1,"held_by":1,"grounds":"legal",...}}
+FAIL: the project's own maintainer could not lift its hold = 404: {"error": "not found"}
+```
+
+**`POST …/consensus/{call_id}/hold` asked for the role against the project in the URL** and
+then loaded the call by its id alone, writing the hold to `call.ProjectID`. A maintainer of
+any project could therefore suspend **any other project's call** by asking through their own
+project's URL — and the write landed on the right row, carrying the right project id, which
+is exactly what made it look correct. §8.1 reserves this power to the maintainer as *"the
+only content-level power a maintainer keeps"*.
+
+**`POST /api/v1/emergency-holds/{hold_id}/release` could not be used by anyone.** It asked
+for a role against `chi.URLParam(r, "project_id")`, and that path has no project in it: the
+slug resolved to the empty string, `requireProjectID` answered 404, and every caller got the
+same 404 — including the project's own maintainer. It sat behind an inventory row that
+explained why no *page* called it ("an operator releases a hold out of band"), which is true
+and was also the reason nobody noticed that **no one** could call it. Behind that defect the
+second one was waiting: it released the hold **by id alone**, so had the URL carried a
+project it would have lifted another project's security or legal embargo on a role from an
+unrelated project.
+
+**One guard, not two more patches.** The two halves of a call URL are independent
+parameters — `{project_id}` names a project, `{call_id}` names a call, and the router does
+not tie them together — so *every* handler that resolves a role against one and a row
+against the other is open, and patching the two that had been exploited leaves the next one
+to be written. `callerCall` now resolves the call and proves it belongs to the URL's project
+in one place, and every route that names a call goes through it: `GET /consensus`,
+`GET|POST …/hold`, `POST …/close`, `POST …/position`, `POST …/objection`, `POST …/outcome`,
+`GET …/fallback` and the override window's three. The two that answered **403** for a call
+from another project answer **404** now — a 403 confirms the id is real, which is the reason
+the read routes already said 404.
+
+The release route resolves the hold first and asks for the maintainer role on **the hold's
+own project**, which is the only project that can lift it. It also requires a written reason
+now: its own doc comment has said "recording why" all along while the ledger recorded an
+empty string for anyone who sent one.
+
+**A route nothing calls has no test for whether it can be called at all.** That is the
+lesson the release route teaches, and it generalises past pages: the reader inventory's
+"no page calls this" rows are honest reasons, but they are not evidence that the route works
+— the API test is. There is one for the hold's whole lifecycle now.

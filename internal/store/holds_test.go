@@ -212,6 +212,40 @@ func TestExpiryOpensAConfirmationVote(t *testing.T) {
 	}
 }
 
+func TestAHoldCannotBeFiledAgainstAnotherProjectsCall(t *testing.T) {
+	// The API's cross-project guard has a store-level counterpart, because the store is
+	// the last point before the row: it took a project id and a call id and verified only
+	// that the CALL existed, so a hold naming one project while suspending another's call
+	// was representable. The hold's whole accountability story -- the ledger entry, the
+	// audit row, the project whose maintainer may lift it -- hangs off that pair being the
+	// same project.
+	store, pid, uid, callID := holdFixture(t)
+	ctx := context.Background()
+	other, err := store.CreateProject(ctx, uid, "another-project", "Another", "d",
+		"collective", "MIT")
+	if err != nil {
+		t.Fatalf("CreateProject: %v", err)
+	}
+	if other.ID == pid {
+		t.Fatalf("the fixture's two projects are the same row (%d)", pid)
+	}
+	_, err = store.PlaceEmergencyHold(ctx, other.ID, callID, uid, "legal", "their subpoena", 7)
+	if err == nil {
+		t.Fatal("a hold was filed under one project against another project's call")
+	}
+	if !errors.Is(err, ErrInvalid) {
+		t.Errorf("the refusal is %v; want ErrInvalid, which the API maps to 400", err)
+	}
+	// And nothing was written: no hold exists for the call at all.
+	held, err := store.ActiveHoldForCall(ctx, callID)
+	if err != nil {
+		t.Fatalf("ActiveHoldForCall: %v", err)
+	}
+	if held != nil {
+		t.Errorf("a refused hold is active on call %d (hold %d)", callID, held.ID)
+	}
+}
+
 func TestReleaseEmergencyHoldRecordsReason(t *testing.T) {
 	store, pid, uid, callID := holdFixture(t)
 	ctx := context.Background()

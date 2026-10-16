@@ -106,8 +106,25 @@ func (l *rateLimiter) pruneIdle(now time.Time, idleFor time.Duration) {
 }
 
 // rateLimit middleware limits requests per visitor (100/min).
+//
+// Static assets are EXEMPT, and the reason is a failure this middleware produced. A
+// visitor loading ~13 pages in a minute exhausts the 100-request budget, and the request
+// that finally overflows is often an ASSET -- which then answered 200 bytes of JSON with
+// `Content-Type: application/json`. A browser refuses to execute a script served that way
+// ("its MIME type is not executable"), so the page rendered NOTHING: no error state, no
+// content, one console line, and every subsequent read on that page dead. Found by the
+// consensus page's browser suite, which had grown to the point where a page load crossed
+// the budget mid-load and the failure looked like a hung page.
+//
+// A rate limiter whose worst case is a blank screen is worse than the flood it prevents,
+// and the assets are the cheapest thing on this server to keep answering: they are embedded
+// in the binary, served from memory, and carry an ETag so a repeat load is a 304.
 func rateLimit(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if strings.HasPrefix(r.URL.Path, "/assets/") {
+			next.ServeHTTP(w, r)
+			return
+		}
 		key := clientKey(r)
 		now := time.Now()
 

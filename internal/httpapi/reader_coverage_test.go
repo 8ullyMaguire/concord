@@ -82,8 +82,26 @@ var readerInventory = []readerRow{
 	{Match: "/api/v1/projects/{project_id}/consensus/{call_id}/override", Reader: "consensus.js",
 		Anchor: "/override", Routes: 4,
 		Note: "§6.6's override window: open, read, vote, close"},
+	// §6.5's three per-call surfaces, split out of the coarse row for the same reason
+	// as the two above: they are what a SOLUTION call is decided with, and "a page that
+	// reads a call" satisfied the row that hid them.
+	//
+	// The decision record is the one that matters most. It is written by /outcome, and
+	// until this pass that route refused any call that had been closed -- which is the
+	// order the page itself produces -- so §6.5's record was writable only by not
+	// closing the call, and no reader existed to notice.
+	{Match: "/api/v1/projects/{project_id}/consensus/{call_id}/outcome", Reader: "consensus.js",
+		Anchor: "/outcome", Routes: 1,
+		Note: "§6.5's five outcomes: the decision record attached to the feature is written here"},
+	{Match: "/api/v1/projects/{project_id}/consensus/{call_id}/fallback", Reader: "consensus.js",
+		Anchor: "/fallback", Routes: 1,
+		Note: "§6.5's pre-agreed fallback chain, read BEFORE the decision"},
+	{Match: "/api/v1/projects/{project_id}/consensus/{call_id}/hold", Reader: "consensus.js",
+		Anchor: "/hold", Routes: 2,
+		Note: "§6.6's emergency hold: the page says why a suspended call resolves nothing"},
 	{Match: "/api/v1/projects/{project_id}/consensus", Reader: "consensus.js", Anchor: "/consensus",
-		Routes: 8},
+		Routes: 4,
+		Note: "open a call, read it, take a position, raise an objection"},
 	{Match: "/api/v1/projects/{project_id}/criteria-profiles", Reader: "criteria.js",
 		Anchor: "/criteria-profiles", Routes: 2, Note: "saved weightings: list and create"},
 	{Match: "/api/v1/projects/{project_id}/criteria", Reader: "criteria.js", Anchor: "/criteria",
@@ -141,7 +159,7 @@ var readerInventory = []readerRow{
 	{Match: "/api/v1/taxonomy", Reader: "taxonomy.js", Anchor: "/taxonomy", Routes: 4},
 	// --- surfaces that are not a page's business ------------------------------
 	{Match: "/api/v1/hooks", Routes: 1, Note: "a forge POSTs here; nothing in the browser may"},
-	{Match: "/api/v1/emergency-holds", Routes: 1, Note: "an operator releases a hold out of band; the ledger records it"},
+	{Match: "/api/v1/emergency-holds", Routes: 1, Note: "an operator releases a hold out of band; the ledger records it. This route had NO caller AND a project id its URL does not carry, so it answered 404 for everyone and nothing could notice -- the API test is the caller of record now (§21.7)"},
 	{Match: "/api/v1/healthz", Routes: 1, Note: "the deploy probe and make deploy read it"},
 	{Match: "/api/v1/version", Routes: 1, Note: "deploy tooling; every JS hit for 'version' is a cache-buster, not this route"},
 	{Match: "/api/v1/admin-ledger", Routes: 1, Note: "deliberate: no UI (REMAINING §11)"},

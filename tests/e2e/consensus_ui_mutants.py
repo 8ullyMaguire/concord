@@ -28,6 +28,25 @@ WHY EACH MUTANT IS HERE, and what it would have looked like shipping:
   read                                 no stance buttons, no result -- the page offering a
                                        window it never looked at. This is the read that makes
                                        the section stateful rather than a static claim.
+
+§6.5's decision, its chain, and §6.6's hold (ninth pass). Three routes -- /outcome,
+/fallback, /hold -- had handlers, store tests and NO reader, and the coarse
+reader-inventory row for "/consensus" was satisfied by any page that read a call:
+
+  the fallback chain is never         §6.5's "pre-agreed fallback" is agreed only if a reader
+  rendered                            can see it while the call is OPEN. A chain that appears
+                                      after the call stalls is not an agreement, it is a
+                                      post-mortem, and the ranking is the one thing a voter
+                                      needs to know before deciding.
+  the decision panel is never         the record becomes unwritable from the browser, which is
+  offered                             how it was: /outcome existed, was refused for any closed
+                                      call, and nothing on any page called it.
+  the decision is never sent          the page collects an outcome and posts an empty body: the
+  (the body is empty)                 server answers 400 and the reader is told their decision
+                                      was recorded nowhere, or worse, a default lands.
+  the hold is never shown             a suspended call looks entirely ordinary -- close offered,
+                                      positions offered, every write refused -- and the reader is
+                                      left to guess why.
 """
 
 import os
@@ -60,6 +79,18 @@ MUTANTS = [
     ("the window's own state is never read",
      "    show(overrideEl, true);\n    loadOverride();",
      "    show(overrideEl, true);"),
+    ("the fallback chain is never rendered",
+     "      show(fallbackEl, true);\n      renderFallbackOptions();",
+     "      renderFallbackOptions();"),
+    ("the decision panel is never offered",
+     "    show(outcomeEl, true);\n  }",
+     "    show(outcomeEl, false);\n  }"),
+    ("the decision is never sent",
+     "    var body = { outcome: outcomeChoice };",
+     "    var body = {};"),
+    ("the hold is never shown",
+     "      show(holdEl, true);\n    }).catch(function () { show(holdEl, false); });",
+     "      show(holdEl, false);\n    }).catch(function () { show(holdEl, false); });"),
 ]
 
 

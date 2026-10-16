@@ -236,6 +236,38 @@ Its own section on this page, shown only for a call that closed `blocked`:
 The client derives nothing: not who may act, not the ratio, not the verdict. Every one of
 those is the server's answer, quoted.
 
+### 5.5 §6.5's decision, the fallback chain, and §6.6's hold (added 2026-10-16, §21)
+
+Three routes had handlers, store tests and no reader. All three are on this page now,
+and each is read rather than inferred:
+
+- **`GET …/consensus/{call_id}/fallback` — "If this call stalls or is blocked".**
+  §6.5: *"the next-ranked solution is the pre-agreed fallback"*. `pre-agreed` is the
+  whole word: the chain is rendered **while the call is open**, strongest first with the
+  baseline last and marked as the baseline (ranked, never adopted). The call's own
+  solution is absent by the server's own rule — falling back to what is on the table is a
+  no-op the store refuses. **Requested only for a call that has a feature**: a §6.6
+  process decision has no ranking, and asking anyway is a 400 in the reader's console for
+  the ordinary case.
+- **`POST …/consensus/{call_id}/outcome` — "Record the decision"**, offered on a call
+  about a solution that has no outcome yet, to anyone signed in (the server requires
+  §6.8's maintainer and says so). Five outcomes, the summary the record keeps, a fall-back
+  picker drawn from the chain **minus the baseline** (that is §6.5's "rejected — the
+  baseline wins", a different outcome, and two spellings of one thing is one too many),
+  and the amendment fields for "accepted with amendments". The confirmation names the
+  record it wrote (`kind adr`, `slug call-N`) and links to the documents page, and it is
+  the one element kept OUTSIDE the section: the panel hides itself once the call carries
+  an outcome, so a confirmation kept inside would be hidden the moment it was written.
+- **`GET …/consensus/{call_id}/hold` — the emergency hold.** A suspended call resolves
+  nothing (close, window and outcome are all refused) and otherwise looks entirely
+  ordinary. The page says which ground the hold rests on and when it expires, so a reader
+  who finds every control refused is told why.
+
+"Record the decision" is not "Close the call" twice. A close writes §6.8's **verdict on
+the call**; the outcome records **what the call decided about the solution** — a call can
+pass and still fall back to #2, which is why the two live in separate columns and why both
+are on the page at once. Neither erases the other, and neither can be recorded twice.
+
 ---
 
 ## 6. Out of scope, deliberately

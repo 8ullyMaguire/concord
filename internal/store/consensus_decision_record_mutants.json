@@ -1,0 +1,47 @@
+[
+  {
+    "name": "the decision record is unreachable after a close",
+    "note": "the old guard. §6.8's close sets status='closed' and the page offers exactly that, so this is the defect this pass fixed: §6.5's record could be written only by NOT closing the call.",
+    "old": "\tif call.Outcome != nil {",
+    "new": "\tif call.Status != \"open\" {"
+  },
+  {
+    "name": "a second outcome overwrites the first",
+    "note": "what the guard is actually for: a call that carries an outcome is decided, and the board must not move under a second one.",
+    "old": "\tif call.Outcome != nil {",
+    "new": "\tif call.Outcome != nil && false {"
+  },
+  {
+    "name": "a held call is resolved by recording an outcome",
+    "note": "§6.6's hold suspends the call and an outcome resolves it. This is the route the hold could be walked around by.",
+    "old": "\t} else if held {",
+    "new": "\t} else if held && false {"
+  },
+  {
+    "name": "the decision record omits the ranking it was made against",
+    "note": "§6.5: the ranking is the fallback chain, and the record is where \"why this and not the runner-up\" is written down.",
+    "old": "\tif len(ranking) > 0 {",
+    "new": "\tif len(ranking) > 0 && false {"
+  },
+  {
+    "name": "the fall-back names an id instead of the solution",
+    "old": "fmt.Fprintf(&b, \"- **Fell back to:** %s\\n\", d.solutionLabel(ctx, fallbackTo))",
+    "new": "fmt.Fprintf(&b, \"- **Fell back to:** solution %d\\n\", fallbackTo)"
+  },
+  {
+    "name": "the decision record is dated the epoch",
+    "note": "decidedAt is passed in because the record-before-close order reads a call whose closed_at is still NULL. The mutation keeps the variable referenced so it still compiles -- a mutant that does not build proves nothing.",
+    "old": "time.Unix(int64(decidedAt), 0).UTC().Format(time.RFC3339))",
+    "new": "time.Unix(int64(decidedAt)*0, 0).UTC().Format(time.RFC3339))"
+  },
+  {
+    "name": "the record stops saying which alternative is the agreed fallback",
+    "old": "note = \"the pre-agreed fallback\"",
+    "new": "note = \"an alternative\""
+  },
+  {
+    "name": "the adopted solution is not marked as adopted",
+    "old": "\t\t\t\t\tnote += \" (adopted)\"",
+    "new": "\t\t\t\t\tnote += \" (considered)\""
+  }
+]

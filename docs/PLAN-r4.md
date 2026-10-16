@@ -120,8 +120,8 @@ be rewritten. Federation and MCP are listed in the plan for later.
 
 ## Status
 
-Measured against the running instance (schema 26, 81 tables, 991 tests,
-`v0.4.0-voting-90-g6b9bb17`), not against the plan's own history. "Shipped"
+Measured against the running instance (schema 26, 81 tables, 1003 tests,
+`v0.4.0-voting-122-gbe3d262`), not against the plan's own history. "Shipped"
 means there is code, a migration and a test -- not that the surface is complete.
 
 **These numbers are gated.** `scripts/check_doc_numbers.py` fails when a document
@@ -136,7 +136,7 @@ one did.
 | R1 arenas | **shipped** | `0017_arenas.sql`; 70 arenas live. Generalized ranking is the substrate; `pairwise_votes` gained `arena_id` + `reason` |
 | R2 solutions | **shipped** | `0018_solutions.sql`; all six types, `exclusive`/`complementary`, forks with inflated RD, claim challenge/uphold |
 | R3 solution ranking + coverage | **shipped** | kappa=200; leaderboard carries rank/score/confidence/coverage/effort/risk. Known issue: `is_baseline` has no DB-level guarantee |
-| R4 ranking->consensus gating | **shipped** | `0019_solution_consensus_calls.sql`; agenda, eligibility gate, and the ADR on close (a `kind='adr'` document) |
+| R4 ranking->consensus gating | **shipped** | `0019_solution_consensus_calls.sql`; agenda, eligibility gate, and the ADR on close (a `kind='adr'` document). The ADR now carries **the ranking the decision was made against** (`docs/REMAINING.md` §21.2) — §6.5's "the ranking is the fallback chain", so the runner-up is marked as the pre-agreed fallback, and "why this and not the runner-up" is answerable from the record |
 | R5 field reports + capabilities | **shipped** | `0021_capabilities.sql`, `0022_field_reports.sql`; panels on the project page |
 | R6 Scout | **shipped** | `0023_scout_document_kind.sql`; a report is a `kind='scout'` document, so the absent `scout_reports` table is the design, not the gap |
 | R7 docs sync | **in progress** | this file, README, KNOWN-ISSUES and HANDOFF updated 2026-10-02; `docs/REMAINING.md` §13 and `docs/QUESTIONS.md` added 2026-10-15. `docs/concord-spec.md` is still two revisions stale -- it remains a verbatim copy of the master that the r4 rewrite replaced, and `scripts/check_spec_drift.py` keeps every citation off it |
@@ -151,27 +151,31 @@ count) and "agents are excluded" (`users` has no agent flag).
 
 ### Where the next milestone should go
 
-**Updated 2026-10-15.** Two candidates, and the second one is now blocking a
-feature a reader can see:
+**Updated 2026-10-16 (ninth pass).** Both candidates named here on 2026-10-15 are now
+done, and each was done somewhere other than where this section expected:
 
-1. R4's `decision_records` — unchanged from this section's original judgement. A
-   call can open and decide, and the *fallback chain* that section 6.5 requires to
-   be pre-agreed has nowhere to live, so the part of the outcome a reader most
-   needs later -- why we did this instead of the runner-up -- is recorded nowhere.
-   A small migration and a small write path; it closes the last gap in the
-   consensus pillar.
-2. **`docs/QUESTIONS.md` Q1 — the browser session.** A browser navigation carries
-   no token, so every page behind `projectReadable` is a 404 to a member of a
-   protected or private project. This is not a new gap: it is what the
-   `X-Auth-Token` fallback in `auth.go`'s `bearerToken` was written for, and
-   nothing fills the seat. It needs a spec decision (cookie plus a CSRF section,
-   or a service worker) rather than a page's commit, which is why it is a question
-   and not a fix in `docs/REMAINING.md` §13.4.
+1. ~~R4's `decision_records`~~ — **done**, `docs/REMAINING.md` §21. The ADR existed (a
+   `kind='adr'` document) and the part this section asked for — "why we did this instead
+   of the runner-up" — was missing for a worse reason than a missing table: the route that
+   writes the record refused any call that had been CLOSED, which is the order the page
+   produces, so the record was writable only by not closing the call. The record now
+   carries the ranking it was decided against, and the close no longer forecloses it.
+2. ~~`docs/QUESTIONS.md` Q1 — the browser session~~ — **answered and implemented
+   2026-10-15** (§14, `concord_nav`): the question file still carries the reasoning and the
+   rejected options on purpose. This section had not been updated to say so.
 
-The 2026-10-05 correction below -- "check the claim against the code, not the
-tracker" -- is the reason both of those were found by reading handlers and route
-tables rather than this file: §13's unguarded routes and the never-working merge
-were invisible in every tracker and visible in `chi.Walk`.
+**Where a next pass should look** — the pattern that has paid four times now, rather than a
+named feature: walk `chi.Walk`'s route table against `readerInventory` and look for rows
+whose `Routes` count is larger than the surface it names. Every one of `/close`, §6.6's
+window, `/outcome`, `/fallback` and `/hold` was found that way, and all five were routes
+with handlers, store tests and **no reader** — hidden by a coarse row that any page
+reading a call satisfies. The inventory now counts routes per row precisely so the next
+one shows up as a changed number rather than a silent absence.
+
+The 2026-10-05 correction below -- "check the claim against the code, not the tracker" --
+is the reason both of those were found by reading handlers and route tables rather than this
+file: §13's unguarded routes and the never-working merge were invisible in every tracker and
+visible in `chi.Walk`.
 
 
 ---

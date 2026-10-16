@@ -222,7 +222,7 @@ SSH git transport, mobile apps. Revisit after M11.
 - Service: `systemctl --user concord` (active, auto-restart)
 - Database: `/home/alvaro/.local/share/concord/concord.db` — schema 26, 81 tables,
   26 migrations, integrity `ok`
-- `make verify` green; 991 tests across 9 test-bearing packages
+- `make verify` green; 1003 tests across 9 test-bearing packages
 - M0–M12 (below) are complete and were completed before 2026-09-29.
 - **Revision 4 is tracked in `docs/PLAN-r4.md`** — arenas (R1), solutions
   (R2/R3) and consensus gating (R4, partial) have since landed, along with
