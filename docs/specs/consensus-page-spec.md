@@ -172,7 +172,7 @@ standing now depends on the **outcome**:
 |---|---|---|
 | `withdrawn` | the objector, or a maintainer | the block is the objector's to drop. Neither role nor membership is required to withdraw: the gate on RAISING a block is being an eligible collaborator (§8.2), and dropping your own asks for less than that |
 | `resolved` | a maintainer | a finding about the proposal, and the person who blocked it is not the judge of it |
-| `overridden` | a maintainer | same, and §6.6's 80% override window is a separate, unbuilt feature (§18.5) |
+| `overridden` | a maintainer | same, and it is the DIRECT route: §6.6's 80% override window (§20, `docs/specs/override-window-spec.md`) is the ballot that answers a block without anyone recording a status, and the status is what a maintainer records when the window is not the answer |
 | `vetoed` | a maintainer | §6.6's emergency hold |
 
 `open` is the column's DEFAULT, not an outcome, and the store refuses it.
