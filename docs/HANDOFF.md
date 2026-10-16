@@ -85,8 +85,9 @@ The **public instance** runs this build too, as of 2026-10-16: `concord.polariso
 is the cloudflared tunnel to thinkcentre's systemd user unit `concord.service` on
 `127.0.0.1:8006`, deployed from thinkcentre (not from the laptop, whose `concord` is a
 separate instance on the same port). It went from `v0.4.0-voting-56-g3ffae12` (67 commits
-behind) to HEAD, migrations 22 → 26, DB and binary both backed up first, and its two
-embedding indexes backfilled to 100%. Details: `docs/REMAINING.md` §22.8–§22.9.
+behind) to `v0.4.0-voting-123-gae1e210-3-g6921056` (commit `6921056`), migrations 22 → 26,
+DB and binary both backed up first, and its two embedding indexes backfilled to 100%.
+Details: `docs/REMAINING.md` §22.8–§22.9.
 
 - **Revision 4 is partly built.** `docs/concord-spec-r4.md` is the current spec;
   `docs/concord-spec.md` is two revisions stale. Milestone state is in

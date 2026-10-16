@@ -2434,11 +2434,12 @@ commits behind HEAD — reached through the cloudflared tunnel on thinkcentre to
 is a systemd *user* unit (`~/.config/systemd/user/concord.service`), and the live version came
 from `/api/v1/version` and the page footer, which agreed with each other.
 
-It now runs HEAD. Deployed 2026-10-16 with both backups taken first: the database online
+It now runs `v0.4.0-voting-123-gae1e210-3-g6921056` — commit `6921056`, the code commit of
+this pass. Both instances do, the public one and the laptop's, so "which build is deployed?"
+has one answer. Deployed with both backups taken first: the database online
 (`concord.db.bak-predeploy-20261016-090636`, 22 migrations, taken with `sqlite3 .backup` so the
 WAL is consistent) and the previous binary (`concord.bak-20261016-090636`). Migrations applied
-on start: 22 → 26. Both instances — the local test one and the public one — answer the same
-version string.
+on start: 22 → 26.
 
 **Reachability was verified rather than assumed.** `make deploy` targets `$HOME/concord-deploy`
 on whichever machine runs it, and this repository is a mount of thinkcentre's disk, so the
@@ -2446,6 +2447,14 @@ deploy was run *on* thinkcentre: the built binary was already on that disk
 (`/home/alvaro/code/projects/concord/bin/concord`, sha256 compared before install). Running
 `make deploy` from the laptop would have stopped and restarted the laptop's **own** `concord` on
 `127.0.0.1:8006` — a different instance, answering `healthz` perfectly — and reported success.
+
+**A deploy that copies `bin/concord` without building first installs an unnamed binary.** The
+first attempt on the laptop instance installed a binary that reported `version "dev"` — the
+e2e/UI-mutant harness rebuilds `bin/concord` with a mutated or partial tree and leaves whatever
+it built last, so the release artifact and the build artifact share a path. `make deploy` is
+safe for exactly this reason (`deploy: build`); a hand-rolled `install bin/concord` is not.
+Both instances were redeployed from a clean `make build` at that commit, and the version string
+in the footer is the check that catches it.
 
 ### 22.9 The embedding index was incomplete, and is not now
 
@@ -2459,5 +2468,6 @@ WARNING: project embedding index is incomplete: 70/71 embedded (1 never indexed)
 
 Data conditions rather than defects — 284 features and 1 project could not be found by
 similarity search — and the binary names its own remedy (`bin/embedbackfill -kind feature`).
-Backfilled on the live instance: feature 284 embedded → 1156/1156 = 100.0%; project 1 embedded →
-71/71 = 100.0%. Complaints were already complete (217/217) and requests have no rows.
+Backfilled on both instances: the public one, feature 284 embedded → 1156/1156 = 100.0% and
+project 1 → 71/71 = 100.0%; the laptop's, project 1 → 56/56 = 100.0% (its features and
+complaints were already complete: 537/537 and 655/655). Requests have no rows on either.
