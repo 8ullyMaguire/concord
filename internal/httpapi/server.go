@@ -610,6 +610,9 @@ func (s *Server) Router() http.Handler {
 			r.Get("/features", s.handleListComplaintFeatures)
 			r.Post("/impact", s.handleAddImpact)
 			r.Post("/validate", s.handleValidateComplaint)
+			// The other verdict of the same judgement (§M1's Rejected state, which
+			// nothing could reach: store.RejectComplaint had no caller at all).
+			r.Post("/reject", s.handleRejectComplaint)
 			r.Post("/merge/{target_id}", s.handleMergeComplaints)
 		})
 	})

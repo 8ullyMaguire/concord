@@ -5,9 +5,10 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state:** schema 27 · 27 migrations · 81 live tables · 1029 Go tests across
-9 test-bearing packages · 282 e2e tests in 20 suite files · 23/23 UI mutants killed (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js) ·
-`make verify` exit 0, `make e2e` exit 0.
+**Measured state (the eleventh pass, §24):** schema 27 · 27 migrations · 81 live tables · 1034 Go
+tests across 9 test-bearing packages · 285 e2e tests in 20 suite files · 27/27 UI mutants killed
+(7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 4 project.js) ·
+`make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
 gated and correct; the e2e half was reconciled by nothing and was wrong twice over — the
@@ -2648,10 +2649,10 @@ holding namespaces is a squatting vector), and creating or revoking an invite (i
 
 ### 23.9 Where the numbers stood after this pass
 
-**Measured state:** schema 27 · 27 migrations · 81 live tables · 1029 Go tests across
-9 test-bearing packages · 282 e2e tests in 20 suite files · 23/23 UI mutants killed (7 audit.js,
-9 consensus.js, 5 consent.js, 2 auth.js) · `make verify` exit 0, `make gates` exit 0,
-`make e2e` exit 0.
+**Measured state after the tenth pass:** schema 27 · 27 migrations · 81 live tables · 1028 Go
+tests across 9 test-bearing packages · 282 e2e tests in 20 suite files · 23/23 UI mutants killed
+(7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js) · `make verify` exit 0, `make gates` exit 0,
+`make e2e` exit 0. (historical)
 
 §23.11 added one Go test after this pass closed, which is why the mirror above counts one more
 than the pass itself did; the sentence is kept in the gated form, so it tracks the tree.
@@ -2750,3 +2751,145 @@ for whenever the bug and the fix share the mechanism. It now asserts the propert
 through the shared session; the caller notices a refused store; `store()` adopts in memory), and its
 comment records why the old assertion was the wrong shape. When a gate fails on a refactor, the
 first question is which of the two it was measuring.
+
+
+## 24. 2026-10-16 (the eleventh pass): §M1's second verdict, and a gate that admitted everybody
+
+The tenth pass left a tracker line (§12) that had been **true when it was written** and was not
+true any more. Re-reading it line by line found the same shape three times: a mechanism that is
+fully implemented, has tests on one side, and is reachable from nothing. This pass closed the one
+that was a state the schema allowed and the API could not produce.
+
+### 24.1 §M1's Rejected state had no route at all
+
+`complaints.status` is `CHECK (status IN ('open','validated','linked','closed','rejected'))` since
+`0001_init.sql`, and `store.RejectComplaint` has existed just as long: it closes the complaint,
+writes the M1 spam penalty (`reputation_events`, `'complaint_rejected'`, −1) and refuses anything
+that is not open.
+
+**Nothing called it.** Not a handler, not another store function, not one test — the second
+function of the whole call-site sweep to be reachable from nowhere. So of the five states the
+database permits, `rejected` was the one an operator could not produce: a spam complaint could be
+ignored, or **validated**, and never recorded as rejected. The API offered `POST …/validate` and
+nothing else, and `project.js` rendered one button.
+
+Now `POST /api/v1/projects/{project_id}/complaints/{id}/reject` exists, audited as
+`reject_complaint`, with the store's own test (`complaints_reject_test.go`) asserting the three
+things a rejection is: the status, the **ledger** row (`SELECT kind, points` — a moved reputation
+total could have moved for any reason, and the kind is what says the rejection caused it), and that
+a second rejection is refused rather than punished twice.
+
+The interface label is "Reject as spam", not "Reject": the act carries a penalty on the author's
+reputation, and a control that hides that is a control that surprises.
+
+### 24.2 "Validation is a collaborator action" — the gate said "somebody"
+
+The spec's words for both verdicts are one sentence (§M1), and the handler's gate was
+`getActorID(r) != 0`. That question — *is there an actor?* — was weak when it was written and became
+weaker when guests arrived in §23: it now admits **every nameless visitor on the instance.** It was
+also the third instance of the shape §23.11 named, and the one the sweep there had missed, because
+the sweep was looking for routes with no gate and this one had a gate.
+
+The gate is now the project's `contributor` role — a member — and deliberately **not** §8.2's
+eligible collaborator, for the reason the weight-proposal route already documents one file over:
+eligibility requires a qualifying contribution, and one of the qualifying contributions is a
+validated complaint that led to a shipped solution. Gating validation on eligibility would demand a
+validation before allowing the first one. `JoinProject` grants `contributor`, so this is "a member
+of this project" and nothing narrower.
+
+### 24.3 The URL had two halves and nothing tied them together
+
+`/api/v1/projects/{project_id}/complaints/{id}/…` names a project and a complaint, and every
+handler under it read only `{id}`. A complaint id is global, so **any** project's URL reached **any**
+complaint — and a role check written against the URL's project would have been asking about a
+project the complaint had nothing to do with. `callerComplaint` now resolves the complaint, proves
+`complaint.ProjectID == URL project`, and answers the same 404 a nonexistent complaint gets, because
+a 403 confirms the id is real. Same shape as the consensus-call routes.
+
+### 24.4 A reader-gate anchor that the wiring satisfied (the anchor was decoration)
+
+The new routes needed `readerInventory` rows, and the first version of them used
+`Anchor: "data-reject"`. **A mutant that deleted the button from the renderer SURVIVED** — because
+`"data-reject"` also appears a few hundred lines below in the click wiring:
+
+```js
+[['data-validate', 'validate'], ['data-reject', 'reject']].forEach(...)
+```
+
+The gate asserts `strings.Contains(project.js, anchor)`, so an anchor that appears in the wiring
+cannot tell a control that RENDERS from a control that is merely MENTIONED. This file warns about
+exactly this pattern for the `"/complaints/"` path; the anchor has to be markup only the renderer can
+produce. Both rows now anchor on the rendered button (`data-reject="' + esc(c.id) + '">Reject as
+spam</button>`), and deleting either button now makes the gate red — verified by mutation, twice.
+
+### 24.5 A refusal that rendered nowhere, and threw
+
+The verdict buttons report a failed POST through `setStatus(complaintForm || featureForm, …)` — the
+house path, copied from the existing Validate wiring. On a project page that renders **neither**
+form, both operands are `null`, and `setStatus` begins `form.querySelector('[data-status]')`: the
+refusal was invisible *and* the console carried a `TypeError`. The one outcome a refusal must never
+have is silence.
+
+A rejected verdict now reports on the **card**, next to the control that produced it
+(`showCardRefusal`), and `setStatus` tolerates a missing form. The browser test asserts the refusal
+text, the role it names, that the row was not written, **that no JS exception was raised**, and that
+the one console error is the 403 itself — "no errors at all" would also pass if the click had never
+sent a request.
+
+### 24.6 The gate for the two controls: `project_ui_mutants.py`
+
+The Go reachability gate cannot see a swapped verb. The wiring is a table, so
+`pair[1]` → `'validate'` posts **Reject to /validate**: 200, no error, every Go test green, and the
+complaint recorded as validated instead of rejected. `tests/e2e/project_ui_mutants.py` kills four
+mutants against `project_panels_e2e.py`, each one a rule:
+
+| mutant | the defect it models |
+|---|---|
+| the reject control posts to the validate endpoint | the wrong state written, silently |
+| the verdicts are never wired | buttons that render and do nothing |
+| a refused verdict reports nowhere | the reader told nothing, page looks broken |
+| a decided complaint still offers its verdicts | a control present where it cannot act |
+
+4/4 killed, source restored byte-identical. It runs in `make e2e` (not `make gates`: it rebuilds the
+binary four times).
+
+### 24.7 What the same sweep turned up, and what was deliberately NOT built
+
+**§6.2's ratified themes are inert, and building them is the next work item.** The spec has three
+steering inputs — pain, pairwise votes, ratified themes — and the third is a reader with no writer:
+`strategic_themes` exists, `GET /themes` lists it, `store.ThemeWeightTotal` sums the weights a
+feature's tags match, and **nothing calls `ThemeWeightTotal`**, so a theme cannot reach a ranking; no
+route creates a theme, and the TABLE has no `expires_at` column although §366 requires themes to
+expire at the next release cycle and §649 lists `themes(tag, weight, expires_at)`. That is not a
+route to add: it needs a propose/consent/ratify path at the Normal tier, expiry, application in the
+ranking, and a settings surface — so it gets a spec + a plan before code, per the standing rule.
+Recorded here as **open**, with the schema/spec divergence as the first thing to settle.
+
+**A feature's link to a complaint can only be made at creation.** `feature_complaints` is a
+many-to-many join and `store.LinkComplaint` implements the extra-link path, but no route calls it, so
+a second complaint cannot be attached to an existing feature. Not built: §354 requires "at least
+one", which works, and which UI should offer the extra link is a product question, not a missing
+wire. **Open.**
+
+**Three store methods with no caller anywhere and no test**, recorded rather than deleted:
+`GetMember`, `GetBoardCard`, and `ApplyProjectTag` (superseded by `ApplyExistingProjectTag` — the
+decision and its reason are in `internal/httpapi/projects.go:341`, which leaves the old function's
+doc comment reading as though it were still the live path). They are dead, and they are exactly the
+ambiguity that this sweep exists to resolve. **They were not deleted in this pass**: the first
+attempt was a scripted span removal and it took a neighbouring type definition with it. A bulk edit
+that must be verified by `go build` is the wrong tool for a cosmetic cleanup — delete them by hand,
+with `gofmt` and the suite as the check, or leave them named here.
+
+### 24.8 Where the numbers stand after this pass
+
+**Measured state:** schema 27 · 27 migrations · 81 live tables · 1034 Go tests across 9 test-bearing
+packages · 285 e2e tests in 20 suite files · 27/27 UI mutants killed (7 audit.js, 9 consensus.js,
+5 consent.js, 2 auth.js, 4 project.js) · `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
+
+New here: 5 Go tests (2 store, 3 httpapi), 3 browser tests, and a fourth UI-mutant file. The Go
+mutation count is unchanged at 128 because no ranked or governance logic changed — the new Go code is
+one handler, one helper and their tests. **Every new guard was proved by mutating the thing it
+guards**: the reject gate ignored (the non-member test went red), the URL/project match removed (the
+cross-project test went red), the route deleted (the member test went red), and both reader anchors
+replaced by strings the wiring also contains (the reachability gate went red). A guard that cannot be
+made to fail is decoration, and the first version of one of these four was.

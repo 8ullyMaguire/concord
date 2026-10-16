@@ -46,6 +46,7 @@ def server():
     logdir = tempfile.mkdtemp(prefix="concord-panels-e2e-log-")
     proc, db, base = harness.start_server(PORT, dbdir, logdir)
     seed(db)
+    seed_verdicts(db)
     yield {"base": base, "db": db, "logdir": logdir}
     harness.stop_server(proc)
 
@@ -845,3 +846,157 @@ def test_no_console_errors_on_any_panelled_page(page):
                  "panels-alternatives", "panels-unanswered"]:
         open_project(page, slug)
     assert not page.errors, f"console/page errors: {page.errors}"
+
+# --- §M1's complaint verdicts: the two controls on a complaint card ---------------
+#
+# The only way to reach §M1's Validated and Rejected states is the pair of buttons on a
+# complaint card. Until this pass there was no reject route at ALL: `store.RejectComplaint`
+# had no caller in production or in the suite, so `Rejected` was a status the schema
+# allowed and nothing could produce, and a spam complaint could only be ignored or
+# VALIDATED.
+#
+# The Go tests prove the two endpoints; these prove the BUTTONS, which is a different
+# claim. The wiring is a table (`[['data-validate','validate'],['data-reject','reject']]`),
+# so a mutant that swaps the two verbs posts Reject to /validate, the wrong state is
+# written, and every Go test stays green.
+
+VERDICTS_PROJECT = "panels-verdicts"
+
+
+def seed_verdicts(db):
+    """A project whose complaint cards carry the two verdict controls.
+
+    Seeded with sqlite for the same reason `seed` is: a browser test whose data comes from
+    the endpoints under test cannot fail for the reason it exists.
+
+    `panel-verdicts-member` is a contributor -- §M1 says "Validation is a collaborator
+    action" -- and `panel-verdicts-stranger` is a registered account with no membership
+    row, which is the distinction the old actor-only gate could not make.
+    """
+    con = sqlite3.connect(db)
+    cur = con.cursor()
+    now = time.time()
+
+    def user(username):
+        cur.execute(
+            "INSERT INTO users (username, display_name, created_at) VALUES (?,?,?)",
+            (username, username, now))
+        return cur.lastrowid
+
+    member = user("panel-verdicts-member")
+    user("panel-verdicts-stranger")
+    owner = user("panel-verdicts-owner")
+    cur.execute(
+        "INSERT INTO projects (slug, name, description, governance_model, license,"
+        " visibility, created_at, updated_at)"
+        " VALUES (?,?,?,'maintainer_led','MIT','public',?,?)",
+        (VERDICTS_PROJECT, "Panel Verdicts", "Fixture project panels-verdicts",
+         now, now))
+    pid = cur.lastrowid
+    for uid, role in ((owner, "owner"), (member, "contributor")):
+        cur.execute(
+            "INSERT INTO members (project_id, user_id, role, joined_at) VALUES (?,?,?,?)",
+            (pid, uid, role, now))
+    # Three complaints, one per test: the suite's server is session-scoped, so the
+    # verdicts the member tests write are visible to every later test. A stranger test
+    # sharing a complaint with the reject test clicked a button that no longer rendered
+    # -- the conclusion "the control is missing" would have been a conclusion about the
+    # fixture rather than about the gate.
+    for title in ("Export drops the last row", "buy my unrelated product, links inside",
+                  "the third one, which only the stranger touches"):
+        cur.execute(
+            "INSERT INTO complaints (project_id, author_id, title, body, severity,"
+            " frequency, strategic_multiplier, status, created_at, updated_at)"
+            " VALUES (?,?,?,?,3,2.0,1.0,'open',?,?)",
+            (pid, owner, title, "one row short", now, now))
+    con.commit()
+    con.close()
+
+
+def _verdicts_page(browser, server, username, ip):
+    """A browser context signed in as `username`, on the verdicts project."""
+    token = _mint_token(server["db"], username)
+    ctx = browser.new_context(extra_http_headers={"X-Forwarded-For": ip})
+    pg = ctx.new_page()
+    errors = []
+    # JS EXCEPTIONS and CONSOLE ERRORS are kept apart here on purpose. A refusal is a
+    # real 403 response, and the browser logs "Failed to load resource: 403" for it --
+    # that line is EVIDENCE the request went out, not a defect. A TypeError from the
+    # page's own code is a defect. Folding them into one list makes the stranger test
+    # either ignore a real exception or fail on the expected refusal.
+    pg.page_errors = []
+    pg.on("pageerror", lambda e: pg.page_errors.append(str(e)))
+    pg.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+    pg.errors = errors
+    pg.add_init_script("localStorage.setItem('concord.token', %r);" % token)
+    ctx.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
+    pg.goto(f"{BASE}/projects/{VERDICTS_PROJECT}")
+    pg.wait_for_selector("text=Export drops the last row", timeout=10000)
+    return ctx, pg
+
+
+def _card(pg, title):
+    return pg.locator(".card", has_text=title).first
+
+
+def test_a_member_rejects_a_spam_complaint_and_the_badge_says_so(browser, server):
+    """"Rejected" reached from a browser, which no route could do before this pass."""
+    ctx, pg = _verdicts_page(browser, server, "panel-verdicts-member", "10.55.1.1")
+    try:
+        card = _card(pg, "buy my unrelated product")
+        card.locator("[data-reject]").click()
+        # The button reloads the page on success and the badge is server-rendered, so
+        # this waits for the round trip rather than for a client-side string.
+        expect(card.locator(".badge").first).to_have_text("rejected", timeout=10000)
+        assert not pg.errors, pg.errors
+    finally:
+        ctx.close()
+
+
+def test_a_member_validates_a_complaint_and_the_verdict_stops_being_offered(browser, server):
+    """The other verdict, and the invariant that a decided complaint offers no controls.
+
+    A control present where it cannot act teaches the reader that the page does not know
+    what it is for -- the same rule the consensus mutants encode for the override
+    section.
+    """
+    ctx, pg = _verdicts_page(browser, server, "panel-verdicts-member", "10.55.1.2")
+    try:
+        card = _card(pg, "Export drops the last row")
+        card.locator("[data-validate]").click()
+        expect(card.locator(".badge").first).to_have_text("validated", timeout=10000)
+        assert card.locator("[data-validate]").count() == 0, (
+            "a validated complaint still offers Validate and Reject")
+        assert card.locator("[data-reject]").count() == 0
+        assert not pg.errors, pg.errors
+    finally:
+        ctx.close()
+
+
+def test_a_stranger_is_refused_visibly_and_nothing_is_written(browser, server):
+    """The gate, from the browser, through the page's own refusal rendering.
+
+    Three claims in one: the refusal reaches the reader (in the card, next to the control
+    -- it used to reach a form that is not on this page and throw instead), it names the
+    role §M1 asks for, and the row is untouched.
+    """
+    ctx, pg = _verdicts_page(browser, server, "panel-verdicts-stranger", "10.55.1.3")
+    try:
+        card = _card(pg, "the third one, which only the stranger touches")
+        card.locator("[data-reject]").click()
+        expect(card.locator("[data-card-status]")).to_contain_text(
+            "contributor", timeout=10000)
+        # No reload happened (the refusal returns before postJSON's success path), so
+        # this reads the row the server still holds.
+        pg.reload()
+        pg.wait_for_selector("text=the third one, which only the stranger touches",
+                             timeout=10000)
+        expect(_card(pg, "the third one, which only the stranger touches")
+               .locator(".badge").first).to_have_text("open")
+        # A refused verdict must raise no exception, and the single console error is the
+        # 403 itself -- asserted both ways, because "no errors at all" would also pass if
+        # the click had never sent a request.
+        assert not pg.page_errors, pg.page_errors
+        assert len(pg.errors) == 1 and "403" in pg.errors[0], pg.errors
+    finally:
+        ctx.close()

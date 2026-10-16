@@ -64,7 +64,27 @@ var readerInventory = []readerRow{
 	{Match: "/api/v1/projects/{project_id}/board", Reader: "board.js", Anchor: "board",
 		Routes: 2, Note: "read the board, move a card"},
 	{Match: "/api/v1/projects/{project_id}/complaints", Reader: "complaint.js", Anchor: "/complaints",
-		Routes: 7},
+		Routes: 6},
+	// The two verdicts on a complaint get their own rows, and their own reader. The
+	// coarse row above matched them by the word "/complaints" alone -- which
+	// complaint.js satisfies while it renders no verdict control at all -- and the
+	// buttons live in project.js beside the status badge. Same reasoning as the close
+	// route below: a row broad enough to hide a route is where routes hide.
+	// (Longest fragment wins, so a specific row must be written in FULL -- a short
+	// "/complaints/{id}/validate" loses to the row above it and matches nothing.)
+	//
+	// THE ANCHORS ARE THE RENDERED BUTTON, not the attribute name. The first version of
+	// these two rows said "data-validate"/"data-reject", and a mutant that deleted the
+	// button from the renderer SURVIVED: both strings appear a second time in the click
+	// wiring a few hundred lines below, so the row could not tell a control that renders
+	// from a control that is merely mentioned. This file already warns about exactly
+	// that ("the served HTML would contain /complaints/ through the script's own
+	// source"); the anchor has to be the markup only the renderer can produce.
+	{Match: "/api/v1/projects/{project_id}/complaints/{id}/validate", Reader: "project.js",
+		Anchor: `data-validate="' + esc(c.id) + '">Validate</button>`, Routes: 1},
+	{Match: "/api/v1/projects/{project_id}/complaints/{id}/reject", Reader: "project.js",
+		Anchor: `data-reject="' + esc(c.id) + '">Reject as spam</button>`, Routes: 1,
+		Note: "§M1's Rejected state: the control the API offered no way to reach"},
 	{Match: "/api/v1/projects/{project_id}/consensus/objections", Reader: "consensus.js",
 		Anchor: "objections/", Routes: 1, Note: "the maintainer's resolution of an objection (§6.6)"},
 	// The close route gets its own row rather than riding the fragment above it: the

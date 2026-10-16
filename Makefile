@@ -67,6 +67,10 @@ e2e: build
 	# cost from the Go mutants: `gates` is a fast inner loop and this is not.
 	$(E2E_PYTHON) tests/e2e/audit_ui_mutants.py
 	$(E2E_PYTHON) tests/e2e/consensus_ui_mutants.py
+	# §M1's complaint verdicts on a complaint card. The Go reachability gate cannot see
+	# these: it asserts project.js MENTIONS the route, and a swapped verb posts Reject
+	# to /validate with every Go test green.
+	$(E2E_PYTHON) tests/e2e/project_ui_mutants.py
 	$(E2E_PYTHON) tests/e2e/guest_ui_mutants.py
 
 # The mutation gates. Each rewrites one source file per mutant and asserts the

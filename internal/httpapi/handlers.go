@@ -148,18 +148,99 @@ func (s *Server) handleAddImpact(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "impact recorded"})
 }
 
+// callerComplaint resolves the complaint named in the URL and proves it belongs to
+// the project the URL names.
+//
+// THE URL HAD TWO HALVES AND NOTHING TIED THEM TOGETHER. The route is
+// `/api/v1/projects/{project_id}/complaints/{id}/…`, and every handler under it read
+// only `{id}` -- a complaint id is global, so the project half was decoration: any
+// signed-in account could reach any complaint on the instance through its OWN
+// project's URL, and a role check written against the URL's project would have been
+// checking a project the complaint had nothing to do with. This is the same shape as
+// the consensus-call routes (`callerCall`), and it answers the same 404 rather than a
+// 403: a 403 confirms the id is real.
+func (s *Server) callerComplaint(w http.ResponseWriter, r *http.Request) (store.Complaint, int64, bool) {
+	var c store.Complaint
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return c, 0, false
+	}
+	raw := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(raw, 10, 64)
+	if err != nil {
+		mapError(w, fmt.Errorf("%w: complaint id %q", store.ErrNotFound, raw))
+		return c, 0, false
+	}
+	c, err = s.Store.GetComplaint(r.Context(), id)
+	if err != nil {
+		mapError(w, err)
+		return c, 0, false
+	}
+	if c.ProjectID != projectID {
+		mapError(w, fmt.Errorf("%w: complaint %d is not in project %d", store.ErrNotFound, id, projectID))
+		return c, 0, false
+	}
+	return c, projectID, true
+}
+
+// handleValidateComplaint records §M1's first verdict on a complaint.
+//
+// THE GATE WAS MISSING, and it was the weakest one in the tree: `getActorID(r) != 0`
+// asked only "is there an actor?", which since guests exist means "is there anybody at
+// all" -- a nameless visitor could validate any complaint on any project, and the
+// project half of the URL was never read (see callerComplaint). The spec names the
+// gate: "Validation is a collaborator action" (§M1), so it is now the project's
+// `contributor` role.
+//
+// Contributor and not §8.2's eligible collaborator, which is the same choice the
+// weight-proposal route documents one file over: eligibility requires a qualifying
+// contribution, and one of the qualifying contributions is a validated complaint that
+// led to a shipped solution -- so gating VALIDATION on eligibility would ask for a
+// validation before allowing the first one. Joining a project grants `contributor`
+// (`JoinProject`), so this is "a member of this project" and nothing narrower.
 func (s *Server) handleValidateComplaint(w http.ResponseWriter, r *http.Request) {
-	id, _ := strconv.ParseInt(chi.URLParam(r, "id"), 10, 64)
-	if getActorID(r) == 0 {
-		mapError(w, fmt.Errorf("authentication required"))
+	c, projectID, ok := s.callerComplaint(w, r)
+	if !ok {
 		return
 	}
-	if err := s.Store.ValidateComplaint(r.Context(), id); err != nil {
+	if err := s.requireRole(projectID, "contributor", r); err != nil {
 		mapError(w, err)
 		return
 	}
-	_ = s.Store.AddAudit(r.Context(), 0, getActorID(r), "validate_complaint", "complaint", id, "")
+	if err := s.Store.ValidateComplaint(r.Context(), c.ID); err != nil {
+		mapError(w, err)
+		return
+	}
+	_ = s.Store.AddAudit(r.Context(), projectID, getActorID(r), "validate_complaint", "complaint", c.ID, "")
 	writeJSON(w, http.StatusOK, map[string]string{"status": "validated"})
+}
+
+// handleRejectComplaint records the OTHER verdict of the same judgement.
+//
+// `store.RejectComplaint` has existed since M1 -- it closes the complaint, writes the
+// spam penalty (`reputation_events`, 'complaint_rejected', -1) and refuses anything not
+// open -- and NOTHING called it, ever, in production or in a test. The spec's complaint
+// lifecycle is `Open -> Validated -> Linked -> Closed / Rejected` (§M1), so one of the
+// four states was unreachable through the API and the interface offered no way to
+// record it: a spam complaint could only be ignored or validated. The same gate as
+// validation, because it is the same act with the opposite verdict, and the same audit
+// treatment so the corpus can tell who decided what.
+func (s *Server) handleRejectComplaint(w http.ResponseWriter, r *http.Request) {
+	c, projectID, ok := s.callerComplaint(w, r)
+	if !ok {
+		return
+	}
+	if err := s.requireRole(projectID, "contributor", r); err != nil {
+		mapError(w, err)
+		return
+	}
+	if err := s.Store.RejectComplaint(r.Context(), c.ID); err != nil {
+		mapError(w, err)
+		return
+	}
+	_ = s.Store.AddAudit(r.Context(), projectID, getActorID(r), "reject_complaint", "complaint", c.ID,
+		"rejected as spam: the author's reputation takes the M1 penalty")
+	writeJSON(w, http.StatusOK, map[string]string{"status": "rejected"})
 }
 
 // handleMergeComplaints folds one complaint into another.

@@ -79,7 +79,7 @@ lands, which is why this file does not carry one)
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 1029 tests, schema 27, 81 tables,
+Measured, not remembered: `make verify` green, 1034 tests, schema 27, 81 tables,
 27 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 
@@ -240,6 +240,28 @@ Quick web tour:
    too). Note what the same pass did to `pages_test.go`: it had pinned the old
    MECHANISM (`auth.js` must call `.refresh()`), so it went red for the improvement and
    would have gone green for the defect. Assert the property, not the call.
+10. **A reachability gate's anchor can be satisfied by the WIRING.** `readerInventory`
+   rows assert that the named script CONTAINS the anchor string, and the first version of
+   the two complaint-verdict rows used `"data-reject"` — which appears twice: once in the
+   renderer and once in the click wiring (`[['data-validate','validate'],['data-reject',
+   'reject']]`). A mutant that deleted the button left the gate green. Anchor on the
+   RENDERED MARKUP (`data-reject="' + esc(c.id) + '">Reject as spam</button>`), or the row
+   cannot tell a control that renders from a control that is merely mentioned. This file
+   already warned about the same shape for `"/complaints/"`; the trap is the anchor, not
+   the path.
+11. **A refusal that renders nowhere is worse than no control.** The verdict buttons
+   report a failed POST through `setStatus(complaintForm || featureForm, …)`, and BOTH
+   operands are `null` on a page that renders neither form, so `form.querySelector` threw:
+   the reader was told nothing and the console carried a `TypeError`. Refusals now render
+   on the card, next to the control (`showCardRefusal`), and `setStatus` tolerates a
+   missing form. Assert the refusal text, the role it names, no JS exception, AND that the
+   row was not written — "no console errors" would also pass if the click never fired.
+12. **A route with `{project_id}` in the path may never read it.** Every handler under
+   `/api/v1/projects/{project_id}/complaints/{id}/…` used only `{id}`, and a complaint id
+   is global — so any project's URL reached any complaint, and a role check against the
+   URL's project would have been asking about an unrelated project. `callerComplaint`
+   proves the two halves belong together and answers 404 (not 403: 403 confirms the id is
+   real). The same shape exists wherever a route nests a global id under a scoped id.
 
 ## How the reviewer (Hermes) will check your work
 

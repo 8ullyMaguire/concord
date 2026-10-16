@@ -486,7 +486,8 @@ function apiAuth(extra) {
           esc(c.status || 'open') + '</span>' +
         '<span class="badge badge-slate">severity ' + esc(c.severity) + '</span>' +
         (c.status === 'open'
-          ? '<button class="btn btn-quiet" data-validate="' + esc(c.id) + '">Validate</button>'
+          ? '<button class="btn btn-quiet" data-validate="' + esc(c.id) + '">Validate</button>' +
+            '<button class="btn btn-quiet" data-reject="' + esc(c.id) + '">Reject as spam</button>'
           : '') +
         '</div></div>';
     }).join('');
@@ -651,15 +652,31 @@ function apiAuth(extra) {
       });
     }
 
-    Array.prototype.forEach.call(box.querySelectorAll('[data-validate]'), function (btn) {
-      btn.addEventListener('click', function () {
-        btn.disabled = true;
-        postJSON(base + '/complaints/' + encodeURIComponent(btn.getAttribute('data-validate')) + '/validate', {})
-          .then(function () { window.location.reload(); })
-          .catch(function (err) {
-            btn.disabled = false;
-            setStatus(complaintForm || featureForm, err.message || String(err), true);
-          });
+    // The two verdicts on a complaint, wired the same way: both reload the page on
+    // success, because the status badge is server-rendered and a complaint that
+    // looked rejected without a round trip would be shown as something the server
+    // never wrote. The label says which of the two acts it is -- "reject as spam",
+    // not "reject" -- because the store's rejection carries the M1 reputation
+    // penalty and a control that hides that is a control that surprises.
+    [['data-validate', 'validate'], ['data-reject', 'reject']].forEach(function (pair) {
+      Array.prototype.forEach.call(box.querySelectorAll('[' + pair[0] + ']'), function (btn) {
+        btn.addEventListener('click', function () {
+          btn.disabled = true;
+          postJSON(base + '/complaints/' +
+            encodeURIComponent(btn.getAttribute(pair[0])) + '/' + pair[1], {})
+            .then(function () { window.location.reload(); })
+            .catch(function (err) {
+              btn.disabled = false;
+              // ON THE CARD, not in a form's status line. `complaintForm || featureForm`
+              // is null on a page that renders neither form, and the old path then
+              // reached setStatus(null, ...) -> form.querySelector, which threw a
+              // TypeError: the refusal was invisible AND the console carried an
+              // exception. A refusal that renders nowhere is the worst outcome a
+              // refusal can have, so it is shown next to the control that produced it,
+              // where it exists in every page state.
+              showCardRefusal(btn, err.message || String(err));
+            });
+        });
       });
     });
   }
@@ -768,7 +785,30 @@ function apiAuth(extra) {
     return head + '<ul class="dup-list">' + rows + '</ul>' + covNote;
   }
 
+  // showCardRefusal puts a refusal beside the control that produced it, creating the
+  // slot on first use. The pill row is the buttons' own parent, so the text lands where
+  // the click did rather than at the bottom of a form the reader may not have.
+  function showCardRefusal(btn, message) {
+    var host = btn.parentNode;
+    if (!host) return;
+    var el = host.querySelector('[data-card-status]');
+    if (!el) {
+      el = document.createElement('p');
+      el.setAttribute('data-card-status', '');
+      el.className = 'form-status form-status-error';
+      host.appendChild(el);
+    }
+    el.hidden = false;
+    el.textContent = '';
+    el.appendChild(document.createTextNode(message));
+  }
+
   function setStatus(form, message, isError) {
+    // A missing form is not an error to throw on: this helper is called from paths that
+    // also have a card-level fallback, and the project page renders no complaint form
+    // at all in several states. The guard is here rather than at each call site because
+    // the call sites are many and the invariant is one.
+    if (!form) return;
     var el = form.querySelector('[data-status]');
     if (!el) return;
     el.hidden = false;
