@@ -90,7 +90,7 @@ gates:
 	python3 internal/mutate.py internal/store/capabilities.go ./internal/store/ internal/store/capabilities_test.go internal/store/capabilities_mutants.json
 	python3 internal/mutate.py internal/store/themes.go ./internal/store/ internal/store/themes_test.go internal/store/themes_mutants.json
 	python3 internal/mutate.py internal/store/feature_tags.go ./internal/store/ internal/store/feature_tags_test.go internal/store/feature_tags_mutants.json
-	python3 internal/mutate.py internal/store/features.go ./internal/store/ internal/store/themes_test.go internal/store/features_mutants.json
+	python3 internal/mutate.py internal/store/features.go ./internal/store/ internal/store/themes_test.go,internal/store/complaint_links_test.go internal/store/features_mutants.json
 	# The charter's own bounds: a lifetime that makes every theme born expired is refused here,
 	# and an unproven refusal is decoration.
 	python3 internal/mutate.py internal/store/store.go ./internal/store/ internal/store/themes_test.go internal/store/store_mutants.json
@@ -108,6 +108,9 @@ gates:
 	python3 internal/mutate.py internal/store/override.go ./internal/store/ internal/store/override_window_test.go,internal/store/consensus_override_test.go internal/store/override_mutants.json
 	python3 internal/mutate.py internal/store/consensus.go ./internal/store/ internal/store/consensus_override_test.go internal/store/consensus_override_mutants.json
 	python3 internal/mutate.py internal/httpapi/handlers.go ./internal/httpapi/ internal/httpapi/override_window_test.go internal/httpapi/override_mutants.json
+	# §354's extra link at the edge: the role gate, the body guard, and the audit line. Its own
+	# arm because handlers.go's arm runs override_window_test.go, which never reaches these.
+	python3 internal/mutate.py internal/httpapi/complaint_links.go ./internal/httpapi/ internal/httpapi/complaint_links_test.go internal/httpapi/complaint_links_mutants.json
 	python3 internal/mutate.py internal/store/audit.go ./internal/store/ internal/store/audit_test.go internal/store/audit_mutants.json
 	# §6.5's decision record: the outcome guard, the hold, the ranking the record
 	# carries, and the date on it. The record's own gate because consensus_solutions.go
@@ -118,6 +121,17 @@ gates:
 
 fmt:
 	gofmt -l -w .
+
+# Formatting, checked in `verify` rather than only rewritten by `fmt` above. `make fmt` fixes
+# the tree, so nothing ever REPORTED a file that had drifted: three had (a missing final newline
+# each, one of them from a pass that committed it), and a formatting diff is the one kind of
+# churn that makes every later diff of that file noisy. A rewrite target with no check beside it
+# is a control nobody runs.
+fmt-check:
+	@out="$$(gofmt -l .)"; if [ -n "$$out" ]; then \
+		echo "gofmt would rewrite these files -- run 'make fmt':"; echo "$$out"; exit 1; \
+	fi
+	@echo "gofmt: clean"
 
 vet:
 	go vet ./...
@@ -141,7 +155,7 @@ docs-check:
 e2e-sync-check:
 	python3 scripts/check_e2e_sync.py
 
-verify: vet test build docs-check e2e-sync-check
+verify: vet fmt-check test build docs-check e2e-sync-check
 
 run:
 	CGO_ENABLED=0 go run $(PKG)

@@ -132,7 +132,15 @@ var readerInventory = []readerRow{
 		// The anchor is the RENDERED pill, not the "/features/" path in the fetch table: a
 		// path is present whether or not any control exists, so an anchor like it stays
 		// satisfied after the tags UI is deleted (the lesson §24 records).
-		Routes: 16},
+		Routes: 15},
+	// §354's extra link, with its own row because the coarse one above is satisfied by the
+	// tags panel alone -- a route whose only reader is "a page that reads a feature" is how
+	// the link went unbuilt for the life of the schema. The anchor is the RENDERED option:
+	// the wiring refers to the select by id, so an anchor naming the route or the control's
+	// attribute would be satisfied by a page that renders neither.
+	{Match: "/api/v1/projects/{project_id}/features/{id}/complaints", Reader: "feature.js",
+		Anchor: `'<option value="' + esc(c.id) + '">#'`, Routes: 2,
+		Note: "the read, and the write that pairs with it (store.LinkComplaint had no caller)"},
 	{Match: "/api/v1/projects/{project_id}/lists", Reader: "lists.js", Anchor: "/lists",
 		Routes: 6},
 	{Match: "/api/v1/projects/{project_id}/merge", Reader: "merge.js", Anchor: "/merge",

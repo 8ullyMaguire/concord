@@ -3,5 +3,15 @@
   "name": "the theme sum dropped from the mu term",
   "old": "\t\tprio := ranking.PriorityScore(f.EloR, f.EloRD, painSum,\n\t\t\tf.StrategicWeight+themeWeight, charter.Lam, charter.Mu)",
   "new": "\t\tprio := ranking.PriorityScore(f.EloR, f.EloRD, painSum,\n\t\t\tf.StrategicWeight, charter.Lam, charter.Mu)"
+ },
+ {
+  "name": "a complaint from another project links anyway",
+  "old": "\tif c.ProjectID != projectID {\n\t\treturn fmt.Errorf(\"%w: complaint %d is not in project %d\", ErrNotFound, complaintID, projectID)\n\t}",
+  "new": "\tif false {\n\t\treturn fmt.Errorf(\"%w: complaint %d is not in project %d\", ErrNotFound, complaintID, projectID)\n\t}"
+ },
+ {
+  "name": "a feature from another project links anyway",
+  "old": "\tif f.ProjectID != projectID {",
+  "new": "\tif f.ProjectID != projectID && false {"
  }
 ]

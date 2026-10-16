@@ -670,6 +670,10 @@ func (s *Server) Router() http.Handler {
 	// Unauthenticated on purpose, like the solutions and consensus reads beside it
 	// (§2.5's vote log): the ranking is public, and so is the evidence for it.
 	r.Get("/api/v1/projects/{project_id}/features/{id}/complaints", s.handleListFeatureComplaints)
+	// §354's extra link: the write that pairs with that read. A feature is created with at
+	// least one complaint and could never gain another, although the join is many-to-many and
+	// the store's own function for it had no caller anywhere.
+	r.Post("/api/v1/projects/{project_id}/features/{id}/complaints", s.handleLinkComplaint)
 
 	r.Route("/api/v1/projects/{project_id}/features/{id}/solutions", func(r chi.Router) {
 		r.Get("/", s.handleListSolutions)

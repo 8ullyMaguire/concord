@@ -5,8 +5,8 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state (the twelfth pass, §25):** schema 29 · 29 migrations · 82 live tables · 1053 Go
-tests across 9 test-bearing packages · 289 e2e tests in 21 suite files · 33/33 UI mutants killed
+**Measured state (the thirteenth pass, §26):** schema 29 · 29 migrations · 82 live tables · 1065 Go
+tests across 9 test-bearing packages · 290 e2e tests in 21 suite files · 38/38 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 4 project.js, 3 settings.js, 3 feature.js) ·
 `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
 
@@ -2873,10 +2873,11 @@ this time (`sqlite3 <db> "select sql from sqlite_master where name='strategic_th
 against the note that said so.
 
 **A feature's link to a complaint can only be made at creation.** `feature_complaints` is a
-many-to-many join and `store.LinkComplaint` implements the extra-link path, but no route calls it, so
-a second complaint cannot be attached to an existing feature. Not built: §354 requires "at least
-one", which works, and which UI should offer the extra link is a product question, not a missing
-wire. **Open.**
+many-to-many join and `store.LinkComplaint` implements the extra-link path, but no route called it, so
+a second complaint could not be attached to an existing feature. **Built in §26** (2026-10-16): the
+route, the control on the feature page, and — found while building it — the guard the store function
+was missing (it took two bare ids and never checked they were in one project). Which UI should offer
+the extra link was a product question and §26 records the answer.
 
 **Three store methods with no caller anywhere and no test**, recorded rather than deleted:
 `GetMember`, `GetBoardCard`, and `ApplyProjectTag` (superseded by `ApplyExistingProjectTag` — the
@@ -2988,10 +2989,15 @@ only a browser can see.
 
 ### 25.5 Where the numbers stand
 
-**Measured state:** schema 29 · 29 migrations · 82 live tables · 1053 Go tests across 9 test-bearing
-packages · 289 e2e tests in 21 suite files · 35/35 UI mutants killed (7 audit.js, 9 consensus.js,
-5 consent.js, 2 auth.js, 4 project.js, 5 settings.js, 3 feature.js) · Go mutants: 17 arms, 122
-killed, 0 survived · `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
+**Measured state (historical: this is what the TWELFTH pass ended at; §26.7 is where the numbers are
+current).** The block is fenced because a superseded measurement is not a claim about the tree:
+
+```
+schema 29 · 29 migrations · 82 live tables · 1053 Go tests across 9 test-bearing packages ·
+289 e2e tests in 21 suite files · 35/35 UI mutants killed (7 audit.js, 9 consensus.js, 5 consent.js,
+2 auth.js, 4 project.js, 5 settings.js, 3 feature.js) · Go mutants: 17 arms, 122 killed, 0 survived ·
+make verify exit 0, make gates exit 0, make e2e exit 0
+```
 
 Every number above is read off a run, not added up by hand: the two totals that changed during this
 pass (the Go test count and the e2e count) moved as the tests were written, and the mutant total is
@@ -3081,6 +3087,100 @@ written to catch. The replacement asserts the whole list: `to_have_count(1)` ove
 This is the same shape as the tautology rule: an assertion that a *change* cannot be seen by,
 because it also passes while nothing is there. A count of zero, a "not visible", and an "absent"
 are all satisfied by a page that has not rendered yet.
+
+## 26. §354's extra link: the write nobody called (2026-10-16)
+
+Spec `docs/specs/complaint-links-spec.md`, plan `docs/plans/complaint-links.md` — both written
+before any code, both marked executed.
+
+### 26.1 What was missing
+
+`store.LinkComplaint` has existed since M2 with a complete body: it resolves both rows, refuses a
+complaint that is not `validated`, inserts the join row and touches `features.updated_at`. **Nothing
+called it.** `grep -rn "LinkComplaint(" internal/ | grep -v _test` returned the definition and no
+caller, so `feature_complaints` could only ever be written by `CreateFeature` — and a feature is
+created with the complaints its filer happened to know about. The second complaint that later turns
+out to bear on the same work had no way in, on a join table whose whole design is many-to-many.
+
+This is the same shape as §25's finding, one size smaller: the data model, the reads and even a
+complete write function all existed, so every schema dump and every read test said the surface was
+there. What was absent was the route and the control.
+
+### 26.2 The defect the pass found in the store
+
+`LinkComplaint(ctx, featureID, complaintID)` took two bare ids and checked neither against a
+project. Feature ids and complaint ids are both global, so the same function reachable from any
+future caller would join a feature in one project to a complaint in another — the nested-route
+defect (a URL that names one id and acts on another, §24) one layer lower, where no route-level
+check can reach it. The handler is the only caller now, and the guard lives in the store anyway, so
+the next caller inherits it: `LinkComplaint(ctx, projectID, featureID, complaintID)`.
+
+The signature change cost nothing because there were no callers, which is the only reason a change
+like this is worth making rather than documenting.
+
+### 26.3 The decisions (delegated judgement; Q4 records the last one)
+
+- **The control lives on the FEATURE page**, beside the complaints it gathers. The complaint page
+  already lists the features answering it; a control there would ask "which feature should this
+  complaint also bear on", which is a question about the feature pool asked from the wrong end.
+- **The bar is `contributor`** — the role that may create a feature, which is the same act with the
+  ids arriving in a body.
+- **The complaint id travels in the BODY** (`{"complaint_id": N}`), because the path's `{id}` is the
+  feature being modified. A second `{id}`-shaped segment would have two resolutions competing for one
+  `chi.URLParam`, and the fixture would have had to be written carefully enough to notice.
+- **No unlink route**, and that is a decision rather than an omission: §354 requires at least one
+  validated complaint, so a generic unlink can produce a state the spec forbids. What "remove the
+  only complaint" means is a product question (**Q4**).
+- **Idempotent**, like `AddFeatureTag`: a retried request leaves one row and answers 200.
+
+### 26.4 What the gates proved, and one that proved the test
+
+- Go, store: 5 tests. The cross-project refusal is asserted on the **stored state** as well as the
+  error — a function that returns an error and writes the row anyway passes `errors.Is`.
+- Go, store mutation: 2 new mutants (the complaint-project guard, the feature-project guard), both
+  killed. **The second one survived its first run, and the test was at fault**: the fixture offered a
+  complaint from project A while claiming project B, so the complaint-side guard refused first and
+  the test passed with the feature-side guard dead. Two guards that answer the same way are one guard
+  as far as a test can tell; the fixture now offers a complaint that genuinely belongs to the other
+  project, which leaves only the guard under test able to refuse.
+- Go, handler: 7 tests (200 with the whole list and the audit row; 401 anonymous; 403 naming the
+  role; 404 for a complaint from another project; 404 for a feature addressed through another
+  project's URL; 400 for an open complaint; 400 for an absent `complaint_id`), plus 3 mutants (the
+  role gate, the body guard, the audit line) all killed.
+- Browser: one test that asserts the control is offered with the validated, unattached complaint and
+  NOT with the attached one, then that the click changes the section — **positively** ("Complaints
+  (2)", the new title present, the control gone). A "not 1" assertion would be satisfied by the
+  document being torn down during the reload the write performs, which is exactly how a swapped
+  endpoint survived this file in §25.
+- Browser, mutation: 3 new mutants (the path swapped to the feature resource, the field name wrong,
+  the select never rendered), all killed.
+
+### 26.5 Two process findings worth more than the feature
+
+- **A stale `bin/concord` reads as a broken page.** The first run of the new browser test failed with
+  "waiting for #attach-complaint-form" *after* the heading asserted correctly — because the binary
+  embedding the JS predated the JS. `make e2e` builds first; a direct `pytest tests/e2e/...` does not.
+  The repo already warns that a stale binary is a false PASS; it is a false FAIL in the same shape,
+  and the symptom points at the page rather than at the build.
+- **`make fmt` had no check beside it, and three files had drifted** (a missing final newline each,
+  one of them committed by an earlier pass). A rewrite target with no gate is a control nobody runs.
+  `fmt-check` is now part of `make verify`, and it was proved by execution: strip a trailing newline
+  from `internal/store/guest.go`, `make fmt-check` exits non-zero naming the file; restore, clean.
+
+### 26.6 Named limits
+
+- The candidate list is read with the page's anonymous read helper, so on a **protected** project the
+  control is offered only when that read succeeds. A browser navigation cannot carry the session
+  token (the page's writes attach it in JS, a navigation has no JS), so that path cannot be driven in
+  an e2e test and is recorded here instead of asserted. The read is deliberately tolerant: a failed
+  candidate list must not turn the whole page into "Could not load this feature".
+- **Q4** (what unlinking means) is open, and no unlink route exists until it is answered.
+
+### 26.7 Where the numbers stand
+
+**Measured state:** schema 29 · 29 migrations · 82 live tables · 1065 Go tests · 290 e2e tests in 21
+suite files · 38/38 UI mutants · Go mutants: 18 arms, 127 killed, 0 survived · `make verify`,
+`make gates`, `make e2e` all exit 0.
 
 **Still open, and named rather than implied:** Q2 (the sum), Q3 (the pain-side multiplier), §452's
 global themes, and the items §24.7 lists under its own heading — `LinkComplaint`'s missing route and

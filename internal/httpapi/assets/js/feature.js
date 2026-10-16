@@ -148,38 +148,9 @@
   // specific: an unknown tag names the route that proposes one, and a non-contributor is
   // told which role is needed.
   function wireTags(base, featureID) {
-    var err = root.querySelector('[data-tag-error]');
-    function fail(msg) {
-      if (err) { err.textContent = msg; err.hidden = false; }
-    }
-    function headers() {
-      // authHeaders() from session.js, the one place that knows the key.
-      var h = { 'Content-Type': 'application/json' };
-      var sess = window.ConcordSession && window.ConcordSession.instance();
-      if (sess) {
-        var auth = sess.authHeaders();
-        for (var k in auth) {
-          if (Object.prototype.hasOwnProperty.call(auth, k)) h[k] = auth[k];
-        }
-      }
-      return h;
-    }
-    function send(path, payload, btn) {
-      if (btn) btn.disabled = true;
-      fetch(path, { method: 'POST', headers: headers(), body: JSON.stringify(payload) })
-        .then(function (r) {
-          return r.text().then(function (txt) {
-            var body = {};
-            try { body = txt ? JSON.parse(txt) : {}; } catch (e) { body = {}; }
-            if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
-            window.location.reload();
-          });
-        })
-        .catch(function (e) {
-          if (btn) btn.disabled = false;
-          fail(e.message || String(e));
-        });
-    }
+    var writer = pageWriter(root.querySelector('[data-tag-error]'));
+    function fail(msg) { writer.fail(msg); }
+    function send(path, payload, btn) { writer.send(path, payload, btn); }
     var form = document.getElementById('add-tag-form');
     if (form) {
       form.addEventListener('submit', function (ev) {
@@ -306,6 +277,93 @@
       '</h2>' + body + '</section>';
   }
 
+  // pageWriter is the page's write helper, shared by the two inline panels (tags, complaint
+  // links). It re-reads the WHOLE page on success rather than patching the region it touched: a
+  // tag moves the priority this page explains, and a newly attached complaint becomes the pain
+  // evidence behind that priority, so a locally patched list would show a stale explanation.
+  // `sink` is where a refusal is rendered -- beside the control that was clicked, which is
+  // where a reader looks for it.
+  function pageWriter(sink) {
+    function fail(msg) {
+      if (sink) { sink.textContent = msg; sink.hidden = false; }
+    }
+    function headers() {
+      // authHeaders() from session.js, the one place that knows the key.
+      var h = { 'Content-Type': 'application/json' };
+      var sess = window.ConcordSession && window.ConcordSession.instance();
+      if (sess) {
+        var auth = sess.authHeaders();
+        for (var k in auth) {
+          if (Object.prototype.hasOwnProperty.call(auth, k)) h[k] = auth[k];
+        }
+      }
+      return h;
+    }
+    function send(path, payload, btn) {
+      if (btn) btn.disabled = true;
+      fetch(path, { method: 'POST', headers: headers(), body: JSON.stringify(payload) })
+        .then(function (r) {
+          return r.text().then(function (txt) {
+            var body = {};
+            try { body = txt ? JSON.parse(txt) : {}; } catch (e) { body = {}; }
+            if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
+            window.location.reload();
+          });
+        })
+        .catch(function (e) {
+          if (btn) btn.disabled = false;
+          fail(e.message || String(e));
+        });
+    }
+    return { fail: fail, send: send };
+  }
+
+  // §354's extra link. A feature is created WITH at least one validated complaint and could
+  // never gain another, although `feature_complaints` is a many-to-many join and the store's own
+  // LinkComplaint had no caller anywhere: the second complaint that turns out to bear on the
+  // same work had no way in. The control offers what the server would accept -- validated, and
+  // not already attached.
+  //
+  // An empty select is NOT rendered. A control that cannot act reads as broken; the section says
+  // why there is nothing to attach instead.
+  function attachControl(linkedIds, candidates) {
+    var eligible = (candidates || []).filter(function (c) {
+      return linkedIds.indexOf(Number(c.id)) === -1;
+    });
+    if (!eligible.length) {
+      return '<p class="muted">No other validated complaint in this project is unattached.</p>';
+    }
+    return '<form id="attach-complaint-form" class="inline-form">' +
+      '<label class="form-label" for="attach-complaint">Attach a validated complaint</label>' +
+      '<select class="input" id="attach-complaint" name="complaint_id">' +
+      eligible.map(function (c) {
+        return '<option value="' + esc(c.id) + '">#' + esc(c.id) + ' ' +
+          esc(c.title || 'untitled') + '</option>';
+      }).join('') +
+      '</select>' +
+      '<button type="submit" class="btn" data-attach-complaint>Attach</button>' +
+      '</form>';
+  }
+
+  // wireComplaintLinks sends §354's extra link. The complaint id goes in the body: the path's
+  // id is the FEATURE, and a second id-shaped segment would have two resolutions competing for
+  // one URL parameter.
+  function wireComplaintLinks(base, featureID) {
+    var form = document.getElementById('attach-complaint-form');
+    if (!form) return;
+    var writer = pageWriter(root.querySelector('[data-complaint-error]'));
+    form.addEventListener('submit', function (ev) {
+      ev.preventDefault();
+      var sel = form.querySelector('#attach-complaint');
+      var id = sel ? Number(sel.value) : 0;
+      // Caught here rather than sent: the server answers 400 for a missing id, and a request
+      // that cannot succeed is not worth a round trip.
+      if (!id) { writer.fail('Pick a complaint to attach.'); return; }
+      writer.send(base + '/features/' + encodeURIComponent(featureID) + '/complaints',
+        { complaint_id: id }, form.querySelector('button[type=submit]'));
+    });
+  }
+
   function notFound(slug, id) {
     return '<div class="empty-state"><p class="empty-state-title">No such feature</p>' +
       '<p class="muted">Feature ' + esc(id) + ' does not exist in ' + esc(slug) +
@@ -339,7 +397,13 @@
     // §6.2's steering input, read on the page it steers: a feature's tags decide which
     // ratified themes count toward its priority. The read half was missing too -- the
     // table that stores them had no writer AND no reader.
-    json(base + '/features/' + encodeURIComponent(at.id) + '/tags')
+    json(base + '/features/' + encodeURIComponent(at.id) + '/tags'),
+    // §354's extra link, read TOLERANTLY: this read exists for a control, and a page that
+    // cannot offer the control must still render the feature. A rejecting read would turn
+    // "this project's complaint list is not readable by you" into "could not load this
+    // feature", which is a different and wrong statement -- and it is the statement every
+    // other read on this page makes when it fails, so it would be believed.
+    json(base + '/complaints?status=validated').catch(function () { return []; })
   ]).then(function (res) {
     var f = res[0];
     if (!f) {
@@ -403,11 +467,15 @@
     // The complaints section, always rendered: an empty list must SAY it has none,
     // because "this feature has no validated complaints" is the answer to "why is
     // this ranked here?" for most features and the reader cannot guess it.
+    var candidates = Array.isArray(res[5]) ? res[5] : [];
+    var linkedIds = complaints.map(function (c) { return Number(c.id); });
     html += section('Complaints (' + complaints.length + ')',
-      complaints.length
+      (complaints.length
         ? '<ul class="linked-list">' + complaints.map(complaintRow).join('') + '</ul>'
         : '<p class="muted">No validated complaint is linked to this feature, so ' +
-          'its rank rests on comparison alone rather than on reported pain.</p>');
+          'its rank rests on comparison alone rather than on reported pain.</p>') +
+      attachControl(linkedIds, candidates) +
+      '<p class="form-status" data-complaint-error hidden></p>');
 
     // The tags section, always rendered: a feature with no tags scores with no theme at
     // all, and that is the answer to "why does this not move with the theme we ratified?".
@@ -432,6 +500,7 @@
     done();
     wireContests(base, at.id);
     wireTags(base, at.id);
+    wireComplaintLinks(base, at.id);
   }).catch(function (err) {
     // aria-busy is cleared on the error path too: a skeleton that spins forever
     // over an error message reads as "still loading".

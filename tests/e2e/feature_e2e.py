@@ -573,6 +573,24 @@ def _mint_token(db, username):
     return raw
 
 
+def _ensure_member(db, slug, username, role="contributor"):
+    """The role a contributor write requires, for the owner the seed inserted as a bare user.
+
+    The seed writes users and projects through SQLite and no members row, so every write test in
+    this file has to add one; the tags fixture below does it inline and this is the same row for
+    the complaint-link test.
+    """
+    con = sqlite3.connect(db)
+    pid = con.execute("SELECT id FROM projects WHERE slug=?", (slug,)).fetchone()[0]
+    uid = con.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()[0]
+    if con.execute("SELECT 1 FROM members WHERE project_id=? AND user_id=?",
+                   (pid, uid)).fetchone() is None:
+        con.execute("INSERT INTO members (project_id, user_id, role, joined_at) VALUES (?,?,?,?)",
+                    (pid, uid, role, time.time()))
+    con.commit()
+    con.close()
+
+
 def _seed_tags(db, feature_id, tag="security-hardening", other="keyboard-only"):
     """A global tag, a second one to add, and the feature's existing tag.
 
@@ -655,5 +673,60 @@ def test_the_tags_panel_shows_adds_and_removes_the_steering_tags(browser, server
     expect(pg.locator(".tag-pill")).to_have_count(1, timeout=10000)
     expect(pg.locator(".tag-pill", has_text="security-hardening")).to_be_visible()
     expect(pg.locator(".tag-pill", has_text="keyboard-only")).to_have_count(0)
+    assert not pg.errors, pg.errors
+    ctx.close()
+
+
+# ------------------------------------------------------- §354's extra link (the write half)
+#
+# `feature_complaints` is a many-to-many join, `store.LinkComplaint` implements the extra link,
+# and nothing called it in any revision: a feature could only ever be linked to the complaints
+# it was CREATED with. The Go tests hold the guards; this holds the three things only a browser
+# can see -- the control is offered with what the server would accept, the click writes the
+# link, and the section the reader is looking at changes.
+
+def test_the_extra_complaint_link_attaches_a_validated_complaint(browser, server):
+    """The offered option, the click, and the section it changes.
+
+    The final assertions are POSITIVE ("Complaints (2)" and the new title in the list, the
+    control gone) rather than "the old text is absent": a section that has not re-rendered
+    satisfies an absence, and the write path reloads the page, so an absence check would pass
+    during the reload with the link never written. That is the shape that let a swapped
+    endpoint survive this file once already.
+    """
+    token = _mint_token(server["db"], "feat-owner")
+    _ensure_member(server["db"], SLUG, "feat-owner")
+    ctx = browser.new_context(extra_http_headers={"X-Forwarded-For": "10.88.7.1"})
+    ctx.add_init_script("localStorage.setItem('concord.token', %r);" % token)
+    ctx.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
+    pg = ctx.new_page()
+    pg.errors = []
+    pg.on("pageerror", lambda e: pg.errors.append(str(e)))
+
+    fid = sqlite3.connect(server["db"]).execute(
+        "SELECT f.id FROM features f JOIN projects p ON p.id=f.project_id"
+        " WHERE p.slug=? AND f.title=?", (SLUG, "Export must be lossless")).fetchone()[0]
+    open_feature(pg, fid)
+
+    section = pg.locator("section", has=pg.locator("h2", has_text="Complaints"))
+    expect(section.locator("h2")).to_contain_text("Complaints (1)")
+
+    form = pg.locator("#attach-complaint-form")
+    expect(form).to_be_visible(timeout=10000)
+    options = form.locator("#attach-complaint option")
+    # Exactly the one validated, unattached complaint in the seed. The linked one must NOT be
+    # offered: the server would accept it (the link is idempotent) and the reader would have no
+    # way to tell "attached again" from "attached".
+    expect(options).to_have_count(1)
+    expect(options.first).to_contain_text("Nothing linked to this one")
+
+    form.locator("[data-attach-complaint]").click()
+
+    expect(section.locator("h2")).to_contain_text("Complaints (2)", timeout=10000)
+    expect(section.locator("li.linked-row", has_text="Nothing linked to this one")
+           ).to_be_visible(timeout=10000)
+    # Nothing left to offer, so the control is gone rather than disabled: a control that cannot
+    # act reads as broken.
+    expect(pg.locator("#attach-complaint-form")).to_have_count(0)
     assert not pg.errors, pg.errors
     ctx.close()

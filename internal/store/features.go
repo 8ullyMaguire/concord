@@ -261,14 +261,30 @@ func (d *DB) GetFeaturePriorities(ctx context.Context, projectID int64, charter 
 	return result, nil
 }
 
-func (d *DB) LinkComplaint(ctx context.Context, featureID, complaintID int64) error {
-	_, err := d.GetFeature(ctx, featureID)
+// LinkComplaint attaches a validated complaint to an existing feature (§354's extra link).
+//
+// projectID is a parameter rather than something the caller checks because a feature id and a
+// complaint id are both GLOBAL: this function's whole body is "turn two ids into a row", and
+// without the project it will join a feature in one project to a complaint in another. That is
+// the nested-route defect -- a URL that names one id and acts on another -- one layer lower,
+// where no route-level check can reach it. The signature changed for this reason and there was
+// no caller to update; the next caller inherits the guard instead of having to remember it.
+//
+// Idempotent: INSERT OR IGNORE, so a retried request leaves one row rather than failing.
+func (d *DB) LinkComplaint(ctx context.Context, projectID, featureID, complaintID int64) error {
+	f, err := d.GetFeature(ctx, featureID)
 	if err != nil {
 		return err
+	}
+	if f.ProjectID != projectID {
+		return fmt.Errorf("%w: feature %d is not in project %d", ErrNotFound, featureID, projectID)
 	}
 	c, err := d.GetComplaint(ctx, complaintID)
 	if err != nil {
 		return err
+	}
+	if c.ProjectID != projectID {
+		return fmt.Errorf("%w: complaint %d is not in project %d", ErrNotFound, complaintID, projectID)
 	}
 	if c.Status != "validated" {
 		return fmt.Errorf("%w: complaint must be validated to link", ErrInvalid)

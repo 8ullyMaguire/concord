@@ -126,3 +126,28 @@ The three candidate readings, none of which this pass could pick without inventi
 **What the spec owner has to decide:** whose tags the pain-side multiplier reads, and whether
 complaints get tags at all. Until then the pain side keeps its `strategic_multiplier` column and the
 theme multiplier is not applied, which is a visible gap in §348 rather than a silent invention.
+
+## Q4. What does it mean to UNLINK a validated complaint from a feature?
+
+**Status:** the unlink is deliberately not built (§26). **Raised:** 2026-10-16.
+
+§354 says a feature "must link to at least one validated complaint". `feature_complaints` is a
+many-to-many join and §26 gave it the extra-link write, so a feature can now gain complaints after
+creation. The reverse — detaching one — has no route, and the reason is that the obvious route
+(`DELETE …/features/{id}/complaints/{complaint_id}`) can produce a state the spec forbids: detach the
+last one and the feature exists, is ranked, and traces to no validated complaint at all.
+
+Three readings, and picking one is a product decision rather than a missing wire:
+
+1. **Refuse the last unlink** (409 or 400). Cheap, and it makes the invariant an API rule rather than
+   a property of the write path — but it also means the UI must explain why one row of the list has
+   no Remove control.
+2. **Allow it and let the feature become "unjustified"**: `status` gains a state, the ranking
+   excludes it (or visibly flags it), and the corpus keeps the history. Honest about what happened,
+   and it makes the tag honest too: a feature whose evidence was withdrawn should not read as
+   evidence-backed.
+3. **Detach only through a superseding act** — a merge, or linking the complaint to a different
+   feature, which moves the row rather than removing it. Then "unlink" is not a control at all.
+
+**What the spec owner has to decide:** whether a feature may exist with no validated complaint, and
+if so what its status says. Until then the only way to correct a wrong link is to add the right one.

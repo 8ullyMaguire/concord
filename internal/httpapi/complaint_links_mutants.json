@@ -1,0 +1,17 @@
+[
+ {
+  "name": "the extra link needs no contributor role",
+  "old": "\tif err := s.requireRole(projectID, \"contributor\", r); err != nil {",
+  "new": "\tif err := s.requireRole(projectID, \"contributor\", r); err != nil && false {"
+ },
+ {
+  "name": "an absent complaint id is treated as a complaint",
+  "old": "\tif req.ComplaintID <= 0 {",
+  "new": "\tif req.ComplaintID <= 0 && false {"
+ },
+ {
+  "name": "the extra link is not written down",
+  "old": "\t_ = s.Store.AddAudit(r.Context(), projectID, getActorID(r), \"link_complaint\", \"feature\",\n\t\tf.ID, detail)",
+  "new": "\t_ = s.Store.AddAudit(r.Context(), projectID, getActorID(r), \"link_complaint_typo\", \"feature\",\n\t\tf.ID, detail)"
+ }
+]
