@@ -2686,3 +2686,11 @@ Open, each with the decision made and the reason NOT to revisit it yet:
 - **No guest retention policy.** A guest who never registers leaves rows behind. The operator
   surface reports `guests` and `stale_guests` so the decision can be made with numbers instead
   of in the dark; deleting somebody's contributions on a timer needs a decision nobody has made.
+- **A refused write still mints an identity.** The client asks for a guest token before it knows
+  whether the write will be allowed, so clicking something that needs an account (an invite, a
+  project, a consensus stance) leaves a `users` row behind for an action that never happened.
+  Kept uniform rather than special-cased, and the cost is bounded and stated: the identity carries
+  a random name and a timestamp and nothing else (no address is recorded anywhere in that path),
+  the per-address limiter applies, and once the MAU limit is reached no more are minted. It is a
+  number the operator can see (`guests`), and it is the same number the retention question above
+  is about, so the two are decided together or not at all.
