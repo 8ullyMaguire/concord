@@ -246,11 +246,14 @@ var storeExportInventory = map[string]exportNote{
 
 	// --- The ILLUSTRATED-BY-TEST half of a surface with no route. This is the §25/§26 class at
 	// its largest: the store is complete, the tests exercise it, and nothing a user does reaches it.
+	//
+	// §28 took the two biggest out of this list by building their routes (CreateFieldReport and
+	// RespondToFieldReport -- field reports had a READ route and no write, so the panel's "No field
+	// reports yet" was the state the code guaranteed). What is left below is the same class, named
+	// the same way: each entry says which surface it belongs to and what is missing above it.
 	"ConfirmCapability":         {testOnly, "no route records an independent confirmation or dispute of a capability claim (internal/httpapi/capabilities.go only lists claims)"},
 	"ConsentRecords":            {testOnly, "no route reads the consent ledger; the guest status route answers from GuestStatusFor"},
-	"CreateFieldReport":         {testOnly, "field reports have ONE route (GET .../field-reports) and no write: the corpus can only be empty"},
 	"RemoveFieldReport":         {testOnly, "as CreateFieldReport: no write route"},
-	"RespondToFieldReport":      {testOnly, "the owner's response half of field reports has no route"},
 	"EditFieldOwnerResponse":    {testOnly, "as RespondToFieldReport: only tests edit a response"},
 	"DeleteFieldOwnerResponse":  {testOnly, "as RespondToFieldReport: only tests delete one"},
 	"ExpireHolds":               {testOnly, "the expiry sweep (confirms the vote for a hold that has lapsed) has no caller: nothing schedules it"},

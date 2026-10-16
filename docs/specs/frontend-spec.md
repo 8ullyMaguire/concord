@@ -528,7 +528,9 @@ migration `0010` — this is the number the whole ranked list is sorted on);
 `elo_r` with `elo_rd` shown as an uncertainty bar rather than a bare number
 (idea #37: "new and unsure" must not read as "ranked low"); pain term and
 strategic term with the sources shown (idea #10, "Why this rank?"); linked
-complaints, with an **attach control** for a second validated complaint — §354 requires "at
+field reports, with a **filing form** (outcome, version, environment, use case, the successor
+required by one outcome) and a **reply control** per report — §4.7's write half; before §28 the
+panel rendered a rate nothing could move; complaints, with an **attach control** for a second validated complaint — §354 requires "at
 least one", and the join is many-to-many, so a complaint that later turns out to bear on the same
 work must be attachable after creation; consensus status; kanban card; **tags**, with an add
 control and a Remove button per tag.

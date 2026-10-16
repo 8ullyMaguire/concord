@@ -241,6 +241,18 @@ func (d *DB) RespondToFieldReport(ctx context.Context, reportID, userID int64, b
 	if err != nil {
 		return FieldOwnerResponse{}, err
 	}
+	// A removed report is hidden from every reader, so a reply to one is written where nobody
+	// will see it -- and worse, it re-opens a decision: the quorum removed the report, and the
+	// thread would carry on underneath a row the page does not render. §4.7 says a report is
+	// flagged rather than deleted so the APPEAL can be conducted on it; an appeal is not a
+	// reply thread, and until one exists this refuses.
+	//
+	// ErrNotFound, not ErrPerm: the report is not there for the caller, and a distinct refusal
+	// would confirm it exists to somebody who cannot see it.
+	if report.Removed {
+		return FieldOwnerResponse{}, fmt.Errorf(
+			"%w: field report %d was removed and takes no new replies", ErrNotFound, reportID)
+	}
 
 	role, err := d.GetRoleForProject(ctx, report.ProjectID, userID)
 	if err != nil {

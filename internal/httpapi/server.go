@@ -540,6 +540,22 @@ func (s *Server) Router() http.Handler {
 	r.Get("/api/v1/projects/{project_id}/capabilities", s.handleListProjectCapabilities)
 	r.Get("/api/v1/projects/{project_id}/field-reports", s.handleListProjectFieldReports)
 
+	// §4.7's write half (docs/specs/field-reports-write-spec.md). The read above has been routed
+	// since phase3 and the page renders the panel from it, so until these existed the panel's
+	// "No field reports yet" was not a state the instance was in -- it was the only state the code
+	// allowed. `store.RecordFieldReport`'s five siblings were measured as TEST-ONLY in §27.
+	//
+	// Any signed-in account may file a report or reply to one: a report is an experience record
+	// about USING the project, and §4.7's "83% of reporters" would be a poll of the converted if
+	// only members could file. The owner/bystander distinction is `is_owner`, which the store
+	// reads from the membership table.
+	r.Post("/api/v1/projects/{project_id}/field-reports", s.handleCreateFieldReport)
+
+	// Project-scoped even though a report carries its own project, so the visibility check is
+	// requireProjectID's; the handler also proves the report is in that project, because report
+	// ids are global.
+	r.Post("/api/v1/projects/{project_id}/field-reports/{report_id}/responses", s.handleRespondToFieldReport)
+
 	// The third §4.10 panel: solution standings, grouped per feature. Grouped
 	// rather than merged into one project-wide leaderboard because a solution's
 	// score is computed against the entries competing with it, so ranking across

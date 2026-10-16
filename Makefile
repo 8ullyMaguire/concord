@@ -114,6 +114,9 @@ gates:
 	# §27's inventory gate. It mutates the TEST file, because the declaration it checks lives there:
 	# a wrong class on one entry, a missing reason, and a walker that stops finding callers.
 	python3 internal/mutate.py internal/store/export_inventory_test.go ./internal/store/ internal/store/export_inventory_test.go internal/store/export_inventory_mutants.json
+	# §28's field-report write half: the in-project proof, the outcome and successor pass-throughs,
+	# the author, and the audit line.
+	python3 internal/mutate.py internal/httpapi/field_reports_write.go ./internal/httpapi/ internal/httpapi/field_reports_write_test.go internal/httpapi/field_reports_write_mutants.json
 	python3 internal/mutate.py internal/store/audit.go ./internal/store/ internal/store/audit_test.go internal/store/audit_mutants.json
 	# §6.5's decision record: the outcome guard, the hold, the ranking the record
 	# carries, and the date on it. The record's own gate because consensus_solutions.go

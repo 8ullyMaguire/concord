@@ -1,0 +1,27 @@
+[
+ {
+  "name": "a reply does not prove the report is in the project",
+  "old": "\tif report.ProjectID != projectID {",
+  "new": "\tif report.ProjectID != projectID && false {"
+ },
+ {
+  "name": "the outcome is taken from the server, not the report",
+  "old": "\t\tOutcome:     req.Outcome,",
+  "new": "\t\tOutcome:     store.ReportWorked,"
+ },
+ {
+  "name": "the successor the reporter named is dropped",
+  "old": "\t\tMigratedTo:  req.MigratedTo,",
+  "new": "\t\tMigratedTo:  \"\","
+ },
+ {
+  "name": "the report is filed by whoever the server feels like",
+  "old": "\t\tUserID:      actorID,",
+  "new": "\t\tUserID:      1,"
+ },
+ {
+  "name": "the filing is not written down",
+  "old": "_ = s.Store.AddAudit(r.Context(), projectID, actorID, \"file_field_report\",",
+  "new": "\t_ = s.Store.AddAudit(r.Context(), projectID, actorID, \"file_filed_report\","
+ }
+]

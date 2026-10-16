@@ -1000,3 +1000,105 @@ def test_a_stranger_is_refused_visibly_and_nothing_is_written(browser, server):
         assert len(pg.errors) == 1 and "403" in pg.errors[0], pg.errors
     finally:
         ctx.close()
+
+
+# ---------------------------------------------------------------------------
+# §4.7's write half (§28)
+# ---------------------------------------------------------------------------
+
+def test_filing_a_field_report_fills_the_panel(browser, server):
+    """The panel has rendered a rate since phase3 and nothing could add to it.
+
+    `panels-empty` is the shape with no capabilities and no field reports at all, so the state this
+    test starts from is the one the instance was permanently in: the panel's "No field reports yet"
+    was not a fact about the seed, it was the fact the code guaranteed -- one read route, no write.
+    §27's inventory measured five store functions in that position.
+
+    Everything asserted after the submit is POSITIVE (the rate, the denominator, the card, the owner
+    badge). An absence check would be satisfied by the reload the write performs, during which the
+    document is torn down -- which is how a swapped endpoint survived the feature suite once already.
+    """
+    token = _mint_token(server["db"], "panel-owner")
+    ctx = browser.new_context(extra_http_headers={"X-Forwarded-For": "10.55.7.7"})
+    pg = ctx.new_page()
+    errors = []
+    pg.on("pageerror", lambda e: errors.append(str(e)))
+    pg.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
+    try:
+        pg.add_init_script("localStorage.setItem('concord.token', %r);" % token)
+        pg.context.add_cookies([{
+            "name": "concord_nav", "value": token, "url": BASE + "/",
+        }])
+        pg.goto(f"{BASE}/projects/panels-empty")
+        panel = pg.locator(".panel-field-reports")
+        expect(panel).to_be_visible(timeout=10000)
+
+        # Before: no rate. nil is "nobody has reported", which is not 0%.
+        expect(panel.locator(".fr-summary")).to_have_count(0)
+        expect(panel.locator(".fr-card")).to_have_count(0)
+
+        form = pg.locator("#field-report-form")
+        expect(form).to_be_visible()
+        # The outcome is a select of §4.7's four values: the server refuses anything else, so the
+        # page states the rule instead of letting the refusal teach it.
+        expect(form.locator("#fr-outcome option")).to_have_count(4)
+        form.locator("#fr-outcome").select_option("worked")
+        form.locator("#fr-version").fill("1.4.2")
+        form.locator("#fr-environment").fill("arm64")
+        form.locator("#fr-use-case").fill("self-hosting a small instance")
+        form.locator("#fr-caveats").fill("the migration notes were wrong about one flag")
+        form.locator("[data-file-field-report]").click()
+
+        # After: the rate appears with its denominator, and the report is a card.
+        expect(panel.locator(".fr-summary")).to_contain_text("100% of 1 reporter", timeout=10000)
+        expect(panel.locator(".fr-card")).to_have_count(1)
+        expect(panel.locator(".fr-card")).to_contain_text("worked")
+        expect(panel.locator(".fr-card")).to_contain_text("arm64")
+
+        # The owner replies. is_owner comes from the membership table, so a member's reply carries
+        # the badge the exchange turns on.
+        reply = pg.locator("form[data-respond-report]")
+        expect(reply).to_have_count(1)
+        reply.locator("[data-response-body]").fill("thanks — tracked as #41")
+        reply.locator("[data-submit-response]").click()
+        expect(panel.locator(".fr-response .badge-indigo")).to_contain_text("owner", timeout=10000)
+
+        assert not errors, errors
+    finally:
+        ctx.close()
+
+
+def test_a_migrated_away_report_is_refused_in_the_page_when_it_names_no_successor(browser, server):
+    """The rule the store enforces is a rule the page states before the round trip.
+
+    §4.7: "migrated away (to what?)". The label already says the successor is required for that
+    outcome; this asserts the page refuses locally rather than sending a request it knows the server
+    will reject -- and that the refusal lands beside the control, where the reader is looking.
+    """
+    token = _mint_token(server["db"], "panel-owner")
+    ctx = browser.new_context(extra_http_headers={"X-Forwarded-For": "10.55.7.8"})
+    pg = ctx.new_page()
+    try:
+        pg.add_init_script("localStorage.setItem('concord.token', %r);" % token)
+        pg.context.add_cookies([{
+            "name": "concord_nav", "value": token, "url": BASE + "/",
+        }])
+        pg.goto(f"{BASE}/projects/panels-empty")
+        panel = pg.locator(".panel-field-reports")
+        expect(panel).to_be_visible(timeout=10000)
+
+        form = pg.locator("#field-report-form")
+        form.locator("#fr-outcome").select_option("migrated-away")
+        # Counted BEFORE the click, because this suite shares one seeded database across tests and
+        # another test in this file files a report into this very project: an absolute count here
+        # would assert the test ORDER, not the refusal. What matters is that the click added
+        # nothing -- the refusal is not a slow submit that lands anyway.
+        before = panel.locator(".fr-card").count()
+        form.locator("[data-file-field-report]").click()
+
+        expect(form.locator("[data-fr-error]")).to_be_visible(timeout=5000)
+        expect(form.locator("[data-fr-error]")).to_contain_text("name what you moved to")
+        expect(panel.locator(".fr-card")).to_have_count(before)
+    finally:
+        ctx.close()
+

@@ -62,6 +62,25 @@ MUTANTS = [
     ("a decided complaint still offers its verdicts",
      "        (c.status === 'open'\n          ? '<button class=\"btn btn-quiet\" data-validate=\"'",
      "        (true\n          ? '<button class=\"btn btn-quiet\" data-validate=\"'"),
+    # §28's field-report write half. The read half has been routed since phase3, so the panel's
+    # rate and cards are already covered; what these four cover is the pair of controls that can
+    # now change them, at the three places such a control goes wrong: the path, the payload, and
+    # whether it is wired at all.
+    # The mutation is the PATH, not the query string: the first version of this mutant appended
+    # ?x=1 and SURVIVED, because the server routes on the path and a stray query parameter is
+    # ignored -- the write landed and the test was right to pass. A mutant has to model the defect.
+    ("the report form posts to the project instead of the reports route",
+     "        postJSON(base + '/field-reports', {",
+     "        postJSON(base, {"),
+    ("the outcome select loses a value",
+     "        '<option value=\"migrated-away\">migrated away</option>' +",
+     "        '<option value=\"migrated away\">migrated away</option>' +"),
+    ("the reply form sends the wrong field name",
+     "            { body: body }).then(function () {",
+     "            { reply: body }).then(function () {"),
+    ("the reply forms are never wired",
+     "    var replyForms = document.querySelectorAll('form[data-respond-report]');",
+     "    var replyForms = document.querySelectorAll('form[data-respond-report-never]');"),
 ]
 
 if __name__ == "__main__":

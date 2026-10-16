@@ -156,7 +156,16 @@ var readerInventory = []readerRow{
 	{Match: "/api/v1/projects/{project_id}/tallies", Reader: "ranking.js", Anchor: "tallies",
 		Routes: 1},
 	{Match: "/api/v1/projects/{project_id}/field-reports", Reader: "project.js", Anchor: "field-reports",
-		Routes: 1},
+		// §28 added the two writes; this row counts the two at THIS path (the panel's read and the
+		// filing form). The reply route is below, on its own row and with its own anchor, because a
+		// coarse row satisfied by the panel's read is exactly how a write went unbuilt until §28.
+		Routes: 2},
+	{Match: "/api/v1/projects/{project_id}/field-reports/{report_id}/responses", Reader: "project.js",
+		// The RENDERED reply form, not the route or the fetch path: `data-respond-report` appears
+		// only in the form the panel builds per report, so an anchor like the path would stay
+		// satisfied after the reply control is deleted.
+		Anchor: "data-respond-report", Routes: 1,
+		Note: "§28's reply write: the store's RespondToFieldReport, reachable only from tests before it"},
 	{Match: "/api/v1/projects/{project_id}/strategy/weight-proposals", Reader: "settings.js",
 		// Rendered markup, not the fetch path: the withdrawal control is what has to exist.
 		Anchor: "data-withdraw-weight", Routes: 4,

@@ -5,10 +5,11 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state (the fourteenth pass, §27):** schema 29 · 29 migrations · 82 live tables · 1066 Go
-tests across 9 test-bearing packages · 290 e2e tests in 21 suite files · 38/38 UI mutants killed
-(7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 4 project.js, 3 settings.js, 3 feature.js) ·
-`make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
+**Measured state (the fifteenth pass, §28):** schema 29 · 29 migrations · 82 live tables · 1074 Go
+tests across 9 test-bearing packages · 292 e2e tests in 21 suite files · 42/42 UI mutants killed
+(7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js) ·
+Go mutants: 20 arms, 136 killed, 0 survived · `make verify` exit 0, `make gates` exit 0,
+`make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
 gated and correct; the e2e half was reconciled by nothing and was wrong twice over — the
@@ -3177,7 +3178,7 @@ like this is worth making rather than documenting.
 
 ### 26.7 Where the numbers stand
 
-**Measured state:** schema 29 · 29 migrations · 82 live tables · 1066 Go tests · 290 e2e tests in 21
+**Measured state (historical) — §26's, superseded by §28.7:** schema 29 · 29 migrations · 82 live tables · 1066 Go tests · 290 e2e tests in 21
 suite files · 38/38 UI mutants · Go mutants: 18 arms, 127 killed, 0 survived · `make verify`,
 `make gates`, `make e2e` all exit 0.
 
@@ -3234,7 +3235,8 @@ and the anchors are what would have caught it.
 
 ### 27.3 What it found
 
-Measured: **227 LIVE, 24 TEST-ONLY, 3 UNCALLED** out of 254 exported methods. §24.7's three names
+Measured: **227 LIVE, 24 TEST-ONLY, 3 UNCALLED** out of 254 exported methods (**at §27**; §28 built
+two of the test-only ones' routes, so the current figure is 229/22/0 — §28.7). §24.7's three names
 were exactly right — and were three of a class with twenty-seven members. The inventory in the test
 names every unreachable method **with the reason it stays**, grouped by the surface it belongs to,
 because the reason is the deliverable:
@@ -3312,9 +3314,107 @@ waiting to trip over the next one.
 
 ### 27.7 Where the numbers stand
 
-**Measured state:** schema 29 · 29 migrations · 82 live tables · 1066 Go tests · 290 e2e tests in 21
+**Measured state (historical) — §27's, superseded by §28.7:** schema 29 · 29 migrations · 82 live tables · 1066 Go tests · 290 e2e tests in 21
 suite files · 38/38 UI mutants · Go mutants: 19 arms, 130 killed, 0 survived · store exports: 227
 LIVE, 24 TEST-ONLY (all named with reasons), 0 UNCALLED · `make verify`, `make gates`, `make e2e` all
+exit 0.
+
+## 28. §4.7's write half: the panel that could only be empty (2026-10-16)
+
+Spec `docs/specs/field-reports-write-spec.md`, plan `docs/plans/field-reports-write.md`, both written
+before any code.
+
+### 28.1 The surface §27 measured, picked up
+
+§27 named 24 exported store methods that only tests could reach and grouped them by the surface they
+belong to. The largest group was field reports: **one route, `GET .../field-reports`, and six store
+functions only tests called**. §4.7 (R5) specifies them as the replacement for rants and "does anyone
+use X?" threads; the store implements that specification completely, including the parts that are
+easy to skip (`migrated-away` must name its successor, `is_owner` comes from the membership table and
+never from the request, a report is flagged rather than deleted, `CaveatCredit = 0.5` is declared by
+name).
+
+The panel that renders all of it has been on the project page since phase3. So the state was:
+
+> **"No field reports yet"** was not a fact about the seed. It was the fact the code guaranteed.
+
+Two of the six are now routed: filing a report, and replying to one -- the pair that makes the corpus
+real, and the second is §4.7's central rule ("owners can respond but cannot delete").
+
+### 28.2 What the handlers had to add, and what they had to not
+
+- **Who may write.** Both writes need authentication and no project role. A field report is an
+  experience record about *using* the project; §4.7's own sentence is "worked for 83% of reporters",
+  and a report only members could file would make that number a poll of people who already joined --
+  the people most likely to have made it work. `is_owner` still separates the owner's reply from a
+  bystander's, resolved server-side.
+- **Auth before the project.** The ordering rule from `internal/httpapi/auth.go`: an anonymous POST
+  to a real project and to a nonexistent one must both answer 401, or the response code enumerates
+  the instance's slugs. `TestFieldReportWriteNeedsAnAccount` pins it.
+- **The reply route is project-scoped**, and the handler *also* proves `report.ProjectID ==
+  {project_id}`. Report ids are global; a route that read only `{report_id}` would let any project's
+  URL answer for any report. This is the defect §26 fixed one layer down, and the mutant that removes
+  the proof is killed.
+- **Nothing re-derived.** The outcome enum, the `migrated_to` rule and the author/project checks stay
+  in the store, and the handler maps `ErrInvalid` to 400 with the store's message, which names the
+  field.
+- **The body cannot choose the author.** `UserID` and `is_owner` are never read from the payload.
+
+### 28.3 The guard the store was missing
+
+`RespondToFieldReport` loaded the report and never looked at `removed`, so a removed report still
+collected replies -- a thread continuing under a row no reader is served, re-opening a decision the
+quorum took. §4.7 keeps the row *so that the appeal can be conducted on it*; an appeal is not a reply
+thread, and until one exists this refuses, with `ErrNotFound` rather than a permission error (a
+distinct refusal would confirm the report exists to someone who cannot read it).
+
+### 28.4 The surviving mutant that was a missing assertion
+
+`make gates` reported `the report is filed by whoever the server feels like` **SURVIVED**: the mutant
+set the report's `UserID` to 1, and no test noticed. The fixture was not at fault -- the suite had no
+assertion about the *author* at all, because the panel renders the report's outcome and the reply's
+badge and neither depends on who filed it. **"A report whose author is whatever the server felt like"
+is not evidence**, so the assertion was added (the author must be the token's account) and the mutant
+died on the next run. A survivor is a missing assertion or a missing fixture; this one was the first.
+
+The same pass produced the other kind: the first version of the browser mutant for the filing form
+appended `?x=1` to the path and SURVIVED the suite -- correctly, because the server routes on the path
+and a stray query parameter is ignored, so the write landed and the test was right to pass. **A
+mutant has to model the defect**: it now posts to the project resource instead of the reports route,
+which is the swapped-endpoint mistake the arm exists for, and it is killed.
+
+### 28.5 The browser assertions, and why they are positive
+
+`test_filing_a_field_report_fills_the_panel` files a report through the form and then asserts the
+panel's rate and denominator **appear** ("100% of 1 reporter"), that the card is there with its
+outcome and environment, and that the owner's reply carries the `owner` badge. Every one of those is
+an absence in the "before" state, so a "the old state is gone" assertion would be satisfied by the
+reload the write performs -- with the document torn down -- which is how a swapped endpoint survived
+the feature suite in §25.
+
+The second test's own first version was **wrong for a different reason and was caught by running it**:
+it asserted `.fr-card` count 0 after a refused migrated-away filing, but the suite shares one seeded
+database and the test above it had just filed a report into the same project, so it was asserting the
+test ORDER rather than the refusal. It now counts before the click and asserts the count is unchanged
+-- the refusal wrote nothing, which is the claim worth making.
+
+### 28.6 What is deliberately still unwritten
+
+- **Removal.** §4.7's "removed by quorum with appeal" needs an appeal flow. The store refuses a
+  project member, so a route would be POST-able only by a non-member, which is the rule but not a
+  flow.
+- **Editing and deleting a reply.** The store's rule -- only the author may correct a non-owner reply,
+  and an owner's published statement may not be edited or deleted even by its author -- is pinned by
+  store tests and exercised by the mutants, but there is no route or control for it this pass.
+- **Filing is not rate-limited.** Nothing stops one account filing a hundred reports. §4.2's
+  reputation weighting limits a report's *effect*, not its *number*, and "weighted by reputation"
+  reads as a defence against flooding that it is not.
+
+### 28.7 Where the numbers stand
+
+**Measured state:** schema 29 · 29 migrations · 82 live tables · 1074 Go tests · 292 e2e tests in 21
+suite files · 42/42 UI mutants · Go mutants: 20 arms, 136 killed, 0 survived · store exports: 229
+LIVE, 22 TEST-ONLY (all named with reasons), 0 UNCALLED · `make verify`, `make gates`, `make e2e` all
 exit 0.
 
 **Still open, and named rather than implied:** Q2 (the sum), Q3 (the pain-side multiplier), §452's

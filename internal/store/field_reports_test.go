@@ -546,3 +546,52 @@ func TestDeletingAProjectRowCascadesToItsFieldReports(t *testing.T) {
 		t.Errorf("%d owner responses survived the project delete, want 0", responsesLeft)
 	}
 }
+
+// firstReport reads the fixture's report row, for a test that needs its id and its project.
+func firstReport(t *testing.T, store *DB, projectID int64) FieldReport {
+	t.Helper()
+	reports, err := store.ListFieldReports(context.Background(), projectID, false)
+	if err != nil {
+		t.Fatalf("ListFieldReports: %v", err)
+	}
+	if len(reports) == 0 {
+		t.Fatal("fixture has no report")
+	}
+	return reports[0]
+}
+
+// A removed report takes no new replies.
+//
+// §4.7 removes a report "by quorum with appeal" and keeps the row so the appeal has something to
+// be conducted on. A reply thread under a row that no reader is served is not an appeal -- it is the
+// conversation continuing where nobody can see it, and it re-opens a decision that was taken. Until
+// an appeal flow exists, this refuses; and it refuses with ErrNotFound rather than a permission
+// error, because a distinct refusal would confirm the report exists to somebody who cannot read it.
+func TestARemovedReportTakesNoNewReplies(t *testing.T) {
+	store, memberID, projectID := reportFixture(t)
+	ctx := context.Background()
+	// Removal is refused to a project member (§4.7), so the remover is a signed-in non-member.
+	remover := newUserNamed(t, store, "frep-remover")
+	rep := firstReport(t, store, projectID)
+
+	if _, err := store.RespondToFieldReport(ctx, rep.ID, memberID, "before removal"); err != nil {
+		t.Fatalf("first reply: %v", err)
+	}
+	if err := store.RemoveFieldReport(ctx, rep.ID, remover, "fabricated"); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+
+	_, err := store.RespondToFieldReport(ctx, rep.ID, remover, "after removal")
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("reply to a removed report: err = %v, want ErrNotFound", err)
+	}
+	// The count is the assertion that matters: a guard that returns the error and inserts the row
+	// anyway passes an errors.Is check.
+	responses, err := store.ListFieldReportResponses(ctx, rep.ID)
+	if err != nil {
+		t.Fatalf("list responses: %v", err)
+	}
+	if len(responses) != 1 {
+		t.Errorf("responses = %d after a refused reply, want just the one written before removal", len(responses))
+	}
+}

@@ -130,6 +130,43 @@ function apiAuth(extra) {
       // a mutation run reported it as SURVIVED. The observable behaviour was not
       // wrong, but the guard was decorative -- it could not fail -- and a
       // decorative guard protects nothing when the store's rule changes.
+      // The write half. The panel has rendered a rate and a corpus since phase3 and nothing
+      // could ever add to either: this form is what makes "No field reports yet" a state the
+      // instance can leave. The outcome is a SELECT of §4.7's four values rather than a text
+      // input, because the store refuses anything else and a free-text box would make the
+      // refusal a discovery instead of a rule the page states.
+      var fileForm = '<form class="card" id="field-report-form" style="margin-top:1rem;">' +
+        '<div class="card-title">File a field report</div>' +
+        '<p class="card-text">What happened when you used this, in the terms the outcome rate ' +
+        'counts. A version, an environment, and an outcome are what make one report ' +
+        'comparable with the next.</p>' +
+        '<div class="form-row">' +
+        '<label class="form-label" for="fr-outcome">Outcome</label>' +
+        '<select class="input" id="fr-outcome" name="outcome">' +
+        '<option value="worked">worked</option>' +
+        '<option value="worked-with-caveats">worked, with caveats</option>' +
+        '<option value="abandoned">abandoned</option>' +
+        '<option value="migrated-away">migrated away</option>' +
+        '</select></div>' +
+        '<div class="form-row"><label class="form-label" for="fr-version">Version</label>' +
+        '<input class="input" id="fr-version" name="version" placeholder="1.4.2"></div>' +
+        '<div class="form-row"><label class="form-label" for="fr-environment">Environment</label>' +
+        '<input class="input" id="fr-environment" name="environment" placeholder="arm64, docker, bare metal"></div>' +
+        '<div class="form-row"><label class="form-label" for="fr-use-case">Use case</label>' +
+        '<input class="input" id="fr-use-case" name="use_case" placeholder="what you were trying to do"></div>' +
+        // Named as required-for-one-outcome in the label, so the server's refusal is a rule the
+        // page already stated rather than a surprise.
+        '<div class="form-row"><label class="form-label" for="fr-migrated-to">Migrated to ' +
+        '<span class="muted">(required only for the migrated-away outcome)</span></label>' +
+        '<input class="input" id="fr-migrated-to" name="migrated_to" placeholder="the successor"></div>' +
+        '<div class="form-row"><label class="form-label" for="fr-caveats">What happened</label>' +
+        '<textarea class="input" id="fr-caveats" name="caveats" rows="3"></textarea></div>' +
+        '<div class="form-row"><label class="form-label" for="fr-advice">Advice for the next ' +
+        'person</label><textarea class="input" id="fr-advice" name="advice" rows="2"></textarea></div>' +
+        '<button type="submit" class="btn" data-file-field-report>File this report</button>' +
+        '<p class="form-status" data-fr-error hidden></p>' +
+        '</form>';
+
       var summary = '';
       if (data.outcome_rate != null) {
         var pct = Math.round(data.outcome_rate * 100);
@@ -153,7 +190,7 @@ function apiAuth(extra) {
         // path, so a rate cannot appear here without the store having sent one.
         return '<div class="panel-field-reports">' + head + summary + env + panelEmpty('No field reports yet',
           'Nobody has recorded using this. Until someone does, there is no evidence ' +
-          'here to weigh against the project\'s claims.') + '</div>';
+          'here to weigh against the project\'s claims.') + fileForm + '</div>';
       }
 
       var cards = reports.map(function (r) {
@@ -165,6 +202,15 @@ function apiAuth(extra) {
             (resp.is_owner ? 'badge-indigo' : 'badge-slate') + '">' +
             (resp.is_owner ? 'owner' : 'reply') + '</span> ' + esc(resp.body) + '</div>';
         }).join('');
+        // The reply form is keyed by report id: the page renders up to ten reports, so a form
+        // found by id alone would post every reply to the first one shown.
+        responses += '<form class="fr-reply-form" data-respond-report="' + esc(r.id) + '">' +
+          '<label class="form-label" for="fr-reply-' + esc(r.id) + '">Reply</label>' +
+          '<input class="input" id="fr-reply-' + esc(r.id) + '" data-response-body ' +
+          'placeholder="the owner can answer here; anyone signed in can say they saw it too">' +
+          '<button type="submit" class="btn" data-submit-response>Reply</button>' +
+          '<p class="form-status" data-fr-error hidden></p>' +
+          '</form>';
         return '<div class="card fr-card"><div class="card-title">' +
           esc(r.use_case || 'field report') + '</div>' +
           '<div class="pill-row">' +
@@ -181,7 +227,8 @@ function apiAuth(extra) {
         : '';
 
       return '<div class="panel-field-reports">' + head + summary + env + omitted +
-        '<div class="grid-responsive-2" style="margin-top:1rem;">' + cards + '</div></div>';
+        '<div class="grid-responsive-2" style="margin-top:1rem;">' + cards + '</div>' +
+        fileForm + '</div>';
     }
 
     function solutionsPanel(data) {
@@ -679,6 +726,11 @@ function apiAuth(extra) {
         });
       });
     });
+
+    // The field-reports panel's two write controls (§28). Called here, at the end of wire(),
+    // because the panel is rendered before the forms above and the DOM is replaced wholesale on
+    // every render -- there is nothing to detach and no order that matters beyond "after render".
+    wireFieldReports(slug);
   }
 
   // ------------------------------------------------- §6.1 duplicate detection
@@ -833,6 +885,78 @@ function apiAuth(extra) {
           return payload;
         });
       });
+  }
+
+  // wireFieldReports attaches the panel's two write controls.
+  //
+  // Both write and then RELOAD: a new report moves the outcome rate, the denominator and the
+  // per-environment breakdown at once, and a new reply can change which badge the exchange
+  // carries -- so the page the reader is looking at is the only thing that can be trusted to
+  // show the result. Both render their refusal beside the control that caused it.
+  function wireFieldReports(slug) {
+    var base = '/api/v1/projects/' + encodeURIComponent(slug);
+
+    var fileForm = document.getElementById('field-report-form');
+    if (fileForm) {
+      fileForm.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        var err = fileForm.querySelector('[data-fr-error]');
+        var btn = fileForm.querySelector('[data-file-field-report]');
+        function val(id) {
+          var el = document.getElementById(id);
+          return el ? el.value.trim() : '';
+        }
+        // Caught here rather than sent: the store refuses migrated-away with no successor, and a
+        // request that cannot succeed is not worth a round trip. The label says the rule; this
+        // makes it a refusal instead of an error message from the server.
+        var outcome = val('fr-outcome');
+        if (outcome === 'migrated-away' && !val('fr-migrated-to')) {
+          if (err) { err.textContent = 'A migrated-away report has to name what you moved to.'; err.hidden = false; }
+          return;
+        }
+        btn.disabled = true;
+        postJSON(base + '/field-reports', {
+          outcome: outcome,
+          version: val('fr-version'),
+          environment: val('fr-environment'),
+          use_case: val('fr-use-case'),
+          migrated_to: val('fr-migrated-to'),
+          caveats: val('fr-caveats'),
+          advice: val('fr-advice'),
+        }).then(function () {
+          window.location.reload();
+        }).catch(function (e) {
+          btn.disabled = false;
+          if (err) { err.textContent = e.message || String(e); err.hidden = false; }
+        });
+      });
+    }
+
+    var replyForms = document.querySelectorAll('form[data-respond-report]');
+    for (var i = 0; i < replyForms.length; i++) {
+      (function (form) {
+        form.addEventListener('submit', function (ev) {
+          ev.preventDefault();
+          var err = form.querySelector('[data-fr-error]');
+          var btn = form.querySelector('[data-submit-response]');
+          var field = form.querySelector('[data-response-body]');
+          var body = field ? field.value.trim() : '';
+          if (!body) {
+            if (err) { err.textContent = 'A reply needs something in it.'; err.hidden = false; }
+            return;
+          }
+          var reportID = form.getAttribute('data-respond-report');
+          btn.disabled = true;
+          postJSON(base + '/field-reports/' + encodeURIComponent(reportID) + '/responses',
+            { body: body }).then(function () {
+            window.location.reload();
+          }).catch(function (e) {
+            btn.disabled = false;
+            if (err) { err.textContent = e.message || String(e); err.hidden = false; }
+          });
+        });
+      })(replyForms[i]);
+    }
   }
 
   function render(p, features, complaints, documents, panels, requests, lists) {
