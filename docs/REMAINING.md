@@ -28,12 +28,18 @@ security hole and a write-only database table. See §3.
 | Where | Version |
 |---|---|
 | `https://concord.polarisocial.xyz/api/v1/version` | `v0.4.0-voting-56-g3ffae12` |
-| `http://127.0.0.1:8006/api/v1/version` (this host) | `v0.4.0-voting-92-g7114a54` |
+| `http://127.0.0.1:8006/api/v1/version` (this host) | `v0.4.0-voting-123-gae1e210` (`ae1e210`, the last commit that changed code — doc-only commits after it do not change the binary) |
 
-The public hostname is served by a **different machine**, 36 commits behind. Evidence,
-not inference: this host has no tunnel, no reverse proxy and nothing on :80/:443; the
-only Concord binary on it is `/home/alvaro/concord-deploy/concord`, which `make deploy`
-refreshed at 22:10 and which now answers `g7114a54`. Cloudflare reports
+Both rows were re-measured 2026-10-16: the public host still answers `g3ffae12` (67
+commits behind), and this host answers `gae1e210`, deployed by `make deploy` and
+verified live (the hold scoping, the release route and the empty-reason refusal were all
+exercised against the running binary — `docs/REMAINING.md` §21.7).
+
+The public hostname is served by a **different machine**. Evidence, not inference: this
+host has no tunnel, no reverse proxy and nothing on :80/:443; the only Concord binary on
+it is `/home/alvaro/concord-deploy/concord`, which `make deploy` refreshes, and which
+answers `gae1e210`. Cloudflare reports `cf-cache-status: DYNAMIC`, so it is not serving a
+stale cache either — it is proxying to an origin elsewhere. Cloudflare reports
 `cf-cache-status: DYNAMIC`, so it is not serving a stale cache either — it is
 proxying to an origin elsewhere.
 
