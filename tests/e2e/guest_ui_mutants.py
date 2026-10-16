@@ -40,8 +40,8 @@ SUITE = "tests/e2e/guest_e2e.py"
 
 MUTANTS = [
     ("the notice's Accept button records nothing",
-     "      originalFetch('/api/v1/consent', {",
-     "      originalFetch('/api/v1/consent-is-not-here', {"),
+     "      pendingAccept = originalFetch('/api/v1/consent', {",
+     "      pendingAccept = originalFetch('/api/v1/consent-is-not-here', {"),
     ("the notice's Accept button is not wired at all",
      "    button.addEventListener('click', function () {",
      "    button.addEventListener('no-such-event', function () {"),
@@ -51,9 +51,15 @@ MUTANTS = [
     ("the guest identity is never minted",
      "    if (session && !session.signedIn()) {",
      "    if (false) {"),
-    ("the limit refusal is reported as a generic failure",
-     "          if (body && body.code === 'guest_limit_reached') {",
-     "          if (false) {"),
+    # The limit refusal is told in TWO places -- when the identity cannot be minted,
+    # and again on the write that wanted it -- and the first version of this mutant
+    # targeted only the first. It SURVIVED, correctly: the second call site said the
+    # same sentence, so an outcome-level test could not see the difference. The rule
+    # that a test CAN pin is the one both sites share: the refusal must offer the way
+    # forward, not just state the problem.
+    ("the way forward is not offered when the guest door is shut",
+     "        if (!token) return refused(GUEST_REFUSED, { href: '/login', text: 'Create an account' });",
+     "        if (!token) return refused(GUEST_REFUSED);"),
 ]
 
 

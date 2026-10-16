@@ -777,6 +777,11 @@ def api_allowing_error(base, method, path, body=None, token=None, client=None):
         headers["Authorization"] = "Bearer " + token
     if client:
         headers["X-Forwarded-For"] = client
+    # The cookie notice is accepted, like harness.api does and for the same reason:
+    # every mutating request needs it, and a visitor who has accepted sends it on
+    # every request. A test that must see the REFUSAL sends its own request with no
+    # cookie (harness.api_raw), never this one.
+    headers["Cookie"] = "concord_consent=1"
     req = urllib.request.Request(base + path, data=data, method=method,
                                  headers=headers)
     try:

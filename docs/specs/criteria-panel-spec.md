@@ -114,9 +114,16 @@ ratings are rendered, so a voter sees what their comparison did.
    from the server; the page formats and labels them.
 3. Every write reports the server's refusal verbatim, and a 401 says what it
    means (sign in) rather than "something went wrong".
-4. The page renders for anyone who can read the project; the writes are
-   `contributor`/`maintainer`-gated server-side, which the page states rather than
-   duplicating.
+4. The page renders for anyone who can read the project; the writes are server-gated,
+   which the page states rather than duplicating. **What the server actually requires
+   was measured in the tenth pass and this sentence overstated it**: creating and
+   retiring a criterion is `contributor`/`maintainer`-gated, but `POST
+   /criteria/{id}/vote` requires only an identity (`getActorID != 0`) and has since it
+   shipped. It now admits a guest identity too -- a pairwise comparison feeds the
+   ranking, not a quorum, and registration was already free, so a nameless voter does
+   not make stuffed input cheaper. The test that used to assert "an anonymous visitor
+   cannot vote" asserts what the server does now: the visitor votes as a guest and the
+   page reports the recorded ratings (docs/REMAINING.md §23.11).
 5. An empty project (no criteria) gets the create form and the reason the table is
    empty, not a bare "no data".
 

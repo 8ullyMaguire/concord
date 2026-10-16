@@ -206,6 +206,12 @@ func (d *DB) Login(ctx context.Context, username, password string) (User, string
 	if hash == "" {
 		// Account predates authentication. It cannot log in, which is correct:
 		// an account with no credential must not become usable by guessing.
+		//
+		// A GUEST identity (guest_interactions, migration 0027) has an empty hash
+		// for the same reason and arrives here too: it carries no credential, so
+		// there is nothing to log in WITH -- it acts through the token it was
+		// issued, and the way it becomes an account is to register (which promotes
+		// the row) rather than to guess a password it never had.
 		return User{}, "", fmt.Errorf("%w: %v", ErrAuth, ErrNoCredential)
 	}
 	ok, err := verifyPassword(password, hash)

@@ -508,7 +508,22 @@ def test_a_second_vote_on_the_same_pair_is_refused_with_the_reason(page):
     expect(page.locator("#criteria-notice")).not_to_contain_text("something went wrong")
 
 
-def test_an_anonymous_visitor_can_read_the_table_but_not_vote(page, server, anon):
+def test_a_visitor_with_no_account_can_read_the_table_and_vote_as_a_guest(page, server, anon):
+    """Reading needs no account, and -- since guests may act -- neither does voting.
+
+    This test used to assert the opposite: that an anonymous write came back refused,
+    with a sign-in prompt the page passed on. What it protects is unchanged (the page
+    must REPORT what the server did, never a dead control), but the server's answer
+    changed when guest interactions arrived: the visitor is a guest with an identity,
+    so the comparison is recorded, and the two updated ratings come back with it. That
+    response is the part a page which swallowed the body could not fake, which is why
+    the assertion is on the recorded ratings rather than on "something happened".
+
+    A guest MAY vote here, deliberately: a pairwise comparison feeds the criteria
+    ranking, not a quorum, and a nameless identity does not make stuffed input cheaper
+    than registration already did (registration is free). Consensus stances, which DO
+    carry quorum arithmetic, refuse a guest on eligibility instead.
+    """
     open_criteria(page)
     expect(page.locator(".crit-table")).to_be_visible()
 
@@ -524,10 +539,8 @@ def test_an_anonymous_visitor_can_read_the_table_but_not_vote(page, server, anon
     row.locator("[data-vote-outcome]").select_option("a")
     row.locator("[data-vote]").click()
     notice = anon.locator("#criteria-notice")
-    expect(notice).to_contain_text("signed-in")
-    # Preserve the status: an anonymous write must be refused for the right reason,
-    # which is what tells a reader to sign in rather than to retry.
-    assert "401" not in notice.inner_text() or "sign in" in notice.inner_text().lower()
+    expect(notice).to_contain_text("Recorded")
+    expect(notice).to_contain_text("Fast cache")
 
 
 def test_no_console_errors_on_the_criteria_page(page):

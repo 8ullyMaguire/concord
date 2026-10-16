@@ -5,8 +5,8 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state:** schema 26 · 26 migrations · 81 live tables · 1004 Go tests across
-9 test-bearing packages · 277 e2e tests in 19 suite files · 16/16 UI mutants killed (7 audit.js, 9 consensus.js) ·
+**Measured state:** schema 27 · 27 migrations · 81 live tables · 1028 Go tests across
+9 test-bearing packages · 282 e2e tests in 20 suite files · 23/23 UI mutants killed (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js) ·
 `make verify` exit 0, `make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
@@ -743,8 +743,8 @@ Three `wait_for_timeout` calls remain in e2e, all marked `BOUNDED (justified)` b
 §11 and everything above it are history. §1, §4 and §11 are marked superseded; this
 section is the current answer, and like §11 every line was checked against the code.
 
-**Measured state:** schema 26 · 26 migrations · 81 live tables · **1004 Go tests** across
-9 test-bearing packages · **277 e2e tests in 19 suite files** · **16/16 UI mutants** killed ·
+**Measured state:** schema 26 · 26 migrations · 81 live tables · **1004 Go tests** (historical) across
+9 test-bearing packages · **277 e2e tests in 19 suite files** · **16/16 UI mutants** killed · (historical)
 `make verify` exit 0, `make e2e` exit 0.
 
 ### 12.1 How the remaining work was found (it was not in any tracker)
@@ -2471,3 +2471,218 @@ similarity search — and the binary names its own remedy (`bin/embedbackfill -k
 Backfilled on both instances: the public one, feature 284 embedded → 1156/1156 = 100.0% and
 project 1 → 71/71 = 100.0%; the laptop's, project 1 → 56/56 = 100.0% (its features and
 complaints were already complete: 537/537 and 655/655). Requests have no rows on either.
+
+---
+
+## 23. 2026-10-16 (the tenth pass): a visitor may act, and the notice that gates them
+
+The request, as three claims: a visitor who is not signed in can interact until the instance
+reaches a configurable number of monthly active users (1000 by default); what they produce as a
+guest becomes their account's when they create one; and a cookie notice is shown, with
+interactions refused until it is accepted. Spec: `docs/specs/guest-interactions-spec.md`.
+Plan: `docs/PLAN-guest.md`, which is also the record of what each step's gate was.
+
+### 23.1 A guest is a `users` row, and its identity is a bearer token — decided
+
+47 columns in the live schema carry `REFERENCES users(id)`. A parallel `guests` table would
+have meant a second owner column on all of them or a nullable one, which is two sources of
+truth for "who did this" — and this schema has paid for that mistake twice (0008's cascade
+rebuild, and the merge gate). So a guest is a real row with `is_guest = 1` and `password_hash
+= ''`, which the code already reads as "cannot log in" (§0003's own comment, and `Login`
+refuses an empty hash explicitly rather than treating it as a match).
+
+Its identity arrives as a bearer token, not a cookie, and that is not incidental. The rule
+that a cookie never authorizes a write is load-bearing against CSRF (`navCookieName` is
+accepted only on a GET that is not under `/api/`, with a test named after the property).
+Minting guest identity into a cookie would have deleted that property to save one fetch.
+
+Rejected: an ambient anonymous-session cookie accepted on writes. It is a CSRF hole — any page
+a visitor has open could make them cast a stance — and it makes guest identity unrevocable.
+
+### 23.2 Consent is a gate, and it covers the whole mutating surface from one place
+
+`interactionGate` is a middleware in `Router()`, after `authenticate` (it needs the actor to
+stamp consent, and to know whether the actor is a guest). Consent is per version
+(`CONCORD_CONSENT_VERSION`, default `1`), so changing the notice text re-asks everyone.
+
+One middleware rather than a call in each of ~60 handlers, because a route added later is
+gated without anyone remembering to gate it — and because the alternative is a rule that is
+correct 59 times. Three exemptions, each with its reason in the code: `POST /api/v1/consent`
+(the gate's own door), `/api/v1/auth/*` (establishing or ending an identity is not an
+interaction, and hiding registration behind a cookie banner is a dark pattern), and
+`POST /api/v1/hooks/forgejo` (server to server, no browser, no cookie to accept). Held by
+`TestTheExemptRoutesStayExempt` and by the webhook suite, which posts without consent.
+
+Consent permits; it does not authorize. `TestTheConsentCookieIsNotACredential` posts with the
+cookie and no token and requires a refusal: if that ever passes, the cookie has become an
+authorization and every request from any site the visitor has open is a request they made.
+
+The test harness accepts the notice on behalf of the visitor, in one wrapper
+(`consenting`/`consentingRoutes`) and one HTTP helper (`harness.api`), because a real visitor
+accepts once and every later request carries it. The wrapper stays a `chi.Routes`, because
+three gates walk the router the binary actually serves and a plain function wrapper made them
+stop being able to see any route at all — the guard would have broken silently at the moment
+it mattered most.
+
+### 23.3 MAU is `audit_log`, 30 days, accounts only — decided
+
+```
+COUNT(DISTINCT actor_id) FROM audit_log JOIN users ON users.is_guest = 0
+WHERE actor_id > 0 AND created_at >= now - 30d
+```
+
+Guests are excluded on purpose: the limit says "this instance is big enough to ask people to
+sign up", and counting the guests themselves would let the gate satisfy itself. `audit_log` is
+the source because all 58 write paths already pass through `AddAudit`; union'ing the ~48
+activity columns would look more complete and undercount silently the first time somebody adds
+a write path. The consequence is stated rather than hidden: a user who only reads is not
+active. The window is a constant (`mauWindowDays`), not a variable — 30 days is what the word
+means, and the configurable number is the limit.
+
+Checked at BOTH ends: when an identity is minted, and on every write by a guest. Mint-only
+would have let an instance cross the limit with a visitor mid-session and keep serving them
+forever, which is the state the limit exists to end. `CONCORD_GUEST_MAU_LIMIT=0` switches
+guests off; a value that is not a number is ignored with a log line, because taking the whole
+instance down over a threshold is worse than the default.
+
+### 23.4 The fold has two shapes, because the two arrivals are different
+
+Registering with a guest token present PROMOTES the guest row in place: everything it produced
+already points at that id, so nothing is copied, nothing is orphaned, and the history stays one
+identity's — "this account took these positions while it had no name". Held by
+`TestRegisteringFoldsTheGuestsWork` (same id, same complaints, and the account can log in).
+
+Logging in while holding a guest token FOLDS: a second identity already holds the credential,
+so the rows genuinely have to move. `FoldGuestInto` repoints every user-carrying column in one
+transaction (a half-folded guest is an identity whose votes are in two places, which is worse
+than either end state) and reports `{moved, superseded}`.
+
+Collisions are real and reachable — `comment_votes`, `complaint_impacts` and `positions` are
+keyed by `(thing, user_id)` — so a guest who upvoted a comment their account had also upvoted
+cannot simply be moved there. `UPDATE OR IGNORE` moves what can move; what it refuses is
+counted, deleted with the identity, written into the audit log, and returned in the response as
+`superseded`. The account's row wins because it is the identity that persists; the point is
+that the drop is REPORTED. Held by `TestARowThatCannotCoexistIsReportedNotSilentlyDropped`,
+which asserts the count AND the audit detail.
+
+Two guards, both reachable from a request body and therefore tested: `FoldGuestInto` and
+`PromoteGuest` refuse a non-guest, and the fold refuses to name the same identity twice.
+
+### 23.5 The fold's column list is derived from the schema, not maintained by hand
+
+The one failure mode that is silent. A fold that misses a column does not fail: it leaves rows
+owned by an identity that is about to be deleted, and the symptom ("my votes are gone") arrives
+months later, in front of the person least able to debug it.
+`TestEveryColumnThatCarriesAUserIsFolded` derives the real set from the migrated schema —
+every `PRAGMA foreign_key_list` pointing at `users`, plus every column named like a user
+reference whose type is not TEXT — and fails BOTH ways: a column the fold does not name, and a
+name the fold has that the schema no longer has.
+
+It was proven to fire rather than asserted to: a scratch table
+`CREATE TABLE scratch_owner (id INTEGER NOT NULL REFERENCES users(id))` in 0027 makes it go red
+naming `scratch_owner.id`, and reverting makes it green. That is also how the FIRST version of
+the list was caught naming `maintenance_signals.set_by`, which is `TEXT` — an operator's name,
+not a `users.id`. The list is 48 columns; the derivation is what keeps it honest.
+
+### 23.6 Two defects only a browser could find, and both made the fold unreachable
+
+The Go suite was green and the fold was still impossible to reach through the interface:
+
+1. `auth.js` sent any visitor holding a token from `/login` and `/register` to `/projects`.
+   A guest holds a token — that is how it acts — so the visitor who most needs to register was
+   exactly the one bounced away from the form.
+2. The register form never presented the guest's token, which is the ONLY thing that tells the
+   server there is anything to fold (no cookie could, by §23.1). The account was therefore
+   created beside the guest's work instead of on top of it.
+
+Both are mutants in `tests/e2e/guest_ui_mutants.py` now, both killed. The lesson is the one
+§19.5 and §21.5 keep paying for: a mechanism can be entirely correct and entirely unreachable,
+and only the browser says so.
+
+### 23.7 What the notice says, and what a refused visitor can still do
+
+Two cookies, named in the notice: `concord_nav` (a signed-in page renders as signed in; never
+accepted on an action) and `concord_consent` (this choice). No advertising, no analytics, no
+third parties — a claim the notice makes and the schema supports: there is no such table and no
+such call anywhere in the tree.
+
+Declining leaves the site fully readable, because every read route is public, and the notice
+stays until accepted or the visitor leaves. The client refuses a write locally with the same
+sentence the server would use, and it waits for an in-flight acceptance rather than refusing a
+request the server would have allowed — the difference between a courtesy and a lie about the
+visitor's own state. The server is the authority in every case, and the reasons the client is
+not are stated in `consent.js`.
+
+### 23.8 What a guest may do, and the three writes that need a name
+
+Guests get every write that needs nothing more than "an actor", because that is what a guest
+is. §8.1 and §8.2 are untouched: a guest still cannot cast a stance in a consensus call, open a
+call, hold a call or resolve an objection, and each of those refuses on eligibility rather than
+on guesthood (§8.2's gate now has an actual caller in `requireEligibleCollaborator`).
+
+Three writes require a credentialed account, and refuse with the reason attached
+(`code: account_required`): creating a project (a namespace is a name, and a nameless party
+holding namespaces is a squatting vector), and creating or revoking an invite (invites are
+§8.2's trust mechanism, and a guest has no standing to extend trust).
+
+### 23.9 Where the numbers stood after this pass
+
+**Measured state:** schema 27 · 27 migrations · 81 live tables · 1028 Go tests across
+9 test-bearing packages · 282 e2e tests in 20 suite files · 23/23 UI mutants killed (7 audit.js,
+9 consensus.js, 5 consent.js, 2 auth.js) · `make verify` exit 0, `make gates` exit 0,
+`make e2e` exit 0.
+
+One migration added two columns and two indexes and created nothing (81 tables before and
+after). Every number in that sentence is read from the tree by this file's own header block and
+by `tests/e2e/harness_selftest_test.py` -- which is why the same sentence appears above the
+pass sections: it is the one form the gates know how to check, and a number no gate reads is a
+number that is wrong within the session it is written in.
+
+### 23.11 The sweep guests forced: three gates that said "somebody" where the rule said "who"
+
+Granting a nameless identity the right to act turns every gate that only checks "is there an
+actor?" into a gate a stranger can walk through, so the 15 `requireWriteActor` call sites were
+read rather than assumed, and the ballot-shaped ones were measured by clicking them as a visitor.
+Three sentences in the specs turned out to be doing no work:
+
+1. **Consenting to a taxonomy proposal.** `RatifyTaxonomyProposal` divides by
+   `eligibleTaggers` -- members with a contributing role -- and never checked that the CONSENTER
+   was one of them. Anyone with an account could ratify a tag proposal for a project they had no
+   relationship with; a guest could do it namelessly. Found by the taxonomy browser test, which
+   watched a proposal move to `insufficient_quorum (1/1 consents)` after a visitor clicked the
+   button. Fixed in the store (`isEligibleTagger`, one query so the electorate and its
+   denominator cannot drift apart) with `TestAConsentFromOutsideTheElectorateIsRefusedAndNotCounted`
+   asserting BOTH directions: the outsider and the guest are refused and counted by nobody, and an
+   eligible contributor still consents. No existing Go test consented as an outsider, which is why
+   the Go suite was green both before and after -- the store test is the guard.
+2. **Criteria votes.** `handleCastCriterionVote` requires `getActorID != 0`, so a guest may vote.
+   Allowed, deliberately: a pairwise comparison feeds the criteria RANKING, not a quorum, and the
+   cost of stuffing it does not change with guests because registration was already free and one
+   click. (The alternative -- `contributor`-gating it, which `docs/specs/criteria-panel-spec.md` §4
+   claimed was already true -- would change what an ordinary account may do, which is a product
+   decision this pass has no mandate for.) The spec sentence was corrected instead of the behaviour.
+3. **Consensus stances, objections and holds.** Already gated, and now by the §8.2 check rather
+   than only by "an actor" (that was pass 10's work, and it is what makes §8.1's residency rule
+   hold for a guest).
+
+The remaining sites are content writes (complaints, comments, merges, holds, proposals, tag
+application) where "an actor" is the rule the product chose, and where a guest holding one is the
+whole point of the feature. The sweep is recorded here because the boundary is the thing a next
+pass would otherwise have to rediscover.
+
+### 23.10 Open questions, and the decisions already taken
+
+Open, each with the decision made and the reason NOT to revisit it yet:
+
+- **A signed-in account must also accept the notice.** Uniform, because a notice that applies
+  to some visitors only is a notice nobody understands. This is what the requirement said.
+- **Guest activity does not count toward MAU.** §23.3. Changing it is one line in one query,
+  and the reason not to is that the gate would then satisfy itself.
+- **Guests cannot create projects.** §23.8. The one exemption to revisit if the product wants a
+  visitor to try the whole path end to end.
+- **No captcha, no email verification, no harder rate limit for guests.** The per-address
+  limiter already applies; a captcha is a third-party dependency and a privacy decision that is
+  the owner's, not this pass's.
+- **No guest retention policy.** A guest who never registers leaves rows behind. The operator
+  surface reports `guests` and `stale_guests` so the decision can be made with numbers instead
+  of in the dark; deleting somebody's contributions on a timer needs a decision nobody has made.

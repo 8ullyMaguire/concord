@@ -269,25 +269,32 @@ def test_consenting_below_quorum_is_answered_202_and_reads_as_information(browse
     assert not pg.errors, pg.errors
 
 
-def test_an_anonymous_visitor_is_told_to_sign_in_rather_than_refused_silently(browser, server):
+def test_an_anonymous_visitor_is_told_why_they_cannot_consent_rather_than_refused_silently(browser, server):
     """The control is shown and the refusal is explained.
 
-    The page does not hide the button for signed-out visitors, because a hidden button
-    explains nothing: the server's 401 is the only honest answer to "why did nothing
-    happen", and the page passes it on.
+    The page does not hide the button for a visitor with no session, because a hidden
+    button explains nothing: the server's refusal is the only honest answer to "why did
+    nothing happen", and the page passes it on.
+
+    What the refusal SAYS changed when guests arrived, and the change is an improvement
+    worth stating: a visitor with no account now holds a guest identity, so the answer is
+    no longer 401 "no identity" but the rule itself -- only an eligible tagger may
+    consent. That rule was also newly enforced at the time (the store counted consents
+    from outside the electorate into the quorum), which is how this test found it: it
+    clicked the button as a visitor and watched a proposal move to "1/1 consents".
     """
     proposer, _, _pu = _register(server["db"], f"taxproposer-{next(_ips)}")
     tag = f"topic:e2e-anon-{next(_ips)}"
     api_propose(proposer, tag)
 
-    pg = _page(browser)  # no token
+    pg = _page(browser)  # no token: the visitor is a guest
     root = open_taxonomy(pg, server)
     card = root.locator('[data-proposal]', has_text=tag.split(":")[1])
     expect(card.locator("button[data-consent]")).to_be_visible()
 
     card.locator("button[data-consent]").click()
     live = pg.locator("#taxonomy-live")
-    expect(live).to_contain_text("Sign in first", timeout=15000)
+    expect(live).to_contain_text("only an eligible tagger", timeout=15000)
 
     expect(card).to_contain_text("pending")
     assert not pg.errors, pg.errors

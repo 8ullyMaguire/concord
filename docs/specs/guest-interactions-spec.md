@@ -123,6 +123,11 @@ and shown on the page the operator reads.
 
 ### D4 — What a guest may do: everything an unprivileged account may do, minus three things
 
+(One more was decided when the browser found it: a guest may cast a criteria vote -- a
+pairwise comparison that feeds a ranking -- but may NOT consent to a taxonomy proposal, which
+counts into a quorum. The store now checks that the consenter is one of the eligible taggers it
+divides by; see §23.11 of `docs/REMAINING.md` for the sweep and the criteria-vote reasoning.)
+
 Guests get every write that requires nothing more than "an actor", because that is exactly what
 they are. §8.1/§8.2 role and eligibility gates are untouched, so a guest still cannot cast a
 stance in a consensus call, open a call, hold a call, or resolve an objection — those refuse on
@@ -167,11 +172,20 @@ Accepting posts to `/api/v1/consent` and hides it; the page then publishes
 `<body data-consent="accepted">`. Refusing leaves the site fully readable — every read route is
 public — and the notice stays until accepted or the visitor leaves.
 
-The client also refuses early: the shared request helper (`authHeaders`/`apiFetch` in
-`session.js`) does not send a mutating request while `data-consent` is missing, and surfaces the
-same sentence the server would have. That is a UI courtesy, not the gate: the server is the
-authority, and the e2e suite asserts the server refuses when the cookie is absent **even if the
-client tries**.
+The client also refuses early, and it does so in ONE place: `assets/js/consent.js` wraps
+`window.fetch` at load, before any page script runs, so every request the product makes passes
+through it whether or not the page author thought about the notice. (Written after the fact: the
+first plan put this in `session.js`'s `authHeaders`/`apiFetch`, which only the pages that call
+those helpers would have been covered by -- and ~25 page scripts do not.) It refuses with the same
+sentence the server would have, and with the same `code` the server now sends
+(`consent_required`). That is a UI courtesy, not the gate: the server is the authority, and the
+e2e suite asserts the server refuses when the cookie is absent **even if the client tries**.
+
+The notice itself says what a visitor can do, because the old copy explained the cookies and left
+out the mechanic they were being asked to agree to: you may take part without an account, you act
+as a nameless guest (a random name and a timestamp -- no address is recorded anywhere in this
+path), and creating an account later moves what you did into it. A visitor who is told only about
+cookies has been asked to agree to something that was not described.
 
 ### D7 — Display and counting of guests, and what the operator can see
 
@@ -197,12 +211,15 @@ meaning and every existing test keeps passing.
 | method | path | gate | purpose |
 |---|---|---|---|
 | `POST` | `/api/v1/guest` | consent, MAU | mint a guest identity + token |
-| `GET` | `/api/v1/guest` | none | `{allowed, mau, limit, window_days, consent_version, consented}` for the UI and the operator |
+| `GET` | `/api/v1/guest` | none | `{allowed, mau, limit, window_days, guests, stale_guests, consent_version, consented}` for the UI and the operator |
 | `POST` | `/api/v1/consent` | none (the gate's door) | accept the notice; sets the cookie, stamps the actor |
 | `GET` | `/api/v1/maunot` — see §7 | — | not shipping |
 
 `GET /api/v1/guest` is public and read-only: a page can tell the visitor whether guest interaction
 is still open without attempting a write. It is the surface the toast's "why" comes from.
+`guests` and `stale_guests` (guests older than the MAU window, never folded into an account) were
+added for §7's retention decision: it needs a number, and a number nobody prints is a decision made
+in the dark.
 
 ## 7. Explicitly not shipping, and why
 
@@ -231,14 +248,31 @@ is still open without attempting a write. It is the surface the toast's "why" co
 
 ## 9. Verification
 
-The plan (`docs/PLAN-guest.md`) carries the commands. The claims of §1 map to tests as follows:
+The plan (`docs/PLAN-guest.md`) carries the commands. Every row below names a test that
+exists -- checked by reading the tree, not by memory, after the first version of this table
+named six tests that had never been written.
 
 | claim | test |
 |---|---|
-| a guest can interact without an account | `TestAGuestMayFileAComplaint`, `TestAGuestMayComment`, e2e `guest_e2e.py::test_a_guest_can_act_without_an_account` |
-| guests stop at the limit | `TestGuestsStopAtTheLimit` (mint and write, both directions, limit read from the config) |
-| data folds on account creation | `TestRegisteringFoldsTheGuestsWork` (positions survive, count before == count after, guest row gone) |
-| data folds on login | `TestLoggingInFoldsTheGuestsWork` + `TestEveryColumnThatCarriesAUserIsFolded` |
-| consent is required for interactions | `TestAWriteWithoutConsentIsRefused`, `TestConsentIsNotRequiredToRead`, `TestTheExemptRoutesStayExempt` |
-| the notice is shown | e2e `guest_e2e.py::test_the_notice_is_shown_until_accepted` |
-| folded rows are the account's | `TestTheFoldedRowsAreTheAccounts` (read back through the ordinary readers) |
+| a guest can interact without an account | `TestAGuestMayActWithoutAnAccount`, `TestAGuestHasNoPasswordAndCannotLogIn`, e2e `guest_e2e.py::test_a_guest_can_file_a_complaint_without_an_account` |
+| guests stop at the limit | `TestGuestsStopAtTheLimit` (mint AND write, both directions, limit from the config), `TestMonthlyActiveUsersCountsAccountsAndNotGuests` |
+| the operator can see where the door is | `TestGuestStatusReportsTheDoorAndTheOperatorsNumbers` |
+| data folds on account creation | `TestRegisteringFoldsTheGuestsWork` (same id, same rows, the account can log in), `TestRegisteringWithAGuestTokenKeepsTheGuestsWork` |
+| data folds on login | `TestLoggingInFoldsTheGuestsWork`, `TestLoggingInWithAGuestTokenFoldsTheWorkAndSaysSo` |
+| a fold is all or nothing | `TestTheFoldIsAllOrNothing` |
+| a collision is reported, not dropped | `TestARowThatCannotCoexistIsReportedNotSilentlyDropped` (count AND audit detail) |
+| every user-carrying column is folded | `TestEveryColumnThatCarriesAUserIsFolded` (derives the set from the schema, fails BOTH ways) |
+| the fold refuses a non-guest | `TestFoldingAndPromotingRefuseANonGuest` |
+| consent is required for interactions | `TestAWriteWithoutConsentIsRefusedAndSaysWhy`, `TestConsentIsNotRequiredToRead` |
+| the consent cookie is not a credential | `TestTheConsentCookieIsNotACredential` (cookie, no token, must refuse) |
+| a route added later is gated | `TestEveryMutatingAPIRouteRefusesWithoutConsent` (walks the served router: 70 routes, each asked for a write with no consent) |
+| consent is recorded against whoever accepted | `TestConsentIsRecordedAgainstTheIdentity`, `TestConsentIsRecordedAgainstTheAccountThatAcceptedIt` |
+| the notice is shown, and says where the visitor stands | e2e `guest_e2e.py::test_the_notice_is_shown_and_disappears_when_accepted`, `test_an_interaction_is_refused_until_the_notice_is_accepted`, `TestThePageTellsTheVisitorWhetherTheNoticeIsAccepted` |
+| a shut door is explained, not just refused | e2e `guest_e2e.py::test_a_visitor_is_told_when_the_guest_door_is_shut` (a second instance with the limit at 0) |
+| a guest may not name a project or hand out trust | `TestAGuestMayNotCreateAProjectOrAnInvite` |
+| the fold is REACHABLE from the browser | e2e `guest_e2e.py::test_the_guest_identities_work_survives_registration` (drives the real form) and `tests/e2e/guest_ui_mutants.py` (5 consent.js + 2 auth.js mutants, 7/7 killed) |
+
+The last row exists because the Go suite was green while the fold was unreachable: `auth.js`
+bounced any visitor holding a token away from `/register`, and a guest holds a token -- that is
+how it acts. A mechanism can be entirely correct and entirely unreachable, and only a browser
+says so (docs/REMAINING.md §23.6).

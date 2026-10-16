@@ -361,17 +361,17 @@ def test_an_anonymous_consent_reports_the_refusal_rather_than_doing_nothing(page
     """The consent button with no session is refused, and the page shows the SERVER's
     reason rather than a generic failure.
 
-    Measured: with no token the answer is 401 "authentication required". With a valid
-    token for somebody who is not an eligible collaborator it is 403 "permission
-    denied: only an eligible collaborator can consent to a proposal" -- the Go route
-    test covers that one, because it needs a real session. Both messages name the
-    cause; a page that renders "something went wrong" turns a precise rule into a
-    mystery, which is the least diagnosable symptom there is.
+    Measured, and it changed when guests arrived: a visitor with no account now acts as
+    a GUEST, so this click is no longer "no identity" (401 "authentication required") but
+    "an identity that holds no eligibility" -- the same 403 the Go route test covers with
+    a real session, and the more precise of the two answers. What this test is about is
+    unchanged and is the part that would regress silently: the page renders the server's
+    sentence, not "something went wrong".
     """
     root = _opens_settings(page, server)
     root.locator("button[data-consent]").click()
     live = page.locator("[data-settings-live]")
-    expect(live).to_contain_text("authentication required", timeout=15000)
+    expect(live).to_contain_text("only an eligible collaborator", timeout=15000)
 
 
 def test_a_consent_below_quorum_is_reported_as_recorded_not_as_ratified(page, server):

@@ -147,3 +147,69 @@ func TestTheProposalListReportsTheTagsSideOfTheSameTaxonomy(t *testing.T) {
 		t.Error("ListTags returned nil; the page iterates it")
 	}
 }
+
+// TestAConsentFromOutsideTheElectorateIsRefusedAndNotCounted.
+//
+// The quorum this store divides by has always been eligibleTaggers -- members with a
+// contributing role -- and nothing checked that the CONSENTER was one of them. So a
+// ballot from outside the electorate was counted into the numerator: any account could
+// ratify a tag proposal for a project it had no relationship with, and a guest identity
+// (no members row anywhere, by construction) could do it namelessly. Found by the
+// browser suite, which clicked the button as a visitor and watched a proposal move to
+// "insufficient_quorum (1/1 consents)".
+//
+// Both directions, because a refusal that also refuses the people it is meant to admit
+// would satisfy half of this test: the outsider AND the guest are refused and counted
+// by nobody, then an eligible contributor still consents.
+func TestAConsentFromOutsideTheElectorateIsRefusedAndNotCounted(t *testing.T) {
+	ctx := context.Background()
+	st, owner, pid := setupWithProject(t)
+	contributor := newUserNamed(t, st, "electorate-contributor")
+	outsider := newUserNamed(t, st, "electorate-outsider")
+
+	if _, err := st.ExecContext(ctx,
+		`INSERT INTO members (project_id, user_id, role, joined_at) VALUES (?,?, 'contributor', ?)`,
+		pid, contributor, float64(1790000000)); err != nil {
+		t.Fatalf("add contributor: %v", err)
+	}
+	guest, _, err := st.CreateGuest(ctx)
+	if err != nil {
+		t.Fatalf("CreateGuest: %v", err)
+	}
+
+	p, err := st.ProposeTaxonomyChange(ctx, pid, owner, TaxonomyCreate, "topic:electorate", "", "why")
+	if err != nil {
+		t.Fatalf("ProposeTaxonomyChange: %v", err)
+	}
+
+	// An outsider with an account, and a guest with no members row anywhere.
+	for _, who := range []struct {
+		name string
+		id   int64
+	}{{"an account with no role in the project", outsider},
+		{"a guest identity", guest.ID}} {
+		if _, err := st.RatifyTaxonomyProposal(ctx, p.ID, who.id); !errors.Is(err, ErrPerm) {
+			t.Errorf("%s was allowed to consent (err = %v); the quorum counts eligible "+
+				"taggers and the ballot has to come from one of them", who.name, err)
+		}
+		after := viewFor(t, ctx, st, pid, p.ID)
+		if after.ConsentCount != 0 {
+			t.Errorf("%s was refused but the consent was counted anyway (%d)",
+				who.name, after.ConsentCount)
+		}
+		if after.Status != "pending" {
+			t.Errorf("%s moved the proposal to %q without being able to consent",
+				who.name, after.Status)
+		}
+	}
+
+	// And the rule still admits the people it is about: below quorum is the ordinary
+	// outcome, so a conflict here is the proposal not being ratified yet, not a refusal.
+	if _, err := st.RatifyTaxonomyProposal(ctx, p.ID, contributor); err != nil &&
+		!errors.Is(err, ErrConflict) {
+		t.Fatalf("an eligible contributor could not consent: %v", err)
+	}
+	if got := viewFor(t, ctx, st, pid, p.ID).ConsentCount; got != 1 {
+		t.Errorf("consent_count = %d after an eligible contributor consented, want 1", got)
+	}
+}

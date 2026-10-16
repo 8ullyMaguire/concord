@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+
+	"github.com/go-chi/chi/v5"
 
 	"git.polarisocial.xyz/concord/concord/internal/db"
 	"git.polarisocial.xyz/concord/concord/internal/store"
@@ -481,4 +484,86 @@ func TestThePageTellsTheVisitorWhetherTheNoticeIsAccepted(t *testing.T) {
 	if strings.Contains(accepted, `id="cookie-notice"`) {
 		t.Errorf("the notice is still rendered after acceptance")
 	}
+}
+
+// TestEveryMutatingAPIRouteRefusesWithoutConsent asks every mutating route the
+// binary actually serves for a write with no consent cookie.
+//
+// It walks the router rather than reading a list kept beside it: a list is the
+// artefact that goes stale, and the property being pinned here is the PROPERTY
+// ("no mutating API route acts without consent"), not the mechanism (one
+// middleware over a subtree). A route moved out of that subtree, or a second
+// mux registered without the gate, fails here and names itself.
+//
+// No token is sent, deliberately. The gate is checked before any handler and
+// before any identity is required, so the expected answer is the gate's own
+// 403 -- and a route that answered 401 instead would be telling us the gate is
+// not in front of it.
+func TestEveryMutatingAPIRouteRefusesWithoutConsent(t *testing.T) {
+	ts, _, srv := guestServer(t, 1000)
+	routes, ok := srv.Router().(chi.Routes)
+	if !ok {
+		t.Fatal("Router() is not a chi.Routes; the walk needs the mux itself")
+	}
+
+	// The exemptions, each with its reason (spec §D2). Kept here as a matcher so a
+	// new exemption has to be written down in two places on purpose.
+	exempt := func(route string) bool {
+		return strings.HasPrefix(route, "/api/v1/consent") ||
+			strings.HasPrefix(route, "/api/v1/auth/") ||
+			strings.HasPrefix(route, "/api/v1/hooks/")
+	}
+
+	var targets []string
+	if err := chi.Walk(routes, func(method, route string, _ http.Handler,
+		_ ...func(http.Handler) http.Handler) error {
+		switch method {
+		case http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete:
+		default:
+			return nil
+		}
+		if !strings.HasPrefix(route, "/api/v1") || exempt(route) {
+			return nil
+		}
+		targets = append(targets, method+" "+route)
+		return nil
+	}); err != nil {
+		t.Fatalf("walk: %v", err)
+	}
+	if len(targets) < 30 {
+		t.Fatalf("walked %d mutating API routes; the router has dozens and a walk "+
+			"that finds a handful is measuring nothing", len(targets))
+	}
+
+	for _, target := range targets {
+		method, route, _ := strings.Cut(target, " ")
+		// Every path parameter becomes 1: the gate answers before the handler, so
+		// whether the row exists is irrelevant to what is being asked.
+		path := route
+		for _, seg := range strings.Split(route, "/") {
+			if strings.HasPrefix(seg, "{") {
+				path = strings.Replace(path, seg, "1", 1)
+			}
+		}
+		req, err := http.NewRequest(method, ts.URL+path, bytes.NewReader([]byte("{}")))
+		if err != nil {
+			t.Fatalf("%s: build request: %v", target, err)
+		}
+		req.Header.Set("Content-Type", "application/json")
+		res, err := ts.Client().Do(req)
+		if err != nil {
+			t.Fatalf("%s: %v", target, err)
+		}
+		body, _ := io.ReadAll(res.Body)
+		res.Body.Close()
+		if res.StatusCode != http.StatusForbidden {
+			t.Errorf("%s answered %d without consent; the gate is not in front of it "+
+				"(body: %s)", target, res.StatusCode, strings.TrimSpace(string(body)))
+			continue
+		}
+		if !strings.Contains(string(body), "consent_required") {
+			t.Errorf("%s refused with the wrong reason: %s", target, strings.TrimSpace(string(body)))
+		}
+	}
+	t.Logf("asked %d mutating API routes; all refused for consent", len(targets))
 }

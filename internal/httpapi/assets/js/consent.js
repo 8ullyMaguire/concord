@@ -123,7 +123,7 @@
   function wireNotice() {
     var button = document.getElementById('cookie-accept');
     if (!button) return;
-    button.addEventListener('no-such-event', function () {
+    button.addEventListener('click', function () {
       button.disabled = true;
       pendingAccept = originalFetch('/api/v1/consent', {
         method: 'POST',

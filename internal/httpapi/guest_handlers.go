@@ -119,7 +119,13 @@ func (s *Server) interactionGate(next http.Handler) http.Handler {
 			return
 		}
 		if !s.consentAccepted(r) {
+			// The shape every refusal on this gate shares: a `code` a client can
+			// switch on, and an `error` a person can read. The other two refusals
+			// (guest_limit_reached, account_required) already carry a code, and a
+			// client that has to guess which refusal it got is a client that shows
+			// the wrong sentence.
 			writeJSON(w, http.StatusForbidden, map[string]any{
+				"code":    "consent_required",
 				"error":   "cookies must be accepted before interacting with this site",
 				"consent": "required",
 			})

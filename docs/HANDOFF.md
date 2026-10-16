@@ -77,8 +77,8 @@ store tests and no page.
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 1004 tests, schema 26, 81 tables,
-26 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
+Measured, not remembered: `make verify` green, 1028 tests, schema 27, 81 tables,
+27 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 
 The **public instance** runs this build too, as of 2026-10-16: `concord.polarisocial.xyz`
@@ -148,6 +148,27 @@ them since arenas landed.
   (`$XDG_DATA_HOME/concord/concord.db`); tests use `:memory:` DB with
   migrations (`db.Open(":memory:")` + `db.Migrate()`).
 - Default listen address `127.0.0.1:8006`.
+
+### Guest interactions, and the two knobs that control them
+
+Two `CONCORD_*` variables, both read once at start-up (`internal/httpapi/guest_handlers.go`):
+
+| variable | default | meaning |
+|---|---|---|
+| `CONCORD_GUEST_MAU_LIMIT` | `1000` | how many monthly active **accounts** the instance may have before guest interactions close. `0` switches guests off entirely; a negative value is treated as `0`; a value that is not a number is ignored with a log line, because taking the whole instance down over a threshold is worse than the default. |
+| `CONCORD_CONSENT_VERSION` | `1` | the version of the cookie notice a visitor must have accepted. Bump it when the notice text changes, which re-asks everyone. |
+
+MAU is `COUNT(DISTINCT actor_id)` over the last **30 days** from `audit_log`, excluding
+guests — that window is a named constant, not a variable, because 30 days is the
+definition of the word rather than a policy knob. The guest limit is checked at BOTH
+ends: when an identity is minted, and on every write a guest makes, so an instance
+that crosses the limit while somebody is mid-session stops serving them.
+
+`GET /api/v1/guest` is public and says where the instance stands
+(`{allowed, mau, limit, window_days, guests, stale_guests, consent_version, consented}`),
+so a page can explain a closed door before a visitor tries the handle.
+`stale_guests` is the operator's number for the retention decision nobody has made yet:
+guests older than the window that were never folded into an account.
 
 ## Commands
 

@@ -281,6 +281,21 @@ func (d *DB) RatifyTaxonomyProposal(ctx context.Context, proposalID, userID int6
 		// proposer is the only eligible tagger and ratifies alone.
 		return p, fmt.Errorf("%w: the proposer cannot consent to their own proposal", ErrPerm)
 	}
+	// The consenter has to BE one of the people this proposal is put to. The
+	// denominator below has always been the eligible set (eligibleTaggers), so a
+	// ballot from outside it was counted into a quorum it was not part of -- anyone
+	// with an account could ratify a tag proposal for a project they had no
+	// relationship with, and since guest identities exist, a nameless one could.
+	// This is the self-consent rule above applied to everybody rather than only to
+	// the proposer.
+	eligibleVoter, err := d.isEligibleTagger(ctx, p.ProjectID, userID)
+	if err != nil {
+		return TaxonomyProposal{}, err
+	}
+	if !eligibleVoter {
+		return TaxonomyProposal{}, fmt.Errorf(
+			"%w: only an eligible tagger can consent to this proposal", ErrPerm)
+	}
 
 	// An instance-wide proposal is ratified by the instance charter rather than a
 	// project's, so its thresholds do not vary with whichever project happens to
@@ -691,4 +706,28 @@ func (d *DB) TagCompleteness(ctx context.Context, slug string) (map[string]any, 
 		"want_tags":         wantTags,
 		"want_namespaced":   wantNamespaced,
 	}, nil
+}
+
+// isEligibleTagger answers, for one person, the question eligibleTaggers counts:
+// do they hold a contributing role in this project -- or, for an instance-wide
+// proposal, in any project? One query rather than a list so the two cannot drift
+// apart: a change to the eligible set has to be made in one place, and the test
+// that consents as an outsider fails if it is made in none.
+func (d *DB) isEligibleTagger(ctx context.Context, projectID, userID int64) (bool, error) {
+	var n int
+	var err error
+	if projectID > 0 {
+		err = d.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM members
+			WHERE project_id = ? AND user_id = ?
+			  AND role IN ('contributor','reviewer','maintainer','owner')`,
+			projectID, userID).Scan(&n)
+	} else {
+		err = d.QueryRowContext(ctx, `
+			SELECT COUNT(*) FROM members
+			WHERE user_id = ?
+			  AND role IN ('contributor','reviewer','maintainer','owner')`,
+			userID).Scan(&n)
+	}
+	return n > 0, err
 }

@@ -5,8 +5,8 @@ proves it, and the output that proves the command worked. Steps are ordered so t
 later is needed to verify anything earlier.
 
 Baseline before step 1 (measured on this tree, `c145179`):
-`make verify` exit 0 / 1004 Go tests; `make gates` exit 0 / 13 lines all killed;
-`make e2e` exit 0 / 277 tests; schema 26 migrations, 80 tables.
+`make verify` exit 0 / 1028 Go tests; `make gates` exit 0 / 13 lines, 128 mutants killed;
+`make e2e` exit 0 / 282 e2e tests; schema 27, 27 migrations, 81 tables.
 
 ---
 
@@ -581,8 +581,12 @@ Expected: `4/4 killed, 0 survived, 0 not applicable, 0 not run` and
 
 ## Step 6 — Docs, full verification, deploy
 
-1. `docs/CONFIGURATION.md`: `CONCORD_GUEST_MAU_LIMIT` (default 1000, 0 = off),
-   `CONCORD_CONSENT_VERSION` (default 1), what MAU counts, what a guest may do, the exemptions.
+1. Config documentation for `CONCORD_GUEST_MAU_LIMIT` (default 1000, 0 = off) and
+   `CONCORD_CONSENT_VERSION` (default 1): what MAU counts, what a guest may do, the exemptions.
+   **This step named `docs/CONFIGURATION.md`, which does not exist** — there is no such file in
+   this tree, and the environment facts live in `docs/HANDOFF.md`'s "Environment facts" section.
+   The plan was written from memory of another project; the number of CONCORD_* variables was
+   checked by grep before writing the section, which is what caught it.
 2. `docs/REMAINING.md`: a new section recording this pass — the three claims, the decisions of
    the spec's §4, the fold's column count, the numbers after the change, and the open questions
    of the spec's §8 with their defaults.
@@ -614,3 +618,39 @@ Expected: `{"allowed":true,"mau":N,"limit":1000,"window_days":30,...}` and the n
 be made to fail, step 2 is not done. If the e2e suite cannot show the server refusing a write
 with no consent cookie, step 4 is not done — the client guard is a courtesy and must never be the
 thing the test asserts.
+
+---
+
+## Where this plan met reality
+
+Recorded because a plan that only ever records the intended path cannot be used to judge the next
+one, and because three of the differences below are the substance of the pass.
+
+1. **Step 4's expected counts were wrong in the small and right in the kind.** The plan guessed
+   "Go tests 1004 → ~1025, e2e 277 → 281, schema 27, mutants 16 → 20". Actual: 1028 Go tests, 282
+   e2e in 20 suite files, 23/23 UI mutants (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js),
+   13 Go mutation gates armed. The guesses were close because they were guesses about the SIZE of
+   work already done; the numbers a gate reads are the ones that matter.
+2. **Two defects were found by the BROWSER, after every Go gate was green, and both made the fold
+   unreachable.** `auth.js` sent any visitor holding a token away from `/register` — and a guest
+   holds a token, because that is how it acts — so the one visitor who needed the form was bounced
+   off it. And the register form never presented the guest's token, which is the ONLY thing that
+   tells the server there is anything to fold. Neither is visible from the server side: the
+   endpoints were correct, complete and tested. Both now have mutants (2 in `auth.js`), and the
+   e2e test drives the REAL form rather than a hand-made fetch, which is what would have hidden it.
+3. **The step 4 client rule needed a third state the plan did not have.** The plan said the client
+   refuses a write locally when the notice is unaccepted. What it did not consider is the visitor
+   who accepts and immediately acts: the acceptance is in flight, not absent, and refusing that
+   request is the client telling a lie about the visitor's own state. `consent.js` now waits for an
+   in-flight acceptance (`pendingAccept`) and rejoins the routing afterwards.
+4. **The mutation gate reported its own weakness first, and that is the point.** The first run of
+   `tests/e2e/guest_ui_mutants.py` printed `3/5 killed, 1 survived, 1 not applicable`: one pattern
+   no longer matched the line it was written against (an inserted `pendingAccept = ` moved it), and
+   one mutant SURVIVED because the sentence it mutated is spoken in two places, so mutating one left
+   the other saying the same thing to the visitor. The fix was to mutate the rule both places share
+   (the refusal must offer the way forward), not to weaken the test. A gate that reports 5/5 when
+   one mutant was never applied is the failure this whole file's §"what would make me stop" is about.
+5. **The plan's claim about the fold's column count was right and its list was not.** The gate
+   caught the first hand-written list naming `maintenance_signals.set_by` — `TEXT`, an operator's
+   name, not a `users.id`. Deriving the set from the schema is what made the difference, and it was
+   proven to fire with a scratch table before it was trusted.
