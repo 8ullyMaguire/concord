@@ -1,127 +1,127 @@
 [
- {
-  "name": "unknown is removed like a no",
-  "old": "\t\tcase !present || v == \"\" || v == UnknownValue || v == storeUnknownWord():\n\t\t\t// Unknown keeps. \u00a72.7.\n\t\t\tkept = append(kept, c)",
-  "new": "\t\tcase false:\n\t\t\tkept = append(kept, c)"
- },
- {
-  "name": "unknown is scored as a mismatch",
-  "old": "\t\t\tif !present || v == \"\" || v == UnknownValue || v == storeUnknownWord() {\n\t\t\t\tr.Unknown = append(r.Unknown, k)\n\t\t\t\tcontinue\n\t\t\t}",
-  "new": "\t\t\tif false {\n\t\t\t\tr.Unknown = append(r.Unknown, k)\n\t\t\t\tcontinue\n\t\t\t}"
- },
- {
-  "name": "skip and doesnt-matter start filtering",
-  "old": "\tcase ModeSkip, ModeDoesntMatter, ModeDecideLater, \"\":",
-  "new": "\tcase ModeRequired, ModeSkip, ModeDoesntMatter, ModeDecideLater, \"\":"
- },
- {
-  "name": "unknown penalty removed",
-  "old": "penalty := -UnknownPenalty * float64(len(r.Unknown))",
-  "new": "penalty := 0.0 * float64(len(r.Unknown))"
- },
- {
-  "name": "constant dimension becomes askable",
-  "old": "\t\tif d.GainBits < MinGainBits {",
-  "new": "\t\tif false {"
- },
- {
-  "name": "already-asked question may repeat",
-  "old": "\t\tif st.Asked[key] {",
-  "new": "\t\tif false {"
- },
- {
-  "name": "arena term dropped",
-  "old": "\t\t\tnum += WeightArena * c.ArenaR",
-  "new": "\t\t\t_ = WeightArena"
- },
- {
-  "name": "field report term dropped",
-  "old": "\t\t\tnum += WeightFieldReport * report",
-  "new": "\t\t\t_ = WeightFieldReport"
- },
- {
-  "name": "capability term dropped",
-  "old": "\t\t\tnum += WeightCapability * capScore",
-  "new": "\t\t\t_ = WeightCapability"
- },
- {
-  "name": "partial credit becomes full",
-  "old": "\t\t\t\t\t// Present but a different value (partial where yes was\n\t\t\t\t\t// wanted, or the other way round). Partial credit.\n\t\t\t\t\tcapHit += 0.5",
-  "new": "\t\t\t\t\t// Present but a different value (partial where yes was\n\t\t\t\t\t// wanted, or the other way round). Partial credit.\n\t\t\t\t\tcapHit += 1.0"
- },
- {
-  "name": "decide-later preference stops scoring",
-  "old": "\t\t\tif want, asked := preferred[k]; asked && want != ModeAny {\n\t\t\t\tif v == want {\n\t\t\t\t\tcapHit++\n\t\t\t\t\tr.Matches[k] = v\n\t\t\t\t} else {\n\t\t\t\t\tr.Matches[k] = v\n\t\t\t\t}\n\t\t\t\tcontinue\n\t\t\t}",
-  "new": "\t\t\tif want, asked := preferred[k]; asked && want != ModeAny {\n\t\t\t\tif v == want {\n\t\t\t\t\tr.Matches[k] = v\n\t\t\t\t} else {\n\t\t\t\t\tr.Matches[k] = v\n\t\t\t\t}\n\t\t\t\tcontinue\n\t\t\t}"
- },
- {
-  "name": "confidence needs no margin",
-  "old": "if top >= HighConfidence && second > 0 && top/second >= ConfidenceMargin {",
-  "new": "if top >= HighConfidence {"
- },
- {
-  "name": "confidence needs no score",
-  "old": "if top >= HighConfidence && second > 0 && top/second >= ConfidenceMargin {",
-  "new": "if second > 0 && top/second >= ConfidenceMargin {"
- },
- {
-  "name": "saturation threshold ignored",
-  "old": "if len(st.Candidates) <= SaturationCount {",
-  "new": "if false {"
- },
- {
-  "name": "question cap ignored",
-  "old": "\tif st.Depth >= MaxQuestions {",
-  "new": "\tif false {"
- },
- {
-  "name": "tiebreak by slug removed",
-  "old": "\t\tif out[i].Slug != out[j].Slug {\n\t\t\treturn out[i].Slug < out[j].Slug\n\t\t}",
-  "new": "\t\tif out[i].Slug != out[j].Slug {\n\t\t\treturn false\n\t\t}"
- },
- {
-  "name": "option order no longer sorted",
-  "old": "func sortedKeys(m map[string]int) []string {\n\tout := make([]string, 0, len(m))\n\tfor k := range m {\n\t\tout = append(out, k)\n\t}\n\tsort.Strings(out)\n\treturn out\n}",
-  "new": "func sortedKeys(m map[string]int) []string {\n\tout := make([]string, 0, len(m))\n\tfor k := range m {\n\t\tout = append(out, k)\n\t}\n\treturn out\n}"
- },
- {
-  "name": "entropy of a single value is not zero",
-  "old": "\tif total <= 1 {\n\t\treturn 0\n\t}",
-  "new": "\tif total <= 1 {\n\t\treturn 0.5\n\t}"
- },
- {
-  "name": "entropy uses natural log",
-  "old": "h -= p * math.Log2(p)",
-  "new": "h -= p * math.Log(p)"
- },
- {
-  "name": "weighted sum stops renormalising over available evidence",
-  "old": "\t\tfit := 0.0\n\t\tif den > 0 {\n\t\t\tfit = num / den\n\t\t}",
-  "new": "\t\tfit := num"
- },
- {
-  "name": "unknown penalty stops scaling by coverage",
-  "old": "penalty := -UnknownPenalty * float64(len(r.Unknown)) * coverage",
-  "new": "penalty := -UnknownPenalty * float64(len(r.Unknown))"
- },
- {
-  "name": "capability term stays in the denominator with no capability answers",
-  "old": "\t\tif capTotal > 0 {\n\t\t\tnum += WeightCapability * capScore\n\t\t\tden += WeightCapability\n\t\t}",
-  "new": "\t\tnum += WeightCapability * capScore\n\t\tden += WeightCapability"
- },
- {
-  "name": "capTotal counts only known fields, not asked ones",
-  "old": "\t\t\tv, present := c.Attrs[k]\n\t\t\tcapTotal++",
-  "new": "\t\t\tv, present := c.Attrs[k]"
- },
- {
-  "name": "no field reports counted as bad field reports again",
-  "old": "\t\treport := c.Report\n\t\thaveReport := c.Reports > 0",
-  "new": "\t\treport := c.Report\n\t\thaveReport := true"
- },
- {
-  "name": "no arena standing counted as zero standing again",
-  "old": "\t\thaveArena := c.ArenaR > 0",
-  "new": "\t\thaveArena := true"
- }
+  {
+    "name": "unknown is removed like a no",
+    "old": "\t\tcase !present || v == \"\" || v == UnknownValue || v == storeUnknownWord():\n\t\t\t// Unknown keeps. \u00a72.7.\n\t\t\tkept = append(kept, c)",
+    "new": "\t\tcase !present || v == \"\":\n\t\t\t// Unknown keeps. \u00a72.7.\n\t\t\tkept = append(kept, c)"
+  },
+  {
+    "name": "unknown is scored as a mismatch",
+    "old": "\t\t\tif !present || v == \"\" || v == UnknownValue || v == storeUnknownWord() {\n\t\t\t\tr.Unknown = append(r.Unknown, k)\n\t\t\t\tcontinue\n\t\t\t}",
+    "new": "\t\t\tif !present || v == \"\" {\n\t\t\t\tr.Unknown = append(r.Unknown, k)\n\t\t\t\tcontinue\n\t\t\t}"
+  },
+  {
+    "name": "skip and doesnt-matter start filtering",
+    "old": "\tcase ModeSkip, ModeDoesntMatter, ModeDecideLater, \"\":",
+    "new": "\tcase ModeRequired, ModeSkip, ModeDoesntMatter, ModeDecideLater, \"\":"
+  },
+  {
+    "name": "unknown penalty removed",
+    "old": "penalty := -UnknownPenalty * float64(len(r.Unknown))",
+    "new": "penalty := 0.0 * float64(len(r.Unknown))"
+  },
+  {
+    "name": "constant dimension becomes askable",
+    "old": "\t\tif d.GainBits < MinGainBits {",
+    "new": "\t\tif false {"
+  },
+  {
+    "name": "already-asked question may repeat",
+    "old": "\t\tif st.Asked[key] {",
+    "new": "\t\tif false {"
+  },
+  {
+    "name": "arena term dropped",
+    "old": "\t\t\tnum += WeightArena * c.ArenaR",
+    "new": "\t\t\t_ = WeightArena"
+  },
+  {
+    "name": "field report term dropped",
+    "old": "\t\t\tnum += WeightFieldReport * report",
+    "new": "\t\t\tnum += WeightFieldReport * report * 0"
+  },
+  {
+    "name": "capability term dropped",
+    "old": "\t\t\tnum += WeightCapability * capScore",
+    "new": "\t\t\t_ = WeightCapability"
+  },
+  {
+    "name": "partial credit becomes full",
+    "old": "\t\t\t\t\t// Present but a different value (partial where yes was\n\t\t\t\t\t// wanted, or the other way round). Partial credit.\n\t\t\t\t\tcapHit += 0.5",
+    "new": "\t\t\t\t\t// Present but a different value (partial where yes was\n\t\t\t\t\t// wanted, or the other way round). Partial credit.\n\t\t\t\t\tcapHit += 1.0"
+  },
+  {
+    "name": "decide-later preference stops scoring",
+    "old": "\t\t\tif want, asked := preferred[k]; asked && want != ModeAny {\n\t\t\t\tif v == want {\n\t\t\t\t\tcapHit++\n\t\t\t\t\tr.Matches[k] = v\n\t\t\t\t} else {\n\t\t\t\t\tr.Matches[k] = v\n\t\t\t\t}\n\t\t\t\tcontinue\n\t\t\t}",
+    "new": "\t\t\tif want, asked := preferred[k]; asked && want != ModeAny {\n\t\t\t\tif v == want {\n\t\t\t\t\tr.Matches[k] = v\n\t\t\t\t} else {\n\t\t\t\t\tr.Matches[k] = v\n\t\t\t\t}\n\t\t\t\tcontinue\n\t\t\t}"
+  },
+  {
+    "name": "confidence needs no margin",
+    "old": "if top >= HighConfidence && second > 0 && top/second >= ConfidenceMargin {",
+    "new": "\t\tif top >= HighConfidence && second >= 0 {"
+  },
+  {
+    "name": "confidence needs no score",
+    "old": "if top >= HighConfidence && second > 0 && top/second >= ConfidenceMargin {",
+    "new": "if second > 0 && top/second >= ConfidenceMargin {"
+  },
+  {
+    "name": "saturation threshold ignored",
+    "old": "if len(st.Candidates) <= SaturationCount {",
+    "new": "if false {"
+  },
+  {
+    "name": "question cap ignored",
+    "old": "\tif st.Depth >= MaxQuestions {",
+    "new": "\tif false {"
+  },
+  {
+    "name": "tiebreak by slug removed",
+    "old": "\t\tif out[i].Slug != out[j].Slug {\n\t\t\treturn out[i].Slug < out[j].Slug\n\t\t}",
+    "new": "\t\tif out[i].Slug != out[j].Slug {\n\t\t\treturn false\n\t\t}"
+  },
+  {
+    "name": "option order no longer sorted",
+    "old": "func sortedKeys(m map[string]int) []string {\n\tout := make([]string, 0, len(m))\n\tfor k := range m {\n\t\tout = append(out, k)\n\t}\n\tsort.Strings(out)\n\treturn out\n}",
+    "new": "func sortedKeys(m map[string]int) []string {\n\tout := make([]string, 0, len(m))\n\tfor k := range m {\n\t\tout = append(out, k)\n\t}\n\treturn out\n}"
+  },
+  {
+    "name": "entropy of a single value is not zero",
+    "old": "\tif total <= 1 {\n\t\treturn 0\n\t}",
+    "new": "\tif total <= 1 {\n\t\treturn 0.5\n\t}"
+  },
+  {
+    "name": "entropy uses natural log",
+    "old": "h -= p * math.Log2(p)",
+    "new": "h -= p * math.Log(p)"
+  },
+  {
+    "name": "weighted sum stops renormalising over available evidence",
+    "old": "\t\tfit := 0.0\n\t\tif den > 0 {\n\t\t\tfit = num / den\n\t\t}",
+    "new": "\t\tfit := num"
+  },
+  {
+    "name": "unknown penalty stops scaling by coverage",
+    "old": "penalty := -UnknownPenalty * float64(len(r.Unknown)) * coverage",
+    "new": "penalty := -UnknownPenalty * float64(len(r.Unknown))"
+  },
+  {
+    "name": "capability term stays in the denominator with no capability answers",
+    "old": "\t\tif capTotal > 0 {\n\t\t\tnum += WeightCapability * capScore\n\t\t\tden += WeightCapability\n\t\t}",
+    "new": "\t\tnum += WeightCapability * capScore\n\t\tden += WeightCapability"
+  },
+  {
+    "name": "capTotal counts only known fields, not asked ones",
+    "old": "\t\t\tv, present := c.Attrs[k]\n\t\t\tcapTotal++",
+    "new": "\t\t\tv, present := c.Attrs[k]"
+  },
+  {
+    "name": "no field reports counted as bad field reports again",
+    "old": "\t\treport := c.Report\n\t\thaveReport := c.Reports > 0",
+    "new": "\t\treport := c.Report\n\t\thaveReport := true"
+  },
+  {
+    "name": "no arena standing counted as zero standing again",
+    "old": "\t\thaveArena := c.ArenaR > 0",
+    "new": "\t\thaveArena := true"
+  }
 ]

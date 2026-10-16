@@ -782,6 +782,20 @@ func TestWhyThisQuestionDescribesTheSplitNotOneOption(t *testing.T) {
 			t.Errorf("why-text %q does not mention %q; both ends of the split must appear", got, want)
 		}
 	}
+	// WHICH option is the biggest split, not merely that both appear somewhere. The
+	// containment loop above passes with the two ends swapped -- the same four strings
+	// are still in the sentence -- so a mutation that names the LEAST destructive
+	// option as the biggest split survived it. The pairing is the rule: the text's
+	// subject is the option that rules out the most candidates, and the "only %d"
+	// clause is the other end.
+	if !strings.Contains(got, `"Self-hosted (I run it)" would rule out 142`) {
+		t.Errorf("why-text %q does not open with the option that rules out the most "+
+			"candidates; the biggest split is the option with 142, not the one with 38", got)
+	}
+	if !strings.Contains(got, `"Managed / SaaS" only 38`) {
+		t.Errorf("why-text %q does not give the other end of the split as "+
+			`"Managed / SaaS" only 38`, got)
+	}
 
 	// A flat dimension must say so rather than claim it is the best split left.
 	flat := &finder.Dimension{

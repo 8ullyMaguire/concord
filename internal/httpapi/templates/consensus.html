@@ -117,14 +117,47 @@ if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(4);}})();
     -->
     <section class="consensus-close" id="consensus-close" hidden>
       <h3>Close this call</h3>
-      <p class="hint">Closing fixes the result. If the call is accepted over an open
-        block, §6.6 requires the objector's remedy answered in writing — that answer is
-        the note below, and it is recorded on the objection.</p>
-      <label class="field-label" for="consensus-close-note">How the objection was answered</label>
-      <textarea id="consensus-close-note" rows="2"></textarea>
+      <p class="hint">Closing fixes the result, and the result is written down. An open block
+        is not something a close decides: §6.6's pass conditions end with “no unresolved
+        block”, so a call with one standing closes <strong>blocked</strong> and the block
+        stays on the record. Answering it is the override window's job.</p>
       <button type="button" class="btn btn-primary" id="consensus-close-submit">Close the call</button>
       <p class="consensus-close-error" id="consensus-close-error" role="alert" hidden></p>
       <p class="consensus-close-done" id="consensus-close-done" hidden></p>
+    </section>
+
+    <!-- §6.6's second window. Shown only for a call that closed blocked, because that is
+      the only call an override has anything to say about. Which halves of it are visible
+      is the WINDOW's state (no window / open / closed); who may open or close it is the
+      server's answer, and the page never decides it -- it cannot know who is a maintainer
+      any more than it can know the charter's override ratio. -->
+    <section class="consensus-override" id="consensus-override" hidden>
+      <h3>Override window</h3>
+      <p class="hint">§6.6's second window: a separate ballot on whether the block should
+        stand. An override carries at 80% of non-abstain participants — everyone who took
+        a position, reservations included — with the objector's remedy answered in
+        writing.</p>
+
+      <div id="consensus-override-none" hidden>
+        <button type="button" class="btn" id="consensus-override-open">Open an override window</button>
+      </div>
+
+      <div id="consensus-override-live" hidden>
+        <p class="consensus-override-progress" id="consensus-override-progress"></p>
+        <div class="consensus-override-positions" id="consensus-override-positions">
+          <button type="button" class="btn" data-override-position="consent">Override the block</button>
+          <button type="button" class="btn" data-override-position="stand_aside">Reservations, won’t block</button>
+          <button type="button" class="btn" data-override-position="abstain">Neutral</button>
+          <button type="button" class="btn btn-danger" data-override-position="block">Uphold the block</button>
+        </div>
+        <label class="field-label" for="consensus-override-note">How the objection was answered</label>
+        <textarea id="consensus-override-note" rows="2"></textarea>
+        <button type="button" class="btn btn-primary" id="consensus-override-close-submit">Close the window</button>
+      </div>
+
+      <p class="consensus-override-result" id="consensus-override-result" hidden></p>
+      <p class="consensus-override-error" id="consensus-override-error" role="alert" hidden></p>
+      <p class="consensus-override-done" id="consensus-override-done" hidden></p>
     </section>
   </article>
 </div>

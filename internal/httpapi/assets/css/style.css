@@ -1771,6 +1771,51 @@ textarea:focus-visible {
   font-size: 0.9rem;
 }
 
+/* §6.6's second window. Same shape as the close block, because it is the same kind of
+   thing -- an act with a reason -- and a reader who has just used one should not have to
+   learn a second layout for the other. */
+.consensus-override {
+  margin-top: var(--space-md, 1.5rem);
+  padding-top: var(--space-sm, 0.75rem);
+  border-top: 1px solid var(--border, #e2e8f0);
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-width: 40rem;
+}
+
+.consensus-override-positions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.consensus-override-progress {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.consensus-override textarea {
+  width: 100%;
+  font: inherit;
+}
+
+.consensus-override-result {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
+.consensus-override-error {
+  margin: 0;
+  color: var(--danger, #b91c1c);
+  font-size: 0.9rem;
+}
+
+.consensus-override-done {
+  margin: 0;
+  font-size: 0.9rem;
+}
+
 .panel-consensus-link {
   margin-block: var(--space-sm, 0.75rem);
 }

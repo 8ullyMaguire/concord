@@ -138,7 +138,7 @@ func tallyFor(t *testing.T, ts *httptest.Server, slug string, callID int64, tok 
 // closeForTally closes a call so its tally becomes visible (§6.6).
 func closeForTally(t *testing.T, db *store.DB, callID int64) {
 	t.Helper()
-	if _, err := db.CloseConsensusCall(context.Background(), callID, ""); err != nil {
+	if _, err := db.CloseConsensusCall(context.Background(), callID); err != nil {
 		t.Fatalf("CloseConsensusCall: %v", err)
 	}
 }

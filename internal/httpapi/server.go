@@ -689,6 +689,14 @@ func (s *Server) Router() http.Handler {
 			r.Post("/position", s.handleCastConsensusPosition)
 			r.Post("/objection", s.handleCreateObjection)
 			r.Post("/close", s.handleCloseConsensus)
+			// §6.6's second window: the ballot that can answer a block, opened
+			// on a call that closed blocked.
+			r.Route("/override", func(r chi.Router) {
+				r.Get("/", s.handleGetOverrideWindow)
+				r.Post("/", s.handleOpenOverrideWindow)
+				r.Post("/position", s.handleCastOverridePosition)
+				r.Post("/close", s.handleCloseOverrideWindow)
+			})
 			// §6.5's five outcomes, plus the fallback chain a stalled call
 			// would follow.
 			r.Post("/outcome", s.handleRecordCallOutcome)

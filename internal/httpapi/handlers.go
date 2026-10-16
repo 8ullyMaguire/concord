@@ -1487,6 +1487,134 @@ func (s *Server) handleCastConsensusPosition(w http.ResponseWriter, r *http.Requ
 	writeJSON(w, http.StatusCreated, pos)
 }
 
+// handleOpenOverrideWindow opens §6.6's second window on a blocked call.
+func (s *Server) handleOpenOverrideWindow(w http.ResponseWriter, r *http.Request) {
+	callID, projectID, ok := s.requireCallInProject(w, r)
+	if !ok {
+		return
+	}
+	if getActorID(r) == 0 {
+		mapError(w, store.ErrAuth)
+		return
+	}
+	// §6.8's "call and close consensus" is the maintainer's column, and opening the
+	// second window is calling a vote -- the same act as opening the first, which is
+	// why it takes the same gate and the same sentence.
+	if err := s.requireRole(projectID, "maintainer", r); err != nil {
+		mapError(w, err)
+		return
+	}
+	win, err := s.Store.OpenOverrideWindow(r.Context(), callID, getActorID(r))
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	_ = s.Store.AddAudit(r.Context(), projectID, getActorID(r), "open_override_window",
+		"override_window", win.ID, fmt.Sprintf("call=%d", callID))
+	writeJSON(w, http.StatusCreated, win)
+}
+
+// handleGetOverrideWindow reads a call's second window. Public, like the call: the
+// window's progress is visible to everyone who can see the call.
+func (s *Server) handleGetOverrideWindow(w http.ResponseWriter, r *http.Request) {
+	callID, _, ok := s.requireCallInProject(w, r)
+	if !ok {
+		return
+	}
+	win, err := s.Store.GetOverrideWindow(r.Context(), callID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	// The reader's own stance, so the page can mark which button is theirs. An
+	// anonymous reader gets "", which is also what a reader who has not voted gets --
+	// the page derives nothing from it beyond what to highlight.
+	if actorID := getActorID(r); actorID != 0 {
+		if p, err := s.Store.GetOverridePosition(r.Context(), win.ID, actorID); err == nil {
+			win.MyPosition = p.Position
+		}
+	}
+	writeJSON(w, http.StatusOK, win)
+}
+
+// handleCastOverridePosition records a stance in the second window.
+func (s *Server) handleCastOverridePosition(w http.ResponseWriter, r *http.Request) {
+	callID, projectID, ok := s.requireCallInProject(w, r)
+	if !ok {
+		return
+	}
+	if getActorID(r) == 0 {
+		mapError(w, store.ErrAuth)
+		return
+	}
+	// §8.2's pool again, for the reason it applies to the first window: this voter is
+	// counted in the window's Participants, which its quorum threshold is compared
+	// against.
+	if err := s.requireEligibleCollaborator(projectID, r); err != nil {
+		mapError(w, err)
+		return
+	}
+	win, err := s.Store.GetOverrideWindow(r.Context(), callID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	var req struct {
+		Position string `json:"position"`
+		Reason   string `json:"reason"`
+	}
+	if !readJSON(w, r, &req) {
+		return
+	}
+	pos, err := s.Store.CastOverridePosition(r.Context(), win.ID, getActorID(r), req.Position, req.Reason)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	_ = s.Store.AddAudit(r.Context(), projectID, getActorID(r), "cast_override_position",
+		"override_window", win.ID, fmt.Sprintf("stance=%s", req.Position))
+	writeJSON(w, http.StatusCreated, pos)
+}
+
+// handleCloseOverrideWindow records the second window's verdict.
+func (s *Server) handleCloseOverrideWindow(w http.ResponseWriter, r *http.Request) {
+	callID, projectID, ok := s.requireCallInProject(w, r)
+	if !ok {
+		return
+	}
+	if getActorID(r) == 0 {
+		mapError(w, store.ErrAuth)
+		return
+	}
+	if err := s.requireRole(projectID, "maintainer", r); err != nil {
+		mapError(w, err)
+		return
+	}
+	// The note is §6.6's "objector's remedy answered in writing", required only when
+	// the window carries -- which the store decides, because the ratio is what makes
+	// it required. Optional body, therefore: an empty body is a legitimate close, and
+	// still a 400 when the window carries without an answer.
+	var req struct {
+		Note string `json:"note"`
+	}
+	if !readOptionalJSON(w, r, &req) {
+		return
+	}
+	win, err := s.Store.CloseOverrideWindow(r.Context(), callID, req.Note)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	detail := fmt.Sprintf("call=%d", win.CallID)
+	if win.Result != nil {
+		detail += " result=" + *win.Result
+	}
+	_ = s.Store.AddAudit(r.Context(), projectID, getActorID(r), "close_override_window",
+		"override_window", win.ID, detail)
+	writeJSON(w, http.StatusOK, win)
+}
+
+// handleCreateObjection records §6.6's block.
 func (s *Server) handleCreateObjection(w http.ResponseWriter, r *http.Request) {
 	callID, projectID, ok := s.requireCallInProject(w, r)
 	if !ok {
@@ -1650,17 +1778,11 @@ func (s *Server) handleCloseConsensus(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
-	// The note is §6.6's "objector's remedy answered in writing", and it is required
-	// only when the verdict is an override -- which the store decides, because the
-	// verdict is what makes it required. So the body is optional here and the refusal
-	// comes back from the store as a 400 naming the missing answer.
-	var req struct {
-		Note string `json:"note"`
-	}
-	if !readOptionalJSON(w, r, &req) {
-		return
-	}
-	summary, err := s.Store.CloseConsensusCall(r.Context(), callID, req.Note)
+	// No body: since the eighth pass a close never overrides (§6.6's override is the
+	// second window, which has its own route), so there is no note for it to carry.
+	// The remedy's answer is required where the override happens -- see
+	// handleCloseOverrideWindow.
+	summary, err := s.Store.CloseConsensusCall(r.Context(), callID)
 	if err != nil {
 		mapError(w, err)
 		return

@@ -5,8 +5,8 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · 973 Go tests across
-9 test-bearing packages · 274 e2e tests in 19 suite files · 10/10 UI mutants killed ·
+**Measured state:** schema 26 · 26 migrations · 81 live tables · 991 Go tests across
+9 test-bearing packages · 274 e2e tests in 19 suite files · 12/12 UI mutants killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
@@ -737,8 +737,8 @@ Three `wait_for_timeout` calls remain in e2e, all marked `BOUNDED (justified)` b
 §11 and everything above it are history. §1, §4 and §11 are marked superseded; this
 section is the current answer, and like §11 every line was checked against the code.
 
-**Measured state:** schema 25 · 25 migrations · 79 live tables · **973 Go tests** across
-9 test-bearing packages · **274 e2e tests in 19 suite files** · **10/10 UI mutants** killed ·
+**Measured state:** schema 26 · 26 migrations · 81 live tables · **991 Go tests** across
+9 test-bearing packages · **274 e2e tests in 19 suite files** · **12/12 UI mutants** killed ·
 `make verify` exit 0, `make e2e` exit 0.
 
 ### 12.1 How the remaining work was found (it was not in any tracker)
@@ -1709,9 +1709,11 @@ in tests the signed-out path.**
 4. Deliberate, unchanged: `admin-ledger` and `metrics` have no UI; the criteria page
    defers pair suggestion, a per-criterion leaderboard and deleting a criterion.
 
-Note: §19 (the seventh pass) closes item 3 for the RECORD — the override's ratio is
-evaluated, the verdict is stored, and the objection it overrides is answered — while
-the "second window" itself is still unbuilt; see §19.8.
+Note: §19 (the seventh pass) closed item 3 for the RECORD — the override's ratio is
+evaluated, the verdict is stored, and the objection it overrides is answered — and §20
+(the eighth) then moved the override to where §6.6 puts it and built the second window, so
+item 3 is closed outright: see §20.2 for the denominator it is counted with, and §20.7 for
+what the window still cannot do.
 
 ---
 
@@ -1924,3 +1926,225 @@ Measured 2026-10-16, seventh pass. Nothing below is remembered.
    criterion; a standalone composite-rank view is a page of its own, not an unreachable
    endpoint.
 
+
+---
+
+## 20. 2026-10-16 (eighth pass): §6.6's second window, and the denominator it was counted with
+
+§19.9 item 1 called it "the largest gap between §6.6's prose and the product", and §18.5
+item 3 had said the same the pass before. It is now built — but building it forced a
+question nobody had asked, and the answer changed a shipped rule.
+
+### 20.1 What §6.6 actually says, in two parts
+
+> **Resolving a block:** … or **Override:** a second window where ≥ 80% of non-abstain
+> participants vote to override, with the objector's remedy answered in writing.
+
+Two things are load-bearing, and both were wrong or missing.
+
+**"a second window"** is a SEPARATE ballot. §6.6's pass conditions end with "**No
+unresolved block**", so a call with a standing block closes `blocked`; the override is a
+second ballot's decision. The seventh pass had made a first-window close compute the
+override ratio inline, which made the second window redundant and shipped a product that
+could not do the thing §6.6 describes.
+
+**"≥ 80% of non-abstain participants"** is a denominator: consent over everyone who took
+a substantive position — consent + stand_aside + block. The tree used
+`consent / (consent + block)` — the decisive ratio, whose denominator excludes
+stand-asides — behind this comment:
+
+> The override supermajority is measured the same way as a passing call: over the people
+> who took a side. Including stand-asides here would mean a reservation could block an
+> override it never opposed.
+
+Measured before anything was changed, with a throwaway probe against the code as it stood
+so the red would be a behaviour and not a compile error:
+
+```
+PROBE non-abstain(spec §6.6) = 0.500  decisive(older reading) = 0.800  override ratio = 0.80
+PROBE EvaluateConsensus returns "accepted_overridden" (spec's letter says blocked)
+```
+
+4 consent, 3 stand-aside, 1 block. The two readings disagree on exactly this fixture, and
+nothing in the suite could see it: every other override case had either no stand-asides
+(where the two denominators are the same number) or a supermajority that clears both. The
+one case that DID discriminate — `6 consent / 2 stand_aside / 1 block` — pinned the
+reading the spec does not state.
+
+### 20.2 Why the spec's reading wins (three grounds, not the letter alone)
+
+1. **Otherwise an override is easier than an ordinary pass.** `5 consent / 6 stand_aside
+   / 1 block` reads decisive 5/6 = 0.833 ≥ 0.8 and carries under the old reading, while
+   its support of 5/12 = 0.42 is below the 0.5 floor an ordinary call must clear to pass
+   at all. A room that is more reservations than consents (`Reluctant()`) would not be
+   allowed to ACCEPT a proposal but would be allowed to OVERRIDE a principled objection
+   to it — which is the precise hazard §6.6's two-threshold design exists to prevent.
+2. **It makes the two rules mutually exclusive**, which the design assumes: under the
+   non-abstain denominator `stand_aside > consent` implies a ratio below 0.5, so a
+   reluctant consensus can never override anything.
+3. **The intent behind the old comment survives, weakened and correct.** A stand-aside is
+   "reservations, but I won't block": under the spec's arithmetic they raise the bar
+   without vetoing — 8 consent against 2 reservations is exactly 0.80 and carries; add one
+   block and it is 0.727 and does not.
+
+`EvaluateConsensus` no longer computes an override at all (an unresolved block is
+`blocked`, whatever the ratios say, asserted at 100% consent), and
+`governance.EvaluateOverride` applies the second window's rule:
+
+```
+quorum:  participants >= QuorumThreshold(eligible, charter)   // the same rule as §6.6
+carries: consent / (consent + stand_aside + block) >= OverrideRatio
+```
+
+`OverrideRatio`'s doc comment now names the denominator, so the next reader cannot repeat
+the mistake the old comment taught.
+
+### 20.3 The second window, built
+
+| `override_windows` | |
+|---|---|
+| `call_id` | `UNIQUE` — a second window is A window, not a series |
+| `opened_by`, `opened_at`, `closes_at` | who called it, and the charter's `VoteWindowDays` |
+| `status` | `open` \| `closed` |
+| `result` | `overridden` \| `upheld` — nullable, because "" and `upheld` are different facts |
+| `note` | §6.6's remedy answered in writing |
+
+| `override_positions` | |
+|---|---|
+| `(window_id, user_id)` | primary key, so a voter updates their stance rather than duplicating it |
+| `position` | the same four values and the same CHECK: `consent` \| `abstain` \| `stand_aside` \| `block` |
+
+One vocabulary on purpose: in the second window **consent = override the block** and
+**block = uphold it**, so the ratios come from one function. Separate tables rather than a
+nullable `window_id` on `positions`: the existing `PRIMARY KEY (call_id, user_id)` would
+become one row per (NULL, user), and every reader of `positions` in the tree would need a
+filter it can forget — a vote on whether to override a block must not overwrite the vote
+on the proposal.
+
+**Routes** (all four with their own reader-inventory row, since the ninth pass's split row
+showed what a coarse one hides):
+
+| Route | Role |
+|---|---|
+| `POST /api/v1/projects/{project_id}/consensus/{call_id}/override` | maintainer: open (§6.8's "call and close consensus") |
+| `GET …/override` | public, like the call; carries `my_position` for the reader |
+| `POST …/override/position` | §8.2's eligible collaborators, via `requireEligibleCollaborator` |
+| `POST …/override/close` | maintainer; the note required when the window carries |
+
+**Refusals, each naming what is wrong rather than returning an empty window:** the call has
+not closed blocked (§6.6's override needs a recorded block — which is what §19.2 fixed);
+no objection is open (the objector withdrew or converted, so §6.6's other branch resolved
+it and a vote would decide nothing); a window already exists (409, from the UNIQUE); below
+quorum there is no verdict to record (closing would claim the room decided against an
+override while most of the room did not vote); a stance after the close (409 — a vote
+recorded after the verdict would disagree with the ratio that decided it).
+
+**The emergency hold applies.** §6.6's hold "suspends a call", and overriding a block
+RESOLVES it: without the check the hold would be a pause you can vote around.
+
+**Three things stayed exactly where §19 put them.** The verdict is written in one
+transaction with what it changes (the window's row, the call's `result`, the objection's
+status and answer); the note is required by the VERDICT and refused before any write; and
+the read hides a running tally (`participants`, `eligible`, `quorum_needed` visible; the
+four counts only once closed).
+
+### 20.4 What moved, and what that cost
+
+The close lost its note and its override branch: `CloseConsensusCall(ctx, callID)` no
+longer takes a body at all, `readOptionalJSON` moved to the window's close (where a body is
+still optional and a malformed one is still a 400), and the four store tests + four HTTP
+tests + one e2e test that pinned the old behaviour were retargeted rather than deleted. One
+of them was deleted as a case and re-added as its opposite: `TestAnOverrideWithNoRemedy
+AnsweredInWritingIsRefused` is now `TestAnOverrideWindowNeedsTheRemedyAnsweredInWriting`,
+with the same three assertions about nothing being half-written.
+
+**Found on the way, same family, one line each:**
+
+- **The close used `DefaultCharter(governance_model)` rather than the project's own
+  charter.** They agree until someone tunes the charter — and the settings page has a
+  charter editor (§6.9) — so a project that raised its consent ratio had its calls judged
+  against the default number while its own page published the tuned one. The threshold a
+  call is judged by is now the threshold its page shows.
+- **`projectIDOfCall` returns its error rather than a zero id.** A swallowed error would
+  read project 0, take the default charter and count zero eligible collaborators — and
+  `QuorumThreshold(0)` is 0, which is the vacuous-quorum trap `TallyConsensus` documents:
+  a silent 100%-of-nobody override.
+- **A fixture that could not fail for the right reason.** `seedBlockedCall` cast one
+  consent, so the call closed `insufficient_quorum` rather than `blocked` and all seven
+  window tests failed on their own setup. Quorum comes first: eligible 6 needs 3
+  participants before "blocked" is reachable at all.
+
+### 20.5 Verification
+
+Measured 2026-10-16, eighth pass. Nothing below is remembered.
+
+| Check | Result |
+|---|---|
+| `make verify` | exit 0 — vet, 991 Go tests in 9 test-bearing packages, build, doc-number gate, e2e-sync gate |
+| `make e2e` | exit 0 — 274 e2e tests in 19 suite files, then 12/12 UI mutants killed |
+| Go mutants (`make gates`) | **every gate clean, 0 survived, 0 not applicable** — see §20.6 for what it took to make that line mean something |
+| UI mutants | 7/7 for `audit.js` and 5/5 for `consensus.js` = 12/12 (two new: the window shown on any call, and the window's state never read), source restored byte-identical |
+| Doc-number gate | OK — 14 measured numbers agree; 9 quoted-or-fenced and 9 table-row/(historical) exempted |
+| Schema | **26 · 26 migrations · 81 live tables** (was 25 · 25 · 79): this pass adds `override_windows` and `override_positions`, which is the first migration since 0025 |
+| Live | deployed, healthz 200, the override section served, `GET …/override` on a call with no window answers 404 |
+
+### 20.6 The mutation gates had been reporting kills they had not earned
+
+This pass changed `mutate.py` for an unrelated reason and discovered that five of the
+twelve mutation gates were lying, in the same way and for four passes.
+
+**The change.** A kill was `"FAIL" in output`. But `go test` exits non-zero for a COMPILE
+error exactly as it does for a failing test, so a mutation that never built was printed as
+`killed` — and the gate's summary line (`---- 25/25 killed, 0 survived`) then claimed every
+rule it names is enforced by a test that actually ran. The driver now reports a build
+failure as `UNUSABLE`, counts it with NOT APPLIED (which fails the gate), and says why. The
+mutation had to be made to fail a TEST, which is the only thing that proves the rule is
+enforced.
+
+**What that exposed, measured: 13 mutants across 5 gate files, every one of them reported
+as a kill on the previous pass.** Each is one of two shapes:
+
+- **A dead branch left a variable unused** (`if false {` around a body that read `o`, `role`,
+  `held`, `second`, `isOwner`, `surviveBest`), so the compiler refused to build the
+  mutation. Fixed by keeping the condition in the dead branch: `if o.Status == "open" &&
+  false {`, `if held && false {`.
+- **A dropped call left an import or an argument unused** (`math.Min` removed → `math` unused;
+  a `Sprintf` with fewer verbs and the same five arguments → vet rejects the format; `if n :=
+  cc.Decisive(); n > 0` → `if true` deleted the init statement, so `n` was undeclared in the
+  body). Fixed by mutating the RULE instead of deleting the code that reads it: an
+  effectively-uncapped weight (`math.Min(reputation, MaxReportReputation*1e6)`), a format
+  whose two ends are swapped, an empty room returning `1`.
+
+**Two of them, once made to compile, then SURVIVED — which is the finding worth keeping.**
+The httpapi finder gate's "why-text reports only the most destructive option" had been
+"killed" by a test that only checked that all four strings appear somewhere in the sentence:
+swapping the two ends leaves all four strings present. `TestWhyThisQuestionDescribesTheSplit
+NotOneOption` now asserts the PAIRING (`"Self-hosted (I run it)" would rule out 142` and
+`"Managed / SaaS" only 38`), and the mutant dies. The fourth instance in this project of the
+same lesson: **an assertion that cannot distinguish the two outcomes it is comparing is not
+covering the rule**, and a gate that counts non-zero exits cannot tell you it happened.
+
+`scripts/run_all_gates.sh` exists because of the other half of this: `make gates` stops at
+the first failing gate, so the gates after it never ran on the passes where one failed —
+and a gate that has never run is indistinguishable from a gate whose rules are all proven.
+The script takes the gate list from the Makefile (two lists would drift, and the drifted one
+is the one that runs) and reports every gate's summary line.
+
+### 20.7 What is left, after this pass
+
+1. **A window that does not carry cannot be retried.** `UNIQUE(call_id)` is deliberate —
+   repeating the ballot until the room yields is attrition, not an override — but it means
+   the sequence is: the author amends (or the objector withdraws), or the call stays
+   blocked. §6.6's other branch covers the first; nothing covers "the room was one vote
+   short last month".
+2. **A closed window cannot be reopened**, like a closed call, and `result` is written
+   once.
+3. **The objector does not vote in their own window** by any rule — they are §8.2-eligible
+   if they are a member with a contribution, so they can consent to being overridden or
+   vote to uphold their own block, which is coherent but untested as a product decision.
+4. **A single-maintainer project** can now escape a standing block through the window
+   (which is what §18.5 item 2 asked for), and still cannot resolve the objection
+   directly.
+5. Deliberate, unchanged: `admin-ledger` and `metrics` have no UI; the criteria page
+   defers pair suggestion, a per-criterion leaderboard and deleting a criterion; a
+   standalone composite-rank view is a page of its own.

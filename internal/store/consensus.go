@@ -418,7 +418,7 @@ func (d *DB) TallyConsensus(ctx context.Context, c ConsensusCall) (governance.Co
 	return counts, nil
 }
 
-func (d *DB) CloseConsensusCall(ctx context.Context, callID int64, overrideNote string) (ConsensusSummary, error) {
+func (d *DB) CloseConsensusCall(ctx context.Context, callID int64) (ConsensusSummary, error) {
 	c, err := d.GetConsensusCall(ctx, callID)
 	if err != nil {
 		return ConsensusSummary{}, err
@@ -445,38 +445,25 @@ func (d *DB) CloseConsensusCall(ctx context.Context, callID int64, overrideNote 
 		return ConsensusSummary{}, err
 	}
 
-	var modelStr string
-	err = d.QueryRowContext(ctx,
-		`SELECT governance_model FROM projects WHERE id = ?`, c.ProjectID).Scan(&modelStr)
-	if err != nil {
-		return ConsensusSummary{}, fmt.Errorf("get project governance model: %w", err)
-	}
-	gm := governance.GovernanceModel(modelStr)
-	if !gm.Valid() {
-		gm = governance.Collective
-	}
-	result := governance.EvaluateConsensus(counts, governance.DefaultCharter(gm))
-
-	// §6.6's override is "a second window where >= 80% of non-abstain participants
-	// vote to override, WITH THE OBJECTOR'S REMEDY ANSWERED IN WRITING". The ratio is
-	// counted from the positions; the answer is the note, and the two are the same
-	// rule -- so an override without one is refused before anything is written rather
-	// than recorded as a verdict that answered nothing.
+	// The project's OWN charter, not DefaultCharter(governance model).
 	//
-	// It is checked HERE, and not in the handler, for the reason the resolution
-	// vocabulary lives here (§17.3): the verdict is what decides whether the note is
-	// required, and the verdict is computed here.
-	note := strings.TrimSpace(overrideNote)
-	if result == governance.ResultAcceptedOverridden && note == "" {
-		return ConsensusSummary{}, fmt.Errorf(
-			"%w: §6.6 accepts a call over a block only with the objector's remedy "+
-				"answered in writing; this call is being accepted over %d open "+
-				"objection(s), so the close needs that answer", ErrInvalid, counts.OpenObjections)
+	// The two agree until someone tunes the charter, and the settings page has a
+	// charter editor (§6.9). A project that raised its override ratio would have
+	// had its calls judged against the default number while the page showed the
+	// tuned one -- the rule enforced with a different number than the one published.
+	charter, err := d.GetCharterForProject(ctx, c.ProjectID)
+	if err != nil {
+		return ConsensusSummary{}, err
 	}
+	// A first-window close never overrides. §6.6's pass conditions end with "No
+	// unresolved block", and its override is "a second window" -- so an unresolved
+	// block ends this call as blocked, with its objection recorded and standing.
+	// CloseOverrideWindow is where a block is answered.
+	result := governance.EvaluateConsensus(counts, charter)
 
-	// One transaction, because the verdict, the objections it answers and the call's
-	// own record are one decision. Half of it committed is the state that made this
-	// necessary: a call stored as accepted over a block that is still standing.
+	// One transaction, because the verdict and the call's own record are one
+	// decision. Half of it committed is the state that made this necessary: a call
+	// stored as accepted over a block that is still standing.
 	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
 		return ConsensusSummary{}, err
@@ -488,13 +475,6 @@ func (d *DB) CloseConsensusCall(ctx context.Context, callID int64, overrideNote 
 		`UPDATE consensus_calls SET status='closed', closed_at=?, result=? WHERE id=?`,
 		now, string(result), callID); err != nil {
 		return ConsensusSummary{}, err
-	}
-	if result == governance.ResultAcceptedOverridden {
-		if _, err := tx.ExecContext(ctx,
-			`UPDATE objections SET status='overridden', resolution=? WHERE call_id=? AND status='open'`,
-			note, callID); err != nil {
-			return ConsensusSummary{}, err
-		}
 	}
 	if err := tx.Commit(); err != nil {
 		return ConsensusSummary{}, err

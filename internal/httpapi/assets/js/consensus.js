@@ -53,10 +53,20 @@
   var signedOutEl = $('consensus-signed-out');
   var objectionsEl = $('consensus-objections');
   var closeEl = $('consensus-close');
-  var closeNote = $('consensus-close-note');
   var closeSubmit = $('consensus-close-submit');
   var closeErr = $('consensus-close-error');
   var closeDone = $('consensus-close-done');
+  var overrideEl = $('consensus-override');
+  var overrideNoneEl = $('consensus-override-none');
+  var overrideOpenBtn = $('consensus-override-open');
+  var overrideLiveEl = $('consensus-override-live');
+  var overrideProgress = $('consensus-override-progress');
+  var overridePositionsEl = $('consensus-override-positions');
+  var overrideNote = $('consensus-override-note');
+  var overrideCloseBtn = $('consensus-override-close-submit');
+  var overrideResult = $('consensus-override-result');
+  var overrideErr = $('consensus-override-error');
+  var overrideDone = $('consensus-override-done');
 
   var slug = root.getAttribute('data-project') || '';
   var callID = root.getAttribute('data-call') || '';
@@ -369,8 +379,19 @@
     show(closeEl, true);
   }
 
+  // overrideControls shows §6.6's window, and only where it can mean something: a call
+  // that closed BLOCKED. An override answers a standing block, so a call accepted or
+  // rejected has nothing for it to decide, and an open call has no verdict for it to act
+  // on. Which HALF of the section appears is the window's own state, which is the
+  // server's answer (see renderOverride).
+  function overrideControls(call) {
+    var blocked = (call.status || '') === 'closed' && call.result === 'blocked';
+    if (!blocked) { show(overrideEl, false); return; }
+    show(overrideEl, true);
+    loadOverride();
+  }
+
   function closeCall() {
-    var note = (closeNote.value || '').trim();
     closeSubmit.disabled = true;
     show(closeErr, false);
     show(closeDone, false);
@@ -378,11 +399,7 @@
       '/consensus/' + encodeURIComponent(callID) + '/close';
     fetch(url, {
       method: 'POST',
-      headers: headers(),
-      // Sent even when empty: the field is the whole request, and the server decides
-      // whether THIS call needed it. A page that decided would decide wrongly about
-      // which call is being accepted over a block.
-      body: JSON.stringify({ note: note })
+      headers: headers()
     }).then(function (r) {
       return r.text().then(function (txt) {
         var data = {};
@@ -398,13 +415,162 @@
       closeSubmit.disabled = false;
       // Re-read rather than patch the page: closing changes the tally's visibility,
       // the objections' statuses and the call's own record, and the page should show
-      // what the store now holds.
+      // what the store now holds. It is also what reveals §6.6's override window, which
+      // only exists for a call that closed blocked.
       load();
     }).catch(function (e) {
       closeSubmit.disabled = false;
       closeErr.textContent = e.message;
       show(closeErr, true);
     });
+  }
+
+  // --- §6.6's second window --------------------------------------------------
+
+  // The window's controls, driven entirely by the SERVER's answer about the window.
+  //
+  // Nothing here decides standing or the ratio. The page cannot know who is a maintainer
+  // (the role is per project and not published to the reader) and cannot know the
+  // charter's override ratio, so a page that hid a button would be making a claim it
+  // cannot check -- the same discipline as the call's own controls.
+  function overrideHeaders() {
+    var h = headers();
+    h['Content-Type'] = 'application/json';
+    return h;
+  }
+
+  function overrideURL(suffix) {
+    return '/api/v1/projects/' + encodeURIComponent(slug) +
+      '/consensus/' + encodeURIComponent(callID) + '/override' + (suffix || '');
+  }
+
+  function overrideSend(method, suffix, body) {
+    var opts = { method: method, headers: overrideHeaders() };
+    if (body !== undefined) opts.body = JSON.stringify(body);
+    return fetch(overrideURL(suffix), opts).then(function (r) {
+      return r.text().then(function (txt) {
+        var data = {};
+        try { data = txt ? JSON.parse(txt) : {}; } catch (e) { data = {}; }
+        if (!r.ok) {
+          var err = new Error(data.error || ('HTTP ' + r.status));
+          err.status = r.status;
+          throw err;
+        }
+        return data;
+      });
+    });
+  }
+
+  function clearOverrideMessages() {
+    show(overrideErr, false);
+    show(overrideDone, false);
+  }
+
+  function overrideFailure(e) {
+    overrideErr.textContent = e.message;
+    show(overrideErr, true);
+    if (overrideCloseBtn) overrideCloseBtn.disabled = false;
+    if (overrideOpenBtn) overrideOpenBtn.disabled = false;
+  }
+
+  // renderOverride draws the window from the server's own numbers. `data` is the
+  // window as the read returned it, or null when the call has none (a 404, which is the
+  // difference between "no window" and "a window with no voters").
+  function renderOverride(data) {
+    show(overrideNoneEl, false);
+    show(overrideLiveEl, false);
+    show(overrideResult, false);
+
+    // Signed out: the window is readable like the call, and no write control is offered.
+    // The prompt above the page covers what to do about it.
+    var signedIn = !!token();
+
+    if (!data) {
+      if (signedIn) show(overrideNoneEl, true);
+      return;
+    }
+    if ((data.status || '') === 'closed') {
+      // The record of the decision, in the server's words: whether the block stood.
+      var line = data.result === 'overridden'
+        ? 'Overridden: the call is accepted over the block.'
+        : 'Upheld: the block stood.';
+      line += ' ' + data.participants + ' participant' + (data.participants === 1 ? '' : 's') +
+        ', ' + data.consent + ' consenting (' + pct(data.consent / (data.consent + data.stand_aside + data.block || 1)) + ' of non-abstain).';
+      if (data.note) line += ' Answer recorded: “' + data.note + '”';
+      overrideResult.textContent = line;
+      show(overrideResult, true);
+      return;
+    }
+
+    // Open: participation and the quorum bar are the server's numbers, and the counts
+    // are deliberately absent -- the page is not told a running tally, so it cannot
+    // leak one.
+    overrideProgress.textContent = data.participants + ' of ' + data.quorum_needed +
+      ' needed to reach quorum (' + data.eligible + ' eligible).';
+    var buttons = overridePositionsEl.querySelectorAll('[data-override-position]');
+    for (var i = 0; i < buttons.length; i++) {
+      var chosen = buttons[i].getAttribute('data-override-position') === (data.my_position || '');
+      buttons[i].className = chosen ? 'btn btn-primary' : 'btn';
+      buttons[i].disabled = !signedIn;
+    }
+    show(overrideProgress, true);
+    show(overridePositionsEl, signedIn);
+    show(overrideNote, signedIn);
+    show(overrideCloseBtn, signedIn);
+    show(overrideLiveEl, true);
+  }
+
+  function loadOverride() {
+    // No token: read-only. The window is public like the call, but the page has no
+    // controls to offer and the sign-in prompt covers it.
+    return overrideSend('GET', '', undefined).then(function (data) {
+      renderOverride(data);
+    }).catch(function (e) {
+      // 404 is the answer "this call has no window", not a failure.
+      if (e.status === 404) { renderOverride(null); return; }
+      overrideFailure(e);
+    });
+  }
+
+  function openOverride() {
+    clearOverrideMessages();
+    overrideOpenBtn.disabled = true;
+    overrideSend('POST', '', undefined).then(function () {
+      // Re-read: the window's own state is what decides which controls appear.
+      return loadOverride();
+    }).then(function () {
+      overrideDone.textContent = 'Window opened.';
+      show(overrideDone, true);
+    }).catch(overrideFailure);
+  }
+
+  function castOverride(stance) {
+    clearOverrideMessages();
+    overrideSend('POST', '/position', { position: stance, reason: '' }).then(function () {
+      return loadOverride();
+    }).then(function () {
+      var label = stance === 'consent' ? 'Override' : (stance === 'block' ? 'Uphold' : 'Recorded');
+      overrideDone.textContent = label + ' recorded.';
+      show(overrideDone, true);
+    }).catch(overrideFailure);
+  }
+
+  function closeOverride() {
+    clearOverrideMessages();
+    overrideCloseBtn.disabled = true;
+    // The note is sent even when empty, and the SERVER decides whether this window
+    // needed it: the verdict is what makes the answer required, and the page cannot
+    // compute the verdict without the charter.
+    overrideSend('POST', '/close', { note: (overrideNote.value || '').trim() }).then(function (data) {
+      overrideDone.textContent = data.result === 'overridden'
+        ? 'Recorded: overridden.'
+        : 'Recorded: upheld.';
+      show(overrideDone, true);
+      overrideCloseBtn.disabled = false;
+      // The call's own record changed (its result, and the objection's status), so the
+      // page re-reads the call rather than patching one line of it.
+      load();
+    }).catch(overrideFailure);
   }
 
   function render(data) {
@@ -416,6 +582,7 @@
     renderTally(data.tally || {}, data.tally_visible === true);
     renderObjections(data.objections, data.tally_visible === true);
     closeControls(call);
+    overrideControls(call);
     show(callEl, true);
 
     // Signed out: read-only, with a prompt where each write control would be.
@@ -555,6 +722,22 @@
   var retry = $('consensus-retry');
   if (retry) retry.addEventListener('click', function () { load(); });
   if (closeSubmit) closeSubmit.addEventListener('click', closeCall);
+
+  // §6.6's second window. The four stance buttons are wired by attribute, and the
+  // keyboard accelerators above deliberately do NOT cover them: those shortcuts submit
+  // the call's FIRST-window position, and a keystroke that silently meant "override the
+  // block" on a page that is also showing the call's own ballot is a way to vote twice
+  // by accident.
+  if (overrideOpenBtn) overrideOpenBtn.addEventListener('click', openOverride);
+  if (overrideCloseBtn) overrideCloseBtn.addEventListener('click', closeOverride);
+  if (overridePositionsEl) {
+    var oBtns = overridePositionsEl.querySelectorAll('[data-override-position]');
+    for (var j = 0; j < oBtns.length; j++) {
+      oBtns[j].addEventListener('click', function (ev) {
+        castOverride(ev.currentTarget.getAttribute('data-override-position'));
+      });
+    }
+  }
 
   load();
 })();

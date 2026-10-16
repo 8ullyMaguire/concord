@@ -74,7 +74,14 @@ var readerInventory = []readerRow{
 	// for exactly as long as the row was broad enough to hide it.
 	{Match: "/api/v1/projects/{project_id}/consensus/{call_id}/close", Reader: "consensus.js",
 		Anchor: "/close", Routes: 1,
-		Note: "§6.8's close, and §6.6's remedy answered in writing when a block is overridden"},
+		Note: "§6.8's close: the verdict, including `blocked`, written down"},
+	// And §6.6's second window gets its own row for the same reason. It is four routes
+	// under a call that already has a reader, so it would have ridden the coarse row --
+	// and the second window is the ONLY way a block is ever answered, which makes it
+	// the most consequential thing in the subtree to have no reader.
+	{Match: "/api/v1/projects/{project_id}/consensus/{call_id}/override", Reader: "consensus.js",
+		Anchor: "/override", Routes: 4,
+		Note: "§6.6's override window: open, read, vote, close"},
 	{Match: "/api/v1/projects/{project_id}/consensus", Reader: "consensus.js", Anchor: "/consensus",
 		Routes: 8},
 	{Match: "/api/v1/projects/{project_id}/criteria-profiles", Reader: "criteria.js",

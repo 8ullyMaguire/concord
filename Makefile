@@ -78,7 +78,17 @@ gates:
 	python3 internal/mutate.py internal/store/field_reports.go ./internal/store/ internal/store/field_reports_test.go internal/store/field_reports_mutants.json
 	python3 internal/mutate.py internal/store/solutions.go ./internal/store/ internal/store/solutions_test.go,internal/store/solutions_count_test.go internal/store/solutions_mutants.json
 	python3 internal/mutate.py internal/store/arenas.go ./internal/store/ internal/store/arenas_test.go internal/store/arenas_mutants.json
-	python3 internal/mutate.py internal/store/consensus.go ./internal/store/ internal/store/consensus_solutions_test.go,internal/store/consensus_quorum_test.go internal/store/consensus_mutants.json
+	python3 internal/mutate.py internal/store/consensus.go ./internal/store/ internal/store/consensus_solutions_test.go,internal/store/consensus_quorum_test.go,internal/store/override_window_test.go internal/store/consensus_mutants.json
+	# §6.6's second window has its own gates, because its rules live in override.go and
+	# the tests that hold them are in override_window_test.go / consensus_override_test.go
+	# -- pointing another gate at those files would arm tests that never call the code it
+	# mutates, which reads as missing coverage and is a wiring problem. (That is also why
+	# the consensus.go gate above now names override_window_test.go: that file holds the
+	# only assertion that an open objection is COUNTED, and without it a mutation dropping
+	# the count survived the gate.)
+	python3 internal/mutate.py internal/store/override.go ./internal/store/ internal/store/override_window_test.go,internal/store/consensus_override_test.go internal/store/override_mutants.json
+	python3 internal/mutate.py internal/store/consensus.go ./internal/store/ internal/store/consensus_override_test.go internal/store/consensus_override_mutants.json
+	python3 internal/mutate.py internal/httpapi/handlers.go ./internal/httpapi/ internal/httpapi/override_window_test.go internal/httpapi/override_mutants.json
 	python3 internal/mutate.py internal/store/audit.go ./internal/store/ internal/store/audit_test.go internal/store/audit_mutants.json
 	python3 internal/mutate.py internal/governance/governance.go ./internal/governance/ internal/governance/governance_test.go internal/governance/consensus_mutants.json
 

@@ -147,32 +147,18 @@ func TestTheCloseRouteNeedsAMaintainer(t *testing.T) {
 	}
 }
 
-func TestACallAcceptedOverABlockNeedsTheRemedyAnsweredInWriting(t *testing.T) {
+// A close RECORDS a block rather than overriding it: §6.6's pass conditions end with
+// "No unresolved block" and its override is a second window with its own route. What
+// the close must still do is write the verdict down -- including `blocked`, which is a
+// verdict and not an absence -- and leave the objection standing, because nothing
+// answered it.
+func TestACloseRecordsABlockRatherThanOverridingIt(t *testing.T) {
 	f := newCloseFixture(t)
-	f.blockWith(t, 4) // 4 consent / 1 block = decisive 0.8, the override ratio
-	owner := f.ownerToken(t)
+	f.blockWith(t, 4) // 4 consent / 1 block
 
-	code, body := authJSON(t, f.ts, http.MethodPost, f.callPath()+"/close", owner, nil)
-	if code != http.StatusBadRequest {
-		t.Fatalf("the call was accepted over a block with no note: status %d body %s\n"+
-			"§6.6 records an override \"with the objector's remedy answered in writing\"",
-			code, body)
-	}
-	if !strings.Contains(string(body), "remedy") {
-		t.Errorf("the refusal does not say what is missing: %s", body)
-	}
-	if got := f.status(t); got != "open" {
-		t.Errorf("the call is %q after a refused close", got)
-	}
-	if _, status, _ := f.objectionRow(t); status != "open" {
-		t.Errorf("the objection is %q after a refused close", status)
-	}
-
-	note := "the export resumes from the last complete file, so nothing half-written survives"
-	code, body = authJSON(t, f.ts, http.MethodPost, f.callPath()+"/close", owner,
-		map[string]any{"note": note})
+	code, body := authJSON(t, f.ts, http.MethodPost, f.callPath()+"/close", f.ownerToken(t), nil)
 	if code != http.StatusOK {
-		t.Fatalf("close with the remedy answered: %d %s", code, body)
+		t.Fatalf("close a blocked call: %d %s", code, body)
 	}
 	var sum struct {
 		Result string `json:"result"`
@@ -200,31 +186,25 @@ func TestACallAcceptedOverABlockNeedsTheRemedyAnsweredInWriting(t *testing.T) {
 			t.Errorf("the close response spells %s in PascalCase: %s", unwanted, body)
 		}
 	}
-	if sum.Result != "accepted_overridden" {
-		t.Fatalf("result = %q; the fixture is meant to be decided by the override branch", sum.Result)
+	if sum.Result != "blocked" {
+		t.Fatalf("result = %q, want blocked: 4 consents and 1 block is not an override under §6.6, "+
+			"and the second window is where a block is answered", sum.Result)
 	}
-	// The response describes what was written. It used to echo the call as it stood
-	// BEFORE the close -- status "open" -- which is a response that contradicts the
-	// write it just performed.
 	if sum.Call.Status != "closed" {
 		t.Errorf("the response's call is %q after a successful close", sum.Call.Status)
 	}
-	if sum.Call.Result == nil || *sum.Call.Result != "accepted_overridden" {
+	if sum.Call.Result == nil || *sum.Call.Result != "blocked" {
 		t.Errorf("the response's call carries result %v", sum.Call.Result)
 	}
-	if got := f.storedResult(t); got != "accepted_overridden" {
+	if got := f.storedResult(t); got != "blocked" {
 		t.Errorf("the stored result is %q; the verdict has to survive the request that "+
 			"produced it, or the page renders a closed call with no outcome", got)
 	}
-	_, status, resolution := f.objectionRow(t)
-	if status != "overridden" {
-		t.Errorf("the objection the call was accepted over is %q", status)
-	}
-	if !strings.Contains(resolution, "last complete file") {
-		t.Errorf("the objection's resolution is %q; it should carry the remedy's answer", resolution)
+	if _, status, _ := f.objectionRow(t); status != "open" {
+		t.Errorf("the objection is %q after a blocked close; a block that stood is not overridden", status)
 	}
 
-	// And the answer has to be READABLE, not only stored. A resolution written to a
+	// And the objection has to be READABLE, not only stored. A resolution written to a
 	// column no reader selects is a record in the same sense a diary in a locked drawer
 	// is: the row is there and nobody can act on it. GetObjections did not select the
 	// column at all -- which also meant a maintainer's reason for resolving an objection
@@ -245,10 +225,8 @@ func TestACallAcceptedOverABlockNeedsTheRemedyAnsweredInWriting(t *testing.T) {
 	if len(read.Objections) != 1 {
 		t.Fatalf("the read carries %d objections, want 1: %s", len(read.Objections), body)
 	}
-	if !strings.Contains(read.Objections[0].Resolution, "last complete file") {
-		t.Errorf("the read objection carries resolution %q; the remedy's answer has to "+
-			"survive into the read, or the page cannot show why the block was overridden",
-			read.Objections[0].Resolution)
+	if read.Objections[0].Status != "open" {
+		t.Errorf("the read objection is %q after a blocked close", read.Objections[0].Status)
 	}
 }
 
@@ -270,11 +248,23 @@ func TestACloseWithNoBodyIsFineWhenNothingWasBlocked(t *testing.T) {
 	}
 }
 
-func TestAMalformedCloseBodyIsRefused(t *testing.T) {
+// A body that cannot be parsed is refused -- on the route that reads one. Since the
+// eighth pass the close takes no body at all (§6.6's note belongs to the override
+// window), so this checks the override window's close, where "no body" and "a body
+// that is not JSON" are still two different things and only the first may be absent.
+func TestAMalformedOverrideCloseBodyIsRefused(t *testing.T) {
 	f := newCloseFixture(t)
+	f.blockWith(t, 4)
+	if code, body := authJSON(t, f.ts, http.MethodPost, f.callPath()+"/close", f.ownerToken(t), nil); code != http.StatusOK {
+		t.Fatalf("close the call: %d %s", code, body)
+	}
+	if code, body := authJSON(t, f.ts, http.MethodPost, f.callPath()+"/override", f.ownerToken(t), nil); code != http.StatusCreated {
+		t.Fatalf("open the override window: %d %s", code, body)
+	}
+
 	// Sent by hand: the helpers marshal their payload, and the point here is a body that
 	// cannot be marshalled at all.
-	req, err := http.NewRequest(http.MethodPost, f.ts.URL+f.callPath()+"/close",
+	req, err := http.NewRequest(http.MethodPost, f.ts.URL+f.callPath()+"/override/close",
 		strings.NewReader(`{"note":`))
 	if err != nil {
 		t.Fatalf("new request: %v", err)
@@ -283,7 +273,7 @@ func TestAMalformedCloseBodyIsRefused(t *testing.T) {
 	req.Header.Set("Authorization", f.ownerToken(t))
 	resp, err := f.ts.Client().Do(req)
 	if err != nil {
-		t.Fatalf("POST close: %v", err)
+		t.Fatalf("POST override close: %v", err)
 	}
 	defer resp.Body.Close()
 	raw := new(bytes.Buffer)
@@ -293,8 +283,16 @@ func TestAMalformedCloseBodyIsRefused(t *testing.T) {
 		t.Fatalf("a malformed body: status %d body %s; \"no body\" and \"a body that is "+
 			"not JSON\" are different things and only the first may be absent", code, body)
 	}
-	if got := f.status(t); got != "open" {
+	if got := f.status(t); got != "closed" {
 		t.Errorf("the call is %q after a malformed body", got)
+	}
+	var windowStatus string
+	if err := f.db.QueryRowContext(context.Background(),
+		`SELECT status FROM override_windows WHERE call_id = ?`, f.call).Scan(&windowStatus); err != nil {
+		t.Fatalf("read window status: %v", err)
+	}
+	if windowStatus != "open" {
+		t.Errorf("the window is %q after a malformed body; want it left open", windowStatus)
 	}
 }
 

@@ -1,0 +1,12 @@
+[
+  {
+    "name": "opening the window asks for a role everybody has",
+    "old": "if err := s.requireRole(projectID, \"maintainer\", r); err != nil {\n\t\tmapError(w, err)\n\t\treturn\n\t}\n\twin, err := s.Store.OpenOverrideWindow(",
+    "new": "if err := s.requireRole(projectID, \"guest\", r); err != nil {\n\t\tmapError(w, err)\n\t\treturn\n\t}\n\twin, err := s.Store.OpenOverrideWindow("
+  },
+  {
+    "name": "a stance in the window does not check \u00a78.2",
+    "old": "\tif err := s.requireEligibleCollaborator(projectID, r); err != nil {\n\t\tmapError(w, err)\n\t\treturn\n\t}\n\twin, err := s.Store.GetOverrideWindow(",
+    "new": "\tif err := s.requireEligibleCollaborator(projectID, r); err != nil && false {\n\t\tmapError(w, err)\n\t\treturn\n\t}\n\twin, err := s.Store.GetOverrideWindow("
+  }
+]

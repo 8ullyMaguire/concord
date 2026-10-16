@@ -2,12 +2,12 @@
   {
     "name": "quorum is computed against zero",
     "old": "\tcounts.Eligible = eligible",
-    "new": "\tcounts.Eligible = 0"
+    "new": "\tcounts.Eligible = eligible * 0"
   },
   {
     "name": "an open objection stops being counted",
     "old": "\t\tif o.Status == \"open\" {\n\t\t\tcounts.OpenObjections++\n\t\t}",
-    "new": "\t\tif false {\n\t\t\tcounts.OpenObjections++\n\t\t}"
+    "new": "\t\tif o.Status == \"open\" && false {\n\t\t\tcounts.OpenObjections++\n\t\t}"
   },
   {
     "name": "a stand-aside is not counted at all",

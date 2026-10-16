@@ -54,7 +54,7 @@ type Charter struct {
 	// took a side, where a stand-aside is neutral rather than opposed.
 	SupportRatioMin         float64
 	ConsentRatio            float64 // decisive: consent / (consent + block)
-	OverrideRatio           float64 // supermajority overriding a block
+	OverrideRatio           float64 // supermajority overriding a block: consent / NON-ABSTAIN participants (§6.6)
 	VoteWindowDays          float64
 	MergeRequiresQuorum     bool
 	MergeQuorumMin          int
@@ -210,6 +210,13 @@ const (
 	ResultRejected           Result = "rejected"
 	ResultBlocked            Result = "blocked"
 	ResultInsufficientQuorum Result = "insufficient_quorum"
+
+	// The override WINDOW's own verdicts (§6.6's second window). Named apart from
+	// the call's result because they answer a different question: the window
+	// records what IT decided about the block -- whether it stands or was set
+	// aside -- and the call's `result` records what that did to the call.
+	ResultOverridden Result = "overridden"
+	ResultUpheld     Result = "upheld"
 )
 
 // EvaluateConsensus applies the spec's decision rule WITHOUT side effects.
@@ -223,32 +230,55 @@ const (
 // before, which meant a stand-aside counted as a vote against the proposal --
 // see ConsensusCounts.Decisive.
 //
-// Any open block forces either an >=override-ratio supermajority
-// (accepted_overridden) or a blocked result.
+// An unresolved block is never overridden HERE. §6.6's pass conditions end with
+// "No unresolved block", and its override is "a second window" -- a separate
+// ballot, evaluated by EvaluateOverride. Until the seventh pass this function
+// compared the decisive ratio against OverrideRatio and returned
+// accepted_overridden from a first-window close, which made the second window
+// redundant and the override easier than an ordinary pass (see
+// EvaluateOverride's comment).
 func EvaluateConsensus(cc ConsensusCounts, c Charter) Result {
 	if cc.Participants < QuorumThreshold(cc.Eligible, c) {
 		return ResultInsufficientQuorum
 	}
-	support := cc.SupportRatio()
-	decisive := cc.DecisiveRatio()
-
 	if cc.OpenObjections > 0 {
-		// The override supermajority is measured the same way as a passing
-		// call: over the people who took a side. Including stand-asides here
-		// would mean a reservation could block an override it never opposed.
-		if decisive >= c.OverrideRatio {
-			return ResultAcceptedOverridden
-		}
 		return ResultBlocked
 	}
-
-	if support < c.SupportRatioMin {
+	if cc.SupportRatio() < c.SupportRatioMin {
 		return ResultRejected
 	}
-	if decisive >= c.ConsentRatio {
+	if cc.DecisiveRatio() >= c.ConsentRatio {
 		return ResultAccepted
 	}
 	return ResultRejected
+}
+
+// EvaluateOverride applies §6.6's override rule to the SECOND window's counts.
+//
+//	carries = consent / (consent + stand_aside + block) >= OverrideRatio
+//
+// The denominator is every NON-ABSTAIN participant -- stand-asides included --
+// because that is what §6.6 says ("≥ 80% of non-abstain participants"), and
+// because the alternative is incoherent rather than merely different: with the
+// decisive denominator (consent / (consent + block)), a room of 5 consent, 6
+// stand_aside and 1 block reads 5/6 = 0.83 and would override a block, while its
+// support ratio of 5/12 = 0.42 is below the floor an ordinary call must clear to
+// pass at all. An override would be easier than a pass.
+//
+// The consequence is that a reluctant consensus (Reluctant: stand_asides outnumber
+// consents) can never override anything, since its ratio is under 0.5 -- which is
+// the point, and why §6.6 has two thresholds.
+//
+// Quorum is the same rule as the first window's: the second window is still a
+// window, so it needs the same participation before its ratio means anything.
+func EvaluateOverride(cc ConsensusCounts, c Charter) Result {
+	if cc.Participants < QuorumThreshold(cc.Eligible, c) {
+		return ResultInsufficientQuorum
+	}
+	if cc.SupportRatio() >= c.OverrideRatio {
+		return ResultOverridden
+	}
+	return ResultUpheld
 }
 
 // MergeGate is the merge-confirmation verdict (spec §5.7).

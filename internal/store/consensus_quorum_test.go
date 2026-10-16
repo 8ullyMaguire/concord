@@ -102,7 +102,7 @@ func TestAClosedCallCountsTheEligiblePopulationForQuorum(t *testing.T) {
 		t.Fatalf("CastPosition: %v", err)
 	}
 
-	sum, err := d.CloseConsensusCall(ctx, call.ID, "")
+	sum, err := d.CloseConsensusCall(ctx, call.ID)
 	if err != nil {
 		t.Fatalf("CloseConsensusCall: %v", err)
 	}
@@ -136,7 +136,7 @@ func TestQuorumBeingMetStillRequiresSupportToPass(t *testing.T) {
 	if _, err := d.CastPosition(ctx, call.ID, uid, "consent"); err != nil {
 		t.Fatalf("CastPosition: %v", err)
 	}
-	sum, err := d.CloseConsensusCall(ctx, call.ID, "")
+	sum, err := d.CloseConsensusCall(ctx, call.ID)
 	if err != nil {
 		t.Fatalf("CloseConsensusCall: %v", err)
 	}
@@ -174,7 +174,7 @@ func TestTheTallySeparatesReservationsFromOpposition(t *testing.T) {
 			t.Fatalf("CastPosition %s: %v", stance, err)
 		}
 	}
-	sum, err := d.CloseConsensusCall(ctx, call.ID, "")
+	sum, err := d.CloseConsensusCall(ctx, call.ID)
 	if err != nil {
 		t.Fatalf("CloseConsensusCall: %v", err)
 	}

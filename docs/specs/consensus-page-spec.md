@@ -188,7 +188,7 @@ The page renders accordingly and never decides standing for itself:
   page shows. A refusal names the role it wanted ("…needs the maintainer role or
   above"), which is the sentence the reader has to act on.
 
-### 5.3 Closing a call, and §6.6's override (added 2026-10-16, §19)
+### 5.3 Closing a call, and where §6.6's override happens (added 2026-10-16, §19; rewritten in §20)
 
 **Who may close.** §6.8's role table puts "call and close consensus" in the
 maintainer's column, and both routes enforce it. The page does not: it offers the
@@ -196,35 +196,45 @@ control to anyone signed in and reports the server's refusal, because the page h
 way to know who is a maintainer — the same reason §5.2's objection controls are not
 gated client-side. A hidden control would be a claim the page cannot check.
 
-**What the closer owes.** §6.6 records an override "with the objector's remedy
-answered in writing". That sentence is a requirement on the closer, so:
+**A close records a verdict; it never overrides.** §6.6's pass conditions end with "No
+unresolved block", so a call with one standing closes **`blocked`** — the oldest defect
+this page had was that a close wrote nothing at all (§19.1), and the second was that a
+close could reach `accepted_overridden` on its own, which made §6.6's second window
+redundant. Answering a block is the override window's job: see `override-window-spec.md`,
+and §20.2 for why the ratio it uses counts every non-abstain participant.
 
-- the close sends a note (`{"note": "…"}`), even when it is empty;
-- the server decides whether the note was REQUIRED, because the verdict is what makes
-  it required: `accepted_overridden` without one is a 400 whose message names §6.6;
-- the answer is recorded on every objection the result overrides, and shown with it.
-
-An empty note is the normal case — a call with no open block has no remedy to answer —
-so the body is optional and a close with no body at all is still a close.
-
-**What the close leaves behind.** Three things, in one transaction, because they are
-one decision:
+**What the close leaves behind.** Two things, in one transaction, because they are one
+decision:
 
 | Written | Read by |
 |---|---|
-| `consensus_calls.status`, `closed_at`, `result` | the page's meta line (`result: accepted_overridden`), and every later read |
-| each overridden objection's `status` and `resolution` | the objection's own row, which the page shows as `resolution: …` |
+| `consensus_calls.status`, `closed_at`, `result` | the page's meta line (`result: blocked`), and every later read |
 | the audit entry | the admin ledger |
 
-Before this, the close wrote `status` and `closed_at` only: the verdict came back in the
-HTTP response and was never stored, so a closed call rendered with no outcome and
-§55's bar ("no unresolved principled objection") stayed up against a call that had
-already been accepted over the block. See §19.1.
+Nothing is written to the objection: a block that stood is not overridden, and the row
+that says so is the one the reader is looking at.
 
 **Standing to vote.** A position and a block both need §8.2's standing — a member of the
 project with a qualifying contribution inside the activity window. Not for tidiness: a
 position is counted in `Participants`, which is what quorum is compared against, so a
 stance from outside the pool both meets quorum and moves both ratios. See §19.3.
+
+### 5.4 §6.6's override window (added 2026-10-16, §20)
+
+Its own section on this page, shown only for a call that closed `blocked`:
+
+- **no window, signed in** — "Open an override window". Offered to anyone signed in and
+  refused by the server when the reader is not a maintainer, for the reason the close
+  control is: the page cannot know the role.
+- **a window open** — the progress line ("N of M needed to reach quorum (K eligible)"),
+  the four stance buttons (consent = override the block, block = uphold it), the note
+  field labelled as §6.6's answer, and the closer's button. The running COUNTS are not
+  on the page because they are not in the response (§6.6's hidden tally, §3.5).
+- **a window closed** — its result and why: `upheld` says the block stood; `overridden`
+  says the call is accepted over it, and shows the answer kept on the objection.
+
+The client derives nothing: not who may act, not the ratio, not the verdict. Every one of
+those is the server's answer, quoted.
 
 ---
 

@@ -16,7 +16,22 @@
   },
   {
     "name": "an empty room reports full support",
-    "old": "func (cc ConsensusCounts) DecisiveRatio() float64 {\n\tif n := cc.Decisive(); n > 0 {",
-    "new": "func (cc ConsensusCounts) DecisiveRatio() float64 {\n\tif true {"
+    "old": "func (cc ConsensusCounts) DecisiveRatio() float64 {\n\tif n := cc.Decisive(); n > 0 {\n\t\treturn float64(cc.Consent) / float64(n)\n\t}\n\treturn 0",
+    "new": "func (cc ConsensusCounts) DecisiveRatio() float64 {\n\tif n := cc.Decisive(); n > 0 {\n\t\treturn float64(cc.Consent) / float64(n)\n\t}\n\treturn 1"
+  },
+  {
+    "name": "an open objection no longer blocks a close",
+    "old": "\tif cc.OpenObjections > 0 {\n\t\treturn ResultBlocked\n\t}",
+    "new": "\tif false {\n\t\treturn ResultBlocked\n\t}"
+  },
+  {
+    "name": "the override is counted over side-takers instead of non-abstain participants",
+    "old": "\tif cc.SupportRatio() >= c.OverrideRatio {\n\t\treturn ResultOverridden\n\t}",
+    "new": "\tif cc.DecisiveRatio() >= c.OverrideRatio {\n\t\treturn ResultOverridden\n\t}"
+  },
+  {
+    "name": "the override window skips its quorum check",
+    "old": "func EvaluateOverride(cc ConsensusCounts, c Charter) Result {\n\tif cc.Participants < QuorumThreshold(cc.Eligible, c) {\n\t\treturn ResultInsufficientQuorum\n\t}",
+    "new": "func EvaluateOverride(cc ConsensusCounts, c Charter) Result {\n\tif false {\n\t\treturn ResultInsufficientQuorum\n\t}"
   }
 ]

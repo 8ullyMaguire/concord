@@ -98,30 +98,22 @@ func TestEvaluateConsensus(t *testing.T) {
 		}
 	})
 	t.Run("blocked by unresolved objection", func(t *testing.T) {
-		// Decisive 6/8 = 0.75: clears consent 0.7 but is under override 0.8,
-		// and a block is open. Blocked.
+		// 6 consent, 2 block: decisive 6/8 = 0.75 -- which clears consent 0.7 but
+		// is under override 0.8. Since the eighth pass this is blocked whatever
+		// the ratios say, because §6.6's pass conditions end with "No unresolved
+		// block" and the override belongs to the second window.
 		cc := ConsensusCounts{Consent: 6, Block: 2, Participants: 8, Eligible: 10, OpenObjections: 1}
 		if got := EvaluateConsensus(cc, c); got != ResultBlocked {
 			t.Fatalf("got %q, want blocked (decisive ratio %.3f)", got, 6.0/8.0)
 		}
 	})
-	t.Run("stand-asides cannot block an override they did not oppose", func(t *testing.T) {
-		// 6 consent, 2 stand-aside, 1 block: decisive 6/7 = 0.857 >= override
-		// 0.8, so the override carries.
-		//
-		// Under the old single ratio this was 6/9 = 0.67, below override, and
-		// the result was blocked -- the two people who only wanted reservations
-		// recorded were enough to stop the community overriding a block.
-		cc := ConsensusCounts{Consent: 6, StandAside: 2, Block: 1, Participants: 9, Eligible: 10, OpenObjections: 1}
-		if got := EvaluateConsensus(cc, c); got != ResultAcceptedOverridden {
-			t.Fatalf("got %q, want accepted_overridden (decisive %.3f)", got, 6.0/7.0)
-		}
-	})
-	t.Run("supermajority overrides a block", func(t *testing.T) {
-		cc := ConsensusCounts{Consent: 8, StandAside: 1, Participants: 9, Eligible: 10, OpenObjections: 1}
-		// 8/9 ≈ 0.889 ≥ 0.8
-		if got := EvaluateConsensus(cc, c); got != ResultAcceptedOverridden {
-			t.Fatalf("got %q, want accepted_overridden", got)
+	t.Run("an open block is blocked even at unanimous consent", func(t *testing.T) {
+		// The point of the eighth pass: a first-window close never overrides, so
+		// no ratio makes it do so. A runner who deletes the block branch and lets
+		// the consent ratio decide would return accepted here.
+		cc := ConsensusCounts{Consent: 9, Participants: 9, Eligible: 10, OpenObjections: 1}
+		if got := EvaluateConsensus(cc, c); got != ResultBlocked {
+			t.Fatalf("got %q, want blocked: 100%% consent does not override a block, the second window does", got)
 		}
 	})
 	t.Run("abstains count toward quorum but not the ratio", func(t *testing.T) {
@@ -131,6 +123,106 @@ func TestEvaluateConsensus(t *testing.T) {
 			t.Fatalf("got %q, want accepted", got)
 		}
 	})
+}
+
+// TestEvaluateOverride is §6.6's second window: "≥ 80% of non-abstain
+// participants vote to override, with the objector's remedy answered in writing".
+// The denominator is the whole point of these fixtures.
+func TestEvaluateOverride(t *testing.T) {
+	c := testCharter() // quorum min 3, ratio 0.2; override 0.8
+
+	t.Run("supermajority overrides a block", func(t *testing.T) {
+		// 8 consent, 1 stand-aside: 8/9 = 0.889 >= 0.8 non-abstain.
+		cc := ConsensusCounts{Consent: 8, StandAside: 1, Participants: 9, Eligible: 10, OpenObjections: 1}
+		if got := EvaluateOverride(cc, c); got != ResultOverridden {
+			t.Fatalf("got %q, want overridden (non-abstain %.3f)", got, cc.SupportRatio())
+		}
+	})
+	t.Run("the discriminating fixture: half a room is not 80% of it", func(t *testing.T) {
+		// 4 consent, 3 stand-aside, 1 block. Non-abstain 4/8 = 0.50, decisive
+		// 4/5 = 0.80 -- the only shape in the suite where the two candidate
+		// denominators disagree about the verdict. The spec's reading says the
+		// block stands, and this is why the override moved to its own window.
+		cc := ConsensusCounts{Consent: 4, StandAside: 3, Block: 1, Participants: 8, Eligible: 10, OpenObjections: 1}
+		if got := EvaluateOverride(cc, c); got != ResultUpheld {
+			t.Fatalf("got %q, want upheld: 4 of 8 non-abstain participants is %.3f, under %.2f (the decisive denominator would read %.3f and carry it)", got, cc.SupportRatio(), c.OverrideRatio, cc.DecisiveRatio())
+		}
+	})
+	t.Run("stand-asides raise the bar without vetoing", func(t *testing.T) {
+		// The intent the old decisive-denominator test protected survives in the
+		// form the spec states it: 8 consent against 2 reservations is exactly
+		// 0.80 of non-abstain and carries; add one block and it is 0.727 and the
+		// reservation plus the block between them are enough.
+		//
+		// A stand-aside is not a veto -- 8 consent still overrides 2 of them --
+		// but it is a participant who did not consent, and the ratio counts them.
+		carries := ConsensusCounts{Consent: 8, StandAside: 2, Participants: 10, Eligible: 10}
+		if got := EvaluateOverride(carries, c); got != ResultOverridden {
+			t.Fatalf("got %q, want overridden: 8/10 = %.3f is exactly the ratio", got, carries.SupportRatio())
+		}
+		short := ConsensusCounts{Consent: 8, StandAside: 2, Block: 1, Participants: 11, Eligible: 11}
+		if got := EvaluateOverride(short, c); got != ResultUpheld {
+			t.Fatalf("got %q, want upheld: 8/11 = %.3f is under the ratio", got, short.SupportRatio())
+		}
+	})
+	t.Run("a reluctant consensus can never override", func(t *testing.T) {
+		// More reservations than consents (Reluctant) puts the ratio under 0.5,
+		// so no threshold above a half can ever be reached. Under the decisive
+		// denominator this same room read 5/6 = 0.833 and carried.
+		cc := ConsensusCounts{Consent: 5, StandAside: 6, Block: 1, Participants: 12, Eligible: 12, OpenObjections: 1}
+		if !cc.Reluctant() {
+			t.Fatal("fixture is not reluctant; it must be to make the point")
+		}
+		if got := EvaluateOverride(cc, c); got != ResultUpheld {
+			t.Fatalf("got %q, want upheld: a room that could not pass a proposal cannot override a block", got)
+		}
+	})
+	t.Run("the second window needs quorum like the first", func(t *testing.T) {
+		cc := ConsensusCounts{Consent: 2, Participants: 2, Eligible: 10}
+		if got := EvaluateOverride(cc, c); got != ResultInsufficientQuorum {
+			t.Fatalf("got %q, want insufficient_quorum: 2 voters is not a window", got)
+		}
+	})
+	t.Run("abstains are the only position that leaves the denominator", func(t *testing.T) {
+		// 4 consent, 6 abstain: abstains are neutral (§6.6) so they are not part
+		// of non-abstain; 4/4 = 1.0. If abstains were counted the reading would be
+		// 0.4 and the block would stand, so this fixture distinguishes them.
+		cc := ConsensusCounts{Consent: 4, Abstain: 6, Participants: 10, Eligible: 10, OpenObjections: 1}
+		if got := EvaluateOverride(cc, c); got != ResultOverridden {
+			t.Fatalf("got %q, want overridden: abstains do not count against the ratio", got)
+		}
+	})
+}
+
+func TestAnEmptyRoomIsNotUnanimous(t *testing.T) {
+	// 0 consent, 0 block, 0 participants: the ratios are 0/0 and the answer is ZERO.
+	//
+	// This is a mutation's finding, not a hypothetical. `DecisiveRatio` returned 1 in the
+	// empty case for four passes -- reported as a "killed" mutant because the mutation had
+	// to be rewritten to compile, and once it compiled it SURVIVED: nothing in the suite
+	// asked what an empty room scores. It matters because the two places a ratio is read
+	// (EvaluateConsensus, EvaluateOverride) both check quorum FIRST, which masks an empty
+	// room there and leaves the helper's contract unmeasured. A number nobody read is how
+	// a denominator drifts.
+	var empty ConsensusCounts
+	for _, tc := range []struct {
+		name string
+		got  float64
+	}{
+		{"SupportRatio", empty.SupportRatio()},
+		{"DecisiveRatio", empty.DecisiveRatio()},
+	} {
+		if tc.got != 0 {
+			t.Errorf("%s() of an empty room = %v, want 0: nobody voting is not unanimity, "+
+				"and a 1 here reads as a full room agreeing", tc.name, tc.got)
+		}
+	}
+	if n := empty.Decisive(); n != 0 {
+		t.Errorf("Decisive() of an empty room = %d, want 0", n)
+	}
+	if empty.Reluctant() {
+		t.Error("an empty room reported a reluctant consensus")
+	}
 }
 
 func TestCheckMergeGate(t *testing.T) {

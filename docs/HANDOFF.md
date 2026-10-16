@@ -5,12 +5,25 @@ For the implementing agent taking over from here. Read this, then
 then `docs/ARCHITECTURE.md`. `docs/PLAN.md` covers the pre-r4 milestones (all
 complete) and `docs/concord-spec.md` is superseded — do not plan from either.
 
-**What is left is `docs/REMAINING.md` §19.8** (measured 2026-10-16, seventh pass).
+**What is left is `docs/REMAINING.md` §20.7** (measured 2026-10-16, eighth pass).
 Everything before it in that file is history, and §1/§4/§11 are explicitly marked
 superseded — §11's "nothing else is outstanding" was verified by hand and was wrong
 twice over. If a tracker and the tree disagree, the tree wins and the tracker is the bug.
 
-**§6.6's override now leaves a record, and a call can be closed from the page** (§19).
+**§6.6's override is now the second window the spec describes** (§20, spec:
+`docs/specs/override-window-spec.md`). §19 had made a first-window close compute the
+override inline, which left the second window redundant and unbuilt (§19.9 item 1);
+building it forced a question nobody had asked, and the answer changed a shipped rule.
+The override ratio used the DECISIVE denominator while §6.6 says "≥ 80% of non-abstain
+participants", so `5 consent / 6 stand_aside / 1 block` could override a block at 0.833
+while its support of 0.42 was below the floor an ordinary pass must clear (§20.2 — the
+mutation that restores it is in `internal/governance/consensus_mutants.json`). The window
+now decides, the close only records, and the note §6.6 requires is required by the VERDICT
+and refused before any write (§20.3). Found on the way: the close judged calls by the
+governance model's DEFAULT charter rather than the project's own, or by an error it
+swallowed and a project-0 charter with a vacuous quorum (§20.4).
+
+**§6.6's override left no record, and a call could be closed from the page** (§19).
 Three defects in the same pass, one shape: a rule that existed and nothing enforced. The
 close computed `accepted_overridden` and never wrote `result`, so a closed call rendered
 with no outcome and the objection it was accepted over stayed open (§19.1); the close
@@ -48,8 +61,8 @@ store tests and no page.
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 973 tests, schema 25, 79 tables,
-25 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
+Measured, not remembered: `make verify` green, 991 tests, schema 26, 81 tables,
+26 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 
 - **Revision 4 is partly built.** `docs/concord-spec-r4.md` is the current spec;

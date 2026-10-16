@@ -29,6 +29,10 @@ import subprocess
 import sys
 import tempfile
 
+# `go test` prints "[build failed]" (and "# pkg" above it) when the mutation does not
+# compile, which is a different verdict from a test going red.
+BUILD_FAILED = re.compile(r"\[build failed\]|build failed|declared and not used|cannot use|undefined:")
+
 
 def run_gate(src, test_pkg, test_file, mutants, label, repo=None):
     repo = repo or os.path.expanduser("~/code/projects/concord")
@@ -96,6 +100,18 @@ def run_gate(src, test_pkg, test_file, mutants, label, repo=None):
         r = subprocess.run(f"go test {test_pkg} -run '{suite}' -count=1",
                            shell=True, cwd=repo, capture_output=True, text=True)
         out = r.stdout + r.stderr
+        # A mutation that does not BUILD is not a kill. `go test` exits non-zero for a
+        # compile error exactly as it does for a failing test, so "non-zero therefore
+        # killed" reports a rule as proven when the mutation never reached it -- the
+        # same way the UI gate reported seven kills it had not earned (a pytest that
+        # could not import). Counted with NOT APPLIED, which fails the gate.
+        build_error = BUILD_FAILED.search(out)
+        if build_error:
+            print(f"  UNUSABLE     {name} (the mutation does not build, so nothing "
+                  f"was tested: {build_error.group(0).strip()})")
+            notapplied += 1
+            open(src_path, "w").write(original)
+            continue
         if "FAIL" in out:
             print(f"  killed       {name}")
             killed += 1
@@ -126,10 +142,15 @@ def run_gate(src, test_pkg, test_file, mutants, label, repo=None):
     # The failure is not cosmetic either: a refactor that renames the guarded
     # expression leaves the RULE unproven while the gate says it is proven, and
     # the next person to read the mutant list has no way to know.
+    #
+    # An UNUSABLE mutant (one that does not build) is counted here too, for the
+    # same reason and one more: a compile error also exits non-zero, so counting
+    # it as a kill claims a rule is enforced by a test that never ran.
     if notapplied:
-        print(f"[{label}] FAIL: {notapplied} mutant(s) never applied. The rules "
-              f"they guard are UNPROVEN and this run proves nothing about them. "
-              f"Update the patterns in the mutants file to the current source.")
+        print(f"[{label}] FAIL: {notapplied} mutant(s) never applied or did not build. "
+              f"The rules they guard are UNPROVEN and this run proves nothing about "
+              f"them. Update the patterns in the mutants file to the current source "
+              f"(or make the mutation compile).")
     return 0 if (survived == 0 and notapplied == 0) else 1
 
 

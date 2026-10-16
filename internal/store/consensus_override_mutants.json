@@ -1,0 +1,7 @@
+[
+  {
+    "name": "the close judges by the governance model's defaults",
+    "old": "\tcharter, err := d.GetCharterForProject(ctx, c.ProjectID)",
+    "new": "\tcharter, err := governance.DefaultCharter(governance.Collective), error(nil)"
+  }
+]

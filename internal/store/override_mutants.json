@@ -1,0 +1,47 @@
+[
+  {
+    "name": "an override carries with no remedy answered in writing",
+    "old": "\tif verdict == governance.ResultOverridden && trimmed == \"\" {",
+    "new": "\tif false {"
+  },
+  {
+    "name": "the override does not reach the call's own result",
+    "old": "UPDATE consensus_calls SET result='accepted_overridden' WHERE id=?",
+    "new": "UPDATE consensus_calls SET result='blocked' WHERE id=?"
+  },
+  {
+    "name": "the block the override answered is left standing",
+    "old": "UPDATE objections SET status='overridden', resolution=? WHERE call_id=? AND status='open'",
+    "new": "UPDATE objections SET status='overridden', resolution=? WHERE call_id=? AND status='closed'"
+  },
+  {
+    "name": "the window opens on a call that never closed blocked",
+    "old": "\tif call.Status != \"closed\" || call.Result == nil || *call.Result != string(governance.ResultBlocked) {",
+    "new": "\tif false {"
+  },
+  {
+    "name": "the window opens with no standing block to override",
+    "old": "\tif open == 0 {",
+    "new": "\tif false {"
+  },
+  {
+    "name": "a stance can be cast in a closed window",
+    "old": "\tif status != \"open\" {",
+    "new": "\tif false {"
+  },
+  {
+    "name": "a held call's block can be overridden anyway",
+    "old": "\tif held {",
+    "new": "\tif held && false {"
+  },
+  {
+    "name": "a running override tally is published",
+    "old": "\tif w.Status == \"closed\" {",
+    "new": "\tif true {"
+  },
+  {
+    "name": "the override window judges by the governance model's defaults",
+    "old": "\t\t\ttime.Unix(int64(hold.ExpiresAt), 0).UTC().Format(time.RFC3339))\n\t}\n\tcharter, err := d.GetCharterForProject(ctx, call.ProjectID)\n\tif err != nil {\n\t\treturn OverrideWindow{}, err\n\t}\n",
+    "new": "\t\t\ttime.Unix(int64(hold.ExpiresAt), 0).UTC().Format(time.RFC3339))\n\t}\n\tcharter, err := d.GetCharterForProject(ctx, call.ProjectID)\n\tif err != nil {\n\t\treturn OverrideWindow{}, err\n\t}\n\tcharter = governance.DefaultCharter(governance.Collective)\n"
+  }
+]

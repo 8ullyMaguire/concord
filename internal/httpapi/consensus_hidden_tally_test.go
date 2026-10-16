@@ -147,7 +147,7 @@ func TestAClosedCallRevealsTheTally(t *testing.T) {
 		}
 		castAs(t, ts, slug, call.ID, tok, stance)
 	}
-	if _, err := db.CloseConsensusCall(ctx, call.ID, ""); err != nil {
+	if _, err := db.CloseConsensusCall(ctx, call.ID); err != nil {
 		t.Fatalf("CloseConsensusCall: %v", err)
 	}
 
