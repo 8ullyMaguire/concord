@@ -204,6 +204,19 @@ def build_checks(facts: dict) -> list:
                 "tables",
             )
         )
+    if facts.get("tables") is not None:
+        # ...and the phrasing the eighth pass introduced, which the pattern above misses:
+        # "<N> live tables" (in the measured-state lines, "schema 26 · 26 migrations · 81
+        # live tables"). The docs were NOT bent to the older phrasing, because a sentence
+        # that reads better is exactly how an ungated number gets introduced -- a claim
+        # nothing measures is the failure this file exists for, so the phrasing is gated.
+        checks.append(
+            (
+                re.compile(r"\b(\d{2,3})\s+live tables\b"),
+                "table count",
+                "tables",
+            )
+        )
     if facts.get("tests") is not None:
         # The `Go` qualifier is optional and deliberately the ONLY one accepted.
         # `"943 Go tests"` was invisible to the unqualified pattern while the

@@ -2084,7 +2084,7 @@ Measured 2026-10-16, eighth pass. Nothing below is remembered.
 | `make e2e` | exit 0 — 274 e2e tests in 19 suite files, then 12/12 UI mutants killed |
 | Go mutants (`make gates`) | **every gate clean, 0 survived, 0 not applicable** — see §20.6 for what it took to make that line mean something |
 | UI mutants | 7/7 for `audit.js` and 5/5 for `consensus.js` = 12/12 (two new: the window shown on any call, and the window's state never read), source restored byte-identical |
-| Doc-number gate | OK — 14 measured numbers agree; 9 quoted-or-fenced and 9 table-row/(historical) exempted |
+| Doc-number gate | OK — 16 measured numbers agree; 9 quoted-or-fenced and 11 table-row/(historical) exempted |
 | Schema | **26 · 26 migrations · 81 live tables** (was 25 · 25 · 79): this pass adds `override_windows` and `override_positions`, which is the first migration since 0025 |
 | Live | deployed, healthz 200, the override section served, `GET …/override` on a call with no window answers 404 |
 
@@ -2129,6 +2129,11 @@ the first failing gate, so the gates after it never ran on the passes where one 
 and a gate that has never run is indistinguishable from a gate whose rules are all proven.
 The script takes the gate list from the Makefile (two lists would drift, and the drifted one
 is the one that runs) and reports every gate's summary line.
+
+The same pass added a second `<N> live tables` pattern to `check_doc_numbers.py`, for the
+one sentence in this pass's measured-state lines that the existing `the N tables` pattern
+did not reach: the sentence reads better than the gated phrasing, which is exactly how an
+ungated number gets introduced. 16 measured numbers now, 2 of them new.
 
 ### 20.7 What is left, after this pass
 

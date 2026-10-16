@@ -141,6 +141,17 @@ class DocNumbersGate(unittest.TestCase):
             r = run_gate()
         self.assertEqual(r.returncode, 0, "a correct subset count must not be flagged")
 
+    def test_the_live_tables_phrasing_is_measured_too(self):
+        # The eighth pass wrote "81 live tables" in the measured-state lines, which the
+        # "the N tables" pattern does not reach. Rather than bend the sentence to the
+        # pattern, the pattern grew: an unmeasured sentence that reads better is exactly
+        # how a number stops being checked.
+        with self._doc_containing("**Measured state:** schema 26 · 12 live tables.\n"):
+            r = run_gate()
+        self.assertEqual(r.returncode, 1, "a stale '<N> live tables' must fail")
+        self.assertIn("table count", r.stdout)
+        self.assertIn("live tables", r.stdout)
+
     def test_prose_is_not_exempt_merely_for_containing_was(self):
         # The first version exempted any line containing "was", which exempted the
         # very lines the gate exists to check -- hence `OK 0 measured numbers`.
