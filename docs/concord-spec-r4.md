@@ -4,6 +4,7 @@
 
 **Status:** concept spec, nothing built yet.
 **Revision 4:** full rewrite. Supersedes the earlier collective-governance, discovery, lists, and request-board revisions, and folds them into one model.
+**Revision 4.1:** two additions — use-case rankings promoted to a first-class surface (§7.4), and an **idea board** for voting on things that don't exist yet, or exist badly (§7.5).
 
 ### What changed in this revision
 
@@ -83,6 +84,8 @@ Discovery feeds decisions: a feature's candidate solutions include existing proj
 | **Field Report** | A structured "I used X for Y, here's what happened" record. |
 | **List** | A curated, ranked arena of entries (replaces awesome-lists). |
 | **Request** | A natural-language "what fits my need?" question answered by ranked project references. |
+| **Idea** | A lightweight proposal for something not built yet, or a better implementation of something that exists. Ranked, and convertible into a complaint/feature or upstream feedback. |
+| **Use Case** | A structured "job to be done" statement that scopes how well projects are ranked against each other (§7.4). |
 | **Scout Report** | A generated build-vs-adopt analysis for an idea or stack. |
 
 ### 3.2 The graph
@@ -184,7 +187,7 @@ in:requests fits-score>=0.8
 ```
 
 - AND / OR / NOT, grouping, and ranges.
-- **Entity scopes:** `in:projects|packages|lists|entries|complaints|features|solutions|requests|reports|people` (people are permission-aware).
+- **Entity scopes:** `in:projects|packages|lists|entries|complaints|features|solutions|requests|ideas|use-cases|reports|people` (people are permission-aware).
 - **Facets always on**, returned with counts: tags, languages, licenses, governance models, health buckets, platforms, and project types.
 - **Sort:** relevance, health, recently updated, newest, fewest open complaints, community-fit rank, or smallest footprint.
 - **Saved, shareable, subscribable:** every query has a URL, an RSS/Atom feed, and notification alerts.
@@ -308,6 +311,7 @@ An **arena** is a set of competitors, a question, and a context. Everything rank
 | **Request arena** | Project answers | "Which fits this request better?" |
 | **Alternatives arena** (per project × use-case) | Projects | "Which is the better alternative to X for Y?" |
 | **Use-case arena** | Projects | "Best for *self-hosted kanban, small team*" |
+| **Idea arena** | Ideas | "Is this worth building — and is the current approach the wrong one?" |
 
 ### 5.1 Engine
 
@@ -491,9 +495,9 @@ Release notes are generated from closed complaints. Acceptance criteria are chec
 
 ---
 
-## 7. Curate: Lists, Requests, Alternatives
+## 7. Curate: Lists, Requests, Alternatives, Use Cases, Ideas
 
-All three are arena applications (§5), sharing proposals, quorum, ranking, anti-spam, and audit.
+Lists, requests, and alternatives are arena applications (§5), sharing proposals, quorum, ranking, anti-spam, and audit. Use-case rankings and the idea board (§7.4–7.5) reuse the same engine and add surfaces for two things the earlier revisions left implicit: *ranking software by how well it does a specific job*, and *voting on things nobody has built yet*.
 
 ### 7.1 Lists (awesome-lists as objects)
 
@@ -518,6 +522,39 @@ All three are arena applications (§5), sharing proposals, quorum, ranking, anti
 ### 7.3 Alternatives
 
 Each project has **alternatives arenas** per use case: "alternatives to X for Y". Community pairwise comparison produces a ranked "better for / worse for" list, with migration notes (community-written, ranked) attached to each edge. These feed the Alternatives panel, Compare, Scout, and dependency-replacement alerts.
+
+### 7.4 Use-case rankings (rank software by how well it solves a specific job)
+
+Alternatives answer "what instead of X?". The broader question — **"which software actually solves Y well?"** — is answered by use-case arenas, which are not anchored to any single project.
+
+- **A use case is a first-class object:** a short job-to-be-done statement ("self-hosted kanban with WIP limits for a small team"), namespaced under `domain:`/`role:` tags, deduplicated by semantic similarity before a new one can be created. Use cases are community-owned: renaming or merging two use cases is a quorum proposal like any taxonomy change (§4.3).
+- **The question is narrow.** The arena asks "Which solves *this* better?", never "which project is better overall". Votes carry the use case as context (§5.1), so one project can be #1 for one job and simply unranked for another — no global leaderboard implied.
+- **Entries carry a fit rationale**, like request answers: how the project solves the use case, where it falls short, and at what scale. One entry per project per use case; duplicates merge. Affiliated entries (own project) are labeled, not banned.
+- **Any tier can compete.** Indexed, claimed, and native projects enter the same arena, so an external tool is ranked against a native one on evidence, not on where it hosts.
+- **Seeded from what already exists:** field reports carry a tagged use case (§4.7), request answers and alternatives edges already name one, and Scout's capability decomposition implies several — entering a use case you have already reported on costs one click.
+- **Surfaces:** a "Best for *Y*" badge on project pages and search result cards, the ranked column in Compare, Scout's ordering for that use case, and a browsable **use-case directory** (ranked projects + field-report outcome rates + matched capabilities + open pain for *Y*) — the honest replacement for "best X for Y" listicles and affiliate-blog SEO.
+- **No ranked ≠ no data.** A project with no entry shows "unranked for Y" with an invitation to enter it; absence of votes never renders as a low score.
+- Cold start uses content priors (capabilities, field reports, tags) with RD kept high, and is labeled as machine-seeded until human votes arrive (§4.6, §16.2).
+
+### 7.5 Idea board (vote on what doesn't exist yet — or should exist better)
+
+Not every wish deserves the full complaint → feature → consensus pipeline, and for **indexed projects there is no pipeline at all** — the repo is external and its maintainers have no Concord charter. The idea board is the low-friction front door for both cases.
+
+**Two kinds of idea:**
+- **New:** "somebody should build Y" — attaches to no project, or to a domain/use case.
+- **Better:** "X's Y should work like this" / "the current implementation gets this wrong" — attaches to any project at any trust tier.
+
+**How it works:**
+- **Ideas are ranked, not tallied.** They compete pairwise in an idea arena with the same engine, weights, and anti-gaming as everything else (§5, §5.2). A pile of new accounts cannot anoint a roadmap.
+- **Cheap to file:** title, the problem in one paragraph, the use case it serves, and (optional) a sketch of a better approach. The reframe assistant and duplicate detection run on filing, so "add dark mode" becomes a stated pain and links to the existing idea if there is one.
+- **States:** `Open → Gathering support → Triaged → converted / adopted / superseded / rejected`. Gathering support has no time pressure; Triaged means someone with weight engaged.
+- **Conversion is the point, not accumulation:**
+  - *Native project:* crossing the support threshold (charter-configurable) makes a one-click proposal that seeds a complaint or feature draft with the supporters and their rationales attached — it then enters the ordinary pipeline and the idea stops accepting votes.
+  - *Indexed project:* it becomes a structured **upstream feedback packet** — an issue draft the community confirms, labeled as Concord-originated, that the reporter sends upstream. Concord never posts on anyone's behalf.
+  - Either way supporters are notified of the outcome, and the idea links to what happened.
+- **No silent graveyard.** Rejected ideas stay searchable with the stated reason, and every idea links forward to what superseded it — "already exists: Z", "shipped in 2.3", "rejected: out of scope". The same wheel is not reinvented twice.
+- **Feeds the Opportunity Radar (§4.8):** clustered ideas with rising support, especially those with no covering project, are exactly the "what should someone build?" signal — with a one-click Scout path from idea to report to seeded project.
+- Ideas inherit §8.1 weights; bots have zero weight and cannot open conversion.
 
 ---
 
@@ -648,6 +685,8 @@ objections(call, user, principle, violation, remedy, status)
 decision_records
 boards, columns, cards, swimlanes, themes(tag, weight, expires_at)
 lists, list_entries, requests, request_answers
+use_cases(id, name, domain_tag, body)
+ideas(id, project_id NULL, kind(new|better), use_case_id, status, supersedes, converted_to)
 scout_reports(input, capabilities, matches, verdicts)
 saved_searches, subscriptions
 threads, comments, comment_votes
@@ -717,6 +756,7 @@ Ordered so value ships early and discovery compounds from day one.
 ### Phase 1: Arenas and curation (months 3–7)
 - Arena engine (Glicko-2, vote log, pair selection).
 - Lists, requests, and alternatives arenas, with an awesome-list importer.
+- **Use-case rankings (§7.4) and the idea board (§7.5)**, including idea→complaint conversion and the upstream feedback packet.
 - Field reports and the capability matrix.
 - Reputation basics, quorum machinery, moderation juries.
 
