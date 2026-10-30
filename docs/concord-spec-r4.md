@@ -5,7 +5,7 @@
 **Status:** concept spec, nothing built yet.
 **Revision 4:** full rewrite. Supersedes the earlier collective-governance, discovery, lists, and request-board revisions, and folds them into one model.
 **Revision 4.1:** two additions — use-case rankings promoted to a first-class surface (§7.4), and an **idea board** for voting on things that don't exist yet, or exist badly (§7.5).
-**Revision 4.2:** one addition, measured rather than proposed — **§4.5.6 is now specified** in `docs/specs/contribution-feed-spec.md` (plan: `docs/plans/contribution-feed.md`, milestones R9–R12). The catalog could never answer "where do I contribute?" for two reasons the prose never named: it does not know where any project lives (no repository column exists, and 2 of 74 descriptions carry a URL), and no health signal has ever been measured (71 metric rows, 0 with a `health_score`), so `sort=health` and `min_health` were already answering with a constant. The section below adds the prerequisite data, the work-item contract, the reuse of the Finder engine, and the one ranking signal that is not a popularity proxy: measured time to first response for a newcomer.
+**Revision 4.2:** two additions, measured rather than proposed — **§4.5.6 is now specified** in `docs/specs/contribution-feed-spec.md` (plan: `docs/plans/contribution-feed.md`, milestones R9–R12), and **§4.13 is new**: public statistics and decision velocity (`docs/specs/instance-statistics-spec.md`, R13–R15). Both came from the same measurement. The catalog could never answer "where do I contribute?" for two reasons the prose never named: it does not know where any project lives (no repository column exists, and 2 of 74 descriptions carry a URL), and no health signal has ever been measured (71 metric rows, 0 with a `health_score`), so `sort=health` and `min_health` were already answering with a constant. And it could never publish a statistic honestly either: 1,874 features exist on 12 distinct days in batches of 100–601, while `audit_log` holds 949 `create_feature` rows — so a "features per week" chart is a chart of an import script, and any surface that cannot tell a seeded row from a contribution is measuring one.
 
 ### What changed in this revision
 
@@ -321,6 +321,30 @@ Header badges (tier, license, governance model, health, maintenance status) → 
 - Bias audits check for popularity bias, language bias, and tier bias (indexed vs native).
 
 ---
+
+## 4.13 Public statistics and decision velocity (specified in r4.2)
+
+`docs/specs/instance-statistics-spec.md`; tickets `docs/plans/instance-statistics.md` (STAT-1…STAT-3).
+
+**Every published aggregate states its provenance split.** On the live instance 1,874 features exist on 12 distinct days, in batches of 100–601, and `audit_log` holds 949 `create_feature` rows: the other 925 were written by a seed script. "N features" therefore is not a claim about people, and a page that shows it without "(M seeded)" beside it is a claim about an import. One column (`origin`, §4.5.7) is what makes every number below honest, and it lands before any statistic does.
+
+**Census, not growth.** Composition — projects by language, tag, license, governance, visibility — is a still frame and cannot be mistaken for a trend. It is also nearly free: the facet counts already exist in search and are only reachable through a query string.
+
+**Decision latency, not throughput, is the headline number.** Three medians, each with its `n`:
+
+- complaint `open` → `validated`,
+- feature `ready` → `shipped`,
+- consensus call opened → closed.
+
+Latency is a property of the process and is **immune to batch seeding**; throughput is a property of the import. `audit_log` cannot be the source for it: the seeded rows have no create event, so a throughput series computed there would show closings without openings — a backlog shrinking out of nothing. Latency is computed per entity from its own timestamps, so only rows that actually moved contribute.
+
+**History lives in a snapshot table, not in a query.** One `instance_stats` row per day: counts by table, by status, by `origin`, plus the three medians. A migration that rebuilds a table rewrites the past otherwise, and every later chart becomes a scan of an incomplete log. "Rising" (§4.5.5.7) needs two points recorded the same way, so it cannot exist before this table does.
+
+**Exposure.** `GET /api/v1/stats` (JSON, the same numbers the page shows — one source), `GET /badge/{slug}.svg` (health, decision latency, shipped-in-30d), and the statistics block in the existing RSS feeds. §4.11 already promises embeds and badges; a directory is discovered through other people's READMEs.
+
+**The one leaderboard that is allowed ranks answering, not producing.** Median first-response to a newcomer (§4.5.7), per project, published with `n` and hidden under five samples. Volume leaderboards, streaks, XP and public per-user contribution counts are refused: they reward exactly the behaviour complaint fatigue exists to prevent, and §4.5.4 forbids optimizing for time-on-site.
+
+**Unit discipline.** Every published number carries its denominator and its unit in the same line ("median 4 days, n=61" — not "4 days"). A median without `n` is a rumour, and the one number a directory cannot recover from is a published figure that turned out to be about a script.
 
 ## 5. Arenas (the single ranking engine)
 
@@ -825,6 +849,7 @@ Ordered so value ships early and discovery compounds from day one.
 **Decisions:** quorum-met rate, median complaint-to-ship time, % shipped features with ≥ 2 competing solutions, % consensus calls resolved without override, reluctant-consensus rate, verified-fixed rate.
 **Community:** votes per active user, field reports per active project, tag completeness, moderation appeal-overturn rate.
 **Contribution (§4.5.7):** median hours to first response on a newcomer's contribution, share of labelled work items claimed within 7 days, share of first-time contributors who return within 90 days, and — always reported beside the others — the count of rows that carry no provenance, because a seeded row counts as a contribution in any metric that cannot distinguish it.
+**Statistics (§4.13):** every published number carries its `n` and its provenance split on the same line; a figure that cannot state either is not published. Decision latency (three medians) is the headline, not volume.
 **Health:** maintainer-reported burnout, WIP violations, bus factor trend of native projects.
 
 ---

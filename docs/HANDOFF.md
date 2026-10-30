@@ -17,6 +17,13 @@ twice over. If a tracker and the tree disagree, the tree wins and the tracker is
 `health_score` on none of its rows, and `min_health>0` therefore returns an empty set on
 every instance. R10–R12 build §4.5.7 (`docs/specs/contribution-feed-spec.md`) on top of it.
 
+**Second strand, same day: R13–R15 — instance statistics (§4.13,
+`docs/specs/instance-statistics-spec.md`).** The rule that came out of the measurement pass:
+no aggregate is published without its provenance split and its `n`, decision **latency** is
+the headline rather than volume (925 of 1,874 features have no `create_feature` audit row, so
+throughput is a property of the seed script), and history goes in a daily snapshot table
+because a table rebuild would otherwise rewrite the past.
+
 **§6.5's decision record was made unwritable by §6.8's close** (§21). The close writes the
 verdict and sets `status='closed'`; the route that writes the ADR refused any call that was
 not `open` — so the record could be written only by NOT closing the call, while the page

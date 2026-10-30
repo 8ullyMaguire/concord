@@ -169,6 +169,45 @@ already exist and already lie. Full detail: `docs/plans/contribution-feed.md` CF
 - AC: `newcomer_response_hours` is NULL for a repo with four samples and non-NULL for one
   with five; a replayed payload inserts nothing twice.
 
+### R13 — Census with a provenance split (spec §4.13, STAT-1)
+
+Composition, not growth. The whole reason this is a milestone and not a template is stored in
+one number: 925 of 1,874 features have no `create_feature` audit row, so every "opened per
+week" series describes a seed script.
+
+- `internal/store/stats.go`: `Census` with `FacetCount{Value, Total, Seed, Other}` where
+  `Total = Seed + Other` is an arithmetic invariant, not a convention. Reuses the facet SQL
+  already in `search.go` and extends each with an `origin` sum.
+- `GET /api/v1/stats/summary`.
+- AC: a fixture with one organic and one seeded row per kind; every facet row sums; and the
+  total is never larger than `count(*)` (the classic `LEFT JOIN` multiplication defect).
+
+### R14 — Decision latency and exposure (STAT-2)
+
+- `internal/discovery/latency.go`: `Latency{MedianHours, N, Unfinished, Unit}` and three
+  functions — triage (complaint → first validate), delivery (feature `ready` → `shipped`),
+  decision (call opened → closed).
+- Rules that are the feature: a row with no recorded start counts as `Unfinished`, never as
+  zero hours (a seeded feature would otherwise publish as a zero-day delivery); an even sample
+  uses the lower-middle, never an interpolation; a median is always printed with its `n`.
+- `GET /api/v1/stats` (one computation), `/stats` page rendering **from** it, `/badge/{slug}.svg`
+  and `/badge/instance.svg` (`—` for unmeasured, never `0.0`), and a single `<item>` per day in
+  the existing project feed.
+- AC: the page's rendered number equals the JSON's, asserted as text; a NULL `health_score`
+  renders a dash.
+
+### R15 — Snapshot history and the derived surfaces (STAT-3)
+
+- Migration `0032_instance_stats.sql`: one row per day, `day TEXT PRIMARY KEY`.
+- `cmd/statsnapshot` + daily timer (`Persistent=true`), idempotent on the day
+  (`ON CONFLICT(day) DO UPDATE`) so a second run corrects rather than duplicates.
+- `GET /api/v1/stats/history?days=90` — the only series route.
+- Then, and only then: **rising** (§4.5.5.7, slope between two snapshots ≥ 14 days apart,
+  organic rows only, unranked with one point) and the **responsiveness leaderboard**
+  (R12's metric, `newcomer_sample >= 5`, absent rather than last below five).
+- AC: two runs in one day leave one row; a missing day is a gap, not a zero; rising does not
+  rank a project with a single snapshot.
+
 ## Non-goals
 
 Phase 4 of the r4 roadmap (federation, mobile, code search) — the spec's own
@@ -205,6 +244,9 @@ one did.
 | **R10 work-item contract** | **planned 2026-10-30** | CF-2. Labels (difficulty, time budget, mentor) + an exclusive claim + `origin` provenance, without which a feed ranks repositories and a statistic counts an import script as a person |
 | **R11 contribution feed** | **planned 2026-10-30** | CF-3. A Finder variant over projects emitting ranked work items — no second ranker, no second candidate loader |
 | **R12 newcomer responsiveness** | **planned 2026-10-30** | CF-4. `forge_events` from the webhook, median first-response for a first-time PR author, published with its `n` and never folded into `health_score` |
+| **R13 census with provenance** | **planned 2026-10-30** | spec §4.13, plan `docs/plans/instance-statistics.md` STAT-1. Composition only (a still frame): 925 of 1,874 features have no create event, so any growth series is a chart of an import |
+| **R14 decision latency + exposure** | **planned 2026-10-30** | STAT-2. Three medians with their `n` and their unfinished count, `GET /api/v1/stats`, SVG badges, a stats feed item. Latency is immune to batch seeding; throughput is a property of the seed script |
+| **R15 snapshot history + derived surfaces** | **planned 2026-10-30** | STAT-3. `instance_stats` daily snapshot (so a migration cannot rewrite the past, and "rising" has two points recorded the same way), plus the responsiveness leaderboard that ranks answering rather than producing |
 
 ### What is deliberately left
 
@@ -223,6 +265,12 @@ project with `health_score` on none of them — so `sort=health` is a constant o
 honest before anything is built on top of them. It is also the smallest of the four: the
 scorer, the weights and the writer already exist; only the identity and the fetch are
 missing. R10–R12 (`docs/plans/contribution-feed.md`) build §4.5.7 on top of it.
+
+There is a **second strand, independent of the first**: R13–R15 (`docs/plans/instance-statistics.md`,
+spec §4.13) — census with a provenance split, decision latency as the headline number, and a
+daily snapshot so history is recorded rather than re-derived. R13 needs only R10's `origin`
+column; R14 needs nothing else; R15's leaderboard needs R12. Both strands came from the same
+measurement pass, and R9/R13 are the two that must land before any page claims a number.
 
 **Updated 2026-10-16 (ninth pass).** Both candidates named here on 2026-10-15 are now
 done, and each was done somewhere other than where this section expected:
