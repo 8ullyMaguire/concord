@@ -151,3 +151,56 @@ Three readings, and picking one is a product decision rather than a missing wire
 
 **What the spec owner has to decide:** whether a feature may exist with no validated complaint, and
 if so what its status says. Until then the only way to correct a wrong link is to add the right one.
+
+## Q5. Which upstream repository does each catalog project own?
+
+**Status:** open, raised 2026-10-30. **Blocks:** R9's data half (`docs/plans/contribution-feed.md`
+CF-1.3). The code half — migration `0030`, `SetProjectRepo`, `cmd/forgeseed`, `cmd/healthsync` — can
+be built and tested against fixtures without an answer.
+
+`projects` has no repository reference at all: no URL, no host, nothing parses a description. R9 adds
+`repo_url` + `repo_host` and refuses to derive them from the slug, because a guessed
+`github.com/<slug>` sends a stranger to a repository that is not the project's and a wrong health
+number is worse than no number. So the mapping has to be stated, and stating it is 74 rows.
+
+Measured today, by scanning every local checkout under `~/code` and `~/code-local` for an `origin`
+remote and intersecting the directory names with the live slugs: **6 of 74 resolve.**
+
+| slug | repository |
+|---|---|
+| commons | `https://github.com/8ullyMaguire/commons.git` |
+| darkhold | `https://git.polarisocial.xyz/hirrolot19/lorehaven.git` |
+| gravity | `https://github.com/8ullyMaguire/gravity.git` |
+| stash | `https://github.com/8ullyMaguire/stash.git` |
+| stash-box | `https://github.com/8ullyMaguire/stash-box.git` |
+| tessera | `https://git.polarisocial.xyz/hirrolot19/tessera.git` |
+
+The other 68 are either indexed third-party projects (ao3downloader, build-lemmy, click) that have no
+local checkout, or this estate's own projects checked out under a name that differs from the slug
+(lorebook, whitebois, blackrep, streakforge, threadlight, ficnexus…), which a wider scan would find by
+remote rather than by directory name — but "found by remote" is a guess about *which* catalog project a
+repository is, and that guess is the thing the spec forbids.
+
+Three readings:
+
+1. **The owner states all 74.** Exact, once, and then every surface downstream is trustworthy. Cost:
+   one sitting of the owner's attention, and R9 waits for it.
+2. **Seed the six proven rows; the other 68 stay native** (`repo_url IS NULL`). Honest and immediately
+   useful: the ingest exists, health is measured for the projects that have a repository, and a project
+   with no repository has no "contribute upstream" link at all (spec §4.5.6.1's rule). Cost: 6 of 74
+   projects measured, so `sort=health` is still most-of-the-catalog-unknown — which the page must say
+   out loud rather than present as a ranking.
+3. **Derive the rest by fuzzy-matching local remotes to slugs, and let a human confirm each match.**
+   Cheapest path to coverage and the only one that keeps the "stated, never derived" rule intact — the
+   derivation is a *proposal* in a file a person approves, not a value written straight into the column.
+   Cost: a review pass over 68 proposals, most of which will be "no repository".
+
+**Recommendation:** 2 then 3. Ship the six proven rows and the whole ingest now, so R9's code is proved
+end-to-end against real repositories instead of fixtures; then generate the 68 proposals into
+`seed/forge_repos.proposals.json` for the owner to approve or strike. Option 1 is the same work with the
+agent's useful part deleted, and it blocks a ticket that is otherwise ready.
+
+**What the spec owner has to decide:** whether the six proven rows are enough to ship R9, and who
+confirms the remaining 68. Until then `cmd/healthsync` refuses an empty mapping rather than reporting a
+successful sync of nothing — a green run over zero repositories is the failure mode this question exists
+to make visible.
