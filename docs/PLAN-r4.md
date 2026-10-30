@@ -111,6 +111,64 @@ candidates with adopt/extend/build verdicts.
 - Import the spec into Concord itself as a document, as was done for
   `frontend-spec.md`.
 
+### R9 — Repository identity and health ingest (spec §4.5.7.1–.2)
+
+The prerequisite for every "healthy projects" surface, and the repair for two that
+already exist and already lie. Full detail: `docs/plans/contribution-feed.md` CF-1.
+
+- Migration `0030_repo_identity.sql`: `projects.repo_url`, `projects.repo_host`,
+  `project_metrics.newcomer_response_hours`, `project_metrics.newcomer_sample`,
+  `forge_events`.
+- `internal/store/projects.go` (new): `SetProjectRepo` (host must agree with the URL —
+  a typo silently excludes a project from every fetch), `ListProjectsWithRepo`.
+- `seed/forge_repos.json` + `cmd/forgeseed`: the 74-row mapping, refused unless every
+  slug resolves. **Never derived from a slug** — a guessed URL sends a stranger to
+  somebody else's repository.
+- `cmd/healthsync` + a systemd timer: fetch per host, then call the EXISTING
+  `store.UpdateProjectMetrics`. No second scorer, no second set of weights.
+- A failed fetch leaves the previous row: unknown health is not zero health, or a
+  transient 502 ranks the whole catalog `avoid`.
+- AC: `sort=health` differs from `sort=updated` once more than one project is measured;
+  `min_health=0.5` returns rows (today it returns none, for any value > 0).
+
+### R10 — Work-item contract (spec §4.5.7, CF-2)
+
+- Migration `0031_work_items.sql`: `features.difficulty`, `features.time_budget_minutes`,
+  `features.needs_mentor`, `features.origin`, `complaints.origin`, `work_item_claims`.
+- The active-claim partial unique index is the rule; releasing writes `released_at` and
+  never deletes. A claim never changes a feature's status — the board stays the only
+  mechanism that moves work.
+- Routes: `GET /projects/{slug}/work-items`, `PUT /features/{id}/work-item`
+  (maintainer), `POST|DELETE /features/{id}/claim` (contributor, `409` on a live claim).
+- AC: two concurrent claims → one row with `released_at IS NULL` and a `409`; a `draft`
+  feature refuses a claim; seeded rows carry `origin='seed'`.
+
+### R11 — Contribution feed (spec §4.5.7, CF-3)
+
+- `finder.classify` gains `minutes` → maturity and `mentor` → governance (its `default`
+  arm files unknown keys under capability, so without this the time budget is labelled a
+  capability — a label bug no crash reveals).
+- `GET /api/v1/contribute/next` builds candidates through the existing
+  `finderCandidatesWithIDs` plus those two attrs, runs the unchanged engine, and emits
+  ranked work items with reasons. Empty is a real answer (`gaps`), never a blank page.
+- A `/contribute` page reusing the finder session machinery; `reader_coverage_test.go`
+  requires a reader in `assets/js` for every new route.
+- AC: an unlabelled project is kept and demoted (never dropped); two identical requests
+  return an identical order; a private project's work items never appear.
+
+### R12 — Newcomer responsiveness (spec §4.5.7, CF-4)
+
+- The webhook already receives `pull_request`; it needs `pull_request_review` and
+  `pull_request_comment`, and it must record all of them in `forge_events` (idempotent on
+  redelivery) instead of only writing an audit row.
+- `internal/discovery/responsiveness.go`: pure `newcomerResponse(events)` → median hours
+  for PRs by an author with no earlier PR in that repo, first response by someone else,
+  `ok=false` under five samples. A self-comment is not a response.
+- Displayed on the project page with its `n`, hidden below five samples, and NOT folded
+  into `health_score`.
+- AC: `newcomer_response_hours` is NULL for a repo with four samples and non-NULL for one
+  with five; a replayed payload inserts nothing twice.
+
 ## Non-goals
 
 Phase 4 of the r4 roadmap (federation, mobile, code search) — the spec's own
@@ -143,6 +201,10 @@ one did.
 | R6 Scout | **shipped** | `0023_scout_document_kind.sql`; a report is a `kind='scout'` document, so the absent `scout_reports` table is the design, not the gap |
 | R7 docs sync | **in progress** | this file, README, KNOWN-ISSUES and HANDOFF updated 2026-10-02; `docs/REMAINING.md` §13 and `docs/QUESTIONS.md` added 2026-10-15. `docs/concord-spec.md` is still two revisions stale -- it remains a verbatim copy of the master that the r4 rewrite replaced, and `scripts/check_spec_drift.py` keeps every citation off it |
 | R8 administration surface | **shipped 2026-10-15** | the settings page owns visibility, tags, languages and invites; `GET /languages` added as the read half. Six endpoints had handlers, guards and tests and no reader anywhere on the site. See `docs/REMAINING.md` §13.2 |
+| **R9 repository identity + health ingest** | **planned 2026-10-30** | spec §4.5.7.1–.2, plan `docs/plans/contribution-feed.md` CF-1. `projects` has no repo column at all, and `project_metrics` holds 71 rows with a `health_score` on none of them, so `sort=health` and `min_health` answer with a constant |
+| **R10 work-item contract** | **planned 2026-10-30** | CF-2. Labels (difficulty, time budget, mentor) + an exclusive claim + `origin` provenance, without which a feed ranks repositories and a statistic counts an import script as a person |
+| **R11 contribution feed** | **planned 2026-10-30** | CF-3. A Finder variant over projects emitting ranked work items — no second ranker, no second candidate loader |
+| **R12 newcomer responsiveness** | **planned 2026-10-30** | CF-4. `forge_events` from the webhook, median first-response for a first-time PR author, published with its `n` and never folded into `health_score` |
 
 ### What is deliberately left
 
@@ -152,6 +214,15 @@ both are stated in `internal/store/eligibility.go` rather than approximated:
 count) and "agents are excluded" (`users` has no agent flag).
 
 ### Where the next milestone should go
+
+**Updated 2026-10-30.** The next milestone is **R9**, and it is not a new surface: it is the
+column the catalog never had. `projects` carries no repository reference at all (2 of 74
+descriptions hold a URL, and nothing parses them), and `project_metrics` holds a row per
+project with `health_score` on none of them — so `sort=health` is a constant ordering and
+`min_health>0` returns an empty set on every instance. R9 exists to make those two
+honest before anything is built on top of them. It is also the smallest of the four: the
+scorer, the weights and the writer already exist; only the identity and the fetch are
+missing. R10–R12 (`docs/plans/contribution-feed.md`) build §4.5.7 on top of it.
 
 **Updated 2026-10-16 (ninth pass).** Both candidates named here on 2026-10-15 are now
 done, and each was done somewhere other than where this section expected:

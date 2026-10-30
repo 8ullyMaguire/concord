@@ -5,6 +5,7 @@
 **Status:** concept spec, nothing built yet.
 **Revision 4:** full rewrite. Supersedes the earlier collective-governance, discovery, lists, and request-board revisions, and folds them into one model.
 **Revision 4.1:** two additions — use-case rankings promoted to a first-class surface (§7.4), and an **idea board** for voting on things that don't exist yet, or exist badly (§7.5).
+**Revision 4.2:** one addition, measured rather than proposed — **§4.5.6 is now specified** in `docs/specs/contribution-feed-spec.md` (plan: `docs/plans/contribution-feed.md`, milestones R9–R12). The catalog could never answer "where do I contribute?" for two reasons the prose never named: it does not know where any project lives (no repository column exists, and 2 of 74 descriptions carry a URL), and no health signal has ever been measured (71 metric rows, 0 with a `health_score`), so `sort=health` and `min_health` were already answering with a constant. The section below adds the prerequisite data, the work-item contract, the reuse of the Finder engine, and the one ranking signal that is not a popularity proxy: measured time to first response for a newcomer.
 
 ### What changed in this revision
 
@@ -235,11 +236,33 @@ Scout does the following:
 
 **5. Dependency-aware alerts.** When a dependency of yours is abandoned, vulnerable, relicensed, or superseded, you get an alert with ranked replacement candidates, each with a migration-effort estimate.
 
-**6. Where can I contribute?** Matching by language, tags, time budget, and skill to complaints needing validation, solutions needing implementers, and projects with low bus factor. It includes a "good first complaint" path for newcomers.
+**6. Where can I contribute?** Matching by language, tags, time budget, and skill to complaints needing validation, solutions needing implementers, and projects with low bus factor. It includes a "good first complaint" path for newcomers. **Specified in §4.5.7 as a work-item feed, not a repository feed.**
 
 **7. Rising, not hyped.** The "rising" list uses health, adoption slope, field-report outcomes, and arena fit. Star velocity is shown but is not the main input, and it is vote-ring resistant (§10.5).
 
 **8. Digest.** A weekly digest per subscription: new projects matching your searches, changes to your dependencies, and arena movement.
+
+### 4.5.7 Where can I contribute? (contribution feed — specified in r4.2)
+
+§4.5.6's sixth surface, specified. Full text: `docs/specs/contribution-feed-spec.md`; tickets: `docs/plans/contribution-feed.md` (CF-1…CF-4).
+
+**The unit of contribution is a work item, not a repository.** "Contribute to X" with no named task is the answer nobody can act on: it makes the reader reverse-engineer a backlog they have never seen. A work item is a complaint in `open` (needs validating), a feature in `ready` (needs implementing), a solution with no implementer, or a project asking for a first field report — each carrying a time budget, a difficulty, and whether a mentor is offered.
+
+**Three prerequisites the prose never named, in build order:**
+
+1. **Repository identity.** `projects.repo_url` + `repo_host`, stated once, never derived from a slug. Without it the catalog cannot even link to the place a contribution would go.
+2. **Measured health.** A forge ingest calls the existing `UpdateProjectMetrics` — no second scorer. Until it runs, `health_score` is NULL for the whole catalog, and "healthy repos" is a filter over a column of empty values.
+3. **Provenance.** `origin` on features and complaints (`api | seed | import | ui`). A seeded row was never opened in the product; any surface that cannot tell it from a contribution is measuring an import script.
+
+**Time budget is the primary axis.** 15 minutes (validate a complaint, vote a pair, confirm a capability), an hour (a solution review, a field report), a day (a labelled `ready` feature), a week (an implementation with a mentor). Offering 15 minutes must always return something, or the entry point is a lie; today the honest answer is "nothing", because the queue a 15-minute contributor would serve does not exist yet.
+
+**Matching reuses the Finder (§4.6) and adds no second ranker.** Candidates are projects; the engine's entropy questions, its reasons, and its *unknown is not no* rule are all already mutant-tested. Two new dimensions — `minutes` (the smallest labelled work item in the project) and `mentor` — and the surviving projects emit their work items. Within a project: claim-free first, then cheapest within the offered budget, then impact ratio, then id, so the order is stable across two identical requests.
+
+**The claim is a state, not a deletion.** One live claim per work item, enforced by a partial unique index rather than by a handler check: two people implementing the same feature is the harm a contribution feed creates, and an existence check in Go loses the race. Releasing a claim leaves the row, so "picked up and dropped twice" stays answerable. **A claim never changes a feature's status** — the board is still the only mechanism that moves work, and two mechanisms that both move work is how a board and a feed start disagreeing.
+
+**The ranking signal that is not a popularity proxy: measured time to first response for a newcomer.** From forge events (`pr_opened` → first `pr_review`/`pr_comment` by someone else), per project, published as a median with its sample size, always with `n`, hidden under five samples. This is the difference between a listing and a directory that is worth reading: `good first issue` labels carry no promise that anyone will answer, and a label nobody answers is how a newcomer is lost for good. It is displayed, not folded into `health_score` — "is this maintained" and "will anyone see me" are different questions and blending them loses both.
+
+**What it must never do:** rank by engagement (§4.5.4), rank people by volume (that rewards exactly the behaviour complaint fatigue exists to prevent), open a pull request on a forge on anyone's behalf, or serve a feed for a private project (a private project has no feed, not an empty one).
 
 ### 4.6 How recommendations are computed
 
@@ -766,7 +789,9 @@ Ordered so value ships early and discovery compounds from day one.
 - Collective charter as default; themes; what-if simulator.
 
 ### Phase 3: Intelligence (months 9–14)
-- **Scout**, For You, dependency alerts, Opportunity Radar, contribution matching.
+- **Scout**, For You, dependency alerts, Opportunity Radar, contribution matching (§4.5.7 — the
+  prerequisite is repository identity plus a measured health ingest, without which
+  "healthy projects" is a filter over an empty column).
 - NL→query, thread summaries, duplicate detection, and reframe assistant.
 - MCP server and embeds.
 
@@ -799,6 +824,7 @@ Ordered so value ships early and discovery compounds from day one.
 **Discovery:** search success rate, time to first relevant click, zero-result rate, Scout reports that lead to adopt/extend, reduction in duplicate new projects in areas Scout covers, recommendation click-through with explanations viewed.
 **Decisions:** quorum-met rate, median complaint-to-ship time, % shipped features with ≥ 2 competing solutions, % consensus calls resolved without override, reluctant-consensus rate, verified-fixed rate.
 **Community:** votes per active user, field reports per active project, tag completeness, moderation appeal-overturn rate.
+**Contribution (§4.5.7):** median hours to first response on a newcomer's contribution, share of labelled work items claimed within 7 days, share of first-time contributors who return within 90 days, and — always reported beside the others — the count of rows that carry no provenance, because a seeded row counts as a contribution in any metric that cannot distinguish it.
 **Health:** maintainer-reported burnout, WIP violations, bus factor trend of native projects.
 
 ---

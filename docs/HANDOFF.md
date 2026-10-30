@@ -6,9 +6,16 @@ then `docs/ARCHITECTURE.md`. `docs/PLAN.md` covers the pre-r4 milestones (all
 complete) and `docs/concord-spec.md` is superseded — do not plan from either.
 
 **What is left is `docs/REMAINING.md` §21.6** (measured 2026-10-16, ninth pass).
+
 Everything before it in that file is history, and §1/§4/§11 are explicitly marked
 superseded — §11's "nothing else is outstanding" was verified by hand and was wrong
 twice over. If a tracker and the tree disagree, the tree wins and the tracker is the bug.
+
+**Next milestone (2026-10-30): R9 — repository identity and health ingest**, in
+`docs/PLAN-r4.md` and `docs/plans/contribution-feed.md` (CF-1). Read it before trusting any
+"healthy" surface: `projects` has no repository column at all, `project_metrics` carries a
+`health_score` on none of its rows, and `min_health>0` therefore returns an empty set on
+every instance. R10–R12 build §4.5.7 (`docs/specs/contribution-feed-spec.md`) on top of it.
 
 **§6.5's decision record was made unwritable by §6.8's close** (§21). The close writes the
 verdict and sets `status='closed'`; the route that writes the ADR refused any call that was
