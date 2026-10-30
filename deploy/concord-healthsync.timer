@@ -1,0 +1,14 @@
+[Unit]
+Description=Hourly repository health sync for Concord
+
+[Timer]
+# Hourly, and Persistent so a machine that was off for the night catches up once rather than
+# skipping the pass entirely. RandomizedDelaySec spreads the pass off the top of the hour: the
+# forges are shared infrastructure and six parallel cron jobs at :00 is the shape that gets an
+# unauthenticated client throttled.
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target

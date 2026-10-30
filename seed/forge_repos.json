@@ -1,0 +1,372 @@
+[
+  {
+    "slug": "ao3",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "ao3-stats-icons-with-hover-text",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "ao3downloader",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "ascend",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "assistant",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "blackrep",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "bluesky-feed-generator",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "build-lemmy",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "campus-adams-scraper",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "click",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "commons",
+    "repo_url": "https://github.com/8ullyMaguire/commons",
+    "repo_host": "github"
+  },
+  {
+    "slug": "concord",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "darkhold",
+    "repo_url": "https://git.polarisocial.xyz/hirrolot19/lorehaven",
+    "repo_host": "forgejo"
+  },
+  {
+    "slug": "dotfiles",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "dotfiles-old",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "dream-leptos",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "dream-old",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "dream-social-media-platform",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "feedgen",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "ferrisfeed",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "fichub-cli-bak",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "fichub-frontend",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "ficnexus",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "gpt-repository-loader",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "gravity",
+    "repo_url": "https://github.com/8ullyMaguire/gravity",
+    "repo_host": "github"
+  },
+  {
+    "slug": "heirloom-v1",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "heirloom-v2",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "hermes-archived-jobs",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "hermes-artifacts",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "kindred",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "l2-adrenaline-scripts",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "legality-checker",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "lemmy",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "lemmy-docs",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "lemmy-ui",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "listen-updater",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "lorebook",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "lorebot",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "media-wiki",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "number-to-string",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "orbital",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "pamac",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "penny-dreadful-tools",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "piefed-rs-broken-git",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "pizza-dough-calculator",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "polaris",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "qostube-scraper",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "raven",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "ravenclaws",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "reduce-video-size",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "rust-threadlight-mirror",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "scripts",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "stash",
+    "repo_url": "https://github.com/8ullyMaguire/stash",
+    "repo_host": "github"
+  },
+  {
+    "slug": "stash-box",
+    "repo_url": "https://github.com/8ullyMaguire/stash-box",
+    "repo_host": "github"
+  },
+  {
+    "slug": "stashbox-fork",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "stashforge",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "steeltitan",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "streakforge",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "string-to-number",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "suki",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "tessera",
+    "repo_url": "https://git.polarisocial.xyz/hirrolot19/tessera",
+    "repo_host": "forgejo"
+  },
+  {
+    "slug": "threadlight",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "threadlight-frontend",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "trending-linux-packages",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "trending-linux-packages-data",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "twitch-summary-bot",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "ubuntu-post-install-script",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "userscripts",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "validator-badaro",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "video-diet",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "vtuber",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "whitebois",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "yahoo-finance-api",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  },
+  {
+    "slug": "zeph",
+    "skip": true,
+    "reason": "not stated (Q5)"
+  }
+]

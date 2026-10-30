@@ -156,6 +156,18 @@ var readerInventory = []readerRow{
 	{Match: "/api/v1/projects/{project_id}/features/{id}/complaints", Reader: "feature.js",
 		Anchor: `'<option value="' + esc(c.id) + '">#'`, Routes: 2,
 		Note: "the read, and the write that pairs with it (store.LinkComplaint had no caller)"},
+	// §4.5.7's three routes, each on its own row because the coarse /features row is satisfied by the
+	// tags panel alone -- that is precisely how a route goes unbuilt. The anchors are the RENDERED
+	// attributes, not the fetch paths: a fetch path is present whether or not a control exists.
+	{Match: "/api/v1/projects/{project_id}/features/{id}/work-item", Reader: "project.js",
+		Anchor: `data-work-item-form="`, Routes: 1,
+		Note: "sizing a task: only a maintainer may promise the review that \"good first\" implies"},
+	{Match: "/api/v1/projects/{project_id}/features/{id}/claim", Reader: "project.js",
+		Anchor: `data-claim="`, Routes: 2,
+		Note: "claim and release; the partial unique index refuses a second live claim"},
+	{Match: "/api/v1/projects/{project_id}/work-items", Reader: "project.js",
+		Anchor: `data-work-item="`, Routes: 1,
+		Note: "the panel: which ready features and open complaints a person can pick up, cheapest first"},
 	{Match: "/api/v1/projects/{project_id}/lists", Reader: "lists.js", Anchor: "/lists",
 		Routes: 6},
 	{Match: "/api/v1/projects/{project_id}/merge", Reader: "merge.js", Anchor: "/merge",
@@ -231,6 +243,13 @@ var readerInventory = []readerRow{
 	{Match: "/api/v1/hooks", Routes: 1, Note: "a forge POSTs here; nothing in the browser may"},
 	{Match: "/api/v1/emergency-holds", Routes: 1, Note: "an operator releases a hold out of band; the ledger records it. This route had NO caller AND a project id its URL does not carry, so it answered 404 for everyone and nothing could notice -- the API test is the caller of record now (§21.7)"},
 	{Match: "/api/v1/healthz", Routes: 1, Note: "the deploy probe and make deploy read it"},
+	// R11's feed. The /contribute PAGE does not fetch this: the page handler calls the same
+	// contributeFeed() in-process and renders it server-side, so there is no JavaScript reader
+	// to point at and inventing one would be a lie about how the page works. The JSON route is
+	// for scripts and for the export, and this row is the record that nothing in the browser
+	// reads it.
+	{Match: "/api/v1/contribute/next", Routes: 1,
+		Note: "deliberate: the /contribute page shares contributeFeed() in-process; the JSON surface is for tooling"},
 	{Match: "/api/v1/version", Routes: 1, Note: "deploy tooling; every JS hit for 'version' is a cache-buster, not this route"},
 	{Match: "/api/v1/admin-ledger", Routes: 1, Note: "deliberate: no UI (REMAINING §11)"},
 	{Match: "/api/v1/projects/{slug}/metrics", Routes: 1, Note: "deliberate: no UI (REMAINING §11)"},

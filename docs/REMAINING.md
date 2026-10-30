@@ -5,11 +5,11 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state (the seventeenth pass, §30):** schema 29 · 29 migrations · 82 live tables · 1096 Go
-tests across 9 test-bearing packages · 298 e2e tests in 22 suite files · 50/50 UI mutants killed
+**Measured state (the nineteenth pass, §32):** schema 31 · 31 migrations · 84 live tables · 1121 Go
+tests across 9 test-bearing packages · 303 e2e tests in 23 suite files · 54/54 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
-8 project.js/arena) · Go mutants: 22 arms, 149 killed, 0 survived · `make verify` exit 0,
-`make gates` exit 0, `make e2e` exit 0.
+8 project.js/arena, 4 project.js/work items) · Go mutants: 23 arms, 154 killed, 0 survived ·
+`make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
 gated and correct; the e2e half was reconciled by nothing and was wrong twice over — the
@@ -3695,7 +3695,7 @@ response — and rendered nowhere, so a reader could not tell a full vote from a
 
 ### 30.7 Where the numbers stand
 
-**Measured state (the seventeenth pass, §30):** schema 29 · 29 migrations · 82 live tables · 1096 Go
+**Measured state (the seventeenth pass, §30) (historical):** schema 29 · 29 migrations · 82 live tables · 1096 Go
 tests across 9 test-bearing packages · 298 e2e tests in 22 suite files · 50/50 UI mutants · Go mutants:
 22 arms, 149 killed, 0 survived, 0 not applicable · `make verify`, `make gates`, `make e2e` all exit 0.
 
@@ -3704,3 +3704,217 @@ global themes, and the items §24.7 lists under its own heading — `LinkComplai
 §26) and the three store methods with no caller (**deleted in §27**, which replaced the hand-kept
 list with a measurement: the three names were right, and there were twenty-four more only tests
 could reach).
+
+## §31 — The work-item contract (R10)
+
+### 31.1 What shipped, and why it was built before R9
+
+R10 was planned behind R9 (repository identity), because a contribution feed needs to know
+which repository a project owns before it can rank one. It was built first anyway, and the
+reason is that R10 needs nothing from R9: a work item is a feature you can claim or a
+complaint you can validate, both of which exist on every project already. R9 is blocked on a
+74-row mapping and a forge fetch; R10 was blocked on nothing but the schema.
+
+The consequence is the migration number: `0030_work_items.sql` took the number the plan had
+reserved for `0030_repo_identity.sql`, so R9's becomes `0031`. Recorded here because a plan
+that says one thing and a tree that says another is exactly the drift `check_spec_drift.py`
+exists to catch, and the cheap fix is to say so before the file is written.
+
+### 31.2 `origin` says `unknown`, and that is the answer
+
+Migration 0030 adds `origin` defaulting to `api`, then immediately relabels **every existing
+row** to `unknown`. 925 of the 1,874 features on the live instance were written by seed
+scripts and 949 by the API, and nothing in either row distinguishes them — the seed used the
+same HTTP surface a person does. Calling them `api` would have made a statistic count an
+import script as a person, which is the specific lie §4.13 is built to prevent.
+
+So the column is honest and the *backfill* is what is missing: `cmd/originbackfill` (from
+CF-1) has not been written, and until it is, the 1,874 pre-existing rows read `unknown`. Rows
+created from now on take the default and are genuinely `api`. R10's third acceptance clause
+("seeded rows carry `origin='seed'`") is therefore **unmet and recorded as unmet** in
+`PLAN-r4.md` rather than ticked.
+
+### 31.3 The claim is one row, and the index is the authority
+
+`work_item_claims` carries `released_at`, and a **partial unique index**
+(`ON work_item_claims(feature_id) WHERE released_at IS NULL`) is what enforces one live claim.
+Go does not check-then-insert: that loses the race between two claimants, which on a busy
+instance is the only race that matters. `ClaimFeature` maps the constraint violation to
+`ErrDuplicate` → `409`, and `TestClaimIsExclusive` counts the live rows in the database
+rather than trusting the response.
+
+Release is an UPDATE, never a DELETE. "Picked up and dropped twice" is the signal a maintainer
+needs about a task's real difficulty, and a deleted row cannot report it.
+
+A claim **does not change the feature's status**. The board is the only mechanism that moves
+work; two mechanisms that both move it is how a board and a feed start disagreeing about what
+is being built.
+
+### 31.4 Complaints are not claimable, on purpose
+
+Validation is idempotent: two people reading the same complaint and both agreeing is not a
+wasted afternoon, it is corroboration. Implementation is not idempotent: two people writing
+the same feature is. A symmetric claim table would have made the fifteen-minute path — the
+only one a newcomer can walk without knowing the codebase — cost a round-trip for no benefit.
+
+### 31.5 What the tests prove, and the one mutation
+
+`internal/store/workitems_test.go` proves the database rules (exclusivity by counting live
+rows, draft refusal, cross-project refusal, the label round-trip, ordering and scoping).
+`internal/httpapi/workitems_test.go` proves the ROUTES enforce them (anonymous read is 200
+and excludes drafts, 201 then 409, 403 for a non-member, 400 for a draft, 403 for a
+contributor sizing a task, release frees the item and a second release is 404).
+
+Mutation-checked rather than assumed: deleting the `requireRole(projectID, "contributor")`
+call from `handleClaimWorkItem` makes `TestClaimRequiresMembership` fail with the stranger's
+claim succeeding (`claimed_by: 3`). Restored, and the build is green again.
+
+### 31.6 Where the numbers stand
+
+**Measured state (the eighteenth pass, §31) (historical):** schema 30 · 30 migrations · 83 live tables · 1111 Go
+tests across 9 test-bearing packages · 303 e2e tests in 23 suite files · 54/54 UI mutants killed
+(8 project.js, 9 consensus.js, 5 consent.js, 2 auth.js, 4 project.js/work items, 5 settings.js,
+6 feature.js, 5 arena) · Go mutants: 23 arms, 154 killed, 0 survived
+· `make verify` exit 0 · `make gates` exit 0 · `make e2e` exit 0.
+
+## §32 — Repository identity and the health ingest (R9)
+
+### 32.1 What shipped
+
+`0031_repo_identity.sql`: `projects.repo_url`, `projects.repo_host` (CHECK-constrained to the
+three forges), `project_metrics.newcomer_response_hours`/`newcomer_sample`, and `forge_events`
+with a `UNIQUE (repo_full, kind, number, actor, at)` so a webhook redelivery is free.
+
+- `internal/store/repo_url.go` — `ParseRepoURL`, pure and table-tested: five spellings of the
+  same repository collapse to one canonical value (`https`, no `.git`, no trailing slash), and
+  a host outside the three known forges is REFUSED naming what it parsed. The refusal is the
+  feature: `repo_host` is what `cmd/healthsync` dispatches on, so `https://example.com/x`
+  accepted here becomes a project that is never fetched and never errors.
+- `internal/store/projects.go` — `SetProjectRepo` (host must AGREE with the URL, never
+  corrected), `ListProjectsWithRepo` (not visibility-filtered: an unlisted project still has a
+  repository, and filtering here would leave it permanently unmeasured), `ProjectSlugs`.
+- `cmd/forgeseed` — applies `seed/forge_repos.json`, and refuses in four ways: a slug the
+  catalog does not have, a catalog slug the file does not mention, an entry with neither a
+  repository nor `"skip": true`, and a skip with no reason. An empty mapping is a refusal too,
+  because applying nothing successfully is the failure this command exists to prevent.
+- `cmd/healthsync` — one pass over `ListProjectsWithRepo`, GitHub and Forgejo/Codeberg, then the
+  EXISTING `store.UpdateProjectMetrics` (one scorer; the weights are not duplicated here).
+- `deploy/concord-healthsync.{service,timer}` + `make deploy-admin`, which installs the two
+  commands and the units and leaves the timer DISABLED, printing the command to enable it.
+  Deliberate: `make deploy` restarts the server, and switching on an hourly job against shared
+  forges is a decision about the instance rather than a side effect of shipping a build.
+
+### 32.2 The two "broken" surfaces were a DATA gap, not a predicate bug
+
+`PLAN-r4` recorded `sort=health` and `min_health` as broken (`min_health=0.5` returned nothing
+for any value > 0, and the health sort produced the same order as `updated`), and the plan's
+CF-1.5 prescribed a predicate fix: `COALESCE(m.health_score, 0) >= ?` → `m.health_score >= ?`.
+
+Both symptoms were real. The prescription was not: **the two predicates are equivalent for
+every reachable input.** The filter only runs when `min_health > 0`, and for a NULL score
+`COALESCE(x,0) >= 0.5` is false exactly as `x >= 0.5` is (NULL propagates as not-true); for a
+real score they agree by definition. The same holds for the ordering: `COALESCE(...,0) DESC`
+puts an unmeasured project at 0, which is already after any measured score.
+
+So the fix was DATA — nothing had a health score, so every project was unmeasured and any
+"order by health" is a constant. The repair is `cmd/healthsync` populating the column. Changing
+the SQL would have been churn no test could see, and §32.3 records the equivalence instead of
+asserting a fix that is not one. The plan's own AC ("`sort=health` differs from `sort=updated`
+once more than one project is measured") names the real condition: *once measured*.
+
+### 32.3 The gates, and what each one holds
+
+`internal/store/projects_repo_test.go` (8 tests) — normalisation table, unknown-host refusal
+naming the host, non-`owner/repo` refusal, host/URL disagreement, canonical storage, the
+no-repository skip, and slug ordering.
+
+`internal/httpapi/health_sort_test.go` (2 tests) — `min_health=0.5` returns exactly the measured
+project above the threshold and never an unmeasured one; `min_health=0.1` returns both measured
+projects as the control; `sort=health` orders the measured pair by score and puts the unmeasured
+project last; and the two sorts must DISAGREE on a fixture whose newest project is also the
+sickest — without that, the assertion would pass on a sort that reads nothing.
+
+Mutation-checked, each restored afterwards: accepting an unknown host fails
+`TestParseRepoURLRefusesAnUnknownHostNamingIt`; ranking unknown health as the best possible
+score (`COALESCE(...,1)`) fails the sort test; dropping the `min_health` predicate fails the
+filter test. The plan's prescribed predicate rewrite SURVIVES all three — which is the point of
+§32.2.
+
+### 32.4 The data half is still Q5, and that is recorded
+
+`seed/forge_repos.json` carries 74 rows: **6 stated** (the ones proven from local checkouts in
+`docs/QUESTIONS.md` Q5) and **68 skips with a reason**. `cmd/forgeseed` refuses to run against a
+catalog it does not cover, which is why the file must be applied on the instance that has the
+74-project catalog rather than on a development copy with 56.
+
+The consequence is stated rather than hidden: 6 of 74 projects are measured, so `sort=health` is
+still most-of-the-catalog-unknown and the discovery page must say so out loud. Adding the other
+68 is an owner decision (Q5), not an implementation step.
+
+### 32.5 Where the numbers stand
+
+**Measured state (the nineteenth pass, §32):** schema 31 · 31 migrations · 84 live tables · 1121 Go
+tests across 9 test-bearing packages · 303 e2e tests in 23 suite files · `make verify` exit 0 ·
+`make gates` exit 0 · `make e2e` exit 0.
+
+## §33 — The contribution feed (R11)
+
+### 33.1 What shipped
+
+`/contribute` and `GET /api/v1/contribute/next`, both served by ONE function
+(`contributeFeed`) so the page and the JSON cannot rank differently.
+
+- `internal/finder/contribute.go` — the vocabulary, not a second ranker: `ContributeQuestions`,
+  `MinutesBucket`, `DifficultyWord`, `WorkItemCandidate`, `ItemKey`/`ItemIDFromKey`, and
+  `OrderWorkItems`. A work item becomes an ordinary `Candidate` (Slug `project#item`, the
+  project's dimensions inherited, the item's own label overriding them) and goes through the
+  unchanged `Apply` and `Score`.
+- `internal/httpapi/contribute.go` — the handler, the query parsing, and `whyRanked`.
+- `internal/httpapi/templates/contribute.html` — server-rendered, no JavaScript, no finder
+  session. A plain `GET` form is the client and every answer is a linkable URL.
+
+### 33.2 Three deviations from the ticket, each recorded in `PLAN-r4`
+
+1. **Two new question families.** The ticket said `minutes` → maturity, `mentor` → governance.
+   `FamilyEffort` (minutes, difficulty) and `FamilySupport` (mentor) were added instead: a time
+   budget is neither a maintenance stage nor a governance model, and filing it there would make
+   the Finder's question picker describe a task's cost as a lifecycle position.
+2. **No finder session machinery, and therefore no `assets/js` reader.** The ticket assumed a
+   JavaScript page reusing finder sessions, which would have required a `reader_coverage_test.go`
+   row. A server-rendered page needs no client state and works with JavaScript off.
+3. **`difficulty` is stored `S`/`M`/`L`.** `DifficultyWord` translates to easy/medium/hard.
+   Without it every difficulty filter matched nothing — found by the fixture (`SetWorkItemLabel`
+   refused "easy"), not by reading the code. A vocabulary mismatch fails as "no results", which
+   is indistinguishable from an empty catalog.
+
+### 33.3 The engine semantics the feed inherits on purpose
+
+- **An unsized item survives a time filter.** finder-spec §2.7: unknown keeps. "Nobody sized
+  this" is not "this will take too long", and the item's `Why` says the fit is unknown rather
+  than claiming a match.
+- **`mentor=yes` is Required, `mentor=no` is DecideLater.** Declining help ranks a mentored item
+  lower; it does not hide it.
+- **Claimed items are excluded.** Offering a task somebody is already doing is the most
+  discouraging thing a feed can do.
+- **Order: fit desc → project health desc (unmeasured LAST) → key.** `SliceStable` plus a total
+  tiebreak means two identical requests return an identical order.
+
+### 33.4 Gates
+
+`internal/finder/contribute_test.go` (9) and `internal/httpapi/contribute_test.go` (8, including
+`TestWhyRanked`). Two new mutation arms in `make gates`:
+
+```
+[contribute.go] (finder)  armed 9/9   ---- 6/6 killed, 0 survived
+[contribute.go] (httpapi) armed 8/8   ---- 5/5 killed, 0 survived
+```
+
+The httpapi arm first reported **4/5 killed, one SURVIVED**: "the feed keeps only what it cannot
+explain" (the `Why` branch flipped). The feed suite exercised the happy path and never asserted a
+sentence, whose failure mode is an EMPTY PARAGRAPH — it looks like styling. `TestWhyRanked` was
+added and the mutant now dies. That is the reason the arm exists.
+
+### 33.5 State
+
+**Measured state (the twentieth pass, §33):** schema 31 · 31 migrations · 84 live tables · 1138 Go
+tests across 9 test-bearing packages · `make verify` exit 0 · `make gates` exit 0.

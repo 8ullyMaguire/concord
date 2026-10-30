@@ -777,6 +777,163 @@ function apiAuth(extra) {
     }).join('');
   }
 
+  // §4.5.7's work items: the fifteen-minute complaint queue and the ready features nobody has
+  // claimed.
+  //
+  // This panel is the difference between "contribute" as a sentence and as an action: before it,
+  // a reader could see a project's features and had no way to say "I will take that one", and the
+  // API could hold a claim no page offered.
+  function workItemsSection(items, p) {
+    var list = items || [];
+    // The label form is offered only to a signed-in reader. It is still refused by the
+    // SERVER for anyone who is not a maintainer (a client-side role check is a claim the
+    // client cannot verify), but a signed-OUT visitor would get a control that can only
+    // ever answer 401 -- and a control that can only fail is one the page should not draw.
+    var session = window.ConcordSession && window.ConcordSession.instance();
+    var signedIn = !!(session && session.signedIn());
+    var rows = list.map(function (w) {
+      var badges = '';
+      if (w.kind === 'complaint') {
+        badges += '<span class="badge badge-amber">needs validating</span>';
+      } else {
+        badges += '<span class="badge badge-slate">' + esc(w.status) + '</span>';
+        if (w.time_budget_minutes) {
+          badges += '<span class="badge badge-indigo">' + esc(String(w.time_budget_minutes)) + ' min</span>';
+        }
+        if (w.difficulty) {
+          badges += '<span class="badge badge-purple">difficulty ' + esc(w.difficulty) + '</span>';
+        }
+        if (w.needs_mentor) {
+          badges += '<span class="badge badge-emerald">mentor offered</span>';
+        }
+      }
+      var action = '';
+      if (w.kind === 'feature') {
+        if (w.claimed_by) {
+          action = '<span class="meta-item" data-claimed="' + esc(w.id) + '">claimed by another contributor</span>';
+        } else if (!signedIn) {
+          // The claim needs an account and a membership. Offering the button to a signed-out
+          // visitor is offering a control whose only possible answer is 401.
+          action = '<a class="btn" href="/login">Sign in to claim</a>';
+        } else {
+          action = '<button type="button" class="btn" data-claim="' + esc(w.id) + '">Claim this</button>';
+        }
+      } else {
+        action = '<a class="btn" href="/projects/' + esc(p.slug) + '/complaints">Read it</a>';
+      }
+      // Only a maintainer may size a task: the form is rendered for every signed-in reader
+      // and REFUSED by the server, which is the house rule -- a client-side role check is a
+      // claim it cannot verify.
+      var label = (w.kind === 'feature' && signedIn)
+        ? '<form class="inline-form" data-work-item-form="' + esc(w.id) + '">' +
+            '<select name="difficulty" aria-label="Difficulty">' +
+              '<option value="">difficulty?</option>' +
+              '<option value="S"' + (w.difficulty === 'S' ? ' selected' : '') + '>S</option>' +
+              '<option value="M"' + (w.difficulty === 'M' ? ' selected' : '') + '>M</option>' +
+              '<option value="L"' + (w.difficulty === 'L' ? ' selected' : '') + '>L</option>' +
+            '</select>' +
+            // step="1", not the 15-minute granularity this first shipped with: `min="1"`
+            // with `step="15"` makes valid values 1, 16, 31, … so a typed 90 (and the
+            // fixture's own 60) is a STEP MISMATCH, and the browser refuses to submit the
+            // form at all -- no request, no error, no navigation, and a Save button that
+            // does nothing. Found by the browser test, invisible to every Go test.
+            '<input name="minutes" type="number" min="1" step="1" aria-label="Time budget in minutes" placeholder="minutes" value="' +
+              (w.time_budget_minutes ? esc(String(w.time_budget_minutes)) : '') + '">' +
+            '<label class="meta-item"><input type="checkbox" name="mentor"' +
+              (w.needs_mentor ? ' checked' : '') + '> mentor</label>' +
+            '<button type="submit" class="btn">Save</button>' +
+            '<span class="meta-item" data-work-item-status="' + esc(w.id) + '"></span>' +
+          '</form>'
+        : '';
+      return '<div class="card" data-work-item="' + esc(w.kind) + '-' + esc(w.id) + '">' +
+        '<div class="card-title">' + esc(w.title) + '</div>' +
+        '<div class="pill-row">' + badges + '</div>' + action + label + '</div>';
+    }).join('');
+
+    return '<div class="section-head" style="margin-top:2rem;">' +
+      '<h2 class="section-title" style="font-size:1.25rem;">Work items</h2>' +
+      '<p class="section-sub">What you can pick up, cheapest first. One live claim per item, and a ' +
+      'claim does not move the feature \u2014 the board does that.</p></div>' +
+      (list.length
+        ? '<div class="grid-responsive-2">' + rows + '</div>'
+        : '<div class="empty-state"><div class="empty-state-icon">\u{1F9F0}</div>' +
+          '<p class="empty-state-title">Nothing to pick up yet</p>' +
+          '<p class="empty-state-description">Work items appear when a feature is sized and moved to ' +
+          'ready, or when a complaint is filed that still needs validating.</p></div>');
+  }
+
+  // wireWorkItems gives the panel its two actions. Both report their own refusal rather than
+  // swallowing it: a 409 is "somebody got there first", which is information the reader needs.
+  //
+  // sendJSON is local rather than postJSON because postJSON THROWS on any non-2xx (it is written for
+  // the forms that reload on success), and these two controls exist to READ the status: 409 and 403
+  // are the two outcomes a claim actually produces, and a helper that turns them into a thrown
+  // string loses the number the panel has to branch on.
+  function wireWorkItems(box, slug) {
+    function sendJSON(method, path, body) {
+      var session = window.ConcordSession && window.ConcordSession.instance();
+      var headers = { 'Content-Type': 'application/json' };
+      if (session) {
+        var h = session.authHeaders();
+        for (var k in h) { if (Object.prototype.hasOwnProperty.call(h, k)) headers[k] = h[k]; }
+      }
+      return fetch(path, { method: method, headers: headers, body: JSON.stringify(body || {}) })
+        .then(function (r) {
+          return r.json().catch(function () { return {}; })
+            .then(function (p) { return { ok: r.ok, status: r.status, payload: p }; });
+        });
+    }
+
+    var claims = box.querySelectorAll('[data-claim]');
+    Array.prototype.forEach.call(claims, function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-claim');
+        btn.disabled = true;
+        btn.textContent = 'Claiming\u2026';
+        sendJSON('POST', '/api/v1/projects/' + encodeURIComponent(slug) + '/features/' + id + '/claim', {})
+          .then(function (res) {
+            if (res.ok) { btn.textContent = 'Claimed'; return; }
+            if (res.status === 409) { btn.textContent = 'Somebody got there first'; return; }
+            if (res.status === 401 || res.status === 403) {
+              btn.textContent = 'Join the project to claim work';
+              return;
+            }
+            btn.disabled = false;
+            btn.textContent = 'Claim this';
+          })
+          .catch(function () {
+            btn.disabled = false;
+            btn.textContent = 'Claim this';
+          });
+      });
+    });
+
+    var forms = box.querySelectorAll('[data-work-item-form]');
+    Array.prototype.forEach.call(forms, function (form) {
+      form.addEventListener('submit', function (ev) {
+        ev.preventDefault();
+        var id = form.getAttribute('data-work-item-form');
+        var note = form.querySelector('[data-work-item-status]');
+        var minutes = form.querySelector('[name="minutes"]').value;
+        var body = {
+          difficulty: form.querySelector('[name="difficulty"]').value || null,
+          needs_mentor: form.querySelector('[name="mentor"]').checked
+        };
+        // An empty box means "nobody has sized this", which is different from zero minutes: sending
+        // 0 would be refused by the schema, and sending nothing keeps the honest null.
+        if (minutes !== '') body.time_budget_minutes = parseInt(minutes, 10);
+        if (note) note.textContent = 'Saving\u2026';
+        sendJSON('PUT', '/api/v1/projects/' + encodeURIComponent(slug) + '/features/' + id + '/work-item', body)
+          .then(function (res) {
+            if (!note) return;
+            note.textContent = res.ok ? 'Saved'
+              : (res.status === 403 ? 'Refused: maintainers only' : 'Refused: HTTP ' + res.status);
+          })
+          .catch(function () { if (note) note.textContent = 'Refused: network error'; });
+      });
+    });
+  }
+
   // forms renders the two ways to add to the project.
   //
   // Both are real <form> elements with ids, and both reload the page on
@@ -970,6 +1127,8 @@ function apiAuth(extra) {
     wireFieldReports(slug);
     // §5's arena loop, wired after every render like the rest.
     wireArenaControls(box, slug);
+    // §4.5.7's work-item panel: claim and size, both of which report their own refusal.
+    wireWorkItems(box, slug);
   }
 
   // ------------------------------------------------- §6.1 duplicate detection
@@ -1198,7 +1357,7 @@ function apiAuth(extra) {
     }
   }
 
-  function render(p, features, complaints, documents, panels, requests, lists) {
+  function render(p, features, complaints, documents, panels, requests, lists, workItems) {
     panels = panels || {};
     var badges = '<div class="pill-row" style="margin-top:0.75rem;">' +
       '<span class="badge badge-indigo">' + esc(p.governance_model || 'governed') + '</span>' +
@@ -1279,10 +1438,17 @@ function apiAuth(extra) {
         '<a class="btn" href="/projects/' + esc(p.slug) + '/settings">Settings</a>' +
       '</div></div>' +
       (features && features.length
-        ? '<div class="grid-responsive-2">' + featureCards + '</div>'
+        // The id is what makes "how many features does this page show" answerable: the
+        // page has three grids now (complaints, features, work items) and a test that
+        // counts `.grid-responsive-2 .card` counts all of them at once -- which is how
+        // the e2e count silently changed meaning when the work-item panel landed.
+        ? '<div class="grid-responsive-2" id="feature-list">' + featureCards + '</div>'
         : '<div class="empty-state"><div class="empty-state-icon">\u2728</div>' +
           '<p class="empty-state-title">No features yet</p>' +
           '<p class="empty-state-description">Features are proposed from validated complaints.</p></div>') +
+      // §4.5.7 directly under the features, because it IS the features list with the question a
+      // newcomer actually asks answered: which of these can I take, how long is it, who else has it.
+      workItemsSection(workItems, p) +
       // §4.10's order: capabilities, then field reports, then the standing.
       // Between the header and Complaints, because the capability matrix is what
       // says what the project IS and complaints are what it is trying to fix.
@@ -1376,6 +1542,12 @@ function apiAuth(extra) {
           // shape as complaints and requests.
           fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/lists', { headers: apiAuth() })
             .then(function (r) { return r.ok ? r.json() : []; })
+            .catch(function () { return []; }),
+          // Work items (§4.5.7), appended last for the same reason as the two above:
+          // this array is positional, so an insertion renumbers everything after it.
+          // Non-fatal as well -- a failed work-item read costs the panel, not the page.
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/work-items', { headers: apiAuth() })
+            .then(function (r) { return r.ok ? r.json() : []; })
             .catch(function () { return []; })
         ])
           .then(function (res) {
@@ -1385,6 +1557,8 @@ function apiAuth(extra) {
             var requests = res[7];
             // res[8] for the same reason: appended, so it is last.
             var lists = res[8];
+            // res[9], appended after lists: the work items a reader can pick up.
+            var workItems = res[9];
             // The feature form's select needs the complaint list at render
             // time, so it is stashed rather than threaded through the markup.
             window.__complaints = complaints || [];
@@ -1393,7 +1567,7 @@ function apiAuth(extra) {
               fieldReports: res[4],
               solutions: res[5],
               alternatives: res[6]
-            }, requests, lists);
+            }, requests, lists, workItems);
             if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
             wire(box, slug, p.id);
           });

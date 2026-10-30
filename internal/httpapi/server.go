@@ -241,7 +241,7 @@ func (s *Server) loadTemplates() error {
 	pages := []string{"index", "search", "projects", "project", "board",
 		"login", "register", "rank", "ranking", "documents", "notfound", "finder",
 		"scout", "consensus", "audit", "settings", "feature", "complaint", "requests-detail", "requests-index", "lists", "list",
-		"taxonomy", "criteria", "merge"}
+		"taxonomy", "criteria", "merge", "contribute"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -404,6 +404,11 @@ func (s *Server) Router() http.Handler {
 	// must 404 for a project the caller cannot see. There is no slug to protect
 	// and no data in the HTML.
 	r.Get("/finder", s.handleFinderPage)
+	// The contribution feed (R11). Mounted beside Finder because it is the same engine pointed
+	// at work items instead of projects, and linked from Finder so a reader who wants to DO
+	// something rather than choose something has somewhere to go.
+	r.Get("/contribute", s.handleContributePage)
+	r.Get("/api/v1/contribute/next", s.handleContributeNext)
 	r.Get("/scout", s.handleScoutPage)
 
 	// §4.3's taxonomy page. Instance-wide like the API it reads: a taxonomy change
@@ -664,7 +669,20 @@ func (s *Server) Router() http.Handler {
 			r.Get("/tags", s.handleGetFeatureTags)
 			r.Post("/tags", s.handleAddFeatureTag)
 			r.Post("/tags/remove", s.handleRemoveFeatureTag)
+			// R10 / §4.5.7: what the task costs a newcomer, and who has picked it up.
+			// A claim is created here and released here; it never changes the status,
+			// because the board is the only mechanism that moves work.
+			r.Put("/work-item", s.handleSetWorkItemLabel)
+			r.Post("/claim", s.handleClaimWorkItem)
+			r.Delete("/claim", s.handleReleaseClaim)
 		})
+	})
+
+	// Work items, project-scoped: the fifteen-minute complaint queue and the ready
+	// features nobody has claimed. Readable by anyone who can read the project, like
+	// every other project read.
+	r.Route("/api/v1/projects/{project_id}/work-items", func(r chi.Router) {
+		r.Get("/", s.handleListWorkItems)
 	})
 
 	// Audit log (idea #25). Top-level, with its own {project_id} param, and

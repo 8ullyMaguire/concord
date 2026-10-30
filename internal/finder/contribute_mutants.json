@@ -1,0 +1,32 @@
+[
+  {
+    "name": "a sixty-minute budget buckets as a day",
+    "old": "\tcase *minutes <= 60:\n\t\treturn Minutes60",
+    "new": "\tcase *minutes < 60:\n\t\treturn Minutes60"
+  },
+  {
+    "name": "an unstated budget buckets as fifteen minutes",
+    "old": "\tif minutes == nil || *minutes <= 0 {\n\t\treturn \"\"\n\t}",
+    "new": "\tif minutes == nil || *minutes <= 0 {\n\t\treturn Minutes15\n\t}"
+  },
+  {
+    "name": "unmeasured projects outrank measured ones",
+    "old": "\t\tif (ha == nil) != (hb == nil) {\n\t\t\treturn ha != nil\n\t\t}",
+    "new": "\t\tif (ha == nil) != (hb == nil) {\n\t\t\treturn hb != nil\n\t\t}"
+  },
+  {
+    "name": "S is sized as medium",
+    "old": "\tcase \"S\":\n\t\treturn \"easy\"",
+    "new": "\tcase \"S\":\n\t\treturn \"medium\""
+  },
+  {
+    "name": "a mentored item records no mentor",
+    "old": "\tif needsMentor {\n\t\tattrs[DimMentor] = \"yes\"\n\t} else {\n\t\tattrs[DimMentor] = \"no\"\n\t}",
+    "new": "\tif false {\n\t\tattrs[DimMentor] = \"yes\"\n\t} else {\n\t\tattrs[DimMentor] = \"no\"\n\t}"
+  },
+  {
+    "name": "an item key with an empty slug parses",
+    "old": "\tif i <= 0 || i == len(key)-1 {",
+    "new": "\tif i < 0 || i == len(key)-1 {"
+  }
+]

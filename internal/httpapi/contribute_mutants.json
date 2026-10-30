@@ -1,0 +1,27 @@
+[
+  {
+    "name": "an unknown minutes value is ignored",
+    "old": "\t\tdefault:\n\t\t\treturn nil, nil, invalid(\"minutes must be one of 15, 60, 480, any (got %q)\", v)",
+    "new": "\t\tdefault:\n\t\t\t_ = v"
+  },
+  {
+    "name": "claimed items are offered anyway",
+    "old": "\t\t\tif w.ClaimedBy != nil {\n\t\t\t\tcontinue\n\t\t\t}",
+    "new": "\t\t\tif false {\n\t\t\t\tcontinue\n\t\t\t}"
+  },
+  {
+    "name": "declining a mentor becomes a filter",
+    "old": "Mode: finder.ModeDecideLater})",
+    "new": "Mode: finder.ModeRequired})"
+  },
+  {
+    "name": "an unmeasured project renders as a measured zero",
+    "old": "\tif score == nil {\n\t\treturn \"health not measured\"\n\t}",
+    "new": "\tif score == nil {\n\t\treturn \"health 0%\"\n\t}"
+  },
+  {
+    "name": "the feed keeps only what it cannot explain",
+    "old": "\tif len(parts) == 0 {\n\t\tif len(applied) == 0 {",
+    "new": "\tif len(parts) > 0 {\n\t\tif len(applied) == 0 {"
+  }
+]

@@ -5,7 +5,7 @@ DEPLOY_DIR ?= $(HOME)/concord-deploy
 DEPLOY_HOST ?= localhost
 DEPLOY_PORT ?= 8006
 
-.PHONY: build test fmt vet verify run clean tidy deploy
+.PHONY: build test fmt vet verify run clean tidy deploy admin-build deploy-admin
 
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/$(BINARY) $(PKG)
@@ -69,6 +69,9 @@ e2e: build
 	# them on the alternatives panel. Its own suite because it needs an arena with two
 	# competitors owned by somebody else (a self-vote is refused, correctly).
 	$(E2E_PYTEST) tests/e2e/arena_e2e.py -q
+	# §4.5.7's work-item panel: the distinctions (sized/unsized, claimed/free,
+	# validation/implementation, draft absent), the claim, the refusal, and the label.
+	$(E2E_PYTEST) tests/e2e/workitems_e2e.py -q
 	# The audit VIEWER's mutants. Not part of `make gates` because it rebuilds
 	# the binary and runs the browser suite seven times, which is a different
 	# cost from the Go mutants: `gates` is a fast inner loop and this is not.
@@ -84,6 +87,10 @@ e2e: build
 	# remove button posting to the add endpoint: both answer 200.
 	$(E2E_PYTHON) tests/e2e/settings_ui_mutants.py
 	$(E2E_PYTHON) tests/e2e/feature_ui_mutants.py
+	# §4.5.7's work-item panel. The reader gate asserts project.js MENTIONS each
+	# route; these mutants break the PAIRING between a card and its call, which is
+	# the defect class that answers 200 either way.
+	$(E2E_PYTHON) tests/e2e/workitems_ui_mutants.py
 
 # The mutation gates. Each rewrites one source file per mutant and asserts the
 # suite goes red, so a green run means every mutant was killed. A SURVIVED entry
@@ -91,11 +98,21 @@ e2e: build
 # wiring gaps that pass tests.
 gates:
 	python3 internal/mutate.py internal/finder/finder.go ./internal/finder/ internal/finder/finder_test.go internal/finder/mutants.json
+	# R11's contribution feed: its own arm because the feed's four dimensions are new keys in
+	# the same package, and the finder arm above runs finder_test.go, which never builds a work
+	# item. Pointing it here would arm tests that cannot see the code being mutated.
+	python3 internal/mutate.py internal/finder/contribute.go ./internal/finder/ internal/finder/contribute_test.go internal/finder/contribute_mutants.json
+	python3 internal/mutate.py internal/httpapi/contribute.go ./internal/httpapi/ internal/httpapi/contribute_test.go internal/httpapi/contribute_mutants.json
 	python3 internal/mutate.py internal/httpapi/finder.go ./internal/httpapi/ internal/httpapi/finder_test.go internal/httpapi/finder_mutants.json
 	python3 internal/mutate.py internal/store/capabilities.go ./internal/store/ internal/store/capabilities_test.go internal/store/capabilities_mutants.json
 	python3 internal/mutate.py internal/store/themes.go ./internal/store/ internal/store/themes_test.go internal/store/themes_mutants.json
 	python3 internal/mutate.py internal/store/feature_tags.go ./internal/store/ internal/store/feature_tags_test.go internal/store/feature_tags_mutants.json
 	python3 internal/mutate.py internal/store/features.go ./internal/store/ internal/store/themes_test.go,internal/store/complaint_links_test.go internal/store/features_mutants.json
+	# §4.5.7's labels, the claim guard and the ordering. Its own arm because the rules
+	# live in workitems.go and workitems_test.go is the only file that reaches them --
+	# pointing the features arm here would arm tests that never call this code, which
+	# reads as missing coverage and is a wiring problem.
+	python3 internal/mutate.py internal/store/workitems.go ./internal/store/ internal/store/workitems_test.go internal/store/workitems_mutants.json
 	# The charter's own bounds: a lifetime that makes every theme born expired is refused here,
 	# and an unproven refusal is decoration.
 	python3 internal/mutate.py internal/store/store.go ./internal/store/ internal/store/themes_test.go internal/store/store_mutants.json
@@ -177,6 +194,28 @@ verify: vet fmt-check test build docs-check e2e-sync-check
 
 run:
 	CGO_ENABLED=0 go run $(PKG)
+
+# The two admin commands R9 adds, built and installed beside the server binary, plus their units.
+#
+# NOT part of `deploy`, deliberately: `deploy` restarts the server, and installing a timer that
+# reaches out to three forges is a decision about the instance, not a side effect of shipping a
+# build. The timer is installed DISABLED -- enabling it is printed, not performed, because an
+# hourly job against shared infrastructure should be switched on by whoever accepts the rate
+# limit it spends.
+admin-build:
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/forgeseed ./cmd/forgeseed
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/healthsync ./cmd/healthsync
+
+deploy-admin: admin-build
+	@echo "Installing admin commands into $(DEPLOY_DIR)..."
+	cp bin/forgeseed $(DEPLOY_DIR)/forgeseed
+	cp bin/healthsync $(DEPLOY_DIR)/healthsync
+	mkdir -p $(HOME)/.config/systemd/user
+	cp deploy/concord-healthsync.service deploy/concord-healthsync.timer $(HOME)/.config/systemd/user/
+	systemctl --user daemon-reload
+	systemctl --user disable --now concord-healthsync.timer 2>/dev/null || true
+	@echo "Installed. Enable the hourly pass with:"
+	@echo "  systemctl --user enable --now concord-healthsync.timer"
 
 tidy:
 	go mod tidy

@@ -289,16 +289,34 @@ def test_project_detail_name_description(server, page):
 
 def test_project_detail_features(server, page):
     page.goto(BASE + "/projects/governance-lab")
-    # Three seeded features plus the health card, which the project page gained
-    # when 7f3f846 added the document viewer rail. The count is asserted
-    # against the fixture's own features rather than a literal, so adding a
-    # card to the page is a visible change to this line rather than a silent
-    # break — this test was asserting 3 for two commits after the page grew.
-    cards = page.locator("#project-detail .grid-responsive-2 .card")
-    expect(cards).to_have_count(4)
+    # Scoped to the FEATURE grid by id. Before §4.5.7 this counted
+    # `.grid-responsive-2 .card`, which was four: the three seeded features plus the
+    # open complaint's card in the complaints grid. The work-item panel added a third
+    # grid, and a count over all three grids would have been a count of "cards on the
+    # page", not of features -- so the selector names the grid it means.
+    cards = page.locator("#feature-list .card")
+    expect(cards).to_have_count(3)
     for title in ["Quorum calculator", "Health dashboard", "Complaint triage queue"]:
         expect(page.locator("#project-detail")).to_contain_text(title)
     expect(page.locator("#project-detail .badge-purple").first).to_contain_text("rating")
+
+
+def test_project_detail_work_items(server, page):
+    """§4.5.7: the ready feature and the open complaint are work; the draft is not.
+
+    The fixture's three features are `consensus`, `ready` and `draft`, and it has one
+    `open` complaint -- so the panel has exactly two items, and one of them is the
+    fifteen-minute validation job rather than an implementation.
+    """
+    page.goto(BASE + "/projects/governance-lab")
+    page.wait_for_selector("[data-work-item]", timeout=15000)
+    items = page.locator("[data-work-item]")
+    expect(items).to_have_count(2)
+    expect(page.locator('[data-work-item]:has-text("Health dashboard")')).to_have_count(1)
+    expect(page.locator('[data-work-item]:has-text("Consensus flow is undocumented")')).to_have_count(1)
+    # A draft is not work anybody has agreed to: it must not be offered here even
+    # though it is listed among the project's features above.
+    expect(page.locator('[data-work-item]:has-text("Complaint triage queue")')).to_have_count(0)
 
 
 def test_project_detail_board_link(server, page):

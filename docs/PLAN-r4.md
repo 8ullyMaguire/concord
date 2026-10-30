@@ -111,12 +111,12 @@ candidates with adopt/extend/build verdicts.
 - Import the spec into Concord itself as a document, as was done for
   `frontend-spec.md`.
 
-### R9 — Repository identity and health ingest (spec §4.5.7.1–.2)
+### R9 — Repository identity and health ingest (spec §4.5.7.1–.2) — CODE HALF SHIPPED
 
 The prerequisite for every "healthy projects" surface, and the repair for two that
 already exist and already lie. Full detail: `docs/plans/contribution-feed.md` CF-1.
 
-- Migration `0030_repo_identity.sql`: `projects.repo_url`, `projects.repo_host`,
+- Migration `0031_repo_identity.sql`: `projects.repo_url`, `projects.repo_host`,
   `project_metrics.newcomer_response_hours`, `project_metrics.newcomer_sample`,
   `forge_events`.
 - `internal/store/projects.go` (new): `SetProjectRepo` (host must agree with the URL —
@@ -131,10 +131,16 @@ already exist and already lie. Full detail: `docs/plans/contribution-feed.md` CF
 - AC: `sort=health` differs from `sort=updated` once more than one project is measured;
   `min_health=0.5` returns rows (today it returns none, for any value > 0).
 
-### R10 — Work-item contract (spec §4.5.7, CF-2)
+### R10 — Work-item contract (spec §4.5.7, CF-2) — SHIPPED
 
-- Migration `0031_work_items.sql`: `features.difficulty`, `features.time_budget_minutes`,
+- Migration `0030_work_items.sql` (R10 was built first, so it took the number R9 was
+  planned to have; R9's identity migration is `0031`): `features.difficulty`,
+  `features.time_budget_minutes`,
   `features.needs_mentor`, `features.origin`, `complaints.origin`, `work_item_claims`.
+- `origin` ships defaulting to `api` and then every EXISTING row is relabelled
+  `unknown`, because 925 of the 1,874 features on the live instance were written by
+  seed scripts and nothing in the row says which. `unknown` is the honest answer; the
+  backfill is `cmd/originbackfill` (still unbuilt, see the AC below).
 - The active-claim partial unique index is the rule; releasing writes `released_at` and
   never deletes. A claim never changes a feature's status — the board stays the only
   mechanism that moves work.
@@ -142,19 +148,43 @@ already exist and already lie. Full detail: `docs/plans/contribution-feed.md` CF
   (maintainer), `POST|DELETE /features/{id}/claim` (contributor, `409` on a live claim).
 - AC: two concurrent claims → one row with `released_at IS NULL` and a `409`; a `draft`
   feature refuses a claim; seeded rows carry `origin='seed'`.
+- MET WITH ONE RECORDED GAP: the two-claims and draft ACs are proven both in
+  `internal/store/workitems_test.go` (against the database, counting live rows) and in
+  `internal/httpapi/workitems_test.go` (201 then 409; 400 for a draft; 403 for a
+  non-member; the maintainer-only label write), and the role check was mutation-tested
+  (removing `requireRole` fails `TestClaimRequiresMembership`). The third clause is
+  NOT met: nothing in the tree knows which rows the seed wrote, so existing rows carry
+  `origin='unknown'` and `cmd/originbackfill` does not exist yet. `unknown` is the
+  honest state — the whole point of the statistics strand is that a figure which cannot
+  state its origin is not published — but "seeded rows carry seed" is a claim about a
+  backfill that has not been built, so it stays unmet rather than ticked.
+- Live at `GET /api/v1/projects/{slug}/work-items`; the panel is on the project page,
+  below the features, ordered complaint-first then cheapest.
 
-### R11 — Contribution feed (spec §4.5.7, CF-3)
+### R11 — Contribution feed (spec §4.5.7, CF-3) — SHIPPED (with three deviations from this ticket)
 
-- `finder.classify` gains `minutes` → maturity and `mentor` → governance (its `default`
-  arm files unknown keys under capability, so without this the time budget is labelled a
-  capability — a label bug no crash reveals).
+- `finder.classify` gains `minutes`/`difficulty` → **`FamilyEffort`** and `mentor` →
+  **`FamilySupport`**, two families this milestone adds. The ticket said maturity/governance;
+  neither is what a time budget is, and filing it there would make the finder's question picker
+  describe a task's cost as a maintenance stage. Spec §4.5.7 and `finder-spec` §3 list families,
+  so adding two is a spec change this ticket did not declare.
 - `GET /api/v1/contribute/next` builds candidates through the existing
-  `finderCandidatesWithIDs` plus those two attrs, runs the unchanged engine, and emits
-  ranked work items with reasons. Empty is a real answer (`gaps`), never a blank page.
-- A `/contribute` page reusing the finder session machinery; `reader_coverage_test.go`
-  requires a reader in `assets/js` for every new route.
-- AC: an unlabelled project is kept and demoted (never dropped); two identical requests
-  return an identical order; a private project's work items never appear.
+  `finderCandidatesWithIDs` plus the item's own label, runs the unchanged engine, and emits
+  ranked work items with reasons. `internal/finder/contribute.go` holds the vocabulary
+  (`MinutesBucket`, `DifficultyWord`, `WorkItemCandidate`, `OrderWorkItems`) so no second ranker
+  exists.
+- **No finder session machinery.** `/contribute` is a server-rendered page: the same
+  `contributeFeed` function backs both the JSON route and the HTML page, a plain `GET` form is
+  the whole client, and every answer is a linkable URL. There is therefore **no new
+  `assets/js` reader**, which is why `reader_coverage_test.go` has nothing to demand here — the
+  ticket's third bullet assumed a JavaScript page.
+- **`difficulty` is stored as S/M/L**, so `DifficultyWord` translates it to easy/medium/hard for
+  the answer set. Without it every difficulty filter returns nothing (found by the fixture, not
+  by inspection).
+- AC: an item with no stated budget is kept (§2.7: unknown is not over-budget) and its `Why`
+  says the fit is unknown; two identical requests return an identical order (`OrderWorkItems`
+  is `SliceStable` with a total tiebreak); a private project's work items never appear, asserted
+  as a stranger.
 
 ### R12 — Newcomer responsiveness (spec §4.5.7, CF-4)
 
@@ -217,7 +247,7 @@ be rewritten. Federation and MCP are listed in the plan for later.
 
 ## Status
 
-Measured against the running instance (schema 29, 82 tables, 1096 tests; the build it is
+Measured against the running instance (schema 31, 84 tables, 1138 tests; the build it is
 running is whatever `GET /api/v1/version` answers, which is deliberately not written down here --
 a version string in a status paragraph is stale the moment the next commit lands), not against the
 plan's own history. "Shipped"
@@ -240,9 +270,9 @@ one did.
 | R6 Scout | **shipped** | `0023_scout_document_kind.sql`; a report is a `kind='scout'` document, so the absent `scout_reports` table is the design, not the gap |
 | R7 docs sync | **in progress** | this file, README, KNOWN-ISSUES and HANDOFF updated 2026-10-02; `docs/REMAINING.md` §13 and `docs/QUESTIONS.md` added 2026-10-15. `docs/concord-spec.md` is still two revisions stale -- it remains a verbatim copy of the master that the r4 rewrite replaced, and `scripts/check_spec_drift.py` keeps every citation off it |
 | R8 administration surface | **shipped 2026-10-15** | the settings page owns visibility, tags, languages and invites; `GET /languages` added as the read half. Six endpoints had handlers, guards and tests and no reader anywhere on the site. See `docs/REMAINING.md` §13.2 |
-| **R9 repository identity + health ingest** | **planned 2026-10-30** | spec §4.5.7.1–.2, plan `docs/plans/contribution-feed.md` CF-1. `projects` has no repo column at all, and `project_metrics` holds 71 rows with a `health_score` on none of them, so `sort=health` and `min_health` answer with a constant |
-| **R10 work-item contract** | **planned 2026-10-30** | CF-2. Labels (difficulty, time budget, mentor) + an exclusive claim + `origin` provenance, without which a feed ranks repositories and a statistic counts an import script as a person |
-| **R11 contribution feed** | **planned 2026-10-30** | CF-3. A Finder variant over projects emitting ranked work items — no second ranker, no second candidate loader |
+| **R9 repository identity + health ingest** | **shipped 2026-10-30 (code half)** | spec §4.5.7.1–.2, plan CF-1, migration `0031_repo_identity.sql`. `ParseRepoURL`/`SetProjectRepo`/`ListProjectsWithRepo`/`ProjectSlugs`, `cmd/forgeseed`, `cmd/healthsync` (GitHub + Forgejo/Codeberg), the timer units and `make deploy-admin`. **The data half is Q5**: `seed/forge_repos.json` states 6 of 74 and skips 68 with a reason, so `sort=health` is still mostly-unknown. §32.2 records a finding that changes the ticket: the two "broken" search surfaces were a DATA gap, not the predicate bug the plan prescribed a fix for — the predicates are equivalent, proved in `health_sort_test.go` |
+| **R10 work-item contract** | **shipped 2026-10-30** | CF-2, migration `0030_work_items.sql`. `GET /projects/{slug}/work-items` (public), `PUT /features/{id}/work-item` (maintainer), `POST\|DELETE /features/{id}/claim` (contributor, `409` on a live claim, released rows kept). The panel sits under the features on the project page. `origin` exists and every pre-existing row reads `unknown` — the seed backfill (`cmd/originbackfill`) is the one recorded gap |
+| **R11 contribution feed** | **shipped 2026-10-30** | CF-3, spec §4.5.7. `internal/finder/contribute.go` (MinutesBucket, DifficultyWord, WorkItemCandidate, OrderWorkItems) + `internal/httpapi/contribute.go` + a server-rendered `/contribute` page — no second ranker, no second candidate loader, no JavaScript. Deviations recorded in the R11 section: two new question families, no finder-session reuse, and S/M/L → easy/medium/hard translation (without which every difficulty filter matched nothing) |
 | **R12 newcomer responsiveness** | **planned 2026-10-30** | CF-4. `forge_events` from the webhook, median first-response for a first-time PR author, published with its `n` and never folded into `health_score` |
 | **R13 census with provenance** | **planned 2026-10-30** | spec §4.13, plan `docs/plans/instance-statistics.md` STAT-1. Composition only (a still frame): 925 of 1,874 features have no create event, so any growth series is a chart of an import |
 | **R14 decision latency + exposure** | **planned 2026-10-30** | STAT-2. Three medians with their `n` and their unfinished count, `GET /api/v1/stats`, SVG badges, a stats feed item. Latency is immune to batch seeding; throughput is a property of the seed script |

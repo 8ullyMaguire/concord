@@ -431,6 +431,14 @@ func classify(key string) (family, label string) {
 	switch key {
 	case "language":
 		return FamilyPlatform, "Programming language"
+	case DimMinutes, DimDifficulty:
+		// The contribution feed's keys (R11). Classified here rather than in a second switch,
+		// because anything that lists dimensions by family -- Finder's own question picker,
+		// the export, the tests -- must not see a work item's time budget labelled as a
+		// capability.
+		return FamilyEffort, "How much time it takes"
+	case DimMentor:
+		return FamilySupport, "Whether someone can help"
 	case "governance":
 		return FamilyGovernance, "How is it governed?"
 	case "license":

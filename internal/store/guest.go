@@ -257,6 +257,12 @@ var foldColumns = []struct{ Table, Column string }{
 	{"taxonomy_proposals", "proposed_by"},
 	{"trust_grants", "granted_by"},
 	{"trust_grants", "user_id"},
+	// §4.5.7's claims. OR IGNORE is the right rule here too: a guest who claimed a
+	// feature their account had already claimed (or already held a row for) collides on
+	// the primary key, so the guest's row is superseded and dropped rather than moved --
+	// and a live claim the account already holds is never duplicated, because the partial
+	// unique index on feature_id refuses the second one.
+	{"work_item_claims", "user_id"},
 }
 
 // FoldReport is what a fold did, so it can be told rather than assumed: the rows

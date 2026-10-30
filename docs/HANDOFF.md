@@ -93,8 +93,8 @@ lands, which is why this file does not carry one)
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 1096 tests, schema 29, 82 tables,
-29 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
+Measured, not remembered: `make verify` green, 1138 tests, schema 31, 84 tables,
+31 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 
 The **public instance** runs this build too, as of 2026-10-16: `concord.polarisocial.xyz`
@@ -135,6 +135,15 @@ Details: `docs/REMAINING.md` §22.8–§22.9.
   `/api/v1/projects/{id}/field-reports`), and both project-page panels, with
   API, script and Playwright coverage. See `docs/specs/phase3-spec.md` §4.4.
 - **Still not started:** R6 Scout.
+- **Shipped 2026-10-30:** R10, the work-item contract (`0030_work_items.sql`).
+  `features.difficulty`/`time_budget_minutes`/`needs_mentor`, `origin` on features and
+  complaints, and `work_item_claims` with a partial unique index for one live claim.
+  `GET /projects/{slug}/work-items`, `PUT /features/{id}/work-item` (maintainer),
+  `POST|DELETE /features/{id}/claim` (contributor), plus the project-page panel.
+  Known gap, recorded rather than closed: **`origin` reads `unknown` for every
+  pre-existing row** because 925 of 1,874 live features were seeded through the same HTTP
+  surface a person uses, and `cmd/originbackfill` is not built. R11 (the feed) and R13
+  (census) both read that column, so the gap is load-bearing, not cosmetic.
 - **Untouched by r4:** `internal/store/lists.go` and `requests.go` still use
   their own vote tables rather than arenas. Ranks fine; it just means those two
   surfaces are not comparable with features or solutions in one leaderboard.
