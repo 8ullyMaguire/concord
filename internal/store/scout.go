@@ -210,9 +210,16 @@ func (d *DB) ProjectHealth(ctx context.Context, projectID int64) (float64, bool,
 	}
 
 	m := discovery.Metrics{
-		Contributors:      int(measured.contributors),
-		MedianReviewHours: measured.medianReviewHours,
-		Releases90d:       int(measured.releases90d),
+		Contributors: int(measured.contributors),
+		Releases90d:  int(measured.releases90d),
+		// NULL in the column means no pull request was ever measured, which is not the same as
+		// a review that took no time. Scoring it as 0 would hand the best possible
+		// responsiveness score to every project with no review process -- the exact failure the
+		// sentinel exists to prevent, one layer up from where it was fixed.
+		MedianReviewHours: discovery.UnknownReviewHours,
+	}
+	if medianReview.Valid {
+		m.MedianReviewHours = medianReview.Float64
 	}
 	if measured.lastCommit {
 		m.LastCommitAgeDays =

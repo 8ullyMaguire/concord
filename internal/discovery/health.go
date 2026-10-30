@@ -10,9 +10,15 @@ import "math"
 // complaint (spec §15).
 type Metrics struct {
 	LastCommitAgeDays float64 // 0 = committed today; use a large value if never
-	MedianReviewHours float64 // median time to first review on PRs
-	Contributors      int     // distinct authors in the last year
-	Releases90d       int     // releases/tags in the last 90 days
+	// MedianReviewHours is the median time to the first response on PRs, or
+	// UnknownReviewHours when the repository has no pull request to measure. The two are
+	// different facts and must not collapse to one number: a repository nobody has ever
+	// opened a pull request on has NOT demonstrated instant reviews, and scoring it as such
+	// (the old behaviour, where 0 meant "reviewed within 24h") inflated exactly the projects
+	// with no review process at all.
+	MedianReviewHours float64
+	Contributors      int // distinct authors in the last year
+	Releases90d       int // releases/tags in the last 90 days
 }
 
 // Weights are the transparent, exposed components of the health score.
@@ -56,10 +62,19 @@ func (w Weights) Normalized() (Weights, bool) {
 	}, true
 }
 
+// UnknownReviewHours is the sentinel for "there is nothing to measure here", not a duration.
+// Any negative value means the same thing, so a caller cannot accidentally publish -1 hours.
+const UnknownReviewHours = -1.0
+
 // Breakdown exposes each component so search UIs can show *why* a project
 // scores what it scores.
 type Breakdown struct {
 	Recency, Responsiveness, Breadth, Cadence, Total float64
+	// ResponsivenessKnown is false when the repository had no pull request to measure. The
+	// component is then EXCLUDED from the total rather than counted as a zero, and the
+	// remaining weights are renormalised -- a project with no PR process is not a project
+	// that answers slowly, and the reader is told which of the two they are looking at.
+	ResponsivenessKnown bool
 }
 
 // recency: exponential decay with a 30-day half-life on last commit.
@@ -105,15 +120,30 @@ func HealthScore(m Metrics, w Weights) Breakdown {
 	if n, ok := w.Normalized(); ok {
 		w = n
 	}
+	known := m.MedianReviewHours >= 0
 	b := Breakdown{
-		Recency:        recencyScore(m.LastCommitAgeDays),
-		Responsiveness: responsivenessScore(m.MedianReviewHours),
-		Breadth:        breadthScore(m.Contributors),
-		Cadence:        cadenceScore(m.Releases90d),
+		Recency:             recencyScore(m.LastCommitAgeDays),
+		Breadth:             breadthScore(m.Contributors),
+		Cadence:             cadenceScore(m.Releases90d),
+		ResponsivenessKnown: known,
 	}
-	b.Total = w.Recency*b.Recency +
-		w.Responsiveness*b.Responsiveness +
-		w.Breadth*b.Breadth +
-		w.Cadence*b.Cadence
+	if known {
+		b.Responsiveness = responsivenessScore(m.MedianReviewHours)
+		b.Total = w.Recency*b.Recency +
+			w.Responsiveness*b.Responsiveness +
+			w.Breadth*b.Breadth +
+			w.Cadence*b.Cadence
+		return b
+	}
+	// Renormalise over the three components that WERE measured. Dividing by the full sum
+	// would leave the score capped at 0.75 for a project that is perfect at everything it
+	// can be judged on, which reads as mediocrity rather than as missing data.
+	rest := w.Recency + w.Breadth + w.Cadence
+	if rest <= 0 {
+		// Every remaining weight is zero: there is no honest score to report.
+		b.Total = 0
+		return b
+	}
+	b.Total = (w.Recency*b.Recency + w.Breadth*b.Breadth + w.Cadence*b.Cadence) / rest
 	return b
 }

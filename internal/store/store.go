@@ -786,6 +786,14 @@ func (d *DB) UpdateProjectMetrics(ctx context.Context, slug string, m discovery.
 	if m.LastCommitAgeDays < 1e12 {
 		lastCommit = now - m.LastCommitAgeDays*86400
 	}
+	// NULL, not a negative sentinel: the column is REAL and every other reader of it (the
+	// search ORDER BY, the admin ledger, a future export) treats a number as a measurement.
+	// Writing -1 there would publish "-1 hours to first review" to anything that does not
+	// know the sentinel, which is exactly the kind of value that outlives its convention.
+	var review any
+	if m.MedianReviewHours >= 0 {
+		review = m.MedianReviewHours
+	}
 	_, err = d.ExecContext(ctx, `
 		INSERT INTO project_metrics (project_id, stars, forks, open_issues,
 			commit_count, contributors, last_commit_at, median_review_hours,
@@ -799,7 +807,7 @@ func (d *DB) UpdateProjectMetrics(ctx context.Context, slug string, m discovery.
 			releases_90d=excluded.releases_90d,
 			health_score=excluded.health_score, computed_at=excluded.computed_at`,
 		id, stars, forks, openIssues, commitCount, m.Contributors,
-		lastCommit, m.MedianReviewHours, m.Releases90d, b.Total, now)
+		lastCommit, review, m.Releases90d, b.Total, now)
 	if err != nil {
 		return Project{}, err
 	}

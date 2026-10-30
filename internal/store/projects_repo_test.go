@@ -147,3 +147,27 @@ func TestProjectSlugsCoversTheCatalog(t *testing.T) {
 		}
 	}
 }
+
+func TestClearProjectRepoEmptiesTheRow(t *testing.T) {
+	store, _, _ := setupWithProject(t)
+	ctx := context.Background()
+	if _, err := store.SetProjectRepo(ctx, "test-project", "https://github.com/owner/repo", RepoHostGithub); err != nil {
+		t.Fatalf("SetProjectRepo: %v", err)
+	}
+	if err := store.ClearProjectRepo(ctx, "test-project"); err != nil {
+		t.Fatalf("ClearProjectRepo: %v", err)
+	}
+	rows, err := store.ListProjectsWithRepo(ctx)
+	if err != nil {
+		t.Fatalf("ListProjectsWithRepo: %v", err)
+	}
+	if len(rows) != 0 {
+		t.Fatalf("after clearing, %d project(s) still report a repository: %+v -- the hourly "+
+			"ingest would keep fetching a URL the mapping no longer states", len(rows), rows)
+	}
+	// And it must be idempotent: clearing twice is not an error, because a mapping stays a skip
+	// for as long as the owner has not stated a repository.
+	if err := store.ClearProjectRepo(ctx, "test-project"); err != nil {
+		t.Fatalf("second ClearProjectRepo: %v", err)
+	}
+}

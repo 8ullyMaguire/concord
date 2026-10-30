@@ -118,9 +118,24 @@ func main() {
 		current[p.Slug] = p
 	}
 
-	applied, unchanged, skipped := 0, 0, 0
+	applied, unchanged, skipped, cleared := 0, 0, 0, 0
 	for _, e := range entries {
 		if e.Skip {
+			// A project that becomes a skip must LOSE the repository it used to have. Found on
+			// the instance: gravity's remote started answering 404, the file was changed to a
+			// skip, and the row kept its repo_url -- so the hourly ingest kept failing on a URL
+			// the mapping no longer contained. "Not stated" has to mean nothing is set.
+			if c, ok := current[e.Slug]; ok && c.RepoURL != "" {
+				if *dryRun {
+					fmt.Printf("would clear %s (was set, now skipped: %s)\n", e.Slug, e.Reason)
+					cleared++
+					continue
+				}
+				if err := st.ClearProjectRepo(ctx, e.Slug); err != nil {
+					fatal("%s: clear: %v", e.Slug, err)
+				}
+				cleared++
+			}
 			skipped++
 			continue
 		}
@@ -142,8 +157,8 @@ func main() {
 		}
 		applied++
 	}
-	fmt.Printf("applied %d of %d (%d already set, %d skipped)\n",
-		applied, len(entries), unchanged, skipped)
+	fmt.Printf("applied %d of %d (%d already set, %d cleared, %d skipped)\n",
+		applied, len(entries), unchanged, cleared, skipped)
 }
 
 func load(path string) ([]entry, error) {

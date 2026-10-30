@@ -47,6 +47,9 @@ type snapshot struct {
 	PushedAt                 time.Time
 	MedianReviewHours        float64
 	ReviewSample             int
+	// PRs is how many pull requests were sampled. It is what separates "no PRs, so nothing to
+	// measure" from "PRs exist and nobody answered", which look identical in ReviewSample.
+	PRs int
 }
 
 func main() {
@@ -116,21 +119,27 @@ func main() {
 			failed++
 			continue
 		}
+		// No review sample is NOT a reason to skip the project: recency, breadth and cadence
+		// were measured, and they are three quarters of the score. The responsiveness term is
+		// passed as unknown so HealthScore excludes it and renormalises, rather than writing a
+		// zero that would read as "reviewed instantly" -- which is what this command did until
+		// the first real run showed five of six repositories with NO pull requests at all.
+		reviewHours := snap.MedianReviewHours
+		verdict := "review latency measured"
 		if snap.ReviewSample == 0 {
-			fmt.Printf("SKIP %s: no pull request with a review, so review latency is unmeasured "+
-				"(writing 0 would claim instant reviews)\n", p.Slug)
-			skipped++
-			continue
+			reviewHours = discovery.UnknownReviewHours
+			verdict = fmt.Sprintf("review latency unknown (%d pull request(s) sampled, none answered)",
+				snap.PRs)
 		}
 		m := discovery.Metrics{
 			LastCommitAgeDays: time.Since(snap.PushedAt).Hours() / 24,
-			MedianReviewHours: snap.MedianReviewHours,
+			MedianReviewHours: reviewHours,
 			Contributors:      snap.Contributors,
 			Releases90d:       snap.Releases90d,
 		}
-		fmt.Printf("%s %s %s last_commit_age=%.1fd contributors=%d releases90d=%d review_h=%.1f (n=%d)\n",
+		fmt.Printf("%s %s %s last_commit_age=%.1fd contributors=%d releases90d=%d %s\n",
 			p.Slug, p.RepoHost, fields.Full, m.LastCommitAgeDays, m.Contributors, m.Releases90d,
-			m.MedianReviewHours, snap.ReviewSample)
+			verdict)
 		if *dryRun {
 			synced++
 			continue
@@ -324,18 +333,18 @@ func (f *fetcher) github(ctx context.Context, r store.RepoFields) (snapshot, err
 	if f.token != "" {
 		n = 10
 	}
-	hours, sample, err := f.githubReviewHours(ctx, base, n)
+	hours, sample, prs, err := f.githubReviewHours(ctx, base, n)
 	if err != nil {
 		return snap, err
 	}
-	snap.MedianReviewHours, snap.ReviewSample = hours, sample
+	snap.MedianReviewHours, snap.ReviewSample, snap.PRs = hours, sample, prs
 	return snap, nil
 }
 
 // githubReviewHours returns the median hours from a PR being opened to its FIRST review, over
 // the most recently updated PRs. A PR with no review is not a fast response, it is no response:
 // it contributes nothing, and the sample size is reported so the median can be read honestly.
-func (f *fetcher) githubReviewHours(ctx context.Context, base string, n int) (float64, int, error) {
+func (f *fetcher) githubReviewHours(ctx context.Context, base string, n int) (float64, int, int, error) {
 	var prs []struct {
 		Number    int       `json:"number"`
 		CreatedAt time.Time `json:"created_at"`
@@ -344,7 +353,7 @@ func (f *fetcher) githubReviewHours(ctx context.Context, base string, n int) (fl
 		} `json:"user"`
 	}
 	if err := f.get(ctx, fmt.Sprintf("%s/pulls?state=all&per_page=%d&sort=updated", base, n), &prs); err != nil {
-		return 0, 0, fmt.Errorf("pulls: %w", err)
+		return 0, 0, 0, fmt.Errorf("pulls: %w", err)
 	}
 	hours := []float64{}
 	for _, pr := range prs {
@@ -355,7 +364,7 @@ func (f *fetcher) githubReviewHours(ctx context.Context, base string, n int) (fl
 			} `json:"user"`
 		}
 		if err := f.get(ctx, fmt.Sprintf("%s/pulls/%d/reviews?per_page=100", base, pr.Number), &reviews); err != nil {
-			return 0, 0, fmt.Errorf("reviews of #%d: %w", pr.Number, err)
+			return 0, 0, 0, fmt.Errorf("reviews of #%d: %w", pr.Number, err)
 		}
 		// A REVIEW is not the only way somebody answers a pull request; on most projects of this
 		// size the first response is a COMMENT on the PR. Counting only formal reviews left five
@@ -369,7 +378,7 @@ func (f *fetcher) githubReviewHours(ctx context.Context, base string, n int) (fl
 			} `json:"user"`
 		}
 		if err := f.get(ctx, fmt.Sprintf("%s/issues/%d/comments?per_page=100", base, pr.Number), &comments); err != nil {
-			return 0, 0, fmt.Errorf("comments of #%d: %w", pr.Number, err)
+			return 0, 0, 0, fmt.Errorf("comments of #%d: %w", pr.Number, err)
 		}
 
 		// The EARLIEST response by SOMEONE ELSE. A self-comment is not a response, and counting
@@ -394,7 +403,7 @@ func (f *fetcher) githubReviewHours(ctx context.Context, base string, n int) (fl
 		}
 		hours = append(hours, first.Sub(pr.CreatedAt).Hours())
 	}
-	return median(hours), len(hours), nil
+	return median(hours), len(hours), len(prs), nil
 }
 
 // ---------------------------------------------------------------- forgejo / codeberg
@@ -470,15 +479,15 @@ func (f *fetcher) gitea(ctx context.Context, root string, r store.RepoFields) (s
 	if f.token != "" {
 		n = 10
 	}
-	hours, sample, err := f.giteaReviewHours(ctx, base, n)
+	hours, sample, prs, err := f.giteaReviewHours(ctx, base, n)
 	if err != nil {
 		return snap, err
 	}
-	snap.MedianReviewHours, snap.ReviewSample = hours, sample
+	snap.MedianReviewHours, snap.ReviewSample, snap.PRs = hours, sample, prs
 	return snap, nil
 }
 
-func (f *fetcher) giteaReviewHours(ctx context.Context, base string, n int) (float64, int, error) {
+func (f *fetcher) giteaReviewHours(ctx context.Context, base string, n int) (float64, int, int, error) {
 	var prs []struct {
 		Number    int       `json:"number"`
 		CreatedAt time.Time `json:"created_at"`
@@ -487,7 +496,7 @@ func (f *fetcher) giteaReviewHours(ctx context.Context, base string, n int) (flo
 		} `json:"user"`
 	}
 	if err := f.get(ctx, fmt.Sprintf("%s/pulls?state=all&limit=%d", base, n), &prs); err != nil {
-		return 0, 0, fmt.Errorf("pulls: %w", err)
+		return 0, 0, 0, fmt.Errorf("pulls: %w", err)
 	}
 	hours := []float64{}
 	for _, pr := range prs {
@@ -498,7 +507,7 @@ func (f *fetcher) giteaReviewHours(ctx context.Context, base string, n int) (flo
 			} `json:"user"`
 		}
 		if err := f.get(ctx, fmt.Sprintf("%s/pulls/%d/reviews", base, pr.Number), &reviews); err != nil {
-			return 0, 0, fmt.Errorf("reviews of #%d: %w", pr.Number, err)
+			return 0, 0, 0, fmt.Errorf("reviews of #%d: %w", pr.Number, err)
 		}
 		// Same reason as the GitHub fetch: the first answer to a PR on a small forge is a
 		// comment far more often than a formal review.
@@ -509,7 +518,7 @@ func (f *fetcher) giteaReviewHours(ctx context.Context, base string, n int) (flo
 			} `json:"user"`
 		}
 		if err := f.get(ctx, fmt.Sprintf("%s/issues/%d/comments", base, pr.Number), &comments); err != nil {
-			return 0, 0, fmt.Errorf("comments of #%d: %w", pr.Number, err)
+			return 0, 0, 0, fmt.Errorf("comments of #%d: %w", pr.Number, err)
 		}
 		var first time.Time
 		consider := func(at time.Time, who string) {
@@ -531,7 +540,7 @@ func (f *fetcher) giteaReviewHours(ctx context.Context, base string, n int) (flo
 		}
 		hours = append(hours, first.Sub(pr.CreatedAt).Hours())
 	}
-	return median(hours), len(hours), nil
+	return median(hours), len(hours), len(prs), nil
 }
 
 // median takes the lower-middle of an even sample, deliberately: interpolating between two

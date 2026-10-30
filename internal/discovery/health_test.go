@@ -91,3 +91,63 @@ func TestHealthScoreComponents(t *testing.T) {
 		}
 	})
 }
+
+// UnknownReviewHours is not a duration and must not behave like one. These tests exist because
+// the alternative -- scoring an unmeasured responsiveness as 0 hours, i.e. "reviewed instantly"
+// -- inflates exactly the projects that have no review process at all, and the first real run
+// against the catalog found five of six repositories with no pull requests.
+
+func TestHealthScoreExcludesUnknownResponsiveness(t *testing.T) {
+	// Best possible on the three measurable terms, nothing measurable on the fourth.
+	m := Metrics{LastCommitAgeDays: 0, MedianReviewHours: UnknownReviewHours, Contributors: 60, Releases90d: 3}
+	b := HealthScore(m, DefaultWeights)
+	if b.ResponsivenessKnown {
+		t.Fatal("ResponsivenessKnown is true for an unknown review time")
+	}
+	if b.Responsiveness != 0 {
+		t.Fatalf("Responsiveness = %.2f, want 0 kept out of the total", b.Responsiveness)
+	}
+	// Renormalised over recency/breadth/cadence: a perfect project scores 1.0, not 0.75.
+	if b.Total < 0.999 {
+		t.Fatalf("Total = %.3f, want 1.0: dividing by the full weight sum would cap a project at "+
+			"0.75 for data it cannot have", b.Total)
+	}
+}
+
+func TestHealthScoreCountsAMeasuredBadResponsiveness(t *testing.T) {
+	// The control: the same project WITH a measured, terrible review time must score lower.
+	// If this passed at 1.0 too, the exclusion above would be hiding a real problem.
+	m := Metrics{LastCommitAgeDays: 0, MedianReviewHours: 14 * 24, Contributors: 60, Releases90d: 3}
+	b := HealthScore(m, DefaultWeights)
+	if !b.ResponsivenessKnown {
+		t.Fatal("a stated review time is reported as unknown")
+	}
+	if b.Total >= 0.999 {
+		t.Fatalf("Total = %.3f with a two-week review time; the term is not being applied", b.Total)
+	}
+	if b.Total >= 0.8 {
+		t.Fatalf("Total = %.3f, want the 0.25-weight term to cost about a quarter", b.Total)
+	}
+}
+
+func TestHealthScoreZeroReviewHoursIsMeasuredAndBest(t *testing.T) {
+	// Zero is a MEASUREMENT ("answered within the hour"), and it must stay distinct from the
+	// sentinel. Collapsing the two is the bug this sentinel was added to fix.
+	b := HealthScore(Metrics{MedianReviewHours: 0, Contributors: 2, Releases90d: 0}, DefaultWeights)
+	if !b.ResponsivenessKnown {
+		t.Fatal("0 review hours was treated as unknown")
+	}
+	if b.Responsiveness != 1.0 {
+		t.Fatalf("Responsiveness = %.2f for 0 hours, want 1.0", b.Responsiveness)
+	}
+}
+
+func TestHealthScoreWithNoUsableWeightsReportsZero(t *testing.T) {
+	// Only responsiveness carries weight and it is unknown: there is no honest number, and a
+	// silent 0 is better than a division by zero or a claimed 1.0.
+	b := HealthScore(Metrics{MedianReviewHours: UnknownReviewHours, Contributors: 5},
+		Weights{Responsiveness: 1})
+	if b.Total != 0 {
+		t.Fatalf("Total = %.2f, want 0 when nothing with weight was measured", b.Total)
+	}
+}

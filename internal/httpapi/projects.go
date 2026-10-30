@@ -506,9 +506,12 @@ type metricsRequest struct {
 	CommitCount       int     `json:"commit_count"`
 	Contributors      int     `json:"contributors"`
 	LastCommitAgeDays float64 `json:"last_commit_age_days"`
-	MedianReviewHours float64 `json:"median_review_hours"`
-	Releases90d       int     `json:"releases_90d"`
-	License           string  `json:"license"`
+	// Pointer so an ABSENT field can mean "not measured" rather than "reviewed instantly".
+	// A zero here is a claim about responsiveness, and the operator repairing an import is not
+	// making it by omission.
+	MedianReviewHours *float64 `json:"median_review_hours"`
+	Releases90d       int      `json:"releases_90d"`
+	License           string   `json:"license"`
 }
 
 // handleProjectMetrics overwrites a project's forge facts (stars, forks, commits,
@@ -544,9 +547,13 @@ func (s *Server) handleProjectMetrics(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
+	reviewHours := discovery.UnknownReviewHours
+	if req.MedianReviewHours != nil {
+		reviewHours = *req.MedianReviewHours
+	}
 	m := discovery.Metrics{
 		LastCommitAgeDays: req.LastCommitAgeDays,
-		MedianReviewHours: req.MedianReviewHours,
+		MedianReviewHours: reviewHours,
 		Contributors:      req.Contributors,
 		Releases90d:       req.Releases90d,
 	}

@@ -54,6 +54,29 @@ func (d *DB) SetProjectRepo(ctx context.Context, slug, repoURL, repoHost string)
 	return ProjectForge{ID: id, Slug: slug, RepoURL: fields.URL, RepoHost: fields.Host}, nil
 }
 
+// ClearProjectRepo removes a project's repository, for a mapping that has become a skip.
+//
+// Separate from SetProjectRepo because there is nothing to parse: an empty URL is not a
+// repository, and teaching ParseRepoURL to accept "" would put a value in the caller's hand that
+// every other path treats as invalid. A mapping that stops stating a repository must leave the
+// row EMPTY, or the hourly ingest keeps fetching a URL the mapping no longer contains -- which is
+// what happened on the instance when a remote began answering 404.
+func (d *DB) ClearProjectRepo(ctx context.Context, slug string) error {
+	id, err := d.projectIDBySlug(ctx, slug)
+	if err != nil {
+		return err
+	}
+	if _, err := d.ExecContext(ctx,
+		// NULL for both: the CHECK on repo_host allows NULL or a known forge, and '' is neither.
+		// An empty string here would be a value that looks like "no forge" to a reader and like
+		// a violation to the database.
+		`UPDATE projects SET repo_url=NULL, repo_host=NULL, updated_at=? WHERE id=?`,
+		float64(time.Now().Unix()), id); err != nil {
+		return fmt.Errorf("clear repo: %w", err)
+	}
+	return nil
+}
+
 // ListProjectsWithRepo returns every project that has a repository, for the ingest.
 //
 // NOT visibility-filtered, deliberately: a private or unlisted project still has a repository
