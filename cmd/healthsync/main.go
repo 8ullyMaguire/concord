@@ -339,6 +339,9 @@ func (f *fetcher) githubReviewHours(ctx context.Context, base string, n int) (fl
 	var prs []struct {
 		Number    int       `json:"number"`
 		CreatedAt time.Time `json:"created_at"`
+		User      struct {
+			Login string `json:"login"`
+		} `json:"user"`
 	}
 	if err := f.get(ctx, fmt.Sprintf("%s/pulls?state=all&per_page=%d&sort=updated", base, n), &prs); err != nil {
 		return 0, 0, fmt.Errorf("pulls: %w", err)
@@ -354,16 +357,37 @@ func (f *fetcher) githubReviewHours(ctx context.Context, base string, n int) (fl
 		if err := f.get(ctx, fmt.Sprintf("%s/pulls/%d/reviews?per_page=100", base, pr.Number), &reviews); err != nil {
 			return 0, 0, fmt.Errorf("reviews of #%d: %w", pr.Number, err)
 		}
-		// The EARLIEST review, and only by somebody else: a self-comment is not a response,
-		// and counting it would publish a responsiveness no contributor experienced.
+		// A REVIEW is not the only way somebody answers a pull request; on most projects of this
+		// size the first response is a COMMENT on the PR. Counting only formal reviews left five
+		// of six repositories unmeasurable on the live instance -- the metric was not missing, the
+		// fetch was looking in one place. Comments are read from the issue endpoint, which is
+		// where PR comments live in the GitHub API.
+		var comments []struct {
+			CreatedAt time.Time `json:"created_at"`
+			User      struct {
+				Login string `json:"login"`
+			} `json:"user"`
+		}
+		if err := f.get(ctx, fmt.Sprintf("%s/issues/%d/comments?per_page=100", base, pr.Number), &comments); err != nil {
+			return 0, 0, fmt.Errorf("comments of #%d: %w", pr.Number, err)
+		}
+
+		// The EARLIEST response by SOMEONE ELSE. A self-comment is not a response, and counting
+		// it would publish a responsiveness no contributor experienced.
 		var first time.Time
+		consider := func(at time.Time, who string) {
+			if at.IsZero() || at.Before(pr.CreatedAt) || who == "" || who == pr.User.Login {
+				return
+			}
+			if first.IsZero() || at.Before(first) {
+				first = at
+			}
+		}
 		for _, rv := range reviews {
-			if rv.SubmittedAt.IsZero() || rv.SubmittedAt.Before(pr.CreatedAt) {
-				continue
-			}
-			if first.IsZero() || rv.SubmittedAt.Before(first) {
-				first = rv.SubmittedAt
-			}
+			consider(rv.SubmittedAt, rv.User.Login)
+		}
+		for _, c := range comments {
+			consider(c.CreatedAt, c.User.Login)
 		}
 		if first.IsZero() {
 			continue
@@ -458,6 +482,9 @@ func (f *fetcher) giteaReviewHours(ctx context.Context, base string, n int) (flo
 	var prs []struct {
 		Number    int       `json:"number"`
 		CreatedAt time.Time `json:"created_at"`
+		User      struct {
+			Login string `json:"login"`
+		} `json:"user"`
 	}
 	if err := f.get(ctx, fmt.Sprintf("%s/pulls?state=all&limit=%d", base, n), &prs); err != nil {
 		return 0, 0, fmt.Errorf("pulls: %w", err)
@@ -466,18 +493,38 @@ func (f *fetcher) giteaReviewHours(ctx context.Context, base string, n int) (flo
 	for _, pr := range prs {
 		var reviews []struct {
 			SubmittedAt time.Time `json:"submitted_at"`
+			User        struct {
+				Login string `json:"login"`
+			} `json:"user"`
 		}
 		if err := f.get(ctx, fmt.Sprintf("%s/pulls/%d/reviews", base, pr.Number), &reviews); err != nil {
 			return 0, 0, fmt.Errorf("reviews of #%d: %w", pr.Number, err)
 		}
+		// Same reason as the GitHub fetch: the first answer to a PR on a small forge is a
+		// comment far more often than a formal review.
+		var comments []struct {
+			CreatedAt time.Time `json:"created_at"`
+			User      struct {
+				Login string `json:"login"`
+			} `json:"user"`
+		}
+		if err := f.get(ctx, fmt.Sprintf("%s/issues/%d/comments", base, pr.Number), &comments); err != nil {
+			return 0, 0, fmt.Errorf("comments of #%d: %w", pr.Number, err)
+		}
 		var first time.Time
+		consider := func(at time.Time, who string) {
+			if at.IsZero() || at.Before(pr.CreatedAt) || who == "" || who == pr.User.Login {
+				return
+			}
+			if first.IsZero() || at.Before(first) {
+				first = at
+			}
+		}
 		for _, rv := range reviews {
-			if rv.SubmittedAt.IsZero() || rv.SubmittedAt.Before(pr.CreatedAt) {
-				continue
-			}
-			if first.IsZero() || rv.SubmittedAt.Before(first) {
-				first = rv.SubmittedAt
-			}
+			consider(rv.SubmittedAt, rv.User.Login)
+		}
+		for _, c := range comments {
+			consider(c.CreatedAt, c.User.Login)
 		}
 		if first.IsZero() {
 			continue

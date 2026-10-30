@@ -3842,14 +3842,14 @@ filter test. The plan's prescribed predicate rewrite SURVIVES all three — whic
 
 ### 32.4 The data half is still Q5, and that is recorded
 
-`seed/forge_repos.json` carries 74 rows: **6 stated** (the ones proven from local checkouts in
-`docs/QUESTIONS.md` Q5) and **68 skips with a reason**. `cmd/forgeseed` refuses to run against a
+`seed/forge_repos.json` carries 74 rows: **5 stated** (the ones proven from local checkouts in
+`docs/QUESTIONS.md` Q5) and **69 skips with a reason**. `cmd/forgeseed` refuses to run against a
 catalog it does not cover, which is why the file must be applied on the instance that has the
 74-project catalog rather than on a development copy with 56.
 
-The consequence is stated rather than hidden: 6 of 74 projects are measured, so `sort=health` is
+The consequence is stated rather than hidden: 5 of 74 projects are measured, so `sort=health` is
 still most-of-the-catalog-unknown and the discovery page must say so out loud. Adding the other
-68 is an owner decision (Q5), not an implementation step.
+69 is an owner decision (Q5), not an implementation step.
 
 ### 32.5 Where the numbers stand
 

@@ -121,8 +121,8 @@
   },
   {
     "slug": "gravity",
-    "repo_url": "https://github.com/8ullyMaguire/gravity",
-    "repo_host": "github"
+    "skip": true,
+    "reason": "the remote recorded in Q5 (github.com/8ullyMaguire/gravity) answers 404 for the repository AND for the account, checked 2026-10-30 -- the owner was renamed or the repository made private, so the URL needs stating again (Q5)"
   },
   {
     "slug": "heirloom-v1",

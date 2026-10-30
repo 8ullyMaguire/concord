@@ -170,7 +170,7 @@ remote and intersecting the directory names with the live slugs: **6 of 74 resol
 |---|---|
 | commons | `https://github.com/8ullyMaguire/commons.git` |
 | darkhold | `https://git.polarisocial.xyz/hirrolot19/lorehaven.git` |
-| gravity | `https://github.com/8ullyMaguire/gravity.git` |
+| gravity | `https://github.com/8ullyMaguire/gravity.git` — **STALE (2026-10-30)**: the public API answers 404 for the repository and for the account, so this URL no longer resolves; the row is a skip in `seed/forge_repos.json` until it is restated |
 | stash | `https://github.com/8ullyMaguire/stash.git` |
 | stash-box | `https://github.com/8ullyMaguire/stash-box.git` |
 | tessera | `https://git.polarisocial.xyz/hirrolot19/tessera.git` |
