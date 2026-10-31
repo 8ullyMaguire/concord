@@ -1,0 +1,1942 @@
+{
+ "generated": "2026-10-30",
+ "themes": [
+  {
+   "key": "discovery",
+   "label": "Discovery and search",
+   "severity": 3,
+   "complaint_title": "I cannot find the thing I know exists",
+   "complaint_body": "Search and browsing return the wrong projects, or nothing, and there is no way to tell why. Finding a project by the problem it solves -- rather than by its name -- does not work."
+  },
+  {
+   "key": "onboarding",
+   "label": "Onboarding and first steps",
+   "severity": 4,
+   "complaint_title": "I do not know what to do first here",
+   "complaint_body": "A newcomer lands on the site and cannot tell what the first useful action is: which page to read, what a complaint is, or how to contribute a fifteen-minute task."
+  },
+  {
+   "key": "complaint_quality",
+   "label": "Complaint quality",
+   "severity": 4,
+   "complaint_title": "Complaints are vague, duplicated or impossible to act on",
+   "complaint_body": "Reports arrive without reproduction steps, restate each other, or name a symptom nobody can reproduce, so validating them is guesswork and the good ones are lost in the noise."
+  },
+  {
+   "key": "feature_planning",
+   "label": "Feature proposals and planning",
+   "severity": 3,
+   "complaint_title": "The backlog proposes things without evidence or cost",
+   "complaint_body": "Features are filed without a linked complaint, without a size anyone can interpret, and without showing what they would displace, so the roadmap is a pile rather than a plan."
+  },
+  {
+   "key": "consensus",
+   "label": "Consensus and governance",
+   "severity": 4,
+   "complaint_title": "Decisions stall, or get made by whoever is loudest",
+   "complaint_body": "Calls sit below quorum for weeks, voters miss deadlines in other timezones, and a contested decision leaves no record of why the minority disagreed."
+  },
+  {
+   "key": "trust",
+   "label": "Trust and reputation",
+   "severity": 3,
+   "complaint_title": "Reputation is a black box and easy to game",
+   "complaint_body": "Nobody can see how their weight was computed, activity counts the same as accuracy, and a long history becomes a permanent advantage nobody can challenge."
+  },
+  {
+   "key": "safety",
+   "label": "Moderation and abuse",
+   "severity": 4,
+   "complaint_title": "Abuse has no proportionate response",
+   "complaint_body": "The only tools are a report box and a ban. Low-grade harassment, coordinated voting and spam from throwaway accounts have nothing between 'ignore it' and 'remove the person'."
+  },
+  {
+   "key": "notifications",
+   "label": "Notifications",
+   "severity": 3,
+   "complaint_title": "I miss what matters and get pinged for noise",
+   "complaint_body": "Everything is either silent or a broadcast. There is no digest, no per-project control, and no notification when the complaint I filed is validated or the fix ships."
+  },
+  {
+   "key": "feeds",
+   "label": "Feeds and syndication",
+   "severity": 2,
+   "complaint_title": "Progress is invisible from outside the site",
+   "complaint_body": "Following a project means visiting it. There is no usable feed, no per-decision subscription, and nothing for a reader who does not want an account."
+  },
+  {
+   "key": "documents",
+   "label": "Documents and knowledge",
+   "severity": 3,
+   "complaint_title": "Knowledge lives in threads and is never written down",
+   "complaint_body": "Specs are documents nobody links to, decisions are rows nobody reads, and the same explanation is given again every few months in a comment."
+  },
+  {
+   "key": "requests",
+   "label": "Requests from the outside",
+   "severity": 3,
+   "complaint_title": "What users ask for never reaches the roadmap",
+   "complaint_body": "Requests arrive in a form, disappear into a list, and are answered by hand if at all; there is no count of who wants what and no honest 'we are not doing this'."
+  },
+  {
+   "key": "health",
+   "label": "Project health and metrics",
+   "severity": 3,
+   "complaint_title": "Project health is unmeasured or misleading",
+   "complaint_body": "The health score shows a number with no components, 'no data' renders as zero, and a project that died six months ago still looks fine in a list."
+  },
+  {
+   "key": "portability",
+   "label": "Data portability and exit",
+   "severity": 3,
+   "complaint_title": "Leaving with my data is hard",
+   "complaint_body": "There is no export, no documented format, and no way to verify that a backup can be restored. What I contributed here is only readable here."
+  },
+  {
+   "key": "a11y_i18n",
+   "label": "Accessibility and language",
+   "severity": 4,
+   "complaint_title": "The site excludes people who need accessibility or another language",
+   "complaint_body": "Keyboard traversal is inconsistent, focus is not always visible, there is no second language, and nothing checks contrast or announcements in CI."
+  },
+  {
+   "key": "performance",
+   "label": "Performance",
+   "severity": 3,
+   "complaint_title": "Pages and search are slow",
+   "complaint_body": "The project page loads six panels at once, search re-queries on every keystroke, and no budget stops the JavaScript from growing release by release."
+  },
+  {
+   "key": "security",
+   "label": "Security and privacy",
+   "severity": 4,
+   "complaint_title": "Security and privacy are bolted on",
+   "complaint_body": "There is no second factor, no session list, no CSRF token discipline and no way to see who read a private project; secrets and backups are handled by convention."
+  },
+  {
+   "key": "integrations",
+   "label": "Integrations with where the work happens",
+   "severity": 3,
+   "complaint_title": "Work happens elsewhere and never reaches this site",
+   "complaint_body": "Commits, pull requests and CI live in a forge, discussion lives here, and nothing connects them: status is retyped by hand."
+  },
+  {
+   "key": "mobile",
+   "label": "Mobile use",
+   "severity": 3,
+   "complaint_title": "The site is unusable on a phone",
+   "complaint_body": "Primary controls are out of thumb reach, the board scrolls sideways, text is small, and there is no offline reading, no install, and no mobile test in CI."
+  },
+  {
+   "key": "ui_depth",
+   "label": "Interface depth",
+   "severity": 2,
+   "complaint_title": "The interface is thin and repetitive",
+   "complaint_body": "Every panel is a list with a button. Empty states are blank, destructive actions ask for confirmation instead of offering undo, and there is no command palette or comparison view."
+  },
+  {
+   "key": "ai",
+   "label": "Assisted editorial work",
+   "severity": 2,
+   "complaint_title": "Repetitive editorial work is manual",
+   "complaint_body": "Grouping duplicates, drafting a complaint from a title, summarising a long thread and translating a report are all done by hand, badly and late."
+  },
+  {
+   "key": "federation",
+   "label": "Federation and portability of the network",
+   "severity": 2,
+   "complaint_title": "This project is an island",
+   "complaint_body": "Nothing here is visible to the wider web except as a web page: no ActivityPub, no WebFinger, no static mirror, no way for another instance to describe the same project."
+  },
+  {
+   "key": "analytics",
+   "label": "Measurement",
+   "severity": 2,
+   "complaint_title": "Nobody can see whether any of this works",
+   "complaint_body": "There is no funnel, no lead time, no retention, no search success rate: the instance cannot say whether a change helped."
+  },
+  {
+   "key": "community",
+   "label": "Community and retention",
+   "severity": 3,
+   "complaint_title": "Contributors have no reason to stay",
+   "complaint_body": "Credit goes to the author only, there is no portfolio, no mentorship that reaches a person, and no public thank-you that is not a badge."
+  },
+  {
+   "key": "meta_quality",
+   "label": "The project's own quality",
+   "severity": 3,
+   "complaint_title": "The project's own quality is unverified",
+   "complaint_body": "Claims in the docs drift from the code, there is no status page, no incident log, no fuzzing and no measured restore; the gates exist but nobody publishes their scores."
+  }
+ ],
+ "ideas": {
+  "discovery": [
+   {
+    "title": "Rank search results by complaint pain, not recency",
+    "body": "A search for 'export' should surface the project whose complaint volume says export is its worst problem, not the project that edited its description yesterday. The scorer already has pain scores; the search ORDER BY does not read them.",
+    "effort": "M"
+   },
+   {
+    "title": "Explain every search result's rank in one click",
+    "body": "Each hit gets a 'why this?' disclosure listing the terms that matched, the pain score, the arena standing and the health term with their weights, so a surprising order is diagnosable instead of mysterious.",
+    "effort": "S"
+   },
+   {
+    "title": "Search inside complaint and feature bodies, not just titles",
+    "body": "Full-text is already indexed for entities; the query parser only admits titles in some paths. Unified search over title+body with match highlighting per field.",
+    "effort": "S"
+   },
+   {
+    "title": "Saved searches with a diff feed",
+    "body": "Persist a query and a baseline result set; the feed then reports 'three projects entered, one left, two moved up' since the last visit instead of a static list.",
+    "effort": "M"
+   },
+   {
+    "title": "Faceted search over governance model, license and language at once",
+    "body": "The facet SQL exists per dimension; a combined facet panel with counts that update as each filter narrows, and a 'no results because of X' breakdown when the intersection is empty.",
+    "effort": "M"
+   },
+   {
+    "title": "A 'similar projects' panel built from the embedding index",
+    "body": "Every entity already has an embedding; project-level similarity is one aggregation away and gives a reader a way out of a dead end without a second search.",
+    "effort": "M"
+   },
+   {
+    "title": "Search that understands complaints as queries",
+    "body": "Type a sentence of pain ('I cannot tell which call was decided') and get ranked features that answer it, with the complaint text used as the query rather than keywords.",
+    "effort": "L"
+   },
+   {
+    "title": "Zero-result recovery with query rewriting",
+    "body": "On no hits: drop the rarest term, then the filter with the smallest population, and say which one was dropped. Today a zero result is a dead end.",
+    "effort": "S"
+   },
+   {
+    "title": "Taxonomy-guided browse that shows population before you click",
+    "body": "Every taxonomy node carries a live count; a node with zero members is visibly empty rather than a link to an empty page.",
+    "effort": "S"
+   },
+   {
+    "title": "Pinned 'start here' paths per intent",
+    "body": "Curated three-step journeys (evaluate, contribute, complain) assembled from real routes, stored as data so they can be edited without a deploy.",
+    "effort": "M"
+   },
+   {
+    "title": "Cross-project duplicate detection at proposal time",
+    "body": "When a feature is filed, the similarity search runs instance-wide and tells the filer which other project already ships it, with a link.",
+    "effort": "S"
+   },
+   {
+    "title": "A public sitemap of every project's surfaces",
+    "body": "Human-readable and machine-readable (/sitemap.xml), generated from the router so a new page cannot be invisible to crawlers.",
+    "effort": "S"
+   },
+   {
+    "title": "Search analytics that never store the searcher",
+    "body": "Count queries, zero-result rate and click-through per term with a k-anonymity floor, so the catalog can be improved without logging who searched.",
+    "effort": "M"
+   }
+  ],
+  "onboarding": [
+   {
+    "title": "A first-session checklist generated from real state",
+    "body": "Four steps (read a complaint, vote on a pair, claim a task, file a complaint) where each is checked by querying the database, not by a client-side flag.",
+    "effort": "M"
+   },
+   {
+    "title": "A 'your first hour' guided tour built from the contribution feed",
+    "body": "One route that walks a newcomer from their language to a 15-minute task, using the feed's own ranking so the tour cannot recommend something the feed would not.",
+    "effort": "M"
+   },
+   {
+    "title": "Explain the complaint-first rule in the place it bites",
+    "body": "The feature form already refuses an unlinked feature; inline it with a one-paragraph rationale and a 'file the complaint first' link that preserves what was typed.",
+    "effort": "S"
+   },
+   {
+    "title": "Sample data in a scratch project a newcomer can break",
+    "body": "A sandbox project, seeded with a small governance history, that accepts votes and claims from anyone and is excluded from every public ranking.",
+    "effort": "M"
+   },
+   {
+    "title": "Pair a newcomer with a mentor from the task's own field",
+    "body": "Work items already carry needs_mentor; a mentor opt-in on the profile turns that flag into an actual name and a channel, instead of a label.",
+    "effort": "M"
+   },
+   {
+    "title": "A per-project 'what this place is for' paragraph an owner writes",
+    "body": "The description is a tagline today; a longer intent statement, rendered above the complaint box, is what stops off-topic filings.",
+    "effort": "S"
+   },
+   {
+    "title": "Onboarding email that arrives only after a real action",
+    "body": "Send the welcome after the first vote or complaint, not at signup, so it can reference what the person actually did.",
+    "effort": "S"
+   },
+   {
+    "title": "Keyboard-first navigation with a discoverable cheat sheet",
+    "body": "A '?' overlay listing every shortcut, generated from the same table the handlers use so it cannot drift.",
+    "effort": "S"
+   },
+   {
+    "title": "A glossary of Concord's own vocabulary",
+    "body": "Complaint, validated, ratified, quorum, override window, arena, field report: each defined once, linked inline with a tooltip from every use.",
+    "effort": "S"
+   },
+   {
+    "title": "Show the trust ladder with the next rung's requirement",
+    "body": "A member sees what their current role permits and exactly what would raise it, computed from the same rules the guard enforces.",
+    "effort": "M"
+   },
+   {
+    "title": "A 'what changed since you last looked' strip on the home page",
+    "body": "One line per project the visitor follows, summarising the decisions since their last visit rather than a wall of timestamps.",
+    "effort": "M"
+   },
+   {
+    "title": "Interactive example of a consensus decision",
+    "body": "A replayable toy call with five voters where the reader can change a vote and watch quorum, block and override behave, using the real governance package compiled to WASM or mirrored in JS from the same test vectors.",
+    "effort": "L"
+   },
+   {
+    "title": "Refuse nothing silently: every disabled control says why",
+    "body": "A shared pattern for disabled buttons with the reason and the remedy inline, replacing the current mix of hidden and greyed-out controls.",
+    "effort": "S"
+   }
+  ],
+  "complaint_quality": [
+   {
+    "title": "A rejection reason taxonomy instead of free text",
+    "body": "Rejecting a complaint currently writes a free-text note; a short fixed list (not reproducible, duplicate, not about this project, abuse) makes rejection patterns measurable and appealable.",
+    "effort": "S"
+   },
+   {
+    "title": "Merge duplicates instead of rejecting the second one",
+    "body": "A merge keeps both reporters' weight and links the survivor to both, so a popular complaint filed twice does not lose half its evidence.",
+    "effort": "M"
+   },
+   {
+    "title": "Ask for reproduction steps with a structured field",
+    "body": "Three optional fields (what you did, what happened, what you expected) that render as a blockquote on the complaint page and feed the embedding.",
+    "effort": "S"
+   },
+   {
+    "title": "Auto-draft the title from the body",
+    "body": "A filer who writes two sentences gets a suggested title they can edit; most vague titles come from writing the body last.",
+    "effort": "S"
+   },
+   {
+    "title": "A validation queue with the evidence summary inline",
+    "body": "The queue shows severity, frequency, reporter trust and similar existing complaints side by side, so validating takes one screen instead of four.",
+    "effort": "M"
+   },
+   {
+    "title": "Time-boxed validation with an escalation",
+    "body": "An open complaint older than N days is surfaced to the project's maintainers with the option to validate, reject or explicitly defer, so nothing rots in 'open'.",
+    "effort": "M"
+   },
+   {
+    "title": "Complaint clustering by embedding, with a canonical example",
+    "body": "Group near-identical complaints into a cluster whose page shows all reporters and the canonical wording, then let features link the cluster rather than one row.",
+    "effort": "L"
+   },
+   {
+    "title": "Severity calibrated against outcomes",
+    "body": "Compare the severity a reporter claimed with the impact the shipped fix had (field report rate); publish the calibration per reporter so severity stops being a free dial.",
+    "effort": "L"
+   },
+   {
+    "title": "Require a 'what I tried' field before a duplicate is claimed",
+    "body": "Duplicate detection is advisory; asking what the filer already searched turns a lazy duplicate into a genuine one or a search that failed, and the second is a bug.",
+    "effort": "S"
+   },
+   {
+    "title": "Complaint expiry for projects that stopped caring",
+    "body": "A complaint untouched for a year on an archived project is marked stale rather than open, so instance-wide pain scores are not inflated by abandoned projects.",
+    "effort": "M"
+   },
+   {
+    "title": "A public complaint quality score per project",
+    "body": "Ratio of validated to rejected to stale, with the same n-always rule as the other metrics, so a project that rejects everything is visible.",
+    "effort": "M"
+   },
+   {
+    "title": "Link complaints to the exact surface that hurt",
+    "body": "An optional path field (/projects/{slug}/board) recorded when the complaint is filed from that page, which makes the pain locatable and the fix testable.",
+    "effort": "S"
+   },
+   {
+    "title": "Report a complaint's resolution back to its reporters",
+    "body": "When a feature linked to a complaint ships, every reporter gets one notification with the diff, closing the loop that otherwise ends at 'validated'.",
+    "effort": "M"
+   }
+  ],
+  "feature_planning": [
+   {
+    "title": "A cost model that turns effort sizes into hours",
+    "body": "S/M/L/XL is a label nobody can compare; a per-project table calibrating each size to a median actual, derived from claim-to-close time, makes the sizes mean something.",
+    "effort": "M"
+   },
+   {
+    "title": "Automatic impact estimate from the linked complaints' pain",
+    "body": "When a feature links a complaint, prefill impact with the complaint's pain score band, marked as a suggestion the author can override with a reason.",
+    "effort": "S"
+   },
+   {
+    "title": "Show what a feature would displace",
+    "body": "Every proposal ranked by the board is really a claim on the same capacity; a panel showing 'this is above N other ready features' makes the trade-off explicit at filing time.",
+    "effort": "M"
+   },
+   {
+    "title": "Split a feature into work items at proposal time",
+    "body": "The work-item contract exists but is filled after the fact; a template with three sub-tasks on creation turns a proposal into something a newcomer can claim on day one.",
+    "effort": "M"
+   },
+   {
+    "title": "A 'what would have to be true' field for speculative features",
+    "body": "One optional line stating the assumption that makes the feature worth building, surfaced again when the feature is picked up, so dead assumptions are noticed rather than inherited.",
+    "effort": "S"
+   },
+   {
+    "title": "Reject features whose every linked complaint is stale",
+    "body": "A cheap guard: if all linked complaints are stale or rejected, the feature drops to the backlog with that reason instead of ranking on dead pain.",
+    "effort": "S"
+   },
+   {
+    "title": "Estimate confidence, not just impact",
+    "body": "A three-point (low/likely/high) impact estimate per feature, shown as a spread; a single number hides the disagreement that matters most.",
+    "effort": "M"
+   },
+   {
+    "title": "A dependency field between features",
+    "body": "Features can block each other; declaring it lets the board show a critical path and stops a feature being claimed before its prerequisite ships.",
+    "effort": "L"
+   },
+   {
+    "title": "Auto-close features superseded by a shipped one",
+    "body": "When a feature ships, the similarity search runs over the remaining backlog and proposes supersede links for review, so the backlog does not keep proposing what exists.",
+    "effort": "M"
+   },
+   {
+    "title": "Public 'why not' notes on rejected features",
+    "body": "A rejected feature keeps a one-paragraph rationale visible at its own URL, so the same idea is not re-filed every quarter by someone who never saw the first discussion.",
+    "effort": "S"
+   },
+   {
+    "title": "Board view grouped by complaint theme",
+    "body": "The board is a flat list by status; grouping by the theme of the linked complaints shows whether the roadmap is coherent or nineteen unrelated things.",
+    "effort": "M"
+   },
+   {
+    "title": "Cycle-time forecast from the last N deliveries",
+    "body": "Median time from ready to shipped, per effort size, rendered as 'this is likely to land in about three weeks' with its sample size.",
+    "effort": "M"
+   },
+   {
+    "title": "A 'smallest version' field enforced by a lint",
+    "body": "Every XL feature must name a smaller version that delivers part of the value; a lint refuses to mark it ready otherwise. XL features are where backlogs go to die.",
+    "effort": "S"
+   }
+  ],
+  "consensus": [
+   {
+    "title": "Quorum targets shown live on every open call",
+    "body": "The consensus page states the rule; a countdown to quorum ('4 of 7 needed, 2 unreachable') turns a stalled call into an actionable one.",
+    "effort": "S"
+   },
+   {
+    "title": "Nudge the people whose vote would decide a call",
+    "body": "When a call is one vote from quorum, notify exactly the members who have not voted, once, with the deadline \u2014 not a broadcast.",
+    "effort": "S"
+   },
+   {
+    "title": "A written minority report attached to every ratified decision",
+    "body": "Objections are counted today; capturing the strongest dissent verbatim (one optional paragraph per objector) preserves the reasoning that the tally destroys.",
+    "effort": "M"
+   },
+   {
+    "title": "Decision records exported as readable documents",
+    "body": "The decision record exists as rows; render it as a one-page markdown document with the alternatives, the tally, the dissent and the date, and link it from the feature.",
+    "effort": "M"
+   },
+   {
+    "title": "Re-open a decided call when its assumptions break",
+    "body": "A superseded decision can be reopened by citing the changed fact, with quorum on the reopen rather than on the original question.",
+    "effort": "L"
+   },
+   {
+    "title": "Weight votes by participation history, with the rule stated",
+    "body": "A member who has voted on 90% of calls should not weigh the same as one who votes on 5%, as long as the rule is published, ratifiable and visible on the call.",
+    "effort": "L"
+   },
+   {
+    "title": "Time-zone aware voting windows",
+    "body": "Show the close time in the reader's own zone and guarantee at least one round-the-clock period, so a call cannot close while half the voters sleep.",
+    "effort": "S"
+   },
+   {
+    "title": "Abstentions that carry a reason",
+    "body": "An abstain is currently a non-vote; letting it carry 'I lack context on X' routes real information to the proposer and distinguishes indifference from ignorance.",
+    "effort": "S"
+   },
+   {
+    "title": "Consensus health over time per project",
+    "body": "Median time to quorum, share of calls decided by override, share closed at deadline: three numbers that diagnose a governance process better than any single vote.",
+    "effort": "M"
+   },
+   {
+    "title": "Simulate a proposal's likely fate before filing",
+    "body": "Given the current membership and recent voting patterns, show the quorum it would need and the blocks it would attract, as a forecast explicitly labelled a forecast.",
+    "effort": "L"
+   },
+   {
+    "title": "Delegation with a public ledger",
+    "body": "A member may delegate their vote on a theme to someone else; the delegation and its revocation are both audited and shown on every call it affects.",
+    "effort": "L"
+   },
+   {
+    "title": "Emergency holds that expire by default",
+    "body": "An operator hold exists; give it a mandatory expiry and a written justification, so a hold cannot quietly become a decision.",
+    "effort": "S"
+   },
+   {
+    "title": "A 'consensus' page that teaches by example from this instance",
+    "body": "Render three real closed calls (one unanimous, one contested, one overridden) as case studies with the tallies that decided them.",
+    "effort": "M"
+   }
+  ],
+  "trust": [
+   {
+    "title": "One page per member: what they did, what it earned",
+    "body": "Reputation events exist as rows; a profile that lists them with the points each carried makes the score auditable instead of a mystery number.",
+    "effort": "M"
+   },
+   {
+    "title": "Decay reputation that is never exercised",
+    "body": "A vote cast three years ago should not still weigh; an explicit half-life with the rule published, and the decayed value shown beside the raw one.",
+    "effort": "M"
+   },
+   {
+    "title": "Cap the weight a single member can hold",
+    "body": "A hard ceiling with the excess redistributed proportionally, so a long history cannot become a permanent veto.",
+    "effort": "S"
+   },
+   {
+    "title": "Publish the reputation curve as a chart, not a formula",
+    "body": "The formula is in the code; a rendered curve with the reader's own position marked is what makes it understandable.",
+    "effort": "S"
+   },
+   {
+    "title": "Separate accuracy from activity",
+    "body": "Two scores: how often a member's predictions were right (validation accuracy, field-report accuracy) and how much they do. Conflating them rewards volume.",
+    "effort": "M"
+   },
+   {
+    "title": "Dispute a reputation event with evidence",
+    "body": "Every negative event is appealable once, with the appeal and its outcome recorded on the member's page and visible to whoever set the role.",
+    "effort": "M"
+   },
+   {
+    "title": "Trust grants that expire",
+    "body": "Granting contributor rights for a project can carry an expiry, so access granted for one release does not become permanent by inattention.",
+    "effort": "S"
+   },
+   {
+    "title": "A 'trusted by' panel on the project page",
+    "body": "Who vouched for this project, and when, drawn from actual grants rather than membership count.",
+    "effort": "S"
+   },
+   {
+    "title": "Sybil resistance for guest accounts without an email",
+    "body": "Guest contributions can be cheap to farm; a proof-of-work stamp or a rate that scales with account age, stated plainly at signup.",
+    "effort": "L"
+   },
+   {
+    "title": "Field-report weight tied to demonstrated skill",
+    "body": "A report from someone who has shipped in the area counts more than one from a passer-by, computed from their own shipped work and published.",
+    "effort": "L"
+   },
+   {
+    "title": "A public log of every role change",
+    "body": "Who promoted whom, with the reason field mandatory, in the audit ledger's existing format \u2014 promotion is the highest-leverage admin action and the least documented today.",
+    "effort": "S"
+   },
+   {
+    "title": "Revocation that explains itself to the revoked",
+    "body": "Losing a role currently just changes what buttons work; a notification with the rule and the path to appeal.",
+    "effort": "S"
+   },
+   {
+    "title": "Reputation portability across projects on the instance",
+    "body": "A member's accuracy on one project informs their starting weight on another, bounded so a bad first project cannot follow them forever.",
+    "effort": "L"
+   }
+  ],
+  "safety": [
+   {
+    "title": "A graduated response ladder with published thresholds",
+    "body": "Warn, then limit, then require review, then suspend: each step with a stated trigger and a time bound, so moderation is a policy rather than a mood.",
+    "effort": "M"
+   },
+   {
+    "title": "Shadow-limit instead of ban for low-severity abuse",
+    "body": "The abuser keeps posting and sees their own content; nobody else does. Removes the incentive to sock-puppet while a review happens.",
+    "effort": "M"
+   },
+   {
+    "title": "Report categories that route to different queues",
+    "body": "Spam, off-topic, harassment, illegal and security go to different people with different deadlines, instead of one undifferentiated report box.",
+    "effort": "M"
+   },
+   {
+    "title": "A reviewer-facing evidence bundle",
+    "body": "One page per report: the content, the history of the reporter and the reported, prior reports, and the action taken last time \u2014 so decisions are consistent.",
+    "effort": "M"
+   },
+   {
+    "title": "Appeals with an independent second reviewer",
+    "body": "An appeal goes to somebody who did not make the first decision, and the fact that they were independent is recorded.",
+    "effort": "M"
+   },
+   {
+    "title": "Rate-limit by behaviour, not just by IP",
+    "body": "Bursts of near-identical text, many accounts from one browser fingerprint and rapid role-change attempts are the shapes that matter; IP limits catch almost none of them.",
+    "effort": "L"
+   },
+   {
+    "title": "Content warnings on complaints about third parties",
+    "body": "A complaint that names a person can be filed with a warning flag, so the page does not broadcast an accusation as its first impression.",
+    "effort": "S"
+   },
+   {
+    "title": "Delete-with-tombstone instead of hard delete",
+    "body": "Deleted content leaves a row saying what was deleted and why, so threads and audit trails do not develop holes that look like tampering.",
+    "effort": "M"
+   },
+   {
+    "title": "A transparency report generated from the audit ledger",
+    "body": "Actions per month by type, appeals upheld, and the median time to first response, computed from rows that already exist and published as a page.",
+    "effort": "M"
+   },
+   {
+    "title": "Keyword walls that explain themselves",
+    "body": "When a submission is refused for a blocked term, name the category rather than the word list, so a legitimate filer can adapt instead of guessing.",
+    "effort": "S"
+   },
+   {
+    "title": "Escalation on unanswered reports",
+    "body": "A report with no action within the policy window escalates to the next role automatically and appears in a queue nobody can miss.",
+    "effort": "S"
+   },
+   {
+    "title": "Self-service data removal on request",
+    "body": "A member can request removal of their own content; the request, the decision and the reason are recorded, and the outcome is a tombstone.",
+    "effort": "M"
+   },
+   {
+    "title": "Abuse-resistant voting on controversial calls",
+    "body": "Coordinated voting is hard to prove; requiring quorum diversity (distinct accounts older than N days) on calls flagged as contested is a cheap structural defence.",
+    "effort": "L"
+   }
+  ],
+  "notifications": [
+   {
+    "title": "One digest per person per day, with a truthful count",
+    "body": "Every event type currently competes for attention; a single daily digest ranked by relevance, and nothing else, except for direct mentions.",
+    "effort": "M"
+   },
+   {
+    "title": "Per-project, per-event-type preferences that persist",
+    "body": "A matrix of project \u00d7 event (decision, ship, reply, mention) stored server-side, with a 'quiet project' switch that is one click.",
+    "effort": "M"
+   },
+   {
+    "title": "Email that works without a client",
+    "body": "A plain-text multipart alternative and a one-click unsubscribe that needs no login, because a digest nobody can leave is a spam folder waiting to happen.",
+    "effort": "M"
+   },
+   {
+    "title": "Web push with a permission prompt that earns itself",
+    "body": "Ask after the second visit and the first follow, never on load, and state what will be sent.",
+    "effort": "M"
+   },
+   {
+    "title": "A notification when your complaint is validated, rejected or shipped",
+    "body": "Three specific moments a reporter cares about; today the reporter learns nothing until they poll.",
+    "effort": "S"
+   },
+   {
+    "title": "Do-not-disturb windows in the member's own timezone",
+    "body": "A stated quiet window that holds non-urgent mail until it ends, with urgent (security, role change) exempt and marked.",
+    "effort": "S"
+   },
+   {
+    "title": "An inbox that survives the device",
+    "body": "Read state stored server-side, so the badge is the same on the phone and the laptop.",
+    "effort": "M"
+   },
+   {
+    "title": "Batching for high-volume projects",
+    "body": "A project with 200 watchers should not create 200 notification rows per event; fan out at read time from a single event.",
+    "effort": "L"
+   },
+   {
+    "title": "Watch a specific feature, not a whole project",
+    "body": "The useful granularity for most people is one decision, and the current model only offers the project.",
+    "effort": "S"
+   },
+   {
+    "title": "Delivery diagnostics the member can see",
+    "body": "A page listing what was sent, when, and whether it bounced, so 'I never got it' is answerable.",
+    "effort": "S"
+   },
+   {
+    "title": "A weekly 'what you missed' that is skimmable in 30 seconds",
+    "body": "Five bullets, each a real decision with its outcome, ordered by how much the reader's own votes mattered.",
+    "effort": "M"
+   },
+   {
+    "title": "Notifications that link to the exact anchor",
+    "body": "Every notification deep-links to the comment, tally or diff it refers to, not to the project root.",
+    "effort": "S"
+   },
+   {
+    "title": "Suppress notifications for your own actions",
+    "body": "An author currently gets notified about their own edits on some paths; a single filter at emit time, with a test.",
+    "effort": "S"
+   }
+  ],
+  "feeds": [
+   {
+    "title": "One RSS feed per project with full history",
+    "body": "The feed item exists per decision; a proper Atom feed with stable IDs, pagination and an 'all history' variant lets readers follow without an account.",
+    "effort": "S"
+   },
+   {
+    "title": "JSON Feed alongside RSS",
+    "body": "The same items in JSON Feed 1.1, so scripts do not parse XML.",
+    "effort": "S"
+   },
+   {
+    "title": "Per-feature feeds for long-running discussions",
+    "body": "Someone following one contested decision should not have to follow the project.",
+    "effort": "S"
+   },
+   {
+    "title": "WebSub or a ping endpoint for feed readers",
+    "body": "Announce new items instead of polling, so a feed reader sees the update in minutes.",
+    "effort": "M"
+   },
+   {
+    "title": "An instance-wide 'recently decided' feed",
+    "body": "Across projects, what was ratified, overridden or blocked, with the tally \u2014 the single best signal that the instance is alive.",
+    "effort": "S"
+   },
+   {
+    "title": "Feed items that carry the reasoning, not just the title",
+    "body": "Include the winning argument's first paragraph and the vote split in the item body, so the reader can judge without clicking.",
+    "effort": "S"
+   },
+   {
+    "title": "Stable feed IDs that survive a rename",
+    "body": "IDs derived from the decision row, not the slug, so a project rename does not duplicate every item in every reader.",
+    "effort": "S"
+   },
+   {
+    "title": "A monthly archive feed",
+    "body": "One item per month summarising decisions and ships, for people who want to follow at low frequency.",
+    "effort": "S"
+   },
+   {
+    "title": "Conditional GET and ETags on every feed",
+    "body": "Feed readers poll constantly; a correct 304 keeps a tunnel's bandwidth honest.",
+    "effort": "S"
+   },
+   {
+    "title": "Feeds for a saved search",
+    "body": "Follow a query rather than a project: 'everything matching export in any project'.",
+    "effort": "M"
+   },
+   {
+    "title": "A 'why this item is in your feed' line",
+    "body": "Each item states the subscription that produced it, which makes a noisy feed diagnosable.",
+    "effort": "S"
+   },
+   {
+    "title": "Atom categories from the taxonomy",
+    "body": "Tag every item with its theme so a reader can filter without a full-text rule.",
+    "effort": "S"
+   },
+   {
+    "title": "Feed discovery from the HTML head",
+    "body": "Every page advertises its relevant feed with a link rel=alternate, so a reader extension can find it.",
+    "effort": "S"
+   }
+  ],
+  "documents": [
+   {
+    "title": "Docs that are versioned with the code, not in a wiki",
+    "body": "The documents surface exists; bind a document to a path in a repository and show a diff when it changes, so the spec and the code cannot drift silently.",
+    "effort": "M"
+   },
+   {
+    "title": "Inline anchors for every spec section",
+    "body": "Stable permalinks per heading, and every reference elsewhere (issues, decisions, code comments) can cite \u00a7section as a link rather than a string.",
+    "effort": "S"
+   },
+   {
+    "title": "A 'this spec is stale' flag computed from code churn",
+    "body": "When the files a spec covers change more than N times without the spec changing, mark it visibly stale on its own page.",
+    "effort": "M"
+   },
+   {
+    "title": "Decision records linked from the code they explain",
+    "body": "A comment convention (a decision URL) that the linter checks, so a non-obvious branch points at the reasoning instead of at a ticket.",
+    "effort": "M"
+   },
+   {
+    "title": "A glossary that is also a schema",
+    "body": "One YAML file of terms; the glossary page, the tooltips and the lint that rejects undefined jargon all read it.",
+    "effort": "M"
+   },
+   {
+    "title": "Architecture diagrams generated from the module graph",
+    "body": "Render the import graph with the layering rules annotated, so a violated dependency shows as a crossing arrow rather than a review comment.",
+    "effort": "M"
+   },
+   {
+    "title": "A changelog assembled from shipped features",
+    "body": "Each ship event already has a title and a body; group by week and project into a public changelog with no extra authoring.",
+    "effort": "S"
+   },
+   {
+    "title": "Docs search that searches code too",
+    "body": "One box that returns both spec sections and the symbols they describe.",
+    "effort": "M"
+   },
+   {
+    "title": "Markdown linting in CI with the project's own rules",
+    "body": "Enforce heading order, link validity and a maximum ratio of prose to examples, and fail the build on a broken internal link.",
+    "effort": "S"
+   },
+   {
+    "title": "A 'how this project decides' one-pager per governance model",
+    "body": "Generated from the governance package's parameters, so a model change updates the explanation automatically.",
+    "effort": "S"
+   },
+   {
+    "title": "Commentable specs with consensus on the paragraph",
+    "body": "A spec paragraph can be attached to a call; the decision cites the paragraph and the paragraph shows the decision's state inline.",
+    "effort": "L"
+   },
+   {
+    "title": "Doc ownership with a reviewer field",
+    "body": "Each document names an owner who is notified when it changes, ending the 'everybody's document' problem.",
+    "effort": "S"
+   },
+   {
+    "title": "Export a project's whole documentation as one PDF or EPUB",
+    "body": "One command produces a readable artifact with a table of contents, for readers who do not read on the site.",
+    "effort": "M"
+   }
+  ],
+  "requests": [
+   {
+    "title": "Requests that can be promoted to complaints in one click",
+    "body": "A user ask that many people repeat is a complaint with evidence; the promotion copies the thread and links the raised hands as frequency.",
+    "effort": "M"
+   },
+   {
+    "title": "Public counts of who wants a request",
+    "body": "A +1 that is a real relationship row rather than a counter, so the count is attributable and retractable.",
+    "effort": "S"
+   },
+   {
+    "title": "Request status that mirrors the roadmap automatically",
+    "body": "When a linked feature moves to ready or ships, the request's status follows, so nobody answers the same ask by hand.",
+    "effort": "M"
+   },
+   {
+    "title": "A monthly 'requests we are not doing, and why' page",
+    "body": "Saying no in public, once, with a reason per request, is cheaper than refusing the same ask twelve times.",
+    "effort": "S"
+   },
+   {
+    "title": "Requests from inside a project page, with the current page attached",
+    "body": "The most common request is 'this particular screen is wrong'; capture the URL automatically so the request is locatable.",
+    "effort": "S"
+   },
+   {
+    "title": "Anonymous requests with a reply channel",
+    "body": "A guest can file without an account and still get an answer, via a ticket URL that works like a reply address.",
+    "effort": "M"
+   },
+   {
+    "title": "Cluster requests by embedding, show the cluster",
+    "body": "Ten asks about export are one ask; the cluster page is the thing the roadmap links to.",
+    "effort": "M"
+   },
+   {
+    "title": "A response-time promise, measured and displayed",
+    "body": "State 'we answer requests within five days' and show the actual median next to it, including when it is bad.",
+    "effort": "S"
+   },
+   {
+    "title": "Requests that expire with a re-ask",
+    "body": "An unanswered request older than a quarter closes with an apology and a 'still want this?' that reopens it with the new signal.",
+    "effort": "S"
+   },
+   {
+    "title": "Route requests by theme to the people who own the area",
+    "body": "A theme owner gets the request instead of a shared inbox, and the routing rule is visible on the form.",
+    "effort": "M"
+   },
+   {
+    "title": "Show the requester what happened to their ask, unprompted",
+    "body": "One email at the moment the outcome is known \u2014 built, declined, deferred \u2014 not a dashboard they have to remember to check.",
+    "effort": "S"
+   },
+   {
+    "title": "A billing-style statement of what the maintainers did this month",
+    "body": "Hours spent, decisions made, ships landed: the answer to 'is anyone home?' that a request board alone cannot give.",
+    "effort": "M"
+   },
+   {
+    "title": "Requests importable from email and chat",
+    "body": "A forwarding address that turns a message into a request with the sender's consent recorded.",
+    "effort": "M"
+   }
+  ],
+  "health": [
+   {
+    "title": "Show the health score's components on the project page",
+    "body": "The breakdown exists in the package and the search UI shows a bar; the project page should show recency, responsiveness, breadth and cadence with their weights and unknowns.",
+    "effort": "S"
+   },
+   {
+    "title": "A health history sparkline from the snapshots",
+    "body": "Once R15 lands, a 90-day line per component makes 'this project is dying' visible before it is dead.",
+    "effort": "M"
+   },
+   {
+    "title": "Distinguish 'no data' from 'bad' everywhere health appears",
+    "body": "One shared badge component with an unknown state, replacing the current mix of dashes, zeros and absent chips.",
+    "effort": "S"
+   },
+   {
+    "title": "Health thresholds that trigger an automatic flag",
+    "body": "A project whose recency drops below a stated line for a stated period gets a public 'needs maintainer' banner, not a silent score.",
+    "effort": "M"
+   },
+   {
+    "title": "Bus factor from commit concentration",
+    "body": "A single number: the share of recent commits by the top author, with the measurement stated, because the honest answer to 'who would leave' is usually one person.",
+    "effort": "M"
+   },
+   {
+    "title": "Issue-response time as its own metric",
+    "body": "Review latency is measured; first response to an issue is the number a user actually feels.",
+    "effort": "M"
+   },
+   {
+    "title": "Dependency freshness",
+    "body": "Share of declared dependencies within one major of current, with the sources and the check date published.",
+    "effort": "M"
+   },
+   {
+    "title": "Test and CI signal imported from the forge",
+    "body": "Passing rate and time-to-green over the last 30 runs, if the repository exposes it.",
+    "effort": "M"
+   },
+   {
+    "title": "A public methodology page with the exact formula",
+    "body": "Every component, weight and cut-off on one page, versioned, so a disputed score can be recomputed by hand.",
+    "effort": "S"
+   },
+   {
+    "title": "Score a project's documentation, not just its code",
+    "body": "Does it have a README with install steps, a changelog, an architecture note? Measured mechanically and stated as a checklist.",
+    "effort": "S"
+   },
+   {
+    "title": "Compare a project against its own history, not the instance",
+    "body": "An absolute score ranks projects against each other; the useful question for a maintainer is whether this month beat last month.",
+    "effort": "M"
+   },
+   {
+    "title": "Let a maintainer dispute a metric with evidence",
+    "body": "A disputed component is shown as disputed with the counter-evidence attached, rather than silently overriding the number.",
+    "effort": "M"
+   },
+   {
+    "title": "Health for projects with no repository, derived from site activity",
+    "body": "Sixty-nine catalog entries have no forge; decisions, complaints and ships are still measurable signals of life.",
+    "effort": "L"
+   }
+  ],
+  "portability": [
+   {
+    "title": "A one-click full export of a project's data",
+    "body": "Complaints, features, votes, decisions, documents and audit in a documented JSON layout, zipped, streamed, with a checksum \u2014 the honest counter to a walled garden.",
+    "effort": "M"
+   },
+   {
+    "title": "Import that round-trips the export",
+    "body": "An export nobody can re-import is a backup, not portability; a test that exports, wipes a scratch instance and re-imports, comparing counts and IDs.",
+    "effort": "L"
+   },
+   {
+    "title": "A stable, versioned data format",
+    "body": "Ship the export with a schema version and a migration note per change, so a third-party tool can rely on it.",
+    "effort": "M"
+   },
+   {
+    "title": "Public read API without authentication",
+    "body": "Everything a logged-out reader can see should be readable by a script, with documented rate limits and pagination.",
+    "effort": "M"
+   },
+   {
+    "title": "A data retention policy the database enforces",
+    "body": "A stated window per table with a job that applies it, so 'we keep everything forever' is a decision rather than an accident.",
+    "effort": "M"
+   },
+   {
+    "title": "Export a single thread as a readable document",
+    "body": "Any complaint or call exports as markdown with its full history, for quoting outside the site.",
+    "effort": "S"
+   },
+   {
+    "title": "Account deletion that actually deletes",
+    "body": "An honest deletion path: what is removed, what is tombstoned, what is retained for audit and for how long, stated before the confirmation button.",
+    "effort": "M"
+   },
+   {
+    "title": "Downloadable audit ledger per project",
+    "body": "The ledger is the trust anchor; it should be exportable and independently verifiable (hash chain), not just viewable.",
+    "effort": "L"
+   },
+   {
+    "title": "A documented webhook event schema",
+    "body": "Consumers need to know the shapes before they subscribe; publish the JSON schema with versioning and a changelog.",
+    "effort": "M"
+   },
+   {
+    "title": "Data portability for reputation",
+    "body": "A signed statement of a member's contribution record they can present elsewhere, with the caveat that it is only as good as this instance's word.",
+    "effort": "L"
+   },
+   {
+    "title": "Backups documented and restore-tested",
+    "body": "A written restore procedure with a measured restore time, exercised on a schedule \u2014 the difference between a backup and a hope.",
+    "effort": "M"
+   },
+   {
+    "title": "A tombstone registry for deleted projects",
+    "body": "A deleted project keeps a URL explaining that it existed and when, so old links do not 404 into silence.",
+    "effort": "S"
+   },
+   {
+    "title": "Legal pages generated from configuration",
+    "body": "Privacy, terms and licence pages whose factual claims (what is stored, how long) are read from the same config the code uses.",
+    "effort": "S"
+   }
+  ],
+  "a11y_i18n": [
+   {
+    "title": "An axe-core gate on every page in CI",
+    "body": "The browser suites already run Playwright; an accessibility assertion per page turns 'we care about a11y' into a build failure.",
+    "effort": "M"
+   },
+   {
+    "title": "Full keyboard traversal with visible focus",
+    "body": "A test that tabs through each page and asserts every interactive element is reachable exactly once, with a focus ring that meets contrast.",
+    "effort": "M"
+   },
+   {
+    "title": "Screen-reader announcements for live updates",
+    "body": "The finder does this; extend it to votes, tallies and feed refreshes, with aria-live regions that announce outcomes, not raw JSON.",
+    "effort": "M"
+   },
+   {
+    "title": "Localisation infrastructure with one real second language",
+    "body": "Message files, a language switch, plural and date handling \u2014 and at least one fully translated locale, because a half-built i18n layer rots.",
+    "effort": "L"
+   },
+   {
+    "title": "Right-to-left layout support",
+    "body": "Logical CSS properties, mirrored chevrons and a test that flips dir=rtl and asserts no overflow.",
+    "effort": "M"
+   },
+   {
+    "title": "Plain-language mode",
+    "body": "A toggle that shortens sentences and defines jargon inline, generated from the glossary, for readers who are not native speakers.",
+    "effort": "L"
+   },
+   {
+    "title": "Colour-blind safe status encoding",
+    "body": "Status is colour plus shape plus text everywhere, with a test that greps for colour-only styling.",
+    "effort": "S"
+   },
+   {
+    "title": "Respect prefers-reduced-motion and prefers-contrast",
+    "body": "Every animation and gradient behind those media queries, with a test page listing what changes.",
+    "effort": "S"
+   },
+   {
+    "title": "Alt text enforced at upload",
+    "body": "An image without a description is refused or marked decorative explicitly, because 'add alt text later' never happens.",
+    "effort": "S"
+   },
+   {
+    "title": "Error messages that say what to do next",
+    "body": "Every 4xx page gets an action line and a link, and a test asserts no error page lacks one.",
+    "effort": "S"
+   },
+   {
+    "title": "A reading level measured in CI",
+    "body": "A simple readability score on user-facing help text, failing above a stated threshold.",
+    "effort": "S"
+   },
+   {
+    "title": "Translated taxonomy labels",
+    "body": "The categories and themes are English strings in the database; a translation table keeps the schema and translates the labels.",
+    "effort": "M"
+   },
+   {
+    "title": "A language-aware search that does not split on accents",
+    "body": "Stemming and diacritic folding per locale, with a test per language the site claims to support.",
+    "effort": "M"
+   }
+  ],
+  "performance": [
+   {
+    "title": "Budget the page weight and fail the build over it",
+    "body": "A stated kB budget per page type, measured in the e2e run, so the site cannot drift into 400 kB of JavaScript one feature at a time.",
+    "effort": "M"
+   },
+   {
+    "title": "Cache every read route that has no session dependency",
+    "body": "Public project pages change rarely; an ETag plus a short TTL removes most database work from the hot path.",
+    "effort": "M"
+   },
+   {
+    "title": "N+1 detection in the test suite",
+    "body": "Count queries per request in tests and assert a ceiling per route, which is how an N+1 is caught before it becomes a 300 ms page.",
+    "effort": "M"
+   },
+   {
+    "title": "Cursor pagination everywhere",
+    "body": "Offset pagination degrades and duplicates rows under writes; the feeds and search should share one cursor implementation.",
+    "effort": "M"
+   },
+   {
+    "title": "A slow-query log with a stated threshold",
+    "body": "Anything over 50 ms recorded with its route and its plan, reviewed weekly.",
+    "effort": "S"
+   },
+   {
+    "title": "Precompute the instance-wide aggregates on a schedule",
+    "body": "Pain scores and health are recomputed per request today; a snapshot table makes the expensive numbers cheap and comparable over time.",
+    "effort": "L"
+   },
+   {
+    "title": "Compress and fingerprint every asset",
+    "body": "Stable hashed filenames with long cache lifetimes; the asset helper already versions by query string, which busts caches on every deploy.",
+    "effort": "S"
+   },
+   {
+    "title": "Lazy-load the panels that are below the fold",
+    "body": "The project page fetches six panels on load; three of them are never seen by most readers.",
+    "effort": "M"
+   },
+   {
+    "title": "A load profile that runs on every release",
+    "body": "A recorded scenario (browse, search, vote) replayed against a seeded database, with the p95 compared to the last release.",
+    "effort": "L"
+   },
+   {
+    "title": "Indexes justified by query plans in CI",
+    "body": "A test asserting each documented hot query uses an index, so a schema change cannot silently drop one.",
+    "effort": "M"
+   },
+   {
+    "title": "Stream the export instead of buffering",
+    "body": "A large project export currently builds in memory; chunked streaming keeps it alive on a small host.",
+    "effort": "M"
+   },
+   {
+    "title": "Debounce and cancel in-flight searches",
+    "body": "Typing in the search box issues a request per keystroke; an AbortController plus a delay cuts the load by an order of magnitude.",
+    "effort": "S"
+   },
+   {
+    "title": "A cold-start measurement for the server",
+    "body": "Time to first successful request after a restart, tracked per release, because this instance restarts on every deploy.",
+    "effort": "S"
+   }
+  ],
+  "security": [
+   {
+    "title": "Two-factor authentication with recovery codes",
+    "body": "TOTP plus ten single-use codes, shown once, with an audit row for enrolment and for each use.",
+    "effort": "M"
+   },
+   {
+    "title": "Session list with remote revocation",
+    "body": "Every session visible with its last-seen IP and agent, and a revoke button that actually invalidates the token server-side.",
+    "effort": "M"
+   },
+   {
+    "title": "Password breach checks against k-anonymised ranges",
+    "body": "Refuse a password found in a breach corpus without sending the password anywhere, using the range API.",
+    "effort": "S"
+   },
+   {
+    "title": "Rate limits keyed on identity as well as address",
+    "body": "The limiter keys on IP today; an authenticated abuser on a shared address is invisible. Key on account with a separate, higher budget.",
+    "effort": "M"
+   },
+   {
+    "title": "CSRF tokens on every state-changing form",
+    "body": "One middleware, a per-session token in every form and header, and a test that a forged request is refused.",
+    "effort": "M"
+   },
+   {
+    "title": "A security policy with a disclosure route and a response clock",
+    "body": "SECURITY.md, a contact, a stated acknowledgement time, and a page recording disclosures and fixes.",
+    "effort": "S"
+   },
+   {
+    "title": "Content Security Policy without unsafe-inline",
+    "body": "The current policy allows inline script; moving to nonces removes the main XSS amplifier and is testable by asserting the header per page.",
+    "effort": "M"
+   },
+   {
+    "title": "Per-project visibility enforced in one place with a test matrix",
+    "body": "Private, unlisted, protected and public each get a table of who may read what, and a test per cell \u2014 the current enforcement is spread across handlers.",
+    "effort": "L"
+   },
+   {
+    "title": "Audit every read of a private project",
+    "body": "Nobody can see who looked at a private project today; if it is private, access should leave a trace.",
+    "effort": "M"
+   },
+   {
+    "title": "Encrypted backups",
+    "body": "A backup on the same disk as the database is a copy, not a backup; encrypt off-host copies and document the key handling.",
+    "effort": "M"
+   },
+   {
+    "title": "Dependency and image scanning in CI",
+    "body": "Vulnerability scan on every build with a stated severity policy for failing.",
+    "effort": "S"
+   },
+   {
+    "title": "Secrets that cannot reach the logs",
+    "body": "A redaction layer on the logger plus a test that feeds a token-shaped string through every log path.",
+    "effort": "S"
+   },
+   {
+    "title": "Login anomaly notices",
+    "body": "A new country or a new user agent sends one notice, with a link to revoke, and never blocks.",
+    "effort": "S"
+   }
+  ],
+  "integrations": [
+   {
+    "title": "A GitHub webhook that records events without a second database",
+    "body": "The forge_events table exists for this; wire push, PR, review and comment so newcomer responsiveness can be measured from real data.",
+    "effort": "M"
+   },
+   {
+    "title": "A two-way issue mirror for linked features",
+    "body": "A shipped feature opens an issue in the repository and closes it when the field report says it worked, with the mapping stored.",
+    "effort": "L"
+   },
+   {
+    "title": "CI status shown on the feature page",
+    "body": "A feature's branch and its last CI result, read from the forge API, so 'is it done?' stops being a status field somebody edits.",
+    "effort": "M"
+   },
+   {
+    "title": "A Slack/Discord bridge for decisions",
+    "body": "Ratified decisions post to a channel with a link, one message per decision, configurable per project.",
+    "effort": "S"
+   },
+   {
+    "title": "Generic outbound webhooks with signing",
+    "body": "Any consumer can subscribe to decision, ship and complaint events, with an HMAC signature header and retry with backoff.",
+    "effort": "M"
+   },
+   {
+    "title": "An import from GitHub or GitLab issues",
+    "body": "Point at a repository and turn its issues into complaints with the reporter and the URL preserved, so a project can migrate its pain.",
+    "effort": "L"
+   },
+   {
+    "title": "A CLI that files complaints and lists work from a terminal",
+    "body": "One static binary using the existing API, for maintainers who live in a shell.",
+    "effort": "M"
+   },
+   {
+    "title": "A browser extension that files a complaint from any page",
+    "body": "The report-this-project path is manual today; an extension captures the URL and opens the form pre-filled.",
+    "effort": "M"
+   },
+   {
+    "title": "Syndication to my own site via a static build",
+    "body": "A generator that reads the public API and produces a static mirror of a project's public pages.",
+    "effort": "M"
+   },
+   {
+    "title": "Email-in complaints",
+    "body": "A dedicated address per project that accepts a message and files it, with the sender verified by SPF and a reply-by-email thread.",
+    "effort": "L"
+   },
+   {
+    "title": "Calendar feeds for decision deadlines",
+    "body": "An iCal feed per project of voting windows that close, so nobody misses a quorum because of a timezone.",
+    "effort": "S"
+   },
+   {
+    "title": "A single sign-on option for the instance's other sites",
+    "body": "The network already shares an identity in practice; one OIDC provider removes a fourth password.",
+    "effort": "L"
+   }
+  ],
+  "mobile": [
+   {
+    "title": "A real PWA with offline reading",
+    "body": "Service-worker caching of the pages a reader follows, an install prompt that appears after engagement, and an offline page that says what is unavailable.",
+    "effort": "M"
+   },
+   {
+    "title": "Thumb-reachable primary actions on mobile",
+    "body": "The vote and claim controls sit at the top of the viewport; a mobile layout puts the three primary actions in a bottom bar.",
+    "effort": "M"
+   },
+   {
+    "title": "A share sheet integration",
+    "body": "Sharing a decision produces a link with OpenGraph metadata and a one-line summary, so the receiving app shows something better than a bare URL.",
+    "effort": "S"
+   },
+   {
+    "title": "Mobile-first board columns",
+    "body": "The kanban is horizontally scrolled on a phone; a stacked column view with a status switcher replaces it below 640 px.",
+    "effort": "M"
+   },
+   {
+    "title": "Tap targets and text at accessible sizes",
+    "body": "A test asserting every interactive element is at least 44 px and body text at least 16 px at 375 px width.",
+    "effort": "S"
+   },
+   {
+    "title": "Native share targets for install",
+    "body": "Web app manifest with icons, screenshots and a start URL per surface, so the installed app opens the feed rather than the home page.",
+    "effort": "S"
+   },
+   {
+    "title": "Pull-to-refresh on the feeds",
+    "body": "One gesture, with a visible timestamp of the last successful fetch.",
+    "effort": "S"
+   },
+   {
+    "title": "Offline draft persistence",
+    "body": "A complaint written on a train survives the tunnel; drafts are stored locally and offered for resume.",
+    "effort": "S"
+   },
+   {
+    "title": "Camera capture for screenshots in a complaint",
+    "body": "Evidence is the difference between a vague complaint and a fixable one; a file input with capture and a size cap.",
+    "effort": "S"
+   },
+   {
+    "title": "A compact density mode",
+    "body": "For people who scan a lot on a phone: less padding, more rows, remembered per device.",
+    "effort": "S"
+   },
+   {
+    "title": "Push notifications on install",
+    "body": "The same web push subscription, requested at install time with the reason stated.",
+    "effort": "M"
+   },
+   {
+    "title": "App shortcuts in the manifest",
+    "body": "Long-press an icon to jump to file-a-complaint or the contribution feed.",
+    "effort": "S"
+   },
+   {
+    "title": "A mobile e2e profile in CI",
+    "body": "The Playwright suites run at desktop width only; a 375 px project runs the same assertions.",
+    "effort": "M"
+   }
+  ],
+  "ui_depth": [
+   {
+    "title": "One design-token source for colour, spacing and type",
+    "body": "The CSS repeats hex values in a dozen files; a token layer plus a test that forbids raw hex outside it makes a theme change one edit.",
+    "effort": "M"
+   },
+   {
+    "title": "A dark and light theme generated from the same tokens",
+    "body": "With a contrast assertion per token pair, so 'dark mode' cannot ship a 2.1:1 label.",
+    "effort": "M"
+   },
+   {
+    "title": "Per-project accent colour chosen by the owner",
+    "body": "A small, bounded palette so a project is recognisable in a list without breaking contrast rules.",
+    "effort": "S"
+   },
+   {
+    "title": "Dense and comfortable table modes",
+    "body": "Two row heights on every list, remembered per member, because a table that suits a laptop is unusable on a projector.",
+    "effort": "S"
+   },
+   {
+    "title": "A command palette with every route and action",
+    "body": "Ctrl-K over routes, projects and actions, built from the router's own table so it cannot list a page that does not exist.",
+    "effort": "M"
+   },
+   {
+    "title": "Inline editing everywhere with the same component",
+    "body": "Titles and bodies are editable in place on some pages and behind a form on others; one component, one keyboard contract.",
+    "effort": "M"
+   },
+   {
+    "title": "Undo for destructive actions instead of a confirm dialog",
+    "body": "A toast with a five-second undo backed by a soft delete, replacing the modal that everyone clicks through.",
+    "effort": "M"
+   },
+   {
+    "title": "A real empty state for every panel",
+    "body": "Each panel explains what would fill it and links to the action that starts it \u2014 the current mix of blank boxes and 'no data' is the most visible thinness.",
+    "effort": "S"
+   },
+   {
+    "title": "Skeletons that match the final layout",
+    "body": "Loaders currently reserve the wrong height, so the page jumps; one skeleton per panel type.",
+    "effort": "S"
+   },
+   {
+    "title": "A comparison view for two competing solutions",
+    "body": "The arena asks for a judgement; a side-by-side view with the complaints each answers makes the judgement informed rather than a coin flip.",
+    "effort": "M"
+   },
+   {
+    "title": "Print stylesheets for decisions and specs",
+    "body": "A decision record should print legibly on one page; today it prints the navigation twice.",
+    "effort": "S"
+   },
+   {
+    "title": "Progress indicators that state the scale",
+    "body": "A bar with no denominator is decoration; every progress bar names its total and its unit.",
+    "effort": "S"
+   },
+   {
+    "title": "An activity timeline per project",
+    "body": "One reverse-chronological stream of filings, validations, ships and decisions, filterable, replacing four separate lists.",
+    "effort": "M"
+   },
+   {
+    "title": "Keyboard-visible focus order that follows visual order",
+    "body": "A test asserting DOM order matches visual order on each page, because tab order that jumps is a maze for keyboard users.",
+    "effort": "M"
+   }
+  ],
+  "ai": [
+   {
+    "title": "Draft the complaint body from a title",
+    "body": "A model expands a one-line title into a structured complaint the filer then edits, cutting the most common quality problem at its source.",
+    "effort": "M"
+   },
+   {
+    "title": "Suggest the complaint a feature answers",
+    "body": "On feature creation, rank the candidate complaints by similarity and show the top three with their pain scores, so an unlinked feature becomes linked.",
+    "effort": "M"
+   },
+   {
+    "title": "Cluster duplicate complaints nightly, propose merges",
+    "body": "A batch job writes merge proposals with the members listed; a human approves. Never auto-merge.",
+    "effort": "L"
+   },
+   {
+    "title": "Summarise a long thread into the decision record",
+    "body": "The ratified decision gets an extractive-then-generated summary that cites the comments it used, and the citations are checked before rendering.",
+    "effort": "L"
+   },
+   {
+    "title": "Translate a complaint into the maintainer's language",
+    "body": "On-demand translation of complaint bodies with the original always visible and the model named.",
+    "effort": "M"
+   },
+   {
+    "title": "Detect a complaint that is actually a feature request",
+    "body": "Classify on filing and offer the correct form with the text preserved, instead of letting it rot in the wrong queue.",
+    "effort": "S"
+   },
+   {
+    "title": "Flag feature proposals that restate shipped work",
+    "body": "Similarity against shipped features at filing time, with links, which is the cheapest way to stop a backlog re-litigating the past.",
+    "effort": "S"
+   },
+   {
+    "title": "Estimate effort from comparable past features",
+    "body": "Retrieve the nearest shipped features and report their actual claim-to-close time as an evidence-based size suggestion.",
+    "effort": "L"
+   },
+   {
+    "title": "An assistant that answers 'what does this project decide?'",
+    "body": "Retrieval over the spec, decisions and documents with citations to sections, refusing when the corpus has no answer.",
+    "effort": "L"
+   },
+   {
+    "title": "Moderation triage that ranks reports by likely severity",
+    "body": "A model-assisted queue ordering with the reason shown, and every decision still made by a human whose name is on it.",
+    "effort": "M"
+   },
+   {
+    "title": "Accessibility description suggestions for uploaded images",
+    "body": "A suggested alt text the uploader must confirm or edit, so the field is never left empty.",
+    "effort": "S"
+   },
+   {
+    "title": "A weekly generated digest reviewed by a human before sending",
+    "body": "Draft, preview, edit, send \u2014 the model writes, a person signs.",
+    "effort": "M"
+   },
+   {
+    "title": "Prompt and model versioning with a fallback",
+    "body": "Every model call records the prompt version and model, and a failure falls back to the non-AI path rather than an error page.",
+    "effort": "M"
+   },
+   {
+    "title": "A hard rule: no AI content is published without a label",
+    "body": "Anything model-drafted carries a visible marker and an audit row, including after a human edits it.",
+    "effort": "S"
+   }
+  ],
+  "federation": [
+   {
+    "title": "ActivityPub outbox for projects",
+    "body": "A project publishes its decisions and ships as ActivityPub activities, so a Mastodon user can follow it without an account here.",
+    "effort": "L"
+   },
+   {
+    "title": "An inbox that accepts follows and replies",
+    "body": "Handle Follow, Undo and Create at least minimally, with the actor mapped to a project or a member.",
+    "effort": "L"
+   },
+   {
+    "title": "WebFinger and nodeinfo",
+    "body": "Two small endpoints that make the instance discoverable and described to the wider fediverse.",
+    "effort": "S"
+   },
+   {
+    "title": "Cross-instance project identity",
+    "body": "Two instances could describe the same project; a canonical URL and a claim flow would let the catalogs merge rather than duplicate.",
+    "effort": "L"
+   },
+   {
+    "title": "Federated complaints with provenance",
+    "body": "A complaint received from another instance keeps its origin and its reporter's instance shown, so local weight is not granted by default.",
+    "effort": "L"
+   },
+   {
+    "title": "A static mirror for the small-web",
+    "body": "Publish each project as plain HTML on a static host, regenerated on ship \u2014 the site survives its own server being down.",
+    "effort": "M"
+   },
+   {
+    "title": "IndieAuth or a rel=me verification for member profiles",
+    "body": "A member can prove a personal site is theirs, which makes external identity a first-class thing rather than a bio link.",
+    "effort": "S"
+   },
+   {
+    "title": "Webmention for discussions elsewhere",
+    "body": "A blog post linking a decision sends a webmention that appears as a linked reference on the decision page.",
+    "effort": "M"
+   },
+   {
+    "title": "An export designed to be re-hosted",
+    "body": "The portability export plus a static generator equals a portable instance; document the minimal viable re-host.",
+    "effort": "L"
+   },
+   {
+    "title": "A public instance directory of Concord instances",
+    "body": "Which instances exist, their governance models and their catalogs, so the network is visible rather than asserted.",
+    "effort": "M"
+   },
+   {
+    "title": "Signed instance identity",
+    "body": "A keypair per instance and signed exports, so a mirrored catalog can be verified rather than trusted.",
+    "effort": "L"
+   },
+   {
+    "title": "Federated search with privacy-preserving queries",
+    "body": "Ask several instances for counts, not results, and fetch only what the reader chooses.",
+    "effort": "L"
+   },
+   {
+    "title": "A bridge that mirrors a project's decisions into a wiki",
+    "body": "Any MediaWiki or Outline instance can consume the same feed; the bridge is configuration, not code.",
+    "effort": "M"
+   }
+  ],
+  "analytics": [
+   {
+    "title": "A funnel from visit to first contribution",
+    "body": "Five steps, counted server-side with no personal identifiers, so 'is onboarding working?' has an answer that is not a guess.",
+    "effort": "M"
+   },
+   {
+    "title": "Decision throughput per week, with the trend",
+    "body": "Calls opened versus decided per week, and the median time in each state \u2014 the single chart that says whether governance is functioning.",
+    "effort": "M"
+   },
+   {
+    "title": "Complaint to ship lead time, by project and by theme",
+    "body": "The number a user feels; publish it with its sample size and its outliers named rather than smoothed away.",
+    "effort": "M"
+   },
+   {
+    "title": "Search success rate as a first-class metric",
+    "body": "Share of searches that lead to a click within the session, and the top zero-result queries, reviewed weekly.",
+    "effort": "S"
+   },
+   {
+    "title": "Retention cohorts without tracking individuals",
+    "body": "Weekly cohorts counted as aggregates on first-visit week, with a k-anonymity floor, and no per-user event log.",
+    "effort": "L"
+   },
+   {
+    "title": "A public metrics page generated from the database",
+    "body": "Instance-level counts (projects, complaints, decisions, ships) rendered from the same queries the stats API serves.",
+    "effort": "S"
+   },
+   {
+    "title": "Experiment flags with a stated expiry",
+    "body": "A flag registry where every flag has an owner and an end date, and the build fails when one expires \u2014 the only way flags do not become permanent branches.",
+    "effort": "M"
+   },
+   {
+    "title": "A/B results recorded as decisions",
+    "body": "When an experiment concludes, its outcome becomes a decision record with the evidence, so the learning outlives the code.",
+    "effort": "M"
+   },
+   {
+    "title": "Which complaints predicted impact",
+    "body": "Compare a complaint's severity and frequency with the field-report outcome of the fix; publish the correlation so severity means something.",
+    "effort": "L"
+   },
+   {
+    "title": "Dead-page detection from the access log",
+    "body": "Routes nobody visits for a quarter appear in a report, because an unused surface is either broken or unnecessary.",
+    "effort": "S"
+   },
+   {
+    "title": "Cost per decision",
+    "body": "Hosting and operational cost divided by decisions made per month: a governance number nobody computes but everyone should see.",
+    "effort": "S"
+   },
+   {
+    "title": "An anomaly alert on sudden drops",
+    "body": "Ships per week or decisions per week falling below a stated band raises one alert to the operator, not a dashboard nobody opens.",
+    "effort": "M"
+   }
+  ],
+  "community": [
+   {
+    "title": "Credit contributors on the ship they made",
+    "body": "The feature page names who validated, who voted and who shipped, with the role each played, not just the author.",
+    "effort": "S"
+   },
+   {
+    "title": "A contributor's public portfolio page",
+    "body": "What they filed, validated, shipped and decided, exportable and linkable \u2014 the thing a contributor actually wants to show.",
+    "effort": "M"
+   },
+   {
+    "title": "Thank-you notes that are not gamified badges",
+    "body": "A single, rate-limited appreciation per person per month, displayed on their page; no streak counters, no leaderboard of hours.",
+    "effort": "S"
+   },
+   {
+    "title": "A monthly 'state of the instance' post, generated",
+    "body": "Decisions, ships, new projects and one thing that went badly, assembled from the data with a short human preamble.",
+    "effort": "S"
+   },
+   {
+    "title": "Office hours as a recurring, timezone-rotated event",
+    "body": "Two slots a month at different hours, with an agenda built from the open complaints in a theme.",
+    "effort": "S"
+   },
+   {
+    "title": "Mentor matching with an explicit opt-in",
+    "body": "Mentors state the areas and the hours they can give; newcomers request a session; both sides get a calendar link and no obligation beyond it.",
+    "effort": "M"
+   },
+   {
+    "title": "First-contribution celebration that names the work",
+    "body": "One notification on the first merged contribution naming the project and the maintainer who responded, because the second contribution depends on it.",
+    "effort": "S"
+   },
+   {
+    "title": "Project maintainer office hours in the contribution feed",
+    "body": "The feed shows 'this project is answering questions Thursday' as a work item, so help-seeking is a task a newcomer can do.",
+    "effort": "S"
+   },
+   {
+    "title": "A 'we need you here' list per project",
+    "body": "Which roles are unfilled, with the requirements stated, so a reader can see exactly how to be useful rather than generally volunteering.",
+    "effort": "M"
+   },
+   {
+    "title": "Recognition for review, not only for code",
+    "body": "Response times and review counts are contributions; show them on the same portfolio page as the ships.",
+    "effort": "S"
+   },
+   {
+    "title": "A leaving page that asks one question",
+    "body": "When someone deletes an account, one optional question with fixed answers, aggregated and published \u2014 the only reliable source of why people leave.",
+    "effort": "S"
+   },
+   {
+    "title": "Local meetups listed per project",
+    "body": "A date, a place and a link; no ticketing, no integration, just a surface that says people meet.",
+    "effort": "S"
+   }
+  ],
+  "meta_quality": [
+   {
+    "title": "Every claim in the README re-checked by CI",
+    "body": "Counts, test numbers and feature lists in the docs are asserted by the doc-numbers gate; extend the same discipline to the README's claims.",
+    "effort": "S"
+   },
+   {
+    "title": "A public status page fed by real probes",
+    "body": "Health, last deploy, last successful healthsync, last backup, with the timestamps exposed on a page rather than in a journal.",
+    "effort": "M"
+   },
+   {
+    "title": "Green-not-broken: a failing test cannot merge",
+    "body": "The repository's own gate discipline applied to the instance: a documented rule that no deploy ships with a red gate, and a script that refuses it.",
+    "effort": "S"
+   },
+   {
+    "title": "Property-based tests for the ranking engine",
+    "body": "The pairwise model has invariants (a self-vote never counts, ratings stay bounded, order is deterministic) that a property test proves over random input.",
+    "effort": "M"
+   },
+   {
+    "title": "A mutation score published per package",
+    "body": "The gates already compute killed/total; publishing the per-package score turns coverage into a number people can compete on sensibly.",
+    "effort": "S"
+   },
+   {
+    "title": "Fuzz the API with a grammar of valid bodies",
+    "body": "Most 500s come from shapes nobody typed; a fuzzer over the OpenAPI schema finds them without a user.",
+    "effort": "M"
+   },
+   {
+    "title": "A regression corpus for reported bugs",
+    "body": "Every fixed bug leaves one minimal test with the issue link in its name, so the same class of bug cannot return silently.",
+    "effort": "S"
+   },
+   {
+    "title": "Restore drills with a measured RTO",
+    "body": "A scheduled job restores yesterday's backup into a scratch database and runs the smoke suite against it.",
+    "effort": "M"
+   },
+   {
+    "title": "An incident log with postmortems",
+    "body": "One page per incident: impact, timeline, cause, what changed. The absence of this page is why incidents repeat.",
+    "effort": "S"
+   },
+   {
+    "title": "Dependency upgrade policy with an automated PR",
+    "body": "Weekly automated upgrade PRs that the gates judge, with a stated policy for majors.",
+    "effort": "S"
+   },
+   {
+    "title": "A benchmark of the mutation gate's own sensitivity",
+    "body": "Inject a known-untested function and assert the gate reports a survivor; a gate that cannot fail is a gate nobody should trust.",
+    "effort": "M"
+   },
+   {
+    "title": "Documentation for every public API route, generated",
+    "body": "The router's table rendered as an OpenAPI document, with a test that a route without a description fails the build.",
+    "effort": "M"
+   },
+   {
+    "title": "A quarterly architecture review recorded as a decision",
+    "body": "One decision record per quarter reviewing the module graph, the dependency rules and the known debt, so the architecture has a history rather than a legend.",
+    "effort": "S"
+   }
+  ]
+ },
+ "shipped": [
+  {
+   "area": "Platform",
+   "title": "Complaint-first development",
+   "body": "Every feature must answer a validated complaint; an unlinked feature ranks on nothing. Complaints carry severity, frequency and a strategic multiplier."
+  },
+  {
+   "area": "Platform",
+   "title": "Pairwise ranking with Glicko-2",
+   "body": "Features and solutions are ranked by judged pairwise comparisons, with rating deviation and volatility, not by star counts or upvote totals."
+  },
+  {
+   "area": "Platform",
+   "title": "Consensus with quorum, blocks and an override window",
+   "body": "Calls close on quorum, a standing block can hold them, and a second window lets a block be overridden with a written remedy."
+  },
+  {
+   "area": "Platform",
+   "title": "Decision records",
+   "body": "Every closed call writes a record: the alternatives, the tally, the agreed fallback and the date, linked from the feature."
+  },
+  {
+   "area": "Platform",
+   "title": "Trust and reputation events",
+   "body": "Contribution events carry points, roles are granted with a reason, and guest accounts can be folded into a real account without losing rows."
+  },
+  {
+   "area": "Platform",
+   "title": "Kanban board with phase gates",
+   "body": "Draft to ready to in-progress to shipped, with the gates that stop a feature skipping a phase."
+  },
+  {
+   "area": "Platform",
+   "title": "Audit ledger",
+   "body": "Every privileged action writes a row that cannot be edited; the ledger is the trust anchor for everything else."
+  },
+  {
+   "area": "Platform",
+   "title": "Documents, lists and requests",
+   "body": "Long-form documents, curated lists and a public request board, each with its own routes and readers."
+  },
+  {
+   "area": "Platform",
+   "title": "Taxonomy, themes and criteria",
+   "body": "Categories, strategic themes with consensus-ratified weights, and criteria profiles evaluated per project."
+  },
+  {
+   "area": "Platform",
+   "title": "Search with facets and a query language",
+   "body": "tag:, language:, NOT, phrase search, facets per dimension, and a relevance sort that is explainable."
+  },
+  {
+   "area": "Platform",
+   "title": "Embedding-based duplicate detection",
+   "body": "Near-identical complaints and features are detected at filing time and shown as an advisory warning rather than a refusal."
+  },
+  {
+   "area": "Platform",
+   "title": "Arena and alternatives",
+   "body": "Competing solutions to one complaint are judged in pairs, with an arena weight and a verification path."
+  },
+  {
+   "area": "Platform",
+   "title": "Field reports and capabilities",
+   "body": "People who used a shipped solution report whether it worked, weighted by reputation; capabilities are confirmed by more than one reporter."
+  },
+  {
+   "area": "Platform",
+   "title": "Finder",
+   "body": "A session-based question flow that narrows the catalog by information gain, with gaps shown when no question is worth asking."
+  },
+  {
+   "area": "Platform",
+   "title": "Merge gate and redirects",
+   "body": "Duplicate projects can be merged with their rows moved and their slug redirected, rather than deleted."
+  },
+  {
+   "area": "Platform",
+   "title": "Guest accounts and consent",
+   "body": "Anonymous participation with a consent state that is decided server-side on first paint."
+  },
+  {
+   "area": "R1",
+   "title": "Arenas",
+   "body": "Judged pairs of alternative solutions, with an arena weight and a verification path."
+  },
+  {
+   "area": "R2",
+   "title": "Solutions",
+   "body": "A solution answers one or more complaints and can be judged against a rival."
+  },
+  {
+   "area": "R3",
+   "title": "Solution ranking and coverage",
+   "body": "Ranked solutions with a coverage claim that says which complaints a solution answers."
+  },
+  {
+   "area": "R4",
+   "title": "Ranking feeding consensus",
+   "body": "The ranking gates which alternatives reach a call, so a call is a decision among ranked options."
+  },
+  {
+   "area": "R5",
+   "title": "Field reports and capabilities",
+   "body": "Outcome reports from people who used a solution, plus confirmed capabilities per project."
+  },
+  {
+   "area": "R6",
+   "title": "Scout",
+   "body": "Ask whether a project should exist: a structured interrogation with a verdict and its reasoning."
+  },
+  {
+   "area": "R8",
+   "title": "Administration surface",
+   "body": "Visibility, tags, languages and invites on the settings page, with the read halves that were missing."
+  },
+  {
+   "area": "R9",
+   "title": "Repository identity and health ingest",
+   "body": "Canonical repository URLs per project, a forgeseed command that refuses an incomplete mapping, and an hourly ingest that measures recency, breadth, cadence and review latency -- with unknown distinct from zero."
+  },
+  {
+   "area": "R10",
+   "title": "Work-item contract",
+   "body": "Difficulty, an optional time budget, needs-mentor and a claim with a partial unique index, exposed as the work-items API and a project panel."
+  },
+  {
+   "area": "R11",
+   "title": "Contribution feed",
+   "body": "Open work items filtered by language, time budget, difficulty and mentor, ranked through the Finder engine and a project-health tiebreak, on a server-rendered page."
+  }
+ ],
+ "planned": [
+  {
+   "id": "R12",
+   "title": "Newcomer responsiveness",
+   "body": "Median hours to a first response for a first-time pull-request author, published only with its sample size and never folded into the health score."
+  },
+  {
+   "id": "R13",
+   "title": "Census with a provenance split",
+   "body": "Composition of the instance with seeded rows separated from organic ones, because 925 of 1,874 features have no creation event and a growth chart of those is a chart of one import."
+  },
+  {
+   "id": "R14",
+   "title": "Decision latency and exposure",
+   "body": "Three medians -- complaint to validation, ready to shipped, call opened to closed -- each with its n and its unfinished count, plus a stats page, SVG badges and a feed item."
+  },
+  {
+   "id": "R15",
+   "title": "Snapshot history and derived surfaces",
+   "body": "A daily snapshot table, a 90-day history route, and only then rising trends and a responsiveness leaderboard."
+  },
+  {
+   "id": "R7",
+   "title": "Documentation sync",
+   "body": "Keep the specs, the plan and the remaining-work log in step with the code as a gate rather than a habit. In progress."
+  },
+  {
+   "id": "Q5",
+   "title": "Repository mapping",
+   "body": "Sixty-nine of seventy-four catalog projects have no stated repository, so they cannot be measured; the mapping is an owner decision, not an implementation step."
+  }
+ ]
+}
