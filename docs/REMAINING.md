@@ -3843,7 +3843,8 @@ filter test. The plan's prescribed predicate rewrite SURVIVES all three — whic
 ### 32.4 The data half is still Q5, and that is recorded
 
 `seed/forge_repos.json` carries 74 rows: **5 stated** (the ones proven from local checkouts in
-`docs/QUESTIONS.md` Q5) and **69 skips with a reason**. `cmd/forgeseed` refuses to run against a
+`docs/QUESTIONS.md` Q5, minus gravity, whose remote now answers 404) and **69 skips with a
+reason**. `cmd/forgeseed` refuses to run against a
 catalog it does not cover, which is why the file must be applied on the instance that has the
 74-project catalog rather than on a development copy with 56.
 
@@ -3916,5 +3917,49 @@ added and the mutant now dies. That is the reason the arm exists.
 
 ### 33.5 State
 
-**Measured state (the twentieth pass, §33):** schema 31 · 31 migrations · 84 live tables · 1138 Go
+**Measured state (the twentieth pass, §33) (historical):** schema 31 · 31 migrations · 84 live tables · 1138 Go
 tests across 9 test-bearing packages · `make verify` exit 0 · `make gates` exit 0.
+
+### 32.6 The live instance corrected the rule the fixtures could not
+
+Three findings from the first real `forgeseed` + `healthsync` run against the 74-project catalog,
+each of which the unit tests passed over:
+
+1. **Five of six repositories have no pull requests at all.** They are developed by direct commit.
+   The ingest's rule ("a project whose review latency cannot be measured is skipped") therefore
+   refused to write anything, and `sort=health` stayed empty for a reason no fixture reproduced.
+   The rule was wrong in a specific way: `MedianReviewHours == 0` means "reviewed within 24
+   hours", and writing it from absence hands the best responsiveness in the catalog to projects
+   that have no review process. Responsiveness is now a term that can be UNKNOWN
+   (`discovery.UnknownReviewHours`), excluded and the remaining weights renormalised, with
+   `ResponsivenessKnown` reported so a reader can tell 0.75-because-mediocre from
+   1.0-because-perfect-at-what-is-measurable. `store.UpdateProjectMetrics` writes NULL, and
+   `store/scout.go` had the same defect one layer up (it read NULL as 0.0 before scoring).
+2. **gravity's Q5 remote answers 404** — for the repository; Q5's entry is marked STALE. A
+   mapping that keeps a dead URL makes the hourly timer fail forever, which reads exactly like
+   the forge being down. The row is a skip with that reason.
+3. **A skip did not clear the column.** The row kept its `repo_url`, so the ingest kept fetching a
+   repository the mapping no longer states. `cmd/forgeseed` now clears it through
+   `store.ClearProjectRepo` (`repo_host` NULL — the CHECK allows NULL or a forge, never `''`).
+
+Contributors read 0 for commons, darkhold and tessera: GitHub's `/contributors` returns an empty
+page for repositories whose contributors are mostly the owner, and the Gitea path counts distinct
+commit authors from the payload's `author` object, which that forge leaves unpopulated on some
+versions. Recorded rather than fixed: it understates breadth, which is the safe direction, and the
+component carries 0.20 of the weight.
+
+### 32.7 The live proof
+
+```
+$ curl -s '127.0.0.1:8006/api/v1/search?sort=health&limit=6'
+[('stash', 0.713), ('stash-box', 0.688), ('tessera', 0.535), ('commons', 0.454),
+ ('darkhold', 0.331), ('gravity', None), ...]        <-- measured first, unmeasured after
+$ curl -s '127.0.0.1:8006/api/v1/search?min_health=0.5'   -> total 3
+[('stash-box', 0.688), ('stash', 0.713), ('tessera', 0.535)]
+$ curl -s '127.0.0.1:8006/api/v1/contribute/next?minutes=15'  -> pool 256, count 50
+$ curl -s -o /dev/null -w '%{http_code}' 127.0.0.1:8006/contribute  -> 200
+```
+
+`sorted by health` puts the five measured projects ahead of sixty-nine unmeasured ones, and
+`min_health=0.5` returns exactly the three above the line. That is the two surfaces that were
+recorded as broken in `PLAN-r4` -- broken because the column was empty, now answered from data.
