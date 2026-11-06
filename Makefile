@@ -205,17 +205,23 @@ run:
 admin-build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/forgeseed ./cmd/forgeseed
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/healthsync ./cmd/healthsync
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/statsnapshot ./cmd/statsnapshot
 
 deploy-admin: admin-build
 	@echo "Installing admin commands into $(DEPLOY_DIR)..."
 	cp bin/forgeseed $(DEPLOY_DIR)/forgeseed
 	cp bin/healthsync $(DEPLOY_DIR)/healthsync
+	cp bin/statsnapshot $(DEPLOY_DIR)/statsnapshot
 	mkdir -p $(HOME)/.config/systemd/user
 	cp deploy/concord-healthsync.service deploy/concord-healthsync.timer $(HOME)/.config/systemd/user/
+	cp deploy/concord-statsnapshot.service deploy/concord-statsnapshot.timer $(HOME)/.config/systemd/user/
 	systemctl --user daemon-reload
 	systemctl --user disable --now concord-healthsync.timer 2>/dev/null || true
+	systemctl --user disable --now concord-statsnapshot.timer 2>/dev/null || true
 	@echo "Installed. Enable the hourly pass with:"
 	@echo "  systemctl --user enable --now concord-healthsync.timer"
+	@echo "Enable the daily snapshot (STAT-3) with:"
+	@echo "  systemctl --user enable --now concord-statsnapshot.timer"
 
 tidy:
 	go mod tidy
