@@ -282,6 +282,69 @@ func TestBadgeForAMissingProjectIs404(t *testing.T) {
 	}
 }
 
+// The history route returns a BARE ARRAY of recorded days, newest first. An envelope
+// would be a second thing for a charting client to unwrap, and this is the only series
+// route in the spec -- every other statistics route is a frame.
+func TestStatsHistoryServesRecordedDays(t *testing.T) {
+	ts, st := newTestServerWithStore(t)
+	ctx := context.Background()
+	for _, day := range []string{"2026-11-05", "2026-11-06"} {
+		s, err := st.ComputeSnapshot(ctx, day)
+		if err != nil {
+			t.Fatalf("ComputeSnapshot(%s): %v", day, err)
+		}
+		if err := st.WriteSnapshot(ctx, s); err != nil {
+			t.Fatalf("WriteSnapshot(%s): %v", day, err)
+		}
+	}
+
+	resp, err := http.Get(ts.URL + "/api/v1/stats/history?days=90")
+	if err != nil {
+		t.Fatalf("GET history: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	// A bare array, not {"days": [...]}.
+	var rows []map[string]any
+	if err := json.Unmarshal(body, &rows); err != nil {
+		t.Fatalf("decode as a bare array: %v\nbody: %s", err, body)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows = %d, want 2", len(rows))
+	}
+	if rows[0]["day"] != "2026-11-06" {
+		t.Errorf("first row = %v, want the newest day first", rows[0]["day"])
+	}
+	// An unmeasured day carries null, not 0.0 -- a zero would claim the instance
+	// measured nothing and found it instantaneous.
+	if v, ok := rows[0]["triage_median_h"]; !ok || v != nil {
+		t.Errorf("triage_median_h = %v (present=%t), want null", v, ok)
+	}
+}
+
+// An empty instance returns an empty array, not a fabricated row for today.
+func TestStatsHistoryEmptyIsAnEmptyArray(t *testing.T) {
+	ts := newTestServerNoActor(t)
+	resp, err := http.Get(ts.URL + "/api/v1/stats/history")
+	if err != nil {
+		t.Fatalf("GET history: %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if strings.TrimSpace(string(body)) != "[]" {
+		t.Errorf("body = %s, want [] -- no recorded day must not fabricate a row", body)
+	}
+}
+
 // The feed item is built from the same payload as the API, so a subscriber and a
 // page reader cannot see different numbers. The comparison is on the summary
 // text against the JSON, not on two bodies being equal.

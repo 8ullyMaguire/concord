@@ -202,6 +202,23 @@ recomputes.
 
 ## STAT-3 — Snapshot history, rising, and the leaderboard
 
+**SHIPPED 2026-11-06 (STAT-3.1–.3 only).** Migration `0032_instance_stats.sql`,
+`internal/store/statsnapshot.go` (`ComputeSnapshot`, `WriteSnapshot`, `SnapshotHistory`),
+`cmd/statsnapshot`, `GET /api/v1/stats/history`, and `deploy/concord-statsnapshot.{service,timer}`.
+`make verify` green at 1174 tests.
+
+Verified live: `-dry-run` prints the frame and writes nothing; two consecutive runs leave
+**exactly one row** for the day; the history route returns a bare array with `null` medians
+for an unmeasured day.
+
+### Measured corrections to this plan, 2026-11-06
+
+| # | the plan said | the code says |
+|---|---|---|
+| 11 | `no_origin INTEGER NOT NULL DEFAULT 0, -- rows that predate R10's backfill` | ambiguous about which table. `0030` backfilled **both** `features` and `complaints`, and they are one population, so the column counts both — documented in the migration. Two columns would invite a reader to compare them, and the split is a fact about tables, not rows. |
+| 12 | the medians are a `REAL` column | correct, but the Go side must not use `sql.NullFloat64` for the JSON: it has **no `MarshalJSON`**, so the API published `{"Float64":0,"Valid":false}` and a reader comparing against `null` got an object. `Snapshot` carries `*float64` for the JSON boundary and `sql.NullFloat64` for the database scan. Found by `TestStatsHistoryServesRecordedDays`. |
+| 13 | STAT-3.4 (rising) and STAT-3.5 (leaderboard) are in this milestone | they are **not implemented**. Both are series reads over data that does not exist until the timer has run, and both need their own ranking rule. Left planned rather than half-built. |
+
 ### STAT-3.1 Migration `0032_instance_stats.sql`
 
 ```sql

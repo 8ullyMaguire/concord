@@ -93,8 +93,8 @@ lands, which is why this file does not carry one)
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 1167 tests, schema 31, 84 tables,
-31 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
+Measured, not remembered: `make verify` green, 1174 tests, schema 32, 85 tables,
+32 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 
 The **public instance** runs this build too, as of 2026-10-16: `concord.polarisocial.xyz`

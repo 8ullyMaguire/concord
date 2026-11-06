@@ -233,6 +233,8 @@ var readerInventory = []readerRow{
 		Note: "the /stats page renders the census from it; one computation, two renderings (spec §3.4)"},
 	{Match: "/api/v1/stats", Reader: "stats.js", Anchor: "/api/v1/stats", Routes: 1,
 		Note: "the /stats page renders the three latency cards from it; the same payload the feed item is built from (spec §3.2, §3.4)"},
+	{Match: "/api/v1/stats/history", Routes: 1,
+		Note: "deliberate: no reader yet. STAT-3.4's rising chart is the first page that draws a series; a page that fetched a series it did not draw would be a request nobody asked for"},
 	{Match: "/api/v1/taxonomy", Reader: "taxonomy.js", Anchor: "/taxonomy", Routes: 4},
 	// --- guests, and the notice that gates them --------------------------------
 	//

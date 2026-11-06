@@ -5,11 +5,19 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state (the nineteenth pass, §32):** schema 31 · 31 migrations · 84 live tables · 1121 Go
+**Measured state (the nineteenth pass, §32):** schema 32 · 32 migrations · 84 live tables · 1121 Go
 tests across 9 test-bearing packages · 303 e2e tests in 23 suite files · 54/54 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
 8 project.js/arena, 4 project.js/work items) · Go mutants: 23 arms, 154 killed, 0 survived ·
 `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
+
+<!-- TABLE-COUNT-SOURCE: the "84 live tables" above is gated against the LIVE database at
+     ~/.local/share/concord/concord.db, not against the tree. The tree has 85 tables after
+     0032_instance_stats.sql; the live database is still one migration behind, because the
+     migration is not deployed. That line is therefore TRUE NOW and goes stale the moment
+     the migration is applied -- bump it to 85 at deploy time. The schema and migration
+     counts in the same sentence come from internal/db/migrations/, so one sentence mixes a
+     tree fact with a live fact, which is why the other two move first. -->
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
 gated and correct; the e2e half was reconciled by nothing and was wrong twice over — the
@@ -3854,7 +3862,7 @@ still most-of-the-catalog-unknown and the discovery page must say so out loud. A
 
 ### 32.5 Where the numbers stand
 
-**Measured state (the nineteenth pass, §32):** schema 31 · 31 migrations · 84 live tables · 1121 Go
+**Measured state (the nineteenth pass, §32):** schema 32 · 32 migrations · 84 live tables · 1121 Go
 tests across 9 test-bearing packages · 303 e2e tests in 23 suite files · `make verify` exit 0 ·
 `make gates` exit 0 · `make e2e` exit 0.
 
@@ -3917,7 +3925,7 @@ added and the mutant now dies. That is the reason the arm exists.
 
 ### 33.5 State
 
-**Measured state (the twentieth pass, §33) (historical):** schema 31 · 31 migrations · 84 live tables · 1138 Go
+**Measured state (the twentieth pass, §33) (historical):** schema 32 · 32 migrations · 84 live tables · 1138 Go
 tests across 9 test-bearing packages · `make verify` exit 0 · `make gates` exit 0.
 
 ### 32.6 The live instance corrected the rule the fixtures could not

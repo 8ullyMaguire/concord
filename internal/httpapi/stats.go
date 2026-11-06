@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -87,6 +88,31 @@ func (s *Server) statsPayload(ctx context.Context) (statsPayload, error) {
 	}
 	p.GeneratedAt = time.Now().Unix()
 	return p, nil
+}
+
+// handleStatsHistory serves GET /api/v1/stats/history?days=90.
+//
+// A BARE ARRAY, not an envelope. This is the only series route in the spec -- every
+// other statistics route is a frame -- and a charting client wants the rows. The
+// store caps `days` at 365: an unbounded series route is how a database ends up
+// serialized into somebody's RSS reader.
+//
+// A malformed `days` falls back to the default rather than answering 400, matching
+// how the audit and finder routes read their paging parameters. The cap still
+// applies, so a hostile value cannot widen the response.
+func (s *Server) handleStatsHistory(w http.ResponseWriter, r *http.Request) {
+	days := 0
+	if v := r.URL.Query().Get("days"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil {
+			days = n
+		}
+	}
+	rows, err := s.Store.SnapshotHistory(r.Context(), days)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rows)
 }
 
 // handleStatsPage renders the statistics page.
