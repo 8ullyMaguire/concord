@@ -11,13 +11,17 @@ the schema/runtime numbers goes stale, and the e2e numbers are gated by
 8 project.js/arena, 4 project.js/work items) · Go mutants: 27 arms, 172 killed, 0 survived ·
 `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
 
-<!-- TABLE-COUNT-SOURCE: the "86 live tables" above is gated against the LIVE database at
-     ~/.local/share/concord/concord.db, not against the tree. The tree and the live database
-     now agree at 86, because 0033 was deployed on 2026-11-06 with `make deploy`; the count
-     was bumped from 85 at deploy time, as the previous revision of this comment instructed.
-     The schema and migration counts in the same sentence come from
-     internal/db/migrations/, so one sentence mixes a tree fact with a live fact, which is why
-     the other two move first.
+<!-- TABLE-COUNT-SOURCE: the "86 live tables" above is now a TREE fact, like the schema and
+     migration counts beside it. `scripts/check_doc_numbers.py` migrates a fresh temporary
+     database through the real `db.Migrate` (`go run ./cmd/concord -migrate-only`) and counts
+     sqlite_master there; it no longer reads ~/.local/share/concord/concord.db.
+
+     That was D8, and it was a defect with a measurable cost: the gate read the LIVE database,
+     so it passed at tree 85 / live 84 and went red the moment `make deploy` applied 0032 --
+     the docs were gated on whether you had deployed, not on what the tree says. On a box that
+     had never run the app its "live" database was an empty temp file, so every table number
+     was compared against zero. The three numbers in this sentence now move together, and the
+     deploy no longer has to be ordered before the doc edit.
 
      KNOWN BLIND SPOT in scripts/check_doc_numbers.py: its test-count pattern requires
      "<N> tests" on ONE line, so the Go-count here was never checked while a markdown reflow
@@ -4051,11 +4055,14 @@ across each project's OWN first-and-last span.
 2. **`sql.NullFloat64` has no `MarshalJSON`** — the API published
    `{"Float64":0,"Valid":false}` where the spec wants `null`, so the page rendered a zero
    for an unmeasured value until the field was a `*float64`.
-3. **The doc-number gate reads the LIVE database** (`D8`), so it passed at tree 85 / live
-   84 and went red the moment the deploy applied 0032. Its own blind spot is worse: the
-   test-count pattern requires "<N> tests" on ONE line, so a reflowed count sat 84 releases
-   stale. Fixed in this pass by keeping "**1216 Go tests**" on one line, where the pattern
-   sees it.
+3. **The doc-number gate read the LIVE database** (`D8`), so it passed at tree 85 / live
+   84 and went red the moment the deploy applied 0032: the documents were gated on whether
+   you had deployed. **Fixed**: the gate now migrates a fresh temp database through the real
+   `db.Migrate` and counts there, so the table count is a tree fact and a broken migration
+   fails the gate. Guarded by `test_the_table_count_comes_from_the_tree_not_from_a_deployed_
+   database`, which hands the gate a two-table database and requires it not to move. Its
+   second blind spot — the test-count pattern needs "<N> tests" on ONE line, so a reflowed
+   count sat 84 releases stale — is fixed by keeping "**1216 Go tests**" on one line.
 4. **`internal/mutate.py` hardcoded `~/code/projects/concord` as the tree to measure.**
    That path exists on this workstation and is a DIFFERENT checkout (`57f4450`, not this
    lineage). Every arm therefore mutated and tested code that was not under test, while the
