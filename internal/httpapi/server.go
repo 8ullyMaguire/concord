@@ -429,6 +429,9 @@ func (s *Server) Router() http.Handler {
 	// The recorded series (STAT-3). The only route in the spec that is a series
 	// rather than a frame: everything else is a still image of now.
 	r.Get("/api/v1/stats/history", s.handleStatsHistory)
+	// STAT-3.5: the projects that publish a newcomer responsiveness median,
+	// fastest first, absent below the sample floor.
+	r.Get("/api/v1/stats/responsiveness", s.handleStatsResponsiveness)
 	// Text-only SVG badges (spec §3.4). `instance` is a reserved slug mounted
 	// here, before the project lookup, so a project actually named "instance"
 	// cannot shadow its own badge.

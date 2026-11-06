@@ -77,6 +77,33 @@
     });
   }
 
+  // The responsiveness leaderboard (STAT-3.5). Rows are rendered in the order the
+  // API returns them and are NOT re-sorted here: the ranking rule lives in the
+  // store's ORDER BY, and a page that sorted again would be a second answer.
+  // A project under the sample floor is absent from the payload, so it is absent
+  // from this table too -- the list is never padded with unmeasured rows.
+  function renderResponsiveness(container, rows) {
+    if (window.ConcordSkeleton) window.ConcordSkeleton.done(container);
+    if (!rows || !rows.length) {
+      container.innerHTML = emptyState('No responsiveness published yet',
+        'A project appears here once at least five first-time pull requests were answered. ' +
+        'Below that it is absent rather than ranked last: a median nobody can act on is not a measurement.');
+      return;
+    }
+    var body = rows.map(function (row, i) {
+      return '<tr><td>' + (i + 1) + '</td>' +
+        '<td><a href="/projects/' + encodeURIComponent(row.slug) + '">' + esc(row.name) + '</a></td>' +
+        '<td>' + row.newcomer_response_hours.toFixed(1) + ' h</td>' +
+        '<td>' + row.n + '</td></tr>';
+    }).join('');
+    container.innerHTML = card('Newcomer responsiveness',
+      '<p class="muted small">Median hours from a first-time contributor&#39;s pull request ' +
+      'to the first answer by somebody else &mdash; fastest first.</p>' +
+      '<div class="table-scroll"><table class="ranking-table"><thead><tr>' +
+      '<th>#</th><th>project</th><th>median</th><th>n</th></tr></thead><tbody>' +
+      body + '</tbody></table></div>');
+  }
+
   function render(container, data) {
     if (window.ConcordSkeleton) window.ConcordSkeleton.done(container);
 
@@ -120,6 +147,21 @@
   document.addEventListener('DOMContentLoaded', function () {
     var summary = document.getElementById('stats-summary');
     var latency = document.getElementById('stats-latency');
+    var responsiveness = document.getElementById('stats-responsiveness');
+
+    // Its own fetch and its own failure state: the leaderboard is the only
+    // section that needs the forge webhook to have ever fired, so a blank one is
+    // the normal state of a young instance and must not look like an outage.
+    if (responsiveness) {
+      responsiveness.setAttribute('aria-busy', 'true');
+      getJSON('/api/v1/stats/responsiveness')
+        .then(function (rows) { renderResponsiveness(responsiveness, rows); })
+        .catch(function () {
+          if (window.ConcordSkeleton) window.ConcordSkeleton.done(responsiveness);
+          responsiveness.innerHTML = emptyState('Responsiveness unavailable',
+            'The leaderboard did not load. Try again.');
+        });
+    }
 
     // The two fetches are independent: a failure in one must not blank the
     // other, and the latency cards are not a footnote to the census.

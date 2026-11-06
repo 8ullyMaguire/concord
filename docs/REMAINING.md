@@ -5,19 +5,25 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state (the nineteenth pass, §32):** schema 32 · 32 migrations · 84 live tables · 1121 Go
+**Measured state (the nineteenth pass, §32):** schema 32 · 32 migrations · 85 live tables · 1205 Go
 tests across 9 test-bearing packages · 303 e2e tests in 23 suite files · 54/54 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
 8 project.js/arena, 4 project.js/work items) · Go mutants: 23 arms, 154 killed, 0 survived ·
 `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
 
-<!-- TABLE-COUNT-SOURCE: the "84 live tables" above is gated against the LIVE database at
-     ~/.local/share/concord/concord.db, not against the tree. The tree has 85 tables after
-     0032_instance_stats.sql; the live database is still one migration behind, because the
-     migration is not deployed. That line is therefore TRUE NOW and goes stale the moment
-     the migration is applied -- bump it to 85 at deploy time. The schema and migration
-     counts in the same sentence come from internal/db/migrations/, so one sentence mixes a
-     tree fact with a live fact, which is why the other two move first. -->
+<!-- TABLE-COUNT-SOURCE: the "85 live tables" above is gated against the LIVE database at
+     ~/.local/share/concord/concord.db, not against the tree. The tree and the live database
+     now agree at 85, because 0031/0032 were deployed on 2026-11-06 with `make deploy`; the
+     count was bumped from 84 in the same pass, as the previous revision of this comment
+     instructed. The schema and migration counts in the same sentence come from
+     internal/db/migrations/, so one sentence mixes a tree fact with a live fact, which is why
+     the other two move first.
+
+     KNOWN BLIND SPOT in scripts/check_doc_numbers.py: its test-count pattern requires
+     "<N> tests" on ONE line, so the Go-count in this sentence -- "1121 Go" at the end of a
+     line, "tests" at the start of the next -- was never checked and sat 84 releases stale.
+     It is corrected to the measured 1205 here by hand. The gate cannot see a number that a
+     markdown reflow split across a line break, and this sentence is one. -->
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
 gated and correct; the e2e half was reconciled by nothing and was wrong twice over — the
@@ -3862,7 +3868,7 @@ still most-of-the-catalog-unknown and the discovery page must say so out loud. A
 
 ### 32.5 Where the numbers stand
 
-**Measured state (the nineteenth pass, §32):** schema 32 · 32 migrations · 84 live tables · 1121 Go
+**Measured state (the nineteenth pass, §32):** schema 32 · 32 migrations · 85 live tables · 1205 Go
 tests across 9 test-bearing packages · 303 e2e tests in 23 suite files · `make verify` exit 0 ·
 `make gates` exit 0 · `make e2e` exit 0.
 

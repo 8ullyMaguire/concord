@@ -115,6 +115,27 @@ func (s *Server) handleStatsHistory(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, rows)
 }
 
+// handleStatsResponsiveness serves the newcomer-responsiveness leaderboard
+// (STAT-3.5, spec §4.5.7.2).
+//
+// A BARE ARRAY, like the history route and unlike every frame: this is a
+// ranking, and a ranking is rows. Each row carries its own `n`, because a median
+// is published WITH its sample or not at all.
+//
+// The interesting rule is enforced in the store, not here: a project under the
+// sample floor is ABSENT from the list rather than last in it. There is no
+// `"unmeasured": true` row to render as a dash, deliberately -- a dash in a
+// leaderboard still assigns a position, and the spec's rule is that the position
+// is not the instance's to publish.
+func (s *Server) handleStatsResponsiveness(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.Store.ResponsivenessLeaderboard(r.Context())
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rows)
+}
+
 // handleStatsPage renders the statistics page.
 //
 // The page is a shell: every number on it is fetched from /api/v1/stats at

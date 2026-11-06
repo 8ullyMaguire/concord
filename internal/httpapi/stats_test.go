@@ -396,3 +396,85 @@ func TestStatsFeedItemMatchesTheAPI(t *testing.T) {
 		t.Errorf("feed summary does not carry the API's project count:\n%s", feed)
 	}
 }
+
+// STAT-3.5, end to end: the leaderboard is a bare array, ordered fastest first,
+// and a project under the sample floor is not in it at all.
+//
+// The last clause is the one worth a test at this layer rather than only in the
+// store: a handler that helpfully padded the list with zeros would answer 200
+// with a ranking that puts "never measured" first, and that is the defect a
+// reader would act on.
+func TestStatsResponsivenessOmitsUnmeasuredProjects(t *testing.T) {
+	ts, st := newTestServerWithStore(t)
+	ctx := context.Background()
+
+	u, err := st.GetUser(ctx, "testuser")
+	if err != nil {
+		t.Fatalf("GetUser: %v", err)
+	}
+	mk := func(slug string, hours *float64, n int) {
+		t.Helper()
+		if _, err := st.CreateProject(ctx, u.ID, slug, slug, "d", "collective", "MIT"); err != nil {
+			t.Fatalf("CreateProject(%s): %v", slug, err)
+		}
+		if err := st.UpdateProjectNewcomer(ctx, slug, hours, n); err != nil {
+			t.Fatalf("UpdateProjectNewcomer(%s): %v", slug, err)
+		}
+	}
+	slow, fast := 40.0, 2.0
+	mk("slow-project", &slow, 6)
+	mk("fast-project", &fast, 7)
+	mk("thin-project", nil, 3)
+
+	resp, err := http.Get(ts.URL + "/api/v1/stats/responsiveness")
+	if err != nil {
+		t.Fatalf("GET responsiveness: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	var rows []struct {
+		Slug  string  `json:"slug"`
+		Name  string  `json:"name"`
+		Hours float64 `json:"newcomer_response_hours"`
+		N     int     `json:"n"`
+	}
+	if err := json.Unmarshal(body, &rows); err != nil {
+		t.Fatalf("decode as a bare array: %v\nbody: %s", err, body)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("rows = %+v, want exactly the two measured projects", rows)
+	}
+	if rows[0].Slug != "fast-project" || rows[1].Slug != "slow-project" {
+		t.Fatalf("order = %s, %s -- want fastest first", rows[0].Slug, rows[1].Slug)
+	}
+	if rows[0].Hours != 2 || rows[0].N != 7 {
+		t.Fatalf("fast row = %+v, want 2h over n=7 (a median is published with its sample)", rows[0])
+	}
+	for _, r := range rows {
+		if r.Slug == "thin-project" {
+			t.Fatalf("an unmeasured project is in the ranking: %+v", r)
+		}
+	}
+}
+
+func TestStatsResponsivenessEmptyIsAnEmptyArray(t *testing.T) {
+	ts := newTestServerNoActor(t)
+	resp, err := http.Get(ts.URL + "/api/v1/stats/responsiveness")
+	if err != nil {
+		t.Fatalf("GET responsiveness: %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if strings.TrimSpace(string(body)) != "[]" {
+		t.Errorf("body = %s, want [] -- an empty leaderboard must not be null", body)
+	}
+}

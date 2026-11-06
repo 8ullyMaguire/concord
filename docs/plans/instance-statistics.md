@@ -217,7 +217,7 @@ for an unmeasured day.
 |---|---|---|
 | 11 | `no_origin INTEGER NOT NULL DEFAULT 0, -- rows that predate R10's backfill` | ambiguous about which table. `0030` backfilled **both** `features` and `complaints`, and they are one population, so the column counts both — documented in the migration. Two columns would invite a reader to compare them, and the split is a fact about tables, not rows. |
 | 12 | the medians are a `REAL` column | correct, but the Go side must not use `sql.NullFloat64` for the JSON: it has **no `MarshalJSON`**, so the API published `{"Float64":0,"Valid":false}` and a reader comparing against `null` got an object. `Snapshot` carries `*float64` for the JSON boundary and `sql.NullFloat64` for the database scan. Found by `TestStatsHistoryServesRecordedDays`. |
-| 13 | STAT-3.4 (rising) and STAT-3.5 (leaderboard) are in this milestone | they are **not implemented**. Both are series reads over data that does not exist until the timer has run, and both need their own ranking rule. Left planned rather than half-built. |
+| 13 | STAT-3.4 (rising) and STAT-3.5 (leaderboard) are in this milestone | **STAT-3.5 shipped 2026-11-06**, once R12 gave it a metric to rank. **STAT-3.4 is still not implemented**, and this plan statement is the reason it is not: "rank projects by the slope of … between two snapshots" cannot be derived from `instance_stats`, which records **one instance-wide row per day** and has no project column. Implementing it honestly needs a `project_stats(day, project_id, …)` table written by the same command. I bound the privacy question the plan never asked: a leaderboard names projects, so it also filters `visibility='public'` — every other statistics route publishes aggregates a private project contributes to invisibly. |
 
 ### STAT-3.1 Migration `0032_instance_stats.sql`
 
@@ -271,6 +271,18 @@ for it: "rising" is a change, health is a level.
 `GET /api/v1/stats/responsiveness` — projects ordered by `newcomer_response_hours` ascending,
 filtered to `newcomer_sample >= 5`, each row carrying `n`. A project under five samples is
 absent, not last.
+
+**Shipped 2026-11-06.** `store.ResponsivenessLeaderboard` + `handleStatsResponsiveness`, and a
+card on `/stats` that renders the API's order and never re-sorts. Three boundings the sentence
+above left open:
+
+- a **slug tiebreak** after the median, or two projects at the same number swap places between
+  requests and the ranking cannot be compared with its own previous rendering;
+- `visibility = 'public'`, because this is the one statistics surface that publishes NAMED
+  projects rather than an aggregate;
+- the floor is enforced in the QUERY as well as in `UpdateProjectNewcomer`, because a row can
+  reach this table without the writer (`TestResponsivenessLeaderboardOmitsProjectsUnderTheFloor`
+  seeds one that way — the mutant that drops the clause survives every other test).
 
 **Verify:**
 ```sh
