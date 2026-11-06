@@ -241,7 +241,7 @@ func (s *Server) loadTemplates() error {
 	pages := []string{"index", "search", "projects", "project", "board",
 		"login", "register", "rank", "ranking", "documents", "notfound", "finder",
 		"scout", "consensus", "audit", "settings", "feature", "complaint", "requests-detail", "requests-index", "lists", "list",
-		"taxonomy", "criteria", "merge", "contribute"}
+		"taxonomy", "criteria", "merge", "contribute", "stats"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -415,6 +415,13 @@ func (s *Server) Router() http.Handler {
 	// affects every project, so there is no slug to hang it off and nothing to
 	// hide -- the reads are public and the writes refuse on their own.
 	r.Get("/taxonomy", s.handleTaxonomyPage)
+
+	// The instance census (spec §4.13, STAT-1). Instance-wide for the same reason
+	// as taxonomy: it describes the whole instance, so there is no slug and no
+	// project to be private about. The page is a shell over the API route -- one
+	// computation, two renderings.
+	r.Get("/stats", s.handleStatsPage)
+	r.Get("/api/v1/stats/summary", s.handleStatsSummary)
 
 	// Consensus (docs/specs/consensus-page-spec.md). `call` is a query parameter,
 	// not a path segment, because there is no endpoint that lists calls and a

@@ -247,7 +247,7 @@ be rewritten. Federation and MCP are listed in the plan for later.
 
 ## Status
 
-Measured against the running instance (schema 31, 84 tables, 1143 tests; the build it is
+Measured against the running instance (schema 31, 84 tables, 1149 tests; the build it is
 running is whatever `GET /api/v1/version` answers, which is deliberately not written down here --
 a version string in a status paragraph is stale the moment the next commit lands), not against the
 plan's own history. "Shipped"
@@ -274,7 +274,7 @@ one did.
 | **R10 work-item contract** | **shipped 2026-10-30** | CF-2, migration `0030_work_items.sql`. `GET /projects/{slug}/work-items` (public), `PUT /features/{id}/work-item` (maintainer), `POST\|DELETE /features/{id}/claim` (contributor, `409` on a live claim, released rows kept). The panel sits under the features on the project page. `origin` exists and every pre-existing row reads `unknown` — the seed backfill (`cmd/originbackfill`) is the one recorded gap |
 | **R11 contribution feed** | **shipped 2026-10-30** | CF-3, spec §4.5.7. `internal/finder/contribute.go` (MinutesBucket, DifficultyWord, WorkItemCandidate, OrderWorkItems) + `internal/httpapi/contribute.go` + a server-rendered `/contribute` page — no second ranker, no second candidate loader, no JavaScript. Deviations recorded in the R11 section: two new question families, no finder-session reuse, and S/M/L → easy/medium/hard translation (without which every difficulty filter matched nothing) |
 | **R12 newcomer responsiveness** | **planned 2026-10-30** | CF-4. `forge_events` from the webhook, median first-response for a first-time PR author, published with its `n` and never folded into `health_score` |
-| **R13 census with provenance** | **planned 2026-10-30** | spec §4.13, plan `docs/plans/instance-statistics.md` STAT-1. Composition only (a still frame): 925 of 1,874 features have no create event, so any growth series is a chart of an import |
+| **R13 census with provenance** | **STAT-1 shipped 2026-11-06** | spec §4.13, plan `docs/plans/instance-statistics.md` STAT-1. `internal/store/stats.go` (`Census`, `ProvenanceCount`), `GET /api/v1/stats/summary`, and a `/stats` page shell that renders from it. **Four plan statements were wrong and are corrected in the plan**: `FacetCount` already existed in `search.go`; only `features`/`complaints` carry `origin`; the split is three-way because `0030` backfilled pre-existing rows to `'unknown'`; and the table is `project_documents`, not `documents`. STAT-2 (the `/stats` latency cards) is the remainder |
 | **R14 decision latency + exposure** | **planned 2026-10-30** | STAT-2. Three medians with their `n` and their unfinished count, `GET /api/v1/stats`, SVG badges, a stats feed item. Latency is immune to batch seeding; throughput is a property of the seed script |
 | **R15 snapshot history + derived surfaces** | **planned 2026-10-30** | STAT-3. `instance_stats` daily snapshot (so a migration cannot rewrite the past, and "rising" has two points recorded the same way), plus the responsiveness leaderboard that ranks answering rather than producing |
 

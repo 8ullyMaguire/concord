@@ -14,44 +14,72 @@ Standing rules: `make verify` green before every commit; no store method without
 
 ## STAT-1 — Census with a provenance split
 
+### Measured corrections to this plan, 2026-11-06
+
+This section was written 2026-10-30 and **four of its statements do not survive contact with the
+code**. Each was found by reading the tree, and each changes what gets built:
+
+| # | the plan said | the code says | consequence |
+|---|---|---|---|
+| 1 | define `FacetCount{Value,Total,Seed,Other}` in `stats.go` | `FacetCount{Value,Count}` **already exists** in `internal/store/search.go:29` | a second type of that name will not compile; the new one is `ProvenanceCount` |
+| 2 | the split applies to `projects`/`tags`/`licenses`/`governance`/`members`/`documents` | **only `features` and `complaints` carry `origin`** (`0030_work_items.sql:21,25`). `projects` has no `origin` column and no migration adds one | those facets cannot produce a split. Spec §3.1 says "where the table carries `origin`", so they publish a plain count |
+| 3 | `Other` = "everything else" | `origin` has a fifth value, **`'unknown'`**, which `0030` wrote to every pre-existing row | folding it into `Other` reports the backfilled population as organic — the exact lie R13 exists to prevent. The split is **three-way** |
+| 4 | `documents by kind` | the table is **`project_documents`** (`0007`, rebuilt by `0023`) | a query against `documents` is a runtime error the compiler cannot catch |
+
+**Why the plain facets are still published** (the reading of spec §2 that this implements):
+§2 withholds an aggregate that cannot produce the split only over *"rows that can be created by an
+import"*. Projects are created by people — `CreateProject` requires a `user_id`
+(`internal/store/store.go:338`) — and members, documents and arenas are human actions. So those
+aggregates are not import charts and a plain count is honest. Features and complaints are the two
+that are, and they are exactly the two that carry `origin`.
+
 ### STAT-1.1 `internal/store/stats.go` (new)
 
 ```go
-// Census is the composition of the instance: what exists, not what happened. Every slice is
-// a still frame, which is the only kind of aggregate a seeded instance can publish without
-// lying: a batch import changes a total, and it changes a "per week" series.
+// Census is the composition of the instance: what exists, not what happened.
 type Census struct {
-	Projects      []FacetCount `json:"projects_by_language"`
-	Tags          []FacetCount `json:"projects_by_tag"`
-	Licenses      []FacetCount `json:"projects_by_license"`
-	Governance    []FacetCount `json:"projects_by_governance"`
-	FeatureStatus []StatusCount `json:"features_by_status"`
-	Complaints    []StatusCount `json:"complaints_by_status"`
-	Members       []FacetCount `json:"members_by_role"`
-	Documents     []FacetCount `json:"documents_by_kind"`
+	// Tables that carry `origin` publish the split.
+	FeatureStatus []ProvenanceCount `json:"features_by_status"`
+	FeatureEffort []ProvenanceCount `json:"features_by_effort"`
+	Complaints    []ProvenanceCount `json:"complaints_by_status"`
+
+	// Tables that do not: a plain count, reused from search.go's FacetCount.
+	Projects   []FacetCount `json:"projects_by_language"`
+	Tags       []FacetCount `json:"projects_by_tag"`
+	Licenses   []FacetCount `json:"projects_by_license"`
+	Governance []FacetCount `json:"projects_by_governance"`
+	Visibility []FacetCount `json:"projects_by_visibility"`
+	Members    []FacetCount `json:"members_by_role"`
+	Documents  []FacetCount `json:"documents_by_kind"`
+	Arenas     []FacetCount `json:"arenas_by_type"`
 }
 
-// FacetCount carries the split on the same struct, not as a second query: a caller that
+// ProvenanceCount carries the split on the same struct, not as a second query: a caller that
 // has to remember to fetch the split is a caller that will print a total without one.
-type FacetCount struct {
-	Value string `json:"value"`
-	Total int    `json:"total"`
-	Seed  int    `json:"seed"`   // origin IN ('seed','import')
-	Other int    `json:"other"`  // everything else; Total = Seed + Other always
+//
+// Three columns, because migration 0030 backfilled every pre-existing row to 'unknown':
+// that population predates the backfill and is neither organic nor seeded.
+type ProvenanceCount struct {
+	Value   string `json:"value"`
+	Total   int    `json:"total"`
+	Organic int    `json:"organic"` // origin IN ('api','ui')
+	Seeded  int    `json:"seeded"`  // origin IN ('seed','import')
+	Unknown int    `json:"unknown"` // origin = 'unknown' (predates the 0030 backfill)
 }
 
 func (d *DB) Census(ctx context.Context) (Census, error)
 ```
 
-`Census` reuses the facet SQL that already exists in `internal/store/search.go`
-(tag/language/license/governance top-25) and extends each with
-`SUM(CASE WHEN origin IN ('seed','import') THEN 1 ELSE 0 END)`. Top-25 stays 25: a facet list
-that grows unbounded is a second bug, and the existing queries already cap.
+`Census` issues nine grouped queries over six tables. **No query joins a fact table to a
+dimension in a way that can multiply a facet** — the `project_tags`→`tags` join is 1:1 on the
+primary key, and that is the defect the AC names (a total larger than `count(*)`), asserted in
+`TestCensusTotalNeverExceedsTableCount`.
 
-**The invariant is arithmetic:** `Total = Seed + Other` for every row, asserted in a store
-test over a fixture with one organic and one seeded row of each kind. A row where the two
-disagree is a `SUM` over a `LEFT JOIN` that multiplied — the classic facet-count defect, and
-it shows as a total larger than the table.
+The facet SQL is *not* reused from `facetsFor` (`search.go:201`): that function is scoped to a
+search result's `ids`, and a census is instance-wide. The SQL shape is similar; the scope is not.
+
+**The invariant is arithmetic:** `Total = Organic + Seeded + Unknown` for every row, asserted in
+`TestCensusProvenanceRowsSum` over a fixture holding all three populations.
 
 ### STAT-1.2 `internal/httpapi/stats.go` + route
 
@@ -59,9 +87,20 @@ it shows as a total larger than the table.
 GET /api/v1/stats/summary        # Census, public, no auth (reads are exempt from consent)
 ```
 
-Registered inside the existing `/api/v1` group. No page yet — STAT-2 renders it, and a route
-without a reader fails the reader-coverage gate, so **STAT-1 and STAT-2 must land in the same
-commit or STAT-1 ships behind a page that already exists**. Recommended: land both together.
+Registered inside the existing `/api/v1` group. GET is not mutating, so the consent gate does
+not apply (`guest_handlers.go: isMutating`) — a visitor reads the instance's own numbers without
+accepting anything first.
+
+**Shipped 2026-11-06 with its own page shell** (`GET /stats`, `templates/stats.html`,
+`assets/js/stats.js`), rather than waiting for STAT-2. The original advice was "STAT-1 and
+STAT-2 must land in the same commit or STAT-1 ships behind a page that already exists" — the
+reader-coverage gate forbids a route with no reader, and no `/stats` page existed, so the page
+was built with STAT-1. It renders the census now and gains the latency cards when STAT-2 lands;
+the API route is unchanged by that, which is the point of the page being a shell.
+
+**The page computes nothing.** It fetches `/api/v1/stats/summary` and renders the response, so
+there is one computation and two renderings (spec §3.4). The reader-inventory row is
+`{Match: "/api/v1/stats/summary", Reader: "stats.js", Anchor: "/api/v1/stats/summary", Routes: 1}`.
 
 **Verify:**
 ```sh

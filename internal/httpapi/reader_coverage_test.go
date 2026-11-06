@@ -229,6 +229,8 @@ var readerInventory = []readerRow{
 	{Match: "/api/v1/scout", Reader: "scout.js", Anchor: "/scout", Routes: 1},
 	{Match: "/api/v1/search", Reader: "search.js", Anchor: "/search", Routes: 1},
 	{Match: "/api/v1/similar", Reader: "project.js", Anchor: "/similar", Routes: 1},
+	{Match: "/api/v1/stats/summary", Reader: "stats.js", Anchor: "/api/v1/stats/summary", Routes: 1,
+		Note: "the /stats page renders the census from it; one computation, two renderings (spec §3.4)"},
 	{Match: "/api/v1/taxonomy", Reader: "taxonomy.js", Anchor: "/taxonomy", Routes: 4},
 	// --- guests, and the notice that gates them --------------------------------
 	//
