@@ -422,6 +422,14 @@ func (s *Server) Router() http.Handler {
 	// computation, two renderings.
 	r.Get("/stats", s.handleStatsPage)
 	r.Get("/api/v1/stats/summary", s.handleStatsSummary)
+	// The full statistics payload (STAT-2): census + the three latency medians +
+	// how much is instrumented. The page fetches this one too, so the latency
+	// cards and the census cards cannot drift apart.
+	r.Get("/api/v1/stats", s.handleStats)
+	// Text-only SVG badges (spec §3.4). `instance` is a reserved slug mounted
+	// here, before the project lookup, so a project actually named "instance"
+	// cannot shadow its own badge.
+	r.Get("/badge/{slug}.svg", s.handleBadge)
 
 	// Consensus (docs/specs/consensus-page-spec.md). `call` is a query parameter,
 	// not a path segment, because there is no endpoint that lists calls and a

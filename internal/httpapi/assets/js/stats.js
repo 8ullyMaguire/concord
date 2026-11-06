@@ -47,6 +47,28 @@
       '<div class="card-text">' + body + '</div></div>';
   }
 
+  // A latency card. The median is shown with its n and its unfinished count,
+  // because spec §4 refuses a median without n: the same 216h means something
+  // different for 3 episodes than for 300.
+  function latencyCard(title, lat) {
+    var value = lat.n === 0 ? '—' : lat.median_hours.toFixed(1) + ' h';
+    var counts = 'n=' + lat.n + ' · unfinished=' + lat.unfinished;
+    if (lat.unmeasured) counts += ' · unmeasured=' + lat.unmeasured;
+    return '<div class="card"><div class="card-title">' + esc(title) + '</div>' +
+      '<div class="card-text">' + esc(value) + '</div>' +
+      '<p class="muted small">' + esc(counts) + '</p></div>';
+  }
+
+  function renderLatency(container, latency) {
+    if (window.ConcordSkeleton) window.ConcordSkeleton.done(container);
+    var parts = [
+      latencyCard('Complaint triage', latency.triage),
+      latencyCard('Feature delivery', latency.delivery),
+      latencyCard('Consensus decision', latency.decision)
+    ];
+    container.innerHTML = '<div class="grid-responsive-3">' + parts.join('') + '</div>';
+  }
+
   // The split columns are shown only when at least one row carries them, so a
   // plain facet is not padded with three empty columns.
   function hasSplit(rows) {
@@ -84,23 +106,46 @@
     container.innerHTML = '<div class="grid-responsive-2">' + parts.join('') + '</div>';
   }
 
+  function authHeaders() {
+    return (window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {});
+  }
+
+  function getJSON(path) {
+    return fetch(path, { headers: authHeaders() })
+      .then(function (r) {
+        return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status));
+      });
+  }
+
   document.addEventListener('DOMContentLoaded', function () {
-    var container = document.getElementById('stats-summary');
-    if (!container) return;
+    var summary = document.getElementById('stats-summary');
+    var latency = document.getElementById('stats-latency');
 
-    container.setAttribute('aria-busy', 'true');
+    // The two fetches are independent: a failure in one must not blank the
+    // other, and the latency cards are not a footnote to the census.
+    if (latency) {
+      latency.setAttribute('aria-busy', 'true');
+      getJSON('/api/v1/stats')
+        .then(function (data) { renderLatency(latency, data.latency); })
+        .catch(function () {
+          // Clear aria-busy on the failure path too: aria-busy suppresses
+          // live-region updates inside the region, so an error left busy is an
+          // error nobody hears.
+          if (window.ConcordSkeleton) window.ConcordSkeleton.done(latency);
+          latency.innerHTML = emptyState('Latency unavailable',
+            'The response times did not load. Try again.');
+        });
+    }
 
-    fetch('/api/v1/stats/summary', {
-      headers: (window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {})
-    })
-      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
-      .then(function (data) { render(container, data); })
+    if (!summary) return;
+
+    summary.setAttribute('aria-busy', 'true');
+
+    getJSON('/api/v1/stats/summary')
+      .then(function (data) { render(summary, data); })
       .catch(function () {
-        // Clear aria-busy on the failure path too: aria-busy suppresses
-        // live-region updates inside the region, so an error left busy is an
-        // error nobody hears.
-        if (window.ConcordSkeleton) window.ConcordSkeleton.done(container);
-        container.innerHTML = emptyState('Statistics unavailable',
+        if (window.ConcordSkeleton) window.ConcordSkeleton.done(summary);
+        summary.innerHTML = emptyState('Statistics unavailable',
           'The census did not load. Try again.');
       });
   });

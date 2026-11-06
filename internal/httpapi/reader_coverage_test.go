@@ -231,6 +231,8 @@ var readerInventory = []readerRow{
 	{Match: "/api/v1/similar", Reader: "project.js", Anchor: "/similar", Routes: 1},
 	{Match: "/api/v1/stats/summary", Reader: "stats.js", Anchor: "/api/v1/stats/summary", Routes: 1,
 		Note: "the /stats page renders the census from it; one computation, two renderings (spec §3.4)"},
+	{Match: "/api/v1/stats", Reader: "stats.js", Anchor: "/api/v1/stats", Routes: 1,
+		Note: "the /stats page renders the three latency cards from it; the same payload the feed item is built from (spec §3.2, §3.4)"},
 	{Match: "/api/v1/taxonomy", Reader: "taxonomy.js", Anchor: "/taxonomy", Routes: 4},
 	// --- guests, and the notice that gates them --------------------------------
 	//

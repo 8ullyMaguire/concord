@@ -113,6 +113,23 @@ curl -s 127.0.0.1:8006/api/v1/stats/summary | python3 -c \
 
 ## STAT-2 — Decision latency and exposure
 
+**SHIPPED 2026-11-06.** `GET /api/v1/stats`, the three latency cards on `/stats`, the
+`/badge/{slug}.svg` + `/badge/instance.svg` badges, and the `?kind=stats` feed item.
+`make verify` green at 1167 tests. Verified live against a throwaway instance **and in a
+browser**, where the rendered cards were compared field-by-field against the API payload:
+all three medians and all three count lines matched.
+
+### Measured corrections to this plan, 2026-11-06
+
+| # | the plan said | the code says |
+|---|---|---|
+| 5 | `Latency{MedianHours, N, Unfinished, Unit}` | a fourth count is needed. A row that is **finished but was never measured** (a seeded feature inserted directly as `shipped`, with no `ready` audit row) is neither `N` nor `Unfinished`; folding it into `Unfinished` reports a shipped feature as still in progress. Shipped as `Unmeasured`. |
+| 6 | `health (— when NULL)`, read from the project | the stored `project_metrics.health_score` is **0 for all 70 live projects** — a placeholder, not a measurement. Reading the column renders "0.00" for every project, the exact lie §4.13 refuses. `DB.ProjectHealth` (scout.go:165) already computes through `discovery.HealthScore` and returns `known=false`; the badge uses it. |
+| 7 | `Triage(complaints, validations)`, `Delivery(features, transitions)`, `Decision(calls, closes)` | the plan's signatures force each caller to re-derive which rows are in the sample. Shipped as one pure `discovery.Measure([]Episode)` plus three store-level episode builders, so the sample rules are testable without a database. |
+| 8 | `Delivery`: "feature entering `ready` -> entering `shipped`" | the **target status is inside the audit `detail` string**, not a column: trust.go writes `"<from> -> <to>: <reason>"`. A `LIKE '%-> shipped%'` matches a reason that happens to contain that text, so it is parsed in Go. |
+| 9 | `Decision`: "call created -> closed" | an **open** call is inserted with `closes_at = now()` — the same instant as `opens_at` — because the column is `NOT NULL` (consensus.go:141). Computing `closes_at - opens_at` over every call measures each open call as 0.0h: the zero-day lie. The filter is `status = 'closed'`. The schema allows only `('open','closed')`, so there is no `superseded` status. |
+| 10 | a feature still in `draft` is unfinished | it is **not in the population at all**. `CreateFeature` writes no audit row and the metric measures the journey from `ready`; a draft feature has no journey. Counting one as unfinished reports every newly filed feature as a delivery in progress. |
+
 ### STAT-2.1 `internal/discovery/latency.go` (pure, table-tested)
 
 ```go

@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"os"
 	"strconv"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 
+	"git.polarisocial.xyz/concord/concord/internal/discovery"
 	"git.polarisocial.xyz/concord/concord/internal/store"
 )
 
@@ -104,6 +106,13 @@ func (s *Server) handleProjectsFeed(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	// ?kind=stats (spec §3.4): a reader subscribes to the number instead of the
+	// page. One item per day at most -- a feed is not a stream of counters, and
+	// the statistics payload is a frame, not an event.
+	if r.URL.Query().Get("kind") == "stats" {
+		s.writeStatsFeed(w, r, format, base)
+		return
+	}
 	// ListProjects, not ListProjectsVisibleTo: a feed is read by anonymous aggregators,
 	// and a member's extra private projects must not leak into a public document. This is
 	// the same call handleListProjects makes.
@@ -135,6 +144,55 @@ func (s *Server) handleProjectsFeed(w http.ResponseWriter, r *http.Request) {
 	if err := writeFeed(w, format, f); err != nil {
 		mapError(w, err)
 	}
+}
+
+// writeStatsFeed serves feed.xml?kind=stats.
+//
+// The item is built from the same payload as GET /api/v1/stats, so a subscriber
+// and a page reader see the same numbers. The summary is text, not a table: a
+// feed reader renders it as prose, and the medians are quoted with their n
+// because a median without one is not a number (spec §4).
+func (s *Server) writeStatsFeed(w http.ResponseWriter, r *http.Request, format, base string) {
+	payload, err := s.statsPayload(r.Context())
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	self, alt := feedSelfAndAlt(base, "/feed.xml?kind=stats", "/stats")
+	f := Feed{
+		Title:       "Concord instance statistics",
+		SelfURL:     self,
+		AltURL:      alt,
+		Description: "The instance census and its response times.",
+		Items: []FeedItem{{
+			ID:      feedPath(base, "/stats"),
+			Title:   "Instance statistics, " + time.Now().UTC().Format("2006-01-02"),
+			Link:    feedPath(base, "/stats"),
+			Updated: time.Now().UTC(),
+			Summary: statsFeedSummary(payload),
+		}},
+	}
+	f.Updated = feedUpdated(f.Items)
+	if err := writeFeed(w, format, f); err != nil {
+		mapError(w, err)
+	}
+}
+
+// statsFeedSummary is the one-line prose a feed reader shows.
+func statsFeedSummary(p statsPayload) string {
+	lat := func(name string, l discovery.Latency) string {
+		if l.N == 0 {
+			return name + " not yet measured"
+		}
+		return fmt.Sprintf("%s %.1fh (n=%d, unfinished=%d)", name, l.MedianHours, l.N, l.Unfinished)
+	}
+	return fmt.Sprintf(
+		"%d projects; %d features with a recorded origin; %s; %s; %s.",
+		p.Measured.Projects, p.Measured.WithOrigin,
+		lat("triage", p.Latency.Triage),
+		lat("delivery", p.Latency.Delivery),
+		lat("decision", p.Latency.Decision),
+	)
 }
 
 // floatTime converts a REAL unix timestamp to a time.Time. The store models timestamps as
