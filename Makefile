@@ -255,6 +255,14 @@ deploy: build
 	@echo "Deploying $(BINARY) to $(DEPLOY_DIR)..."
 	systemctl --user stop concord || true
 	cp bin/$(BINARY) $(DEPLOY_DIR)/$(BINARY)
+	@# statsnapshot RIDES ALONG. Its timer is enabled on the instance, it reads only the local
+	@# database, and since 0033 it shares a schema with the server: a deploy that refreshed the
+	@# server and not the writer would serve /api/v1/stats/rising from a table nothing fills --
+	@# no error, an empty card, and a scheduler quietly running last month's code. forgeseed and
+	@# healthsync stay in deploy-admin, because they reach out to three forges and enabling that
+	@# is a decision about the instance rather than a side effect of shipping a build.
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/statsnapshot ./cmd/statsnapshot
+	cp bin/statsnapshot $(DEPLOY_DIR)/statsnapshot
 	systemctl --user start concord
 	@echo "Verifying healthz on 127.0.0.1:$(DEPLOY_PORT)..."
 	@sleep 5
