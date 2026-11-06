@@ -247,7 +247,7 @@ be rewritten. Federation and MCP are listed in the plan for later.
 
 ## Status
 
-Measured against the running instance (schema 32, 85 tables, 1174 tests; the build it is
+Measured against the running instance (schema 32, 85 tables, 1199 tests; the build it is
 running is whatever `GET /api/v1/version` answers, which is deliberately not written down here --
 a version string in a status paragraph is stale the moment the next commit lands), not against the
 plan's own history. "Shipped"
