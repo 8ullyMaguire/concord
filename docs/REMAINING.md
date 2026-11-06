@@ -5,25 +5,27 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state (the nineteenth pass, §32):** schema 32 · 32 migrations · 85 live tables · 1205 Go
-tests across 9 test-bearing packages · 303 e2e tests in 23 suite files · 54/54 UI mutants killed
+**Measured state (the twenty-first pass, §34):** schema 33 · 33 migrations · 86 live tables ·
+**1216 Go tests** across 9 test-bearing packages · 303 e2e tests in 23 suite files · 54/54 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
-8 project.js/arena, 4 project.js/work items) · Go mutants: 23 arms, 154 killed, 0 survived ·
+8 project.js/arena, 4 project.js/work items) · Go mutants: 27 arms, 172 killed, 0 survived ·
 `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
 
-<!-- TABLE-COUNT-SOURCE: the "85 live tables" above is gated against the LIVE database at
+<!-- TABLE-COUNT-SOURCE: the "86 live tables" above is gated against the LIVE database at
      ~/.local/share/concord/concord.db, not against the tree. The tree and the live database
-     now agree at 85, because 0031/0032 were deployed on 2026-11-06 with `make deploy`; the
-     count was bumped from 84 in the same pass, as the previous revision of this comment
-     instructed. The schema and migration counts in the same sentence come from
+     now agree at 86, because 0033 was deployed on 2026-11-06 with `make deploy`; the count
+     was bumped from 85 at deploy time, as the previous revision of this comment instructed.
+     The schema and migration counts in the same sentence come from
      internal/db/migrations/, so one sentence mixes a tree fact with a live fact, which is why
      the other two move first.
 
      KNOWN BLIND SPOT in scripts/check_doc_numbers.py: its test-count pattern requires
-     "<N> tests" on ONE line, so the Go-count in this sentence -- "1121 Go" at the end of a
-     line, "tests" at the start of the next -- was never checked and sat 84 releases stale.
-     It is corrected to the measured 1205 here by hand. The gate cannot see a number that a
-     markdown reflow split across a line break, and this sentence is one. -->
+     "<N> tests" on ONE line, so the Go-count here was never checked while a markdown reflow
+     -- "1121 Go" at the end of a line, "tests" at the start of the next -- split it, and it
+     sat 84 releases stale. FIXED in this pass by putting "**1216 Go tests**" on one line,
+     where the pattern sees it: the number is now gated rather than hand-maintained. The gate
+     still cannot see a number that a reflow splits, so any future edit to this sentence must
+     keep the count and the word "tests" on the same line. -->
 
 This line previously read "882 Go tests ... 174 e2e tests in 10 suites". The Go half was
 gated and correct; the e2e half was reconciled by nothing and was wrong twice over — the
@@ -3868,9 +3870,7 @@ still most-of-the-catalog-unknown and the discovery page must say so out loud. A
 
 ### 32.5 Where the numbers stand
 
-**Measured state (the nineteenth pass, §32):** schema 32 · 32 migrations · 85 live tables · 1205 Go
-tests across 9 test-bearing packages · 303 e2e tests in 23 suite files · `make verify` exit 0 ·
-`make gates` exit 0 · `make e2e` exit 0.
+**Measured state (the nineteenth pass, §32) (historical):** schema 32 · 32 migrations · 85 live tables · 1205 Go tests across 9 test-bearing packages · 303 e2e tests in 23 suite files · `make verify` exit 0 · `make gates` exit 0 · `make e2e` exit 0.
 
 ## §33 — The contribution feed (R11)
 
@@ -3977,3 +3977,127 @@ $ curl -s -o /dev/null -w '%{http_code}' 127.0.0.1:8006/contribute  -> 200
 `sorted by health` puts the five measured projects ahead of sixty-nine unmeasured ones, and
 `min_health=0.5` returns exactly the three above the line. That is the two surfaces that were
 recorded as broken in `PLAN-r4` -- broken because the column was empty, now answered from data.
+
+## §34 — The statistics surface completed (R12, STAT-3.5, STAT-3.4)
+
+### 34.1 What shipped, and what each one needed before it could ship
+
+**R12 — newcomer responsiveness.** `forge_events` written from four webhook arms (push,
+`pull_request`, `pull_request_review`, and the comment arm, which reads both the Forgejo
+`issue_comment` and the GitHub `pull_request_comment` shapes), idempotent on redelivery by
+`UNIQUE (repo_full, kind, number, actor, at)` + `ON CONFLICT DO NOTHING`.
+`internal/discovery/responsiveness.go` exports `NewcomerResponse`: first-PR-only, a
+self-comment is not a response, lower-middle median, `ok=false` under five.
+
+The last step was not a test, it was a WIRE. The store's own §27 inventory gate listed
+`ListForgeEvents` as TEST-ONLY, which is the rule working: a reader with no caller is a
+feature that is not there. It was closed by wiring `cmd/healthsync` — read the events per
+repository, call `NewcomerResponse`, write both columns through `UpdateProjectNewcomer` —
+not by adding an exemption. The write is a SEPARATE method from `UpdateProjectMetrics`,
+because that upsert is also reached by `PATCH /projects/{slug}/metrics`, whose body has no
+newcomer fields; folding the columns in would let an operator repairing a star count blank
+a median nobody remeasured.
+
+**STAT-3.5 — the responsiveness leaderboard.** `ResponsivenessLeaderboard`, `GET
+/api/v1/stats/responsiveness` (a bare array, fastest first, `newcomer_sample >= 5`, slug
+tiebreak so ties do not swap between requests), and a card on `/stats` that states its own
+empty condition. It names projects, so it filters `visibility='public'` — unlike every
+other statistics route, which publishes aggregates that a private project contributes to
+invisibly. The floor is enforced in the QUERY as well as in the writer, because rows can
+arrive from paths that never call the writer (import, backfill, repair script).
+
+**STAT-3.4 — rising.** The plan's sentence could not be implemented: "rank projects by the
+slope of … between two snapshots" describes `instance_stats`, which records one
+instance-wide row per day and has no project column. A single instance-wide slope dressed
+as a ranking of projects would have satisfied the words and failed the milestone. Migration
+`0033_project_stats.sql` adds `project_stats(day, project_id, organic_features_shipped,
+organic_complaints_filed)` with `PRIMARY KEY (day, project_id)` so a second run of the same
+day CORRECTS rather than appending a second point at the same x. `cmd/statsnapshot` writes
+the day's per-project rows in the same pass as the instance row, so the two tables a reader
+compares describe one moment. `GET /api/v1/stats/rising` ranks by organic features per week
+across each project's OWN first-and-last span.
+
+### 34.2 The rules, each of which is a defect if dropped
+
+1. **A project under the sample floor is ABSENT, never last.** A project with three
+   responses is not slow; it is unmeasured, and a ranking that puts it at the bottom
+   reports a measurement nobody took. Same shape for STAT-3.4's `RisingMinDays`: with a
+   daily timer, two snapshots one day apart turn a single shipped feature into "seven per
+   week", so below fourteen days there is no slope and the project is not ranked.
+2. **The counts are ORGANIC and the column names say so.** `origin='unknown'` is the
+   population that predates the 0030 backfill, not organic work; a slope computed over
+   seed/import rows is a chart of an import script.
+3. **Cumulative counts, cumulative deltas.** A stored delta is wrong the moment a run is
+   missed: the row after the gap would report three days of change as one. Cumulative
+   counts make a gap a gap, because the rate divides by the days actually between the rows.
+4. **The span rides along in every row.** A rate over 14 days and one over 90 are different
+   claims; a comparison between them that does not say which is which is a comparison of
+   incomparable numbers.
+5. **Deltas are signed, not clamped.** A feature can be reopened. A ranking that reported
+   `0` for a project going backwards would be reporting a measurement it did not take; the
+   ranking sorts descending, so a falling project lands where a reader can see it.
+6. **Health is a LEVEL beside the slope, never a substitute** (spec §4.5.5.7). It comes
+   from `ProjectHealth`, not from the `health_score` column, which is `0` for every project
+   on the live instance — reading that column would publish a confident `0%` for the whole
+   catalog. Unmeasured renders a dash.
+7. **Ties are broken by slug.** Without it two projects at the same rate swap places
+   between two requests, and a leaderboard that reorders itself is a leaderboard a reader
+   stops trusting.
+
+### 34.3 Four corrections, and the sharpest is not in the product
+
+1. **`instance_stats` could not carry STAT-3.4** — recorded in `PLAN-r4` as the statement
+   that was wrong, with the table that replaced it.
+2. **`sql.NullFloat64` has no `MarshalJSON`** — the API published
+   `{"Float64":0,"Valid":false}` where the spec wants `null`, so the page rendered a zero
+   for an unmeasured value until the field was a `*float64`.
+3. **The doc-number gate reads the LIVE database** (`D8`), so it passed at tree 85 / live
+   84 and went red the moment the deploy applied 0032. Its own blind spot is worse: the
+   test-count pattern requires "<N> tests" on ONE line, so a reflowed count sat 84 releases
+   stale. Fixed in this pass by keeping "**1216 Go tests**" on one line, where the pattern
+   sees it.
+4. **`internal/mutate.py` hardcoded `~/code/projects/concord` as the tree to measure.**
+   That path exists on this workstation and is a DIFFERENT checkout (`57f4450`, not this
+   lineage). Every arm therefore mutated and tested code that was not under test, while the
+   transcript, the Makefile and the reader all named the working directory — and reported
+   honestly about the wrong tree. The harness now resolves `CONCORD_MUTATE_REPO`, then the
+   git toplevel of the working directory, and PRINTS the repo in every arm's output, so a
+   green run names the tree it measured. The arms re-run after the fix are the ones in
+   `§34.4`; the numbers below are the post-fix run.
+
+### 34.4 Mutants, including one survivor that earned a test
+
+The two new arms are `internal/store/rising.go` (the span floor, the rate's divisor, the
+visibility filter, the ordering) and `internal/store/projectstats.go` (organic-only,
+correct-not-append, and a zero recorded for a project with no work yet).
+
+The projectstats arm first reported **2/3 with one survivor**: "a project with no organic
+work is left out of the series instead of recorded at zero". The rule exists because
+"absent from the series" otherwise means two things — "no organic work yet" and "created
+after the first snapshot" — and the reader cannot tell a new project from a flat one.
+`TestComputeProjectSnapshotsRecordsEveryProjectIncludingEmpty` was added and the mutant now
+dies. That is the same finding the §30 arena arm produced: a rule nobody asserted is a rule
+that is not there.
+
+Two further mutants were done by hand and reverted: a median written as `0`, and a JS null
+guard inverted so an unmeasured health rendered `0%`. The second was verified in a browser
+against a seeded probe instance — the defect is a perfect score for an unmeasured project.
+
+### 34.5 What is deliberately not built, and what needs a human
+
+- **R13/R14 are untouched** and nothing here blocks them.
+- **R12 is deployed and INERT on the live instance**, for two configuration reasons, both
+  stated rather than worked around: the webhook endpoint answers `500 {"error":"webhook not
+  configured"}` because the unit sets no secret, and `repo_url` is stated for 0 of 56
+  projects, so `cmd/healthsync` fatals with "no project has a stated repository" — verified
+  by running it. `concord-healthsync.timer` is therefore left disabled on purpose: enabling
+  it would schedule a job whose only outcome is a failure. Both are owner decisions
+  (a secret, and Q5's repository URLs).
+- **`health_score` is still 0 for every project** (R9's data half, Q5). The rising table
+  and the catalogue both say so with a dash rather than a zero.
+
+### 34.6 Where the numbers stand
+
+**Measured state (the twenty-first pass, §34):** schema 33 · 33 migrations · 86 live tables ·
+**1216 Go tests** across 9 test-bearing packages · 303 e2e tests in 23 suite files ·
+`make verify` exit 0 · `make gates` exit 0 (27 arms) · `make e2e` exit 0.

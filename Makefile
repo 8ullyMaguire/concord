@@ -117,6 +117,14 @@ gates:
 	# and an unproven refusal is decoration.
 	python3 internal/mutate.py internal/store/store.go ./internal/store/ internal/store/themes_test.go internal/store/store_mutants.json
 	python3 internal/mutate.py internal/store/field_reports.go ./internal/store/ internal/store/field_reports_test.go internal/store/field_reports_mutants.json
+	# STAT-3.4's four rules -- the span floor, the rate's divisor, the visibility filter and
+	# the ordering. The floor is the one that carries the milestone: with a daily timer, two
+	# snapshots one day apart turn a single shipped feature into "seven per week".
+	python3 internal/mutate.py internal/store/rising.go ./internal/store/ internal/store/rising_test.go internal/store/rising_mutants.json
+	# The series' own rules, which live in the writer rather than the reader: organic only
+	# (or the slope charts an import script), correct-not-append on a second run of the same
+	# day, and a zero recorded for a project with no work yet (or "absent" means two things).
+	python3 internal/mutate.py internal/store/projectstats.go ./internal/store/ internal/store/rising_test.go internal/store/projectstats_mutants.json
 	python3 internal/mutate.py internal/store/solutions.go ./internal/store/ internal/store/solutions_test.go,internal/store/solutions_count_test.go internal/store/solutions_mutants.json
 	python3 internal/mutate.py internal/store/arenas.go ./internal/store/ internal/store/arenas_test.go internal/store/arenas_mutants.json
 	# §30's weight rule lives in internal/ranking/arena.go, and its own arm is the only

@@ -79,9 +79,15 @@ Edge rules, each of which is a published number going wrong if it is missed:
 the count of projects with a measured `health_score`, and the count of rows with no `origin`
 (NULL, from before R10). Written by `cmd/statsnapshot`, run by a daily timer.
 
-This is what makes "rising" (§4.5.5.7) computable at all: a slope needs two points recorded
-the same way, and re-deriving yesterday from `audit_log` produces a different number than
-re-deriving today, for reasons that have nothing to do with the project.
+A slope needs two points recorded the same way, and re-deriving yesterday from `audit_log`
+produces a different number than re-deriving today, for reasons that have nothing to do with
+the project — that is why the series is recorded rather than recomputed.
+
+**Correction (2026-11-06): `instance_stats` cannot carry "rising".** This paragraph used to
+imply it did. The table has no project column, so a per-project slope was not derivable from it
+at any point; `0033_project_stats.sql` records the per-project half
+(`day, project_id, organic_features_shipped, organic_complaints_filed`) in the same pass. The
+instance row stays instance-wide, which is what its name says.
 
 ### 3.4 Exposure — STAT-2, STAT-3
 
@@ -93,6 +99,9 @@ re-deriving today, for reasons that have nothing to do with the project.
   reader can subscribe to the number instead of the page.
 - `GET /api/v1/stats/history?days=90` — the snapshot series, the only route that is a series
   rather than a frame.
+- `GET /api/v1/stats/rising` — projects ranked by organic work per week across their own first
+  and last snapshot, absent under a 14-day span, the span printed in every row, health beside
+  the slope rather than instead of it.
 
 ### 3.5 Responsiveness leaderboard — STAT-3
 

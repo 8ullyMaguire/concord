@@ -1,0 +1,17 @@
+[
+ {
+  "name": "the organic predicate is dropped, so the slope counts seed and import rows",
+  "old": "\t\t WHERE status = 'shipped' AND origin IN ('api','ui')",
+  "new": "\t\t WHERE status = 'shipped'"
+ },
+ {
+  "name": "a second run on the same day appends a point at the same x instead of correcting",
+  "old": "\t\t\tON CONFLICT(day, project_id) DO UPDATE SET\n\t\t\t     organic_features_shipped = excluded.organic_features_shipped,\n\t\t\t     organic_complaints_filed = excluded.organic_complaints_filed`,",
+  "new": "\t\t\tON CONFLICT(day, project_id) DO NOTHING`,"
+ },
+ {
+  "name": "a project with no organic work is left out of the series instead of recorded at zero",
+  "old": "\t\tget(id)\n\t}\n\tif err := pRows.Err(); err != nil {",
+  "new": "\t\tif s, ok := byProject[id]; ok { _ = s } else { _ = id }\n\t}\n\tif err := pRows.Err(); err != nil {"
+ }
+]

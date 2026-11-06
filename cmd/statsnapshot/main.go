@@ -71,12 +71,31 @@ func main() {
 			median(s.TriageMedianH), s.TriageN,
 			median(s.DeliveryMedianH), s.DeliveryN,
 			median(s.DecisionMedianH), s.DecisionN)
+		// Counted here so a dry run answers "will this write anything per project" --
+		// the number that decides whether the rising route has a series at all.
+		projects, err := st.ComputeProjectSnapshots(context.Background())
+		if err != nil {
+			fatal("compute project snapshots: %v", err)
+		}
+		fmt.Printf("project rows=%d\n", len(projects))
 		return
 	}
 	if err := st.WriteSnapshot(context.Background(), s); err != nil {
 		fatal("write: %v", err)
 	}
-	fmt.Printf("recorded %s\n", d)
+
+	// STAT-3.4's per-project series. Written in the SAME pass as the instance row: a day
+	// with one and not the other would be a day whose slope and whose medians describe
+	// different moments, and the two tables are read by two surfaces that a reader
+	// compares.
+	projects, err := st.ComputeProjectSnapshots(context.Background())
+	if err != nil {
+		fatal("compute project snapshots: %v", err)
+	}
+	if err := st.WriteProjectSnapshots(context.Background(), d, projects); err != nil {
+		fatal("write project snapshots: %v", err)
+	}
+	fmt.Printf("recorded %s (%d project rows)\n", d, len(projects))
 }
 
 // median renders a nullable median for the operator's console. An unmeasured median is

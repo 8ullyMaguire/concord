@@ -217,7 +217,7 @@ for an unmeasured day.
 |---|---|---|
 | 11 | `no_origin INTEGER NOT NULL DEFAULT 0, -- rows that predate R10's backfill` | ambiguous about which table. `0030` backfilled **both** `features` and `complaints`, and they are one population, so the column counts both — documented in the migration. Two columns would invite a reader to compare them, and the split is a fact about tables, not rows. |
 | 12 | the medians are a `REAL` column | correct, but the Go side must not use `sql.NullFloat64` for the JSON: it has **no `MarshalJSON`**, so the API published `{"Float64":0,"Valid":false}` and a reader comparing against `null` got an object. `Snapshot` carries `*float64` for the JSON boundary and `sql.NullFloat64` for the database scan. Found by `TestStatsHistoryServesRecordedDays`. |
-| 13 | STAT-3.4 (rising) and STAT-3.5 (leaderboard) are in this milestone | **STAT-3.5 shipped 2026-11-06**, once R12 gave it a metric to rank. **STAT-3.4 is still not implemented**, and this plan statement is the reason it is not: "rank projects by the slope of … between two snapshots" cannot be derived from `instance_stats`, which records **one instance-wide row per day** and has no project column. Implementing it honestly needs a `project_stats(day, project_id, …)` table written by the same command. I bound the privacy question the plan never asked: a leaderboard names projects, so it also filters `visibility='public'` — every other statistics route publishes aggregates a private project contributes to invisibly. |
+| 13 | STAT-3.4 (rising) and STAT-3.5 (leaderboard) are in this milestone | **STAT-3.5 shipped 2026-11-06**, once R12 gave it a metric to rank; **STAT-3.4 shipped 2026-11-06** on `0033_project_stats.sql`. This plan statement is why STAT-3.4 came last: "rank projects by the slope of … between two snapshots" cannot be derived from `instance_stats`, which records **one instance-wide row per day** and has no project column. Implementing it honestly needed exactly that table, which `0033` now provides: `project_stats(day, project_id, organic_features_shipped, organic_complaints_filed)`, cumulative and organic, written by `cmd/statsnapshot` in the same pass as the instance row. I bound the privacy question the plan never asked: a leaderboard names projects, so it also filters `visibility='public'` — every other statistics route publishes aggregates a private project contributes to invisibly. |
 
 ### STAT-3.1 Migration `0032_instance_stats.sql`
 
@@ -265,6 +265,34 @@ Rank projects by the slope of `projects_measured`… no: by the slope of **organ
 shipped and complaints filed between two snapshots at least 14 days apart. A project with one
 snapshot has no slope and is not ranked. Health is shown beside the slope, never substituted
 for it: "rising" is a change, health is a level.
+
+**Shipped 2026-11-06**, on a table this paragraph did not anticipate: `instance_stats` has no
+project column, so the slope had to come from `0033_project_stats.sql` —
+`(day, project_id, organic_features_shipped, organic_complaints_filed)`, cumulative, organic,
+`PRIMARY KEY (day, project_id)` so a second run of the same day corrects rather than appending
+a point at the same x. `cmd/statsnapshot` writes the day's project rows in the same pass as the
+instance row.
+
+`GET /api/v1/stats/rising`, five boundings the sentence above left open:
+
+- **the span is the project's own** (its first and last row), not the instance's, or a project
+  created last week is measured against a history it never had;
+- `RisingMinDays = 14` **in the query**, and a project below it is ABSENT — with a daily timer,
+  two rows one day apart turn one shipped feature into "seven per week";
+- **deltas stay signed**, because a feature can be reopened and a clamped `0` is a measurement
+  nobody took;
+- **the span is printed in every row**, since a rate over 14 days and one over 90 are different
+  claims;
+- health comes from **`ProjectHealth`, not the `health_score` column**, which is `0` for every
+  project on the live instance — the page renders a dash for unmeasured instead of a `0%`.
+
+**Verify:**
+```sh
+go build -o bin/concord ./cmd/concord && CONCORD_DB=/tmp/p.db CONCORD_LISTEN=127.0.0.1:8415 ./bin/concord &
+sqlite3 /tmp/p.db "insert into project_stats (day,project_id,organic_features_shipped,organic_complaints_filed) values ('2026-10-01',1,0,0),('2026-10-22',1,12,2)"
+curl -s 127.0.0.1:8415/api/v1/stats/rising   # -> [{...,"days":21,"features_per_week":4,...}]
+# a project with one row is absent, and so is a private one
+```
 
 ### STAT-3.5 Responsiveness leaderboard (§3.5)
 

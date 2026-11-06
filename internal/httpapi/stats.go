@@ -136,6 +136,24 @@ func (s *Server) handleStatsResponsiveness(w http.ResponseWriter, r *http.Reques
 	writeJSON(w, http.StatusOK, rows)
 }
 
+// handleStatsRising serves STAT-3.4's ranking: projects ordered by how much organic
+// work they gained per week between their own first and last snapshot (spec §4.5.5.7).
+//
+// A BARE ARRAY, as with the other two list routes. Every row carries the SPAN it was
+// measured over, because a rate over 14 days and one over 90 are different claims, and
+// the health LEVEL beside the slope rather than instead of it -- "rising is a change,
+// health is a level". A project whose series is shorter than RisingMinDays is ABSENT:
+// below the floor there is no slope, and a 0.0 would read as "flat" rather than "not
+// measurable".
+func (s *Server) handleStatsRising(w http.ResponseWriter, r *http.Request) {
+	rows, err := s.Store.RisingProjects(r.Context())
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, rows)
+}
+
 // handleStatsPage renders the statistics page.
 //
 // The page is a shell: every number on it is fetched from /api/v1/stats at

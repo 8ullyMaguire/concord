@@ -104,6 +104,39 @@
       body + '</tbody></table></div>');
   }
 
+  // Rising (STAT-3.4). Ranked by organic features shipped per week between the
+  // project's own first and last snapshot. The SPAN is printed in every row: a rate over
+  // 14 days and one over 90 are different claims, and a reader who is not told which is
+  // reading a comparison between incomparable numbers.
+  //
+  // Health is shown BESIDE the slope, never instead of it -- "rising is a change, health
+  // is a level" -- and an unmeasured health renders a dash, never a zero.
+  function renderRising(container, rows) {
+    if (window.ConcordSkeleton) window.ConcordSkeleton.done(container);
+    if (!rows || !rows.length) {
+      container.innerHTML = emptyState('No trend yet',
+        'A project is ranked here once it has snapshots at least 14 days apart. ' +
+        'Below that there is no slope, and a rate over a day or two would be a number about the timer.');
+      return;
+    }
+    var body = rows.map(function (row, i) {
+      return '<tr><td>' + (i + 1) + '</td>' +
+        '<td><a href="/projects/' + encodeURIComponent(row.slug) + '">' + esc(row.name) + '</a></td>' +
+        '<td>' + row.features_per_week.toFixed(2) + '</td>' +
+        '<td>' + row.complaints_per_week.toFixed(2) + '</td>' +
+        '<td>' + (row.health_score == null ? '\u2014' : Math.round(row.health_score * 100) + '%') + '</td>' +
+        '<td>' + row.days + '</td></tr>';
+    }).join('');
+    container.innerHTML = card('Rising',
+      '<p class="muted small">Organic features shipped, then organic complaints filed, ' +
+      'per week across each project&#39;s own recorded span &mdash; fastest first. ' +
+      'Health is the current level, beside the slope rather than instead of it.</p>' +
+      '<div class="table-scroll"><table class="ranking-table"><thead><tr>' +
+      '<th>#</th><th>project</th><th>features/week</th><th>complaints/week</th>' +
+      '<th>health</th><th>days</th></tr></thead><tbody>' +
+      body + '</tbody></table></div>');
+  }
+
   function render(container, data) {
     if (window.ConcordSkeleton) window.ConcordSkeleton.done(container);
 
@@ -148,6 +181,7 @@
     var summary = document.getElementById('stats-summary');
     var latency = document.getElementById('stats-latency');
     var responsiveness = document.getElementById('stats-responsiveness');
+    var rising = document.getElementById('stats-rising');
 
     // Its own fetch and its own failure state: the leaderboard is the only
     // section that needs the forge webhook to have ever fired, so a blank one is
@@ -176,6 +210,18 @@
           if (window.ConcordSkeleton) window.ConcordSkeleton.done(latency);
           latency.innerHTML = emptyState('Latency unavailable',
             'The response times did not load. Try again.');
+        });
+    }
+
+    // Rising needs the per-project series, so a fresh instance has none and says so.
+    if (rising) {
+      rising.setAttribute('aria-busy', 'true');
+      getJSON('/api/v1/stats/rising')
+        .then(function (rows) { renderRising(rising, rows); })
+        .catch(function () {
+          if (window.ConcordSkeleton) window.ConcordSkeleton.done(rising);
+          rising.innerHTML = emptyState('Trend unavailable',
+            'The rising ranking did not load. Try again.');
         });
     }
 

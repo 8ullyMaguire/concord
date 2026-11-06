@@ -478,3 +478,87 @@ func TestStatsResponsivenessEmptyIsAnEmptyArray(t *testing.T) {
 		t.Errorf("body = %s, want [] -- an empty leaderboard must not be null", body)
 	}
 }
+
+// STAT-3.4 end to end: a bare array, ranked per week, with the span each rate was
+// measured over. A project whose series is shorter than the floor is absent.
+func TestStatsRisingServesTheRanking(t *testing.T) {
+	ts, st := newTestServerWithStore(t)
+	ctx := context.Background()
+	u, err := st.GetUser(ctx, "testuser")
+	if err != nil {
+		t.Fatalf("GetUser: %v", err)
+	}
+	mk := func(slug string) int64 {
+		t.Helper()
+		p, err := st.CreateProject(ctx, u.ID, slug, slug, "d", "collective", "MIT")
+		if err != nil {
+			t.Fatalf("CreateProject(%s): %v", slug, err)
+		}
+		return p.ID
+	}
+	fast, slow, brief := mk("fast-riser"), mk("slow-riser"), mk("brief-riser")
+
+	// `brief` deliberately gets ONE snapshot: a project with no span has no slope and
+	// must be absent, which is a different defect from a span that is merely short.
+	if err := st.WriteProjectSnapshots(ctx, "2026-01-01", []store.ProjectSnapshot{
+		{ProjectID: fast}, {ProjectID: slow},
+	}); err != nil {
+		t.Fatalf("day 1: %v", err)
+	}
+	if err := st.WriteProjectSnapshots(ctx, "2026-01-29", []store.ProjectSnapshot{
+		{ProjectID: fast, FeaturesShipped: 14},
+		{ProjectID: slow, FeaturesShipped: 4},
+		{ProjectID: brief, FeaturesShipped: 2},
+	}); err != nil {
+		t.Fatalf("day 29: %v", err)
+	}
+
+	resp, err := http.Get(ts.URL + "/api/v1/stats/rising")
+	if err != nil {
+		t.Fatalf("GET rising: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	var rows []struct {
+		Slug            string   `json:"slug"`
+		Days            int      `json:"days"`
+		FeaturesPerWeek float64  `json:"features_per_week"`
+		HealthScore     *float64 `json:"health_score"`
+	}
+	if err := json.Unmarshal(body, &rows); err != nil {
+		t.Fatalf("decode as a bare array: %v\nbody: %s", err, body)
+	}
+	if len(rows) != 2 || rows[0].Slug != "fast-riser" {
+		t.Fatalf("rows = %+v, want fast-riser first and brief-riser absent", rows)
+	}
+	if rows[0].FeaturesPerWeek != 3.5 || rows[0].Days != 28 {
+		t.Fatalf("fast row = %+v, want 3.5/week over 28 days", rows[0])
+	}
+	// No metrics were written for this project, so health is null and the page renders a
+	// dash. A 0 here would be the placeholder column leaking into a ranking.
+	if rows[0].HealthScore != nil {
+		t.Fatalf("health = %v, want null for an unmeasured project", *rows[0].HealthScore)
+	}
+}
+
+func TestStatsRisingEmptyIsAnEmptyArray(t *testing.T) {
+	ts := newTestServerNoActor(t)
+	resp, err := http.Get(ts.URL + "/api/v1/stats/rising")
+	if err != nil {
+		t.Fatalf("GET rising: %v", err)
+	}
+	defer resp.Body.Close()
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	if strings.TrimSpace(string(body)) != "[]" {
+		t.Errorf("body = %s, want [] -- an empty ranking must not be null", body)
+	}
+}

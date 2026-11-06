@@ -432,6 +432,9 @@ func (s *Server) Router() http.Handler {
 	// STAT-3.5: the projects that publish a newcomer responsiveness median,
 	// fastest first, absent below the sample floor.
 	r.Get("/api/v1/stats/responsiveness", s.handleStatsResponsiveness)
+	// STAT-3.4: rising, from the per-project series 0033 records. Absent below a
+	// 14-day span, because a shorter one has no slope worth publishing.
+	r.Get("/api/v1/stats/rising", s.handleStatsRising)
 	// Text-only SVG badges (spec §3.4). `instance` is a reserved slug mounted
 	// here, before the project lookup, so a project actually named "instance"
 	// cannot shadow its own badge.
