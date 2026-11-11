@@ -1,7 +1,9 @@
 # Moderation — implementation plan
 
 **Date:** 2026-11-11 · **Spec:** `docs/specs/moderation-spec.md` · **Branch:** `master`
-**Status:** plan only. No line of this is in the tree yet.
+**Status:** M1 is **built, verified and deployed** (2026-11-11, commit `4c8be43`, live
+`pre-merge-2026-11-05-21-g7f28992`, schema 34). M2–M4 are still plan. The deviation and its
+reason are recorded at the end of §2.
 
 ## 0. How to use this plan
 
@@ -633,6 +635,29 @@ before this plan was written.
 ```
 
 ---
+
+### M1 as built — what changed from this plan
+
+Three deviations, each forced by something measured rather than preferred:
+
+1. **The panel shipped with M1, not M3.** `TestEveryAPIRouteIsDeclaredWithAReaderOrAReason`
+   refuses an API route with no reader, and it is right to: a route no page can reach is the
+   defect that gate exists for. So `assets/js/moderation.js` and the feature-page section came
+   with the routes. It is a panel, not a modlog UI.
+2. **`arena_id` is optional in the body.** The feature page names the idea, not the arena, and
+   an idea's arena is a property of the ranking. `store.ArenasForFeature` resolves one arena,
+   and the handler refuses to guess when the idea is in more than one.
+3. **No capability endpoint exists**, so the panel probes with the act itself: `confirm:false`
+   returns 400 ("this act needs confirmation") when permitted and 401/403/404 when refused,
+   before the body is read. One request, nothing mutated. A real capability read is the better
+   fix and belongs in M3.
+
+Verified: `go test ./...` green on thinkcentre (httpapi 284s, store 170s, 1228 tests), vet,
+fmt-check, docs-check, e2e-sync-check. Both new tests were mutated to prove they can fail
+(`status=status` → "status is \"draft\", want rejected"; trust floor +1000 → "promoted removal:
+403, want 201"). Live on the origin: version `...g7f28992`, schema 34, the asset 200, the panel
+in the feature page's HTML, and an anonymous POST after giving consent → `401 authentication
+required`, which means the handler was reached and the gate ran.
 
 ## 3. M2 — the modlog (ordering + acceptance)
 

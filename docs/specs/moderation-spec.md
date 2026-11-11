@@ -1,6 +1,9 @@
 # Moderation: taking an idea out of an arena, and the log that makes it checkable
 
-**Status:** spec, 2026-11-11. Written before any code; nothing here is implemented.
+**Status:** spec, 2026-11-11. **M1 (§5's `arena.remove`/`arena.restore`, §6's two routes, §7's
+panel) is implemented, verified and deployed** — commit `4c8be43`, live
+`pre-merge-2026-11-05-21-g7f28992`, schema 34. §7's modlog filters and the standings link are
+still owed (M2/M3 in `docs/plans/moderation.md`).
 **Supersedes:** nothing. Extends `docs/specs/audit-log.md` (the viewer) into a moderation surface.
 
 ## 1. The request, and what it turns into
