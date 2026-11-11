@@ -21,6 +21,32 @@ if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(4);}})();
   </div>
 </div>
 
+<!--
+  Moderation (docs/specs/moderation-spec.md §7). Hidden until the panel's own probe proves
+  the reader may use it: no endpoint names the viewer's role, so moderation.js posts the act
+  with confirm=false and treats 400 ("this act needs confirmation" -- permitted) as a yes and
+  401/403/404 as a no. The probe mutates nothing.
+-->
+<section id="moderation-panel" class="moderation-panel" data-project="{{.Slug}}" data-feature="{{.ID}}" hidden>
+  <h2>Moderation</h2>
+  <form id="moderation-form">
+    <label for="moderation-reason">Reason</label>
+    <textarea id="moderation-reason" name="reason" rows="2" maxlength="500"></textarea>
+    <p class="note">A reason is required, and it is published in the modlog beside the act.</p>
+    <div id="moderation-confirm" hidden>
+      <p class="note">Remove this idea from the arena? It stops competing and its status becomes
+        rejected &mdash; the idea itself is kept, and the act can be undone.</p>
+      <button type="button" class="btn btn-secondary" id="moderation-cancel">Cancel</button>
+    </div>
+    <button type="submit" class="btn btn-secondary" id="moderation-remove">Remove from the arena</button>
+  </form>
+  <div id="moderation-undo" hidden>
+    <button type="button" class="btn btn-secondary" id="moderation-undo-btn">Undo</button>
+  </div>
+  <p class="note" id="moderation-status" hidden></p>
+</section>
+<script src="{{ asset "/assets/js/moderation.js" }}"></script>
+
 <section id="comment-thread" class="comment-thread" data-thread-kind="feature" data-thread-id="{{.ID}}" aria-live="polite">
   <h2>Discussion</h2>
   <p class="note">Loading comments&hellip;</p>

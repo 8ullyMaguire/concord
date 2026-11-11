@@ -139,6 +139,13 @@ var readerInventory = []readerRow{
 		Note: "the repair; its control is rendered with the verification verdict"},
 	{Match: "/api/v1/projects/{project_id}/criteria-profiles", Reader: "criteria.js",
 		Anchor: "/criteria-profiles", Routes: 2, Note: "saved weightings: list and create"},
+	// Moderation (§6 of docs/specs/moderation-spec.md). Its own row, and its own file,
+	// because the act and its reversal are the only writes on the site that remove something
+	// a person asked for: the anchor is the panel's own root id, so this row stops being
+	// satisfied the moment the form goes away even if the routes stay.
+	{Match: "/api/v1/projects/{project_id}/moderation", Reader: "moderation.js",
+		Anchor: "moderation-panel", Routes: 2,
+		Note: "take an idea out of an arena, and put it back: one append-only act each"},
 	{Match: "/api/v1/projects/{project_id}/criteria", Reader: "criteria.js", Anchor: "/criteria",
 		Routes: 4, Note: "the comparison table and a criterion's own vote"},
 	{Match: "/api/v1/projects/{project_id}/features/{id}/solutions/{solution_id}/coverage", Reader: "feature.js",

@@ -5,8 +5,8 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state (the twenty-first pass, §34):** schema 33 · 33 migrations · 86 live tables ·
-**1220 Go tests** across 9 test-bearing packages · 303 e2e tests in 23 suite files · 54/54 UI mutants killed
+**Measured state (the twenty-first pass, §34):** schema 34 · 34 migrations · 86 live tables ·
+**1228 Go tests** across 9 test-bearing packages · 303 e2e tests in 23 suite files · 54/54 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
 8 project.js/arena, 4 project.js/work items) · Go mutants: 27 arms, 172 killed, 0 survived ·
 `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
@@ -4105,8 +4105,8 @@ against a seeded probe instance — the defect is a perfect score for an unmeasu
 
 ### 34.6 Where the numbers stand
 
-**Measured state (the twenty-first pass, §34):** schema 33 · 33 migrations · 86 live tables ·
-**1220 Go tests** across 9 test-bearing packages · 303 e2e tests in 23 suite files ·
+**Measured state (the twenty-first pass, §34):** schema 34 · 34 migrations · 86 live tables ·
+**1228 Go tests** across 9 test-bearing packages · 303 e2e tests in 23 suite files ·
 `make verify` exit 0 · `make gates` exit 0 (27 arms) · `make e2e` exit 0.
 
 ## §35 — The Consensus tab answered 405, because the index it links to was "out of scope"

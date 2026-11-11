@@ -629,6 +629,18 @@ func (s *Server) Router() http.Handler {
 		r.Post("/", s.handleSaveCriteriaProfile)
 	})
 
+	// Moderation (docs/specs/moderation-spec.md §6). One act, one audit row; the reversal is
+	// another act naming the first. POST-only on purpose: a GET that removes an entry is a
+	// crawler's favourite bug, and `confirm` in the body is what stops a script doing it by
+	// accident.
+	//
+	// Permission is the instance-wide trust level OR the project role (§5 D4), which is why
+	// these are not nested under a role-gated subtree.
+	r.Route("/api/v1/projects/{project_id}/moderation", func(r chi.Router) {
+		r.Post("/arena/remove", s.handleArenaRemove)
+		r.Post("/arena/restore", s.handleArenaRestore)
+	})
+
 	// Scout (docs/specs/scout-spec.md).
 	//
 	// NOT under /projects/{project_id}/ on purpose: Scout answers "what should I

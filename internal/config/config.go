@@ -70,3 +70,23 @@ func TrustLevelMin() int {
 	}
 	return n
 }
+
+// ModTrustMin is the instance-wide trust level that may moderate a project's arena without
+// holding a role in it. It is a separate knob from TrustLevelMin on purpose: the two powers
+// are different, and an operator may want to hand out one without the other.
+//
+// Measured 2026-11-11: the live instance has 88 accounts, 87 at trust_level 0 and one at 1,
+// and trust_config.max_level is 1. The default of 1 therefore means "the owner and whoever
+// the owner promotes" -- raising it is an operator decision, not a side effect of this
+// feature.
+func ModTrustMin() int {
+	v := os.Getenv("CONCORD_MOD_TRUST_MIN")
+	if v == "" {
+		return DefaultTrustLevelMin
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return DefaultTrustLevelMin
+	}
+	return n
+}
