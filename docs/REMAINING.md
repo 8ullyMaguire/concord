@@ -6,7 +6,7 @@ the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
 **Measured state (the twenty-first pass, §34):** schema 35 · 35 migrations · 87 live tables ·
-**1237 Go tests** across 9 test-bearing packages · 308 e2e tests in 24 suite files · 54/54 UI mutants killed
+**1239 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files · 54/54 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
 8 project.js/arena, 4 project.js/work items) · Go mutants: 27 arms, 172 killed, 0 survived ·
 `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
@@ -3792,7 +3792,7 @@ claim succeeding (`claimed_by: 3`). Restored, and the build is green again.
 ### 31.6 Where the numbers stand
 
 **Measured state (the eighteenth pass, §31) (historical):** schema 30 · 30 migrations · 83 live tables · 1111 Go
-tests across 9 test-bearing packages · 308 e2e tests in 24 suite files · 54/54 UI mutants killed
+tests across 9 test-bearing packages · 311 e2e tests in 25 suite files · 54/54 UI mutants killed
 (8 project.js, 9 consensus.js, 5 consent.js, 2 auth.js, 4 project.js/work items, 5 settings.js,
 6 feature.js, 5 arena) · Go mutants: 23 arms, 154 killed, 0 survived
 · `make verify` exit 0 · `make gates` exit 0 · `make e2e` exit 0.
@@ -3874,7 +3874,7 @@ still most-of-the-catalog-unknown and the discovery page must say so out loud. A
 
 ### 32.5 Where the numbers stand
 
-**Measured state (the nineteenth pass, §32) (historical):** schema 32 · 32 migrations · 85 live tables · 1205 Go tests across 9 test-bearing packages · 308 e2e tests in 24 suite files · `make verify` exit 0 · `make gates` exit 0 · `make e2e` exit 0.
+**Measured state (the nineteenth pass, §32) (historical):** schema 32 · 32 migrations · 85 live tables · 1205 Go tests across 9 test-bearing packages · 311 e2e tests in 25 suite files · `make verify` exit 0 · `make gates` exit 0 · `make e2e` exit 0.
 
 ## §33 — The contribution feed (R11)
 
@@ -4106,7 +4106,7 @@ against a seeded probe instance — the defect is a perfect score for an unmeasu
 ### 34.6 Where the numbers stand
 
 **Measured state (the twenty-first pass, §34):** schema 35 · 35 migrations · 87 live tables ·
-**1237 Go tests** across 9 test-bearing packages · 308 e2e tests in 24 suite files ·
+**1239 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files ·
 `make verify` exit 0 · `make gates` exit 0 (27 arms) · `make e2e` exit 0.
 
 ## §35 — The Consensus tab answered 405, because the index it links to was "out of scope"
@@ -4364,3 +4364,76 @@ reader with **no** controls -- the gating that the first deployed build got wron
    a shared component; the estate-level verdict belongs in
    `~/secondbrain/10-Projects/polaris-estate-programme.md`, and this pass records the question
    rather than answering it with a new crate.
+
+## §37 — The audit page grew the reason and the Undo, and it had the queue's session bug
+
+### 37.1 What was still missing after §36
+
+The curation queue (§36) made an act reviewable *instance-wide*, and left the project's own log
+(`/projects/{slug}/audit`) as it was: `audit_log.detail` printed raw -- a reader saw
+`{"reason": "spam", "prev": {...}}` -- and no control could reverse anything from it. That is the
+page a maintainer actually opens ("what happened in my project?"), so the owner's "some way to undo
+a deletion" was answered only on `/curation`, for readers who had already found it.
+
+§36.8 listed this as owed. It is now built.
+
+### 37.2 What changed
+
+- `store.ListAudit` now selects `a.undoes` and `EXISTS (SELECT 1 FROM audit_log u WHERE u.undoes =
+  a.id)`, so every row can say **"I reversed this"** and **"this was reversed"**. Both directions
+  from one column pair -- a log showing only one of them makes a reader guess which removal is
+  still in force, which is the state D2 of the moderation spec exists to prevent.
+- `AuditEntry.can_undo` is filled by the handler with ONE permission check per page (every row
+  shares the project), using `mayModerate` -- extracted from `permitModeration` so the two doors
+  (instance trust, project role) are written once. The route re-checks; the flag is a hint.
+- `audit.js` renders the reason out of the JSON, marks `undone` / `reversal of #N`, and offers an
+  inline Undo that asks for a reason before the round trip, because the route refuses an empty one.
+
+### 37.3 Two defects the browser found, both already fixed once on the queue
+
+1. **The first read ran before `session.js` loaded.** `base.html` loads the session module at the
+   end of `<body>`, so a read started at parse time goes out anonymous; `can_undo` came back false
+   and every moderator saw a log with no Undo and no explanation. Exactly the defect found on
+   `/curation` in §36.5 -- and the suite failed on it, which is why the fix is a `DOMContentLoaded`
+   deferral in the file rather than a note.
+2. **The confirmation was deleted by its own re-render.** `load()` replaced the DOM node the
+   message lived in, so "Reversed." came out as an empty line. The message is now passed into
+   `load(note)` and set after the render. Same shape as the queue's "1 shown." overwriting
+   "Reversed." on the same afternoon.
+
+Two pages, two independently-written scripts, the same two bugs. That is not a coincidence to
+remember; it is the reason the house pattern is now: *any page whose first read depends on the
+session defers to `DOMContentLoaded`, and any confirmation is set after the render that follows it.*
+
+### 37.4 Measured
+
+```
+$ go test ./internal/store/ -run TestTheAuditLogSaysWhichActsWereReversed -count=1
+ok  	git.polarisocial.xyz/concord/concord/internal/store	0.310s
+$ go test ./internal/httpapi/ -run TestTheAuditReadSaysWhoMayUndo -count=1
+ok  	git.polarisocial.xyz/concord/concord/internal/httpapi	0.965s
+$ pytest tests/e2e/audit_undo_e2e.py -q
+3 passed in 38.85s
+$ pytest tests/e2e/audit_e2e.py -q
+9 passed
+$ pytest tests/e2e/curation_e2e.py -q
+5 passed in 5.12s
+```
+
+The Go test asserts both directions of a reversal (`Undone` on the removal, `Undoes` on the
+restore) and that an anonymous reader is offered no Undo; the browser suite asserts the reason is
+rendered rather than the JSON, that the empty reason is refused in the page with the route's own
+sentence, and that after the reversal the row is marked `undone` and the restore act names what it
+reversed.
+
+### 37.5 What is still owed
+
+1. **Proposals never expire.** Stash-box has `voting_period` and `min_destructive_voting_period`;
+   Concord models a `stale` status and nothing sets it. A queue that keeps everything forever is a
+   queue that grows, and this is now the largest remaining gap in the moderation surface.
+2. **M3, the standings-page link** — the arena page still does not link to a removal control; a
+   maintainer reaches moderation from `/curation` or the audit page.
+3. **`/audit` does not filter by "moderation acts only"** as a named filter: `action=arena.remove`
+   works, but a reader has to know the action name to ask for it. A `kind=moderation` shortcut is a
+   one-line client change and a named filter the API does not have yet.
+

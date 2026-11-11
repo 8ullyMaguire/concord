@@ -40,8 +40,13 @@ which answers **202** when a consent is recorded but the quorum is not met. Plan
 The queue carries `can_vote` per row (a hint; every route re-checks) and marks a row contested at
 `CapDisputeQuorum`. Its browser suite is `tests/e2e/curation_e2e.py` (5 tests) -- it found four
 defects the Go gates could not see, all four recorded in §36.5.
-Still owed: the per-project modlog (`/audit` renders no reason column and no Undo control, so the
-project-scoped view of an act is a log line), proposal expiry, and the standings-page link (`M3`). Spec
+The per-project audit page now carries the same half: a row renders the act's **reason** (not the
+`detail` JSON), marks `undone` / `reversal of #N`, and offers an inline Undo that asks for a reason
+first, gated on `can_undo` from the same permission pair the route uses (`mayModerate`, extracted
+from `permitModeration`). `audit_log.undoes` plus an `EXISTS` give both directions of a reversal in
+one read. Suite: `tests/e2e/audit_undo_e2e.py` (3 tests, §37).
+Still owed: proposal expiry (the largest remaining gap -- `stale` is modelled and nothing sets it),
+a named `kind=moderation` filter on `/audit`, and the standings-page link (`M3`). Spec
 `docs/specs/moderation-spec.md`, plan `docs/plans/moderation.md`, estate verdict
 `~/secondbrain/10-Projects/polaris-estate-moderation-2026-11-11.md`.
 Two facts the plan turned on, both still true: `RemoveArenaEntry` had no caller before this, and
@@ -140,7 +145,7 @@ lands, which is why this file does not carry one)
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 1237 tests, schema 35, 86 tables,
+Measured, not remembered: `make verify` green, 1239 tests, schema 35, 86 tables,
 35 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 
