@@ -19,6 +19,18 @@ constant ordering and `min_health>0` stays empty for 68 of 73 projects. A bounde
 `~/code` and `~/code-local` found an origin remote for 31 of those 69 — the rest need a
 person. The one failed fetch is `ferrisfeed`, whose `repo_url` answers 404.
 
+**Moderation is specified, not built (2026-11-11).** The arena-removal request —
+high-trust or role-gated removal, confirmation or undo, and a filterable modlog over every
+moderation act — has a spec and a plan, no code: `docs/specs/moderation-spec.md` and
+`docs/plans/moderation.md`. M1 (removal + undo as one append-only act) carries complete code;
+its `internal/ledger` appendix was compiled in a scratch module before the plan was written.
+The estate verdict is in `~/secondbrain/10-Projects/polaris-estate-moderation-2026-11-11.md`:
+`polaris-ledger` already owns these rules and owns no table, so concord's job is adoption —
+`internal/db/emergency_hold_rules_test.go` is a conformance table, and the last commit says so.
+Two measured facts the plan turns on: the live ladder is 88 accounts, 87 at `trust_level` 0 and
+one at 1 (`trust_config.max_level = 1`), and `internal/store/arenas.go:495`
+`RemoveArenaEntry` has existed this whole time with no caller and no route.
+
 The product decision behind the consensus page fix (`REMAINING` §35) is the other number
 worth carrying: **0 consensus calls on the instance against 87 features in the
 `consensus` status**. Either calls get opened from the arenas the ranking already chose,

@@ -385,3 +385,13 @@ unreliable as a test that never met its mutant.
 **Also note the live schema is 78 tables with 1,806 audit rows** — and the audit
 log could be written by twenty call sites and read by none until this pass.
 Nothing on this page mentioned that.
+
+**Also queued, on the owner's request (2026-11-11): moderation.** Spec and plan are written
+and nothing is built — `docs/specs/moderation-spec.md`, `docs/plans/moderation.md`. It answers
+the arena-removal request as one mechanism: an act with a reason, a reversal that is a second
+act, and the audit log grown into a filterable modlog with a keyset cursor. It deliberately
+lands *after* the deploy above, because it changes the schema (migration `0034`) and the deploy
+is what proves the previous three migrations on the live host. One thing it settles in passing:
+`RemoveArenaEntry` has existed since the arena work with no caller, so the removal primitive is
+adoption, not construction — the missing half was always the route, the permission and the log.
+
