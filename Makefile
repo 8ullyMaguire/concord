@@ -56,6 +56,7 @@ e2e: build
 	$(E2E_PYTEST) tests/e2e/consensus_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/feeds_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/curation_e2e.py -q
+	$(E2E_PYTEST) tests/e2e/audit_undo_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/audit_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/feature_e2e.py -q
 	# §6.2's themes: the propose form, the consent state, and the expiry a reader has to be

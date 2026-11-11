@@ -2192,3 +2192,12 @@ a.curation-target:hover { text-decoration: underline; }
 .curation-undo-form { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
 .curation-undo-form input { flex: 1 1 18rem; padding: 0.35rem 0.5rem;
   border: 1px solid var(--slate-200); border-radius: 0.35rem; font: inherit; font-size: 0.9rem; }
+/* Audit rows that carry a reversal: the mark sits beside the action so a reader can see which
+   removal is still in force without opening the detail. */
+.audit-mark { display: inline-block; margin-left: 0.4rem; padding: 0.05rem 0.4rem;
+  border-radius: 999px; background: var(--slate-100); border: 1px solid var(--slate-200);
+  font-size: 0.7rem; color: var(--slate-600); vertical-align: middle; }
+.audit-undo { margin-top: 0.4rem; }
+.audit-undo-form { display: flex; gap: 0.4rem; flex-wrap: wrap; align-items: center; margin-top: 0.35rem; }
+.audit-undo-form input { flex: 1 1 16rem; padding: 0.3rem 0.5rem;
+  border: 1px solid var(--slate-200); border-radius: 0.35rem; font: inherit; font-size: 0.85rem; }

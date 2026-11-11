@@ -64,11 +64,50 @@ function apiAuth(extra) {
     return '<span class="dim">deleted account</span>';
   }
 
+  // An act's `detail` is JSON — `{"reason": "...", "prev": {...}}` — and a viewer that prints it
+  // raw shows a reader punctuation. The reason is the sentence a person wrote; the rest is the
+  // numbers the reversal needs and belongs in the log, not on the screen.
+  function detailText(e) {
+    var d = e.detail || '';
+    if (!d) return '';
+    try {
+      var parsed = JSON.parse(d);
+      if (parsed && typeof parsed === 'object' && typeof parsed.reason === 'string') {
+        return parsed.reason;
+      }
+    } catch (err) { /* a plain-text detail, which most writers produce */ }
+    return d;
+  }
+
+  // Both directions of a reversal in one place: an act that was reversed, and the act that did
+  // it. A log showing only one of them makes the reader guess which removal is still in force.
+  function marks(e) {
+    var out = '';
+    if (e.undone) out += '<span class="audit-mark">undone</span>';
+    if (e.undoes) out += '<span class="audit-mark">reversal of #' + esc(String(e.undoes)) + '</span>';
+    return out;
+  }
+
+  function undoControl(e) {
+    if (!e.can_undo) return '';
+    var id = esc(String(e.id));
+    return '<div class="audit-undo" data-undo="' + id + '">' +
+      '<button type="button" class="btn btn-secondary" data-undo-open="' + id + '">Undo</button>' +
+      '<div class="audit-undo-form" hidden>' +
+        '<input type="text" data-undo-reason="' + id + '" ' +
+          'placeholder="Why? The log records this." ' +
+          'aria-label="Reason for reversing this removal">' +
+        '<button type="button" class="btn btn-secondary" data-undo-confirm="' + id + '">Reverse it</button>' +
+        '<button type="button" class="btn btn-secondary" data-undo-cancel="' + id + '">Cancel</button>' +
+      '</div></div>';
+  }
+
   function row(e) {
+    var why = detailText(e);
     return '<tr>' +
       '<td class="cell-num"><span class="dim">' + esc(whenUnix(e.created_at)) + '</span></td>' +
-      '<td class="cell-title"><code>' + esc(e.action) + '</code>' +
-        (e.detail ? '<p class="cell-note">' + esc(e.detail) + '</p>' : '') + '</td>' +
+      '<td class="cell-title"><code>' + esc(e.action) + '</code>' + marks(e) +
+        (why ? '<p class="cell-note">' + esc(why) + '</p>' : '') + undoControl(e) + '</td>' +
       '<td>' + actor(e) + '</td>' +
       '<td class="cell-num"><span class="dim">' + esc(e.entity || '—') + '</span></td>' +
       '</tr>';
@@ -133,11 +172,45 @@ function apiAuth(extra) {
       return;
     }
     root.innerHTML = controls(actions) +
+      '<p class="note" data-audit-note role="status" aria-live="polite"></p>' +
       '<p class="audit-count" data-audit-count>' + countLine(page, unfilteredTotal, filtered) + '</p>' +
       '<div class="table-scroll"><table class="ranking-table">' +
         '<thead><tr><th>When</th><th>Action</th><th>Who</th><th>Entity</th></tr></thead>' +
         '<tbody>' + page.entries.map(row).join('') + '</tbody>' +
       '</table></div>';
+  }
+
+  function say(msg) {
+    var el = root.querySelector('[data-audit-note]');
+    if (el) el.textContent = msg || '';
+  }
+
+  // reverse posts the restore act for one audit id. It asks for a reason because the route
+  // refuses an empty one, and it reports the refusal where the reader is looking.
+  function reverse(id, reason, btn) {
+    if (!reason) {
+      say('A reversal needs a reason: the log keeps it.');
+      return;
+    }
+    if (btn) btn.disabled = true;
+    say('Reversing\u2026');
+    fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/moderation/arena/restore', {
+      method: 'POST',
+      headers: apiAuth({ 'Content-Type': 'application/json' }),
+      body: JSON.stringify({ undoes: Number(id), reason: reason, confirm: true })
+    }).then(function (r) {
+      return r.json().catch(function () { return {}; }).then(function (data) {
+        if (!r.ok) {
+          say((data && data.error) || 'Could not reverse that.');
+          if (btn) btn.disabled = false;
+          return;
+        }
+        load('Reversed. The restore act is in this log with that reason on it.');
+      });
+    }).catch(function () {
+      say('Could not reach the server.');
+      if (btn) btn.disabled = false;
+    });
   }
 
   function query() {
@@ -157,7 +230,7 @@ function apiAuth(extra) {
       '<button class="btn btn-primary" id="audit-retry">Try again</button></div>';
   }
 
-  function load() {
+  function load(note) {
     var base = '/api/v1/projects/' + encodeURIComponent(slug);
     var filtered = state.action !== '' || state.q !== '';
     var fetches = [
@@ -179,6 +252,10 @@ function apiAuth(extra) {
     }
     Promise.all(fetches).then(function (res) {
       render(res[0], res[1], res[2]);
+      // The note is set AFTER the render, because render() replaces the node it lives in. A
+      // message written before the reload is a message the reload deletes -- which is how the
+      // "Reversed." confirmation came out as an empty line on the first try.
+      if (note) say(note);
       if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);
     }).catch(function (err) {
       root.innerHTML = errorState(err && err.message ? err.message : String(err));
@@ -190,7 +267,16 @@ function apiAuth(extra) {
   }
 
   if (root) {
-    load();
+    // AFTER the document, not at parse time. base.html loads session.js at the end of <body>,
+    // so a read started here goes out without a token -- and an audit read that arrives
+    // anonymous cannot be told apart from one by a reader with no standing: `can_undo` comes
+    // back false, so a moderator sees a log with no Undo on it and no explanation. The same
+    // timing bug was found and fixed on the curation page; this file had it too.
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function () { load(); });
+    } else {
+      load();
+    }
     document.addEventListener('click', function (e) {
       if (!e.target) return;
       if (e.target.id === 'audit-retry') { load(); return; }
@@ -200,6 +286,31 @@ function apiAuth(extra) {
         state.action = sel ? sel.value : '';
         state.q = box ? box.value.trim() : '';
         load();
+        return;
+      }
+
+      // The Undo control, delegated rather than bound per button: the table is re-rendered from
+      // HTML on every load, so a listener attached to a button dies with the row it was on.
+      var open = e.target.getAttribute && e.target.getAttribute('data-undo-open');
+      if (open) {
+        var box2 = root.querySelector('[data-undo="' + open + '"] .audit-undo-form');
+        if (box2) {
+          box2.hidden = false;
+          var field = root.querySelector('[data-undo-reason="' + open + '"]');
+          if (field) field.focus();
+        }
+        return;
+      }
+      var cancel = e.target.getAttribute && e.target.getAttribute('data-undo-cancel');
+      if (cancel) {
+        var box3 = root.querySelector('[data-undo="' + cancel + '"] .audit-undo-form');
+        if (box3) box3.hidden = true;
+        return;
+      }
+      var confirm = e.target.getAttribute && e.target.getAttribute('data-undo-confirm');
+      if (confirm) {
+        var field2 = root.querySelector('[data-undo-reason="' + confirm + '"]');
+        reverse(confirm, field2 ? field2.value.trim() : '', e.target);
       }
     });
     // Enter in the search box applies, because a reader who has typed a filter
