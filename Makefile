@@ -10,8 +10,14 @@ DEPLOY_PORT ?= 8006
 build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/$(BINARY) $(PKG)
 
+# -timeout is a WALL-CLOCK budget for each package's test binary, and `go test ./...`
+# runs packages in parallel. httpapi alone takes ~246s on thinkcentre (measured
+# 2026-11-11, after R12-R15 added the stats and forge-event suites); under the
+# parallel load of the full run it crossed the old 300s and the gate failed with
+# "test timed out after 4m0s" while every test in it passed. A gate that fails on
+# wall-clock is a flaky gate, so the budget is 3x the slowest package.
 test:
-	go test -timeout 300s ./...
+	go test -timeout 900s ./...
 
 # Playwright end-to-end tests.
 #
