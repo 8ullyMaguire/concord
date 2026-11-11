@@ -5,8 +5,8 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state (the twenty-first pass, §34):** schema 34 · 34 migrations · 86 live tables ·
-**1228 Go tests** across 9 test-bearing packages · 303 e2e tests in 23 suite files · 54/54 UI mutants killed
+**Measured state (the twenty-first pass, §34):** schema 35 · 35 migrations · 87 live tables ·
+**1237 Go tests** across 9 test-bearing packages · 308 e2e tests in 24 suite files · 54/54 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
 8 project.js/arena, 4 project.js/work items) · Go mutants: 27 arms, 172 killed, 0 survived ·
 `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
@@ -3792,7 +3792,7 @@ claim succeeding (`claimed_by: 3`). Restored, and the build is green again.
 ### 31.6 Where the numbers stand
 
 **Measured state (the eighteenth pass, §31) (historical):** schema 30 · 30 migrations · 83 live tables · 1111 Go
-tests across 9 test-bearing packages · 303 e2e tests in 23 suite files · 54/54 UI mutants killed
+tests across 9 test-bearing packages · 308 e2e tests in 24 suite files · 54/54 UI mutants killed
 (8 project.js, 9 consensus.js, 5 consent.js, 2 auth.js, 4 project.js/work items, 5 settings.js,
 6 feature.js, 5 arena) · Go mutants: 23 arms, 154 killed, 0 survived
 · `make verify` exit 0 · `make gates` exit 0 · `make e2e` exit 0.
@@ -3874,7 +3874,7 @@ still most-of-the-catalog-unknown and the discovery page must say so out loud. A
 
 ### 32.5 Where the numbers stand
 
-**Measured state (the nineteenth pass, §32) (historical):** schema 32 · 32 migrations · 85 live tables · 1205 Go tests across 9 test-bearing packages · 303 e2e tests in 23 suite files · `make verify` exit 0 · `make gates` exit 0 · `make e2e` exit 0.
+**Measured state (the nineteenth pass, §32) (historical):** schema 32 · 32 migrations · 85 live tables · 1205 Go tests across 9 test-bearing packages · 308 e2e tests in 24 suite files · `make verify` exit 0 · `make gates` exit 0 · `make e2e` exit 0.
 
 ## §33 — The contribution feed (R11)
 
@@ -4105,8 +4105,8 @@ against a seeded probe instance — the defect is a perfect score for an unmeasu
 
 ### 34.6 Where the numbers stand
 
-**Measured state (the twenty-first pass, §34):** schema 34 · 34 migrations · 86 live tables ·
-**1228 Go tests** across 9 test-bearing packages · 303 e2e tests in 23 suite files ·
+**Measured state (the twenty-first pass, §34):** schema 35 · 35 migrations · 87 live tables ·
+**1237 Go tests** across 9 test-bearing packages · 308 e2e tests in 24 suite files ·
 `make verify` exit 0 · `make gates` exit 0 (27 arms) · `make e2e` exit 0.
 
 ## §35 — The Consensus tab answered 405, because the index it links to was "out of scope"
@@ -4202,3 +4202,133 @@ for `ferrisfeed` cannot even be measured because its `repo_url` (`hirrolot19/fer
 git.polarisocial.xyz) answers 404 — `concord-healthsync` logs `synced 5, skipped 0, failed 1
 of 6` and exits 1 every hour.
 
+
+## §36 — The curation queue: one list over every decision waiting for review
+
+### 36.1 What the owner asked for, and what was already there
+
+"Check stash-box's moderation system — a page with filters to browse edits users made to scene
+metadata. I would like something similar for our moderation/curation log, same place to vote on
+and review the decisions." Then: "make it as general and flexible as possible and extract it as a
+shared polaris component if we haven't done that already."
+
+Measured in the donor (`~/code-local/go/stash-box`): `/edits` is not a history, it is a work
+list — it opens on `status=pending`, `voted=not_voted`, bots excluded, oldest first (*"a queue is
+worked from the end that has been waiting longest"*), filters by target type, status, operation,
+who voted, user, sort, direction, and applies at a vote threshold (default 3) with
+`voting_period` and `min_destructive_voting_period`. The applied history is a second page
+(`/audits`) over the same records.
+
+Measured here, that shape had nowhere to land: this tree has **three** proposal kinds, each with
+its own table and its own decider (`taxonomy_proposals` + `taxonomy_consents`,
+`strategic_weight_proposals` + consents, `strategic_theme_proposals`), a capability
+confirm/dispute queue, and — since M1 the same day — moderation acts in `audit_log`. Two of the
+three proposal kinds had no page at all, so the review work existed and nobody could see it.
+
+### 36.2 What was built
+
+- `store.ListCuration` (`internal/store/curation.go`) — one UNION projection over the three
+  tables plus the moderation acts, with filters (kind, state, project, actor, text, since/until,
+  "nothing I have voted on"), a `(created_at, kind, id)` keyset cursor, and `my_vote` filled by a
+  correlated subquery so a page of 20 rows is one query.
+- `GET /api/v1/curation` and `POST /api/v1/curation/{kind}/{id}/vote`
+  (`internal/httpapi/curation.go`, routes in `server.go`), with a reader-coverage row and a
+  mutation-checked test that a stranger cannot review an act.
+- `/curation` (`templates/curation.html`, `assets/js/curation.js`, nav link in `base.html`): the
+  queue opens on work-to-do and the Log is the same list with `state=` emptied.
+- Migration `0035` — `act_reviews` (endorse/contest, one row per reader per act) and the view
+  `curation_votes`, which is what makes "has this reader voted" one clause instead of three.
+- `docs/plans/curation-queue.md` — the plan, written before any code, with the donor's measured
+  behaviour and the three things refused.
+
+### 36.3 Four decisions, and the alternatives they beat
+
+**A review applies nothing.** `act_reviews` records that a reader endorsed or contested an act;
+the act stays applied and a maintainer who agrees reverses it with the act that already exists.
+Rejected: auto-reverse at a contest quorum. That hands every removal to whoever organises three
+people first, and the moderation spec's whole point (D1: store the act, derive the state) is that
+reversal is a deliberate, attributed act.
+
+**No "oppose" button for proposals.** A taxonomy or weight proposal ratifies on a count of
+*consents*; there is no negative vote in the schema or in `governance.EvaluateConsensus`. A
+button the server refuses teaches a lie, so the page offers Consent only — and says so in the
+plan rather than shipping a dead control. A real reject path changes the ratification maths and
+is a governance decision, not a UI one.
+
+**The vote route dispatches; it does not re-implement.** `VoteOnCuration` calls
+`RatifyTaxonomyProposal` / `RatifyStrategicWeightProposal`, which own eligibility (§8.2: role AND
+recent activity), the self-consent refusal and the charter thresholds. A second copy of those
+rules behind a generic endpoint is exactly how a permission ends up enforced on one path and not
+the other. The consequence is that a recorded vote short of quorum answers **202**, not an error.
+
+**The union is a read model, not a table.** A `curation_items` table written by every decider
+would query faster and would be a second truth about every proposal — the thing
+`docs/specs/audit-log.md` §2 refused when it chose `audit_log` over per-surface history tables.
+If the union becomes slow the answer is an index, not a copy.
+
+### 36.4 What it cost, measured
+
+```
+$ go test ./internal/store/ -run TestCuration -count=1
+ok  	git.polarisocial.xyz/concord/concord/internal/store	0.830s
+$ go test ./internal/httpapi/ -run 'TestCuration|TestEveryAPIRouteIsDeclaredWithAReaderOrAReason' -count=1
+ok  	git.polarisocial.xyz/concord/concord/internal/httpapi	3.149s
+```
+
+The cursor test inserts a proposal **one second later** between two page reads and requires the
+pages to union to exactly the five rows that existed when paging began. Same-second rows are
+ordered by `(kind, id)` and may legitimately cross a page boundary — the first draft of that test
+asserted five and got six, which is the cursor working, not skipping.
+
+The gate on reviewing an act was mutated to prove it can fail: with
+`permitModeration(...)` replaced by `_ = projectID`, `TestCurationVoteOnAnActNeedsStanding` fails
+`200, want 403`. Restored.
+
+### 36.5 What the browser found, which no Go test could
+
+`tests/e2e/curation_e2e.py`, five tests, `5 passed in 31.00s`. It was written after the Go gates
+were green, and it failed four times on four different defects -- each one a page that looked
+working:
+
+1. **The default filter listed no moderation acts.** The page's first draft asked the server for
+   `state=pending`, and an act has no pending phase; it exists only once somebody has done one. So
+   the queue showed every proposal and none of the half the owner asked for. The server now answers
+   a filter value of `open` that no row carries: pending proposals + applied acts.
+2. **Every fetch was anonymous.** This app authenticates with a bearer token in `localStorage`,
+   and the first draft sent `credentials: 'same-origin'` only. The READ path accepts an anonymous
+   caller, so the list rendered fine; the WRITE path answered 401. `TestEveryAPIFetchPresentsAToken`
+   caught this one, not the browser -- and it is the gate that exists because of exactly this.
+3. **The first read ran before the session module loaded.** `base.html` loads `session.js` AFTER
+   the page's own script, so at parse time `window.ConcordSession` did not exist and the list
+   arrived anonymous even with a good token in storage -- the page told a signed-in reviewer to
+   sign in. The first read now waits for `DOMContentLoaded`.
+4. **A row stayed in the queue after it was voted on.** The default view is "only what I have not
+   voted on", so a card left in place after a successful consent makes the work list lie about how
+   much work is left. The page now re-reads instead of patching the card.
+
+And one design decision the browser forced, which the plan had not considered: **the page offered
+Consent to readers who cannot consent**, and the server answered `permission denied: only an
+eligible tagger can consent`. A button the server refuses teaches a lie, so `GET /api/v1/curation`
+now returns `can_vote` per row (`fillCurationVoteRights` in `internal/httpapi/curation.go`) and the
+page renders either the buttons or one of two sentences: "Sign in to vote" and "Your account has no
+standing to vote on this one." The flag is a HINT -- every route re-checks -- because a flag
+computed in a read is not a permission.
+
+### 36.5 What is still owed (§36, next passes)
+
+1. **`/audit` gained nothing.** It still renders no reason column and no Undo control, so the
+   per-project view of an act is a log line. Either grow it or redirect it at `/curation`
+   filtered by project — the second is cheaper and is what the filters already support.
+2. **No "contested" badge.** `CapDisputeQuorum` (2) is the instance's existing answer to "how
+   many people disagree", and the queue does not reuse it yet: the counts are shown, the verdict
+   is not derived.
+3. **Proposals never expire.** Stash-box has `voting_period`; Concord models a `stale` status and
+   nothing sets it. A queue that keeps everything forever is a queue that grows.
+4. **The shared-component question is unanswered.** The owner asked whether this should be
+   extracted as a shared polaris component. The honest answer from this pass: the *shape*
+   (projection + keyset cursor + vote dispatch to a per-kind decider) is general, but `polaris-ledger`
+   already owns the cursor and the act taxonomy, and nothing in the Go tree is shared with another
+   project. Extracting a Go package that one repo compiles is a third copy of a general idea, not
+   a shared component; the estate-level verdict belongs in
+   `~/secondbrain/10-Projects/polaris-estate-programme.md`, and this pass records the question
+   rather than answering it with a new crate.

@@ -1151,3 +1151,14 @@ func TestDecodeRefusesRatherThanStartingAtPageOne(t *testing.T) {
 	}
 }
 ```
+
+---
+
+## M2, as shipped: the curation queue
+
+M2 was planned as `/projects/{slug}/moderation` plus `GET .../moderation/log`. It shipped as
+`/curation` instead — a list over **every** reviewable kind, not only acts — because taxonomy
+proposals and strategic weights are the larger queues and neither had a page. See
+`docs/plans/curation-queue.md` (the plan) and `docs/REMAINING.md` §36 (what it cost and what it
+left owed). The per-project modlog is explicitly *not* built; the audit page reads the acts
+today, without reasons or an Undo control.

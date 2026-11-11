@@ -21,7 +21,7 @@ person. The one failed fetch is `ferrisfeed`, whose `repo_url` answers 404.
 
 **Moderation M1 is built and deployed (2026-11-11).** The arena-removal request is served:
 `POST /api/v1/projects/{slug}/moderation/arena/remove` and `.../arena/restore`, one append-only
-audit act each, with migration `0034` (the live database is at schema 34). Permission is
+audit act each, with migration `0034` (the live database is at schema 35). Permission is
 `users.trust_level >= CONCORD_MOD_TRUST_MIN` (default 1) **or** project role `reviewer`; measured
 on the instance, 88 accounts sit at 87×0 and 1×1, so the trust half means "the owner and whoever
 the owner promotes" and the role half is what lets a project moderate its own arena. The idea is
@@ -29,10 +29,20 @@ never deleted — the entry row goes, the status becomes `rejected`, and the rev
 prior status and the entry's four numbers from the log. The feature page carries the panel
 (`assets/js/moderation.js`), which probes with `confirm:false` and reads 400-as-permitted,
 401/403/404-as-refused because no endpoint names the viewer's role.
-Still owed: the modlog itself (`M2` — cursor, filters, undo rows rendered, nav labelled
-"Modlog") and the standings-page link (`M3`). The audit page reads the new acts today; it does
-not yet render reasons or an Undo control. Spec `docs/specs/moderation-spec.md`, plan
-`docs/plans/moderation.md`, estate verdict
+**M2 shipped as the curation queue (2026-11-11).** `/curation` is one filterable list over every
+reviewable kind in the instance — taxonomy proposals, strategic-weight proposals and moderation
+acts — with a Queue/Log toggle, a `(created_at, kind, id)` keyset cursor, and a vote per row that
+dispatches to the decider that already owns that kind (`store.VoteOnCuration`). Migration `0035`
+adds `act_reviews` (endorse/contest of an act, one row per reader, applies nothing) and the view
+`curation_votes`. Reads: `GET /api/v1/curation`; writes: `POST /api/v1/curation/{kind}/{id}/vote`,
+which answers **202** when a consent is recorded but the quorum is not met. Plan
+`docs/plans/curation-queue.md`, cost and debts `docs/REMAINING.md` §36.
+The queue carries `can_vote` per row (a hint; every route re-checks) and marks a row contested at
+`CapDisputeQuorum`. Its browser suite is `tests/e2e/curation_e2e.py` (5 tests) -- it found four
+defects the Go gates could not see, all four recorded in §36.5.
+Still owed: the per-project modlog (`/audit` renders no reason column and no Undo control, so the
+project-scoped view of an act is a log line), proposal expiry, and the standings-page link (`M3`). Spec
+`docs/specs/moderation-spec.md`, plan `docs/plans/moderation.md`, estate verdict
 `~/secondbrain/10-Projects/polaris-estate-moderation-2026-11-11.md`.
 Two facts the plan turned on, both still true: `RemoveArenaEntry` had no caller before this, and
 `internal/ledger` is a Go mirror of `polaris-ledger`'s rules, not a parallel design.
@@ -130,8 +140,8 @@ lands, which is why this file does not carry one)
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 1228 tests, schema 34, 86 tables,
-34 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
+Measured, not remembered: `make verify` green, 1237 tests, schema 35, 86 tables,
+35 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 
 The **public instance** runs this build too, as of 2026-10-16: `concord.polarisocial.xyz`

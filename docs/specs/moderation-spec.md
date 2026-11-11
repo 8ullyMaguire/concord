@@ -1,9 +1,27 @@
 # Moderation: taking an idea out of an arena, and the log that makes it checkable
 
 **Status:** spec, 2026-11-11. **M1 (§5's `arena.remove`/`arena.restore`, §6's two routes, §7's
-panel) is implemented, verified and deployed** — commit `4c8be43`, live
-`pre-merge-2026-11-05-21-g7f28992`, schema 34. §7's modlog filters and the standings link are
-still owed (M2/M3 in `docs/plans/moderation.md`).
+panel) is implemented, verified and deployed** — commit `4c8be43`. **M2 is implemented and
+deployed as the curation queue**, `docs/plans/curation-queue.md`: one filterable list over every
+proposal kind and every moderation act, at `/curation`, with `act_reviews` recording an
+endorse/contest of an act (migration `0035`). The standings link (M3) is still owed.
+
+**Decision — where the modlog lives (§7), and what it lost.** §7 described a per-project
+`/projects/{slug}/moderation` page and a `GET .../moderation/log` read over `audit_log`. What
+shipped is `/curation`, one instance-wide list over `audit_log` **and** the taxonomy and
+strategic-weight proposal tables, because the owner's actual request was a place to "browse
+edits … the same place to vote on and review the decisions", and three of the four reviewable
+kinds in this codebase are proposals that already had a decider. Two per-kind lists would have
+meant three pages that each answer "what is waiting" with a different denominator, and the
+per-project page would have had nothing to vote on — a moderation act is reviewed by endorsing
+or contesting it, and that decision is instance-wide, not the arena's.
+
+Rejected: keeping §7 as written and adding a review table for acts alone (would have left the
+two largest review queues, taxonomy and weights, with no shared list); and a
+`curation_items` table written by every decider (a second truth about every proposal, and the
+exact thing §2 of the audit spec refused). The cost of the choice is that `/audit` still has no
+reason column and no Undo control; `act_reviews` is reachable only from `/curation`. Both are
+rows in `docs/REMAINING.md` §36, not omissions.
 **Supersedes:** nothing. Extends `docs/specs/audit-log.md` (the viewer) into a moderation surface.
 
 ## 1. The request, and what it turns into
