@@ -4314,7 +4314,39 @@ page renders either the buttons or one of two sentences: "Sign in to vote" and "
 standing to vote on this one." The flag is a HINT -- every route re-checks -- because a flag
 computed in a read is not a permission.
 
-### 36.5 What is still owed (§36, next passes)
+### 36.6 The fifth defect came from the deployed binary, not the suite
+
+The browser check on a scratch instance running the DEPLOYED build found the Undo control
+offered to an anonymous reader. `can_vote` already carried exactly the standing the restore route
+requires, so the control is gated on it -- and the outsider test now asserts the control is absent
+as well as the Consent button.
+
+That is the fourth time in this pass that a control existed for a reader the server would refuse.
+The pattern is worth naming: **the page is the only place a permission is not checked**, so every
+control that writes needs the server's own answer carried into the read model, not re-derived in
+JavaScript.
+
+### 36.7 Verified on the deployed build
+
+```
+$ curl -s https://concord.polarisocial.xyz/api/v1/version
+{"version": "pre-merge-2026-11-05-28-gf7981aa"}
+$ curl -s -o /dev/null -w '%{http_code}' https://concord.polarisocial.xyz/curation   -> 200
+```
+
+In the browser, `https://concord.polarisocial.xyz/curation`: title `Curation — Concord`, H1
+`Curation`, the nav link resolves, `GET /api/v1/curation?state=open&unvoted=1&limit=20` answers 200
+in 116ms, and the page says *"Nothing is waiting. That is either good news or the filters are too
+narrow."* -- which is the truth: the live database has **0 taxonomy proposals, 0 weight proposals
+and 0 moderation acts** (measured: `select count(*) from audit_log where action like 'arena.%'` = 0).
+
+Because an empty queue cannot show a row, the same binary was run on a scratch copy of the live
+database (port 8123), with one real taxonomy proposal and one real `arena.remove` created through
+the API. The page then rendered both rows with the act's **reason** (not its JSON), the proposal's
+summary, the `0 for · 0 against` count, and *"Sign in to vote on this one."* for an anonymous
+reader with **no** controls -- the gating that the first deployed build got wrong.
+
+### 36.8 What is still owed (§36, next passes)
 
 1. **`/audit` gained nothing.** It still renders no reason column and no Undo control, so the
    per-project view of an act is a log line. Either grow it or redirect it at `/curation`
