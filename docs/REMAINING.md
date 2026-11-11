@@ -3963,3 +3963,96 @@ $ curl -s -o /dev/null -w '%{http_code}' 127.0.0.1:8006/contribute  -> 200
 `sorted by health` puts the five measured projects ahead of sixty-nine unmeasured ones, and
 `min_health=0.5` returns exactly the three above the line. That is the two surfaces that were
 recorded as broken in `PLAN-r4` -- broken because the column was empty, now answered from data.
+
+## §34 — The Consensus tab answered 405, because the index it links to was "out of scope"
+
+### 34.1 The symptom, reproduced before it was explained
+
+```
+GET /projects/ferrisfeed/consensus                        200 (a shell)
+GET /api/v1/projects/ferrisfeed/consensus                405  <-- the page's second request
+GET /api/v1/projects/ferrisfeed/consensus/1721           404  (a call id it made up)
+```
+
+The page body said `Could not load this call.` / `HTTP 405`. The 405 was the whole bug:
+`base.html` renders the project tabs as `<a href="/projects/{slug}/consensus">` — no
+query string — `handleConsensusPage` put that empty `?call=` into `data-call`, and
+`consensus.js` fetched `/api/v1/projects/<slug>/consensus/` with an empty id. The chi
+subtree registered only `POST /` at that path, so `GET` is answered by the router, not by
+a handler: **405 from the route table, for every project, for every reader**.
+
+### 34.2 Why it stayed broken: the deferral was written down as a decision
+
+`docs/specs/consensus-page-spec.md` §6 listed "A calls index" under *Out of scope,
+deliberately*, with the reason "§3.3 lists no endpoint that lists calls … the page is
+reached from a feature or a solution". That reason is true about the spec and false about
+the product: the tab exists on every project page and points at the page with no call. A
+deferral is only safe if nothing links to what is missing — this one was linked from
+`base.html`, so the deferral was a broken control with a rationale beside it.
+
+### 34.3 What shipped
+
+- `internal/httpapi/handlers.go` — `handleListConsensus`. `requireProjectID` for visibility,
+  then `ListConsensusCallsForFeed(ctx, projectID, 100)`. That store method was reused rather
+  than duplicated: it already scans the nullable columns (`feature_id` for a §6.6 process
+  decision, `question`/`description`/`result` for pre-0014 rows) and it deliberately carries
+  no tally, which is what §6.6 requires of a list as much as of a feed. Its name says
+  "ForFeed" because the feed was its first caller; a second caller does not justify a second
+  query.
+- `internal/httpapi/server.go` — `r.Get("/", s.handleListConsensus)` inside the existing
+  `/api/v1/projects/{project_id}/consensus` subtree.
+- `internal/httpapi/assets/js/consensus.js` — `load()` dispatches to `loadIndex()` when the
+  URL names no call, `renderIndex()` draws each call as a link to `?call={id}` with
+  `status · result · opened <date>` and nothing numeric. It asserts the response is an
+  ARRAY: an object there would render as an empty project.
+- `internal/httpapi/templates/consensus.html` — `#consensus-index`, shown only on the
+  no-call path, with an empty state that says where a call comes from.
+- `internal/httpapi/reader_coverage_test.go` — the consensus row's `Routes` 4 → 5, note
+  updated. (The gate fires on exactly this: a route added under a declared prefix.)
+
+### 34.4 The tests, and the proof they can fail
+
+Three added to `consensus_page_test.go`:
+
+| test | claim |
+|---|---|
+| `TestTheCallsIndexIsTheRouteTheProjectTabNeeds` | 200 (explicitly not 405), bare array, newest first by `opens_at`, no tally key on any row |
+| `TestTheCallsIndexOfAProjectWithNoCallsIsAnEmptyList` | the body is `[]`, not `null` — `Array.isArray(null)` is false and would turn an empty project into an error |
+| `TestTheCallsIndexOfAPrivateProjectIsNotFoundToAStranger` | same 404 and same body as an absent project, and the body does not leak a call question |
+
+All three were run against the unmodified router (`r.Get("/", …)` deleted, nothing else) and
+all three failed with **`status 405`** — the reported symptom, verbatim. Restored and re-run
+green. `go test ./...` green; `go vet`, `gofmt` and `e2e-sync-check` clean.
+
+**`make verify` is NOT green, pre-existing and unrelated:** `docs-check` fails 9 assertions,
+all inside the gate's own unit tests (`scripts/test_check_doc_numbers.py` × 7,
+`scripts/test_ideas_catalog.py` × 2 — the latter because `docs/IDEAS.md` does not exist in
+this tree). The same 9 fail on the unmodified tree; the route change touches none of them.
+That is a gate to repair on its own ticket, not a reason to skip the rest of `verify`.
+
+### 34.5 Verified live, and what the verification measured
+
+```
+$ curl -s https://concord.polarisocial.xyz/api/v1/version
+{"version": "pre-merge-2026-11-05-4-gde880a5"}
+$ curl -s -w '[%{http_code}]' .../api/v1/projects/ferrisfeed/consensus     -> [] [200]
+```
+
+In the browser, `/projects/ferrisfeed/consensus`: `#consensus-error` hidden, `#consensus-index`
+visible, zero `.skeleton-row`, and the page text carries no "405". On a scratch instance
+(a copy of the dev database, port 8123, the same binary) the project that HAS a call renders
+one row — `Adopt the live proof?` → `/consensus?call=1`, meta `open · opened 2026-10-16` —
+and clicking it opens the call (question, quorum line, no error).
+
+**The instance-wide measurement that matters for what comes next:**
+
+```
+consensus_calls                 0        <-- the index is empty on every project
+features.status='consensus'    87        <-- and 87 features are sitting in the phase that opens one
+```
+
+So the control now works and has nothing to show. That is a supply gap, not a page defect:
+87 features claim the `consensus` phase while no call exists anywhere, and `project_metrics`
+for `ferrisfeed` cannot even be measured because its `repo_url` (`hirrolot19/ferrisfeed` on
+git.polarisocial.xyz) answers 404 — `concord-healthsync` logs `synced 5, skipped 0, failed 1
+of 6` and exits 1 every hour.
