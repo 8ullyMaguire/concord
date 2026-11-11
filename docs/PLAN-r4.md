@@ -290,6 +290,32 @@ count) and "agents are excluded" (`users` has no agent flag).
 
 ### Where the next milestone should go
 
+**Updated 2026-11-11.** R12–R15 landed on the statistics strand (`REMAINING` §34) and are
+**not deployed**: the live instance answers `pre-merge-2026-11-05-4-gde880a5`, which
+predates migrations `0032`/`0033` and the `statsnapshot` timer. So the first task is a
+deploy (`make deploy`, then `make deploy-admin` for the timer), not a feature. After it,
+the two gaps a measurement pass on 2026-11-11 put in front of everything else:
+
+1. **Q5's data half, which is 31 slugs from being mechanical.** `seed/forge_repos.json`
+   holds 74 entries — 5 with a `repo_url`, 69 skipped as `not stated (Q5)` — so
+   `concord-healthsync` logs `synced 5, skipped 0, failed 1 of 6` and exits 1 every hour,
+   `sort=health` stays a constant ordering and `min_health>0` stays empty for 68 of 73
+   projects. A bounded walk of `~/code` and `~/code-local` (depth 3, origin remotes only)
+   found a remote for **31 of those 69**: ascend, blackrep, suki, orbital, kindred,
+   gravity, threadlight and 24 others. Two of the 31 embed a token in the URL — strip it
+   before seeding. The one failed fetch is `ferrisfeed`, whose `repo_url`
+   (`hirrolot19/ferrisfeed` on git.polarisocial.xyz) answers 404.
+2. **The consensus phase contains no decisions.** `consensus_calls` is empty on the whole
+   instance while 87 features carry `status='consensus'`. The page can list calls as of
+   `REMAINING` §35 and the list is empty on every project. Either open calls from the
+   arenas the ranking already chose — `GET …/features/{id}/consensus` is the readiness
+   gate and the only path that opens one — or the statuses are wrong. A board claiming 87
+   decisions in progress while the record holds none is the same class of lie as an
+   unmeasured `health_score`, and it is the cheaper one to see.
+
+Unchanged from the last pass: 2,325 complaints are `validated` and **none** is `open`, so
+§4.5.7's "complaints needing validation" pool is still zero rows wherever it is offered.
+
 **Updated 2026-10-30.** The next milestone is **R9**, and it is not a new surface: it is the
 column the catalog never had. `projects` carries no repository reference at all (2 of 74
 descriptions hold a URL, and nothing parses them), and `project_metrics` holds a row per

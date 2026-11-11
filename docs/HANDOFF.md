@@ -5,17 +5,36 @@ For the implementing agent taking over from here. Read this, then
 then `docs/ARCHITECTURE.md`. `docs/PLAN.md` covers the pre-r4 milestones (all
 complete) and `docs/concord-spec.md` is superseded — do not plan from either.
 
-**What is left is `docs/REMAINING.md` §21.6** (measured 2026-10-16, ninth pass).
+**Where this stands (2026-11-11).** R12–R15 are merged into `master` from `forgejo/main`
+(`REMAINING` §34) and are **NOT deployed**: the public instance still answers
+`pre-merge-2026-11-05-4-gde880a5`, which predates migrations `0032`/`0033` and the
+`statsnapshot` timer. So the first task is `make deploy` plus `make deploy-admin` on
+thinkcentre, not a feature — until then every `/stats` number in §34 is a local
+measurement and the live host does not serve those routes at all.
+
+After that deploy, the blocker is **Q5's data half**, and it is 31 slugs from being
+mechanical: 69 of the 74 seed entries carry no repository, so `concord-healthsync`
+writes `synced 5, skipped 0, failed 1 of 6` and exits 1 every hour, `sort=health` stays a
+constant ordering and `min_health>0` stays empty for 68 of 73 projects. A bounded walk of
+`~/code` and `~/code-local` found an origin remote for 31 of those 69 — the rest need a
+person. The one failed fetch is `ferrisfeed`, whose `repo_url` answers 404.
+
+The product decision behind the consensus page fix (`REMAINING` §35) is the other number
+worth carrying: **0 consensus calls on the instance against 87 features in the
+`consensus` status**. Either calls get opened from the arenas the ranking already chose,
+or those statuses are wrong.
+
+**Superseded (2026-10-16, ninth pass): "What is left is `docs/REMAINING.md` §21.6".**
 
 Everything before it in that file is history, and §1/§4/§11 are explicitly marked
 superseded — §11's "nothing else is outstanding" was verified by hand and was wrong
 twice over. If a tracker and the tree disagree, the tree wins and the tracker is the bug.
 
-**Next milestone (2026-10-30): R9 — repository identity and health ingest**, in
-`docs/PLAN-r4.md` and `docs/plans/contribution-feed.md` (CF-1). Read it before trusting any
-"healthy" surface: `projects` has no repository column at all, `project_metrics` carries a
-`health_score` on none of its rows, and `min_health>0` therefore returns an empty set on
-every instance. R10–R12 build §4.5.7 (`docs/specs/contribution-feed-spec.md`) on top of it.
+**Superseded (2026-10-30): "Next milestone: R9 — repository identity and health ingest".**
+R9's code half shipped that day (`0031_repo_identity.sql`, `cmd/forgeseed`, `cmd/healthsync`,
+the timer units); what is missing is its data half, Q5, described above. The old paragraph
+said `projects` has no repository column at all — that is no longer true and was the reason
+it was worth writing down then.
 
 **Second strand, same day: R13–R15 — instance statistics (§4.13,
 `docs/specs/instance-statistics-spec.md`).** The rule that came out of the measurement pass:
