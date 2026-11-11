@@ -2129,3 +2129,29 @@ fieldset legend {
   font-weight: 500;
 }
 .concord-message-action { margin-left: 0.75rem; color: #991b1b; text-decoration: underline; }
+
+/* The consensus calls index (C6, docs/specs/consensus-page-spec.md).
+   A project's Consensus tab links here with no call named, so the page shows a
+   list. Rows are links first and metadata second: the question is what a reader
+   is looking for, and the status/result line is what tells them whether it is
+   still open. No tally is styled here because the server sends none (§6.6). */
+.consensus-index-list {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.consensus-index-call {
+  border: 1px solid var(--border, #e2e8f0);
+  border-radius: 8px;
+  padding: var(--space-sm, 0.75rem);
+}
+.consensus-index-call a { font-weight: 600; }
+.consensus-index-meta {
+  color: var(--muted, #64748b);
+  font-size: 0.85rem;
+  margin: 0.25rem 0 0;
+}
+.consensus-index-empty { color: var(--muted, #64748b); }

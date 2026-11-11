@@ -802,6 +802,10 @@ func (s *Server) Router() http.Handler {
 	})
 
 	r.Route("/api/v1/projects/{project_id}/consensus", func(r chi.Router) {
+		// C6: the calls index. The project page's Consensus tab links here with no
+		// call named, and without this route the page fetched an empty call id and
+		// answered 405 to every reader.
+		r.Get("/", s.handleListConsensus)
 		r.Post("/", s.handleCreateConsensus)
 		r.Route("/{call_id}", func(r chi.Router) {
 			r.Get("/", s.handleGetConsensus)

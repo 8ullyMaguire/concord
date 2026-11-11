@@ -434,3 +434,114 @@ func makeSecondProject(t *testing.T, ts *httptest.Server, db *store.DB, slug str
 	}
 	return slug, id
 }
+
+// C6, the calls index. This is the route the project page's Consensus tab needs:
+// base.html links /projects/{slug}/consensus with NO query string, so the page
+// called /api/v1/projects/{slug}/consensus/ with an empty call id and the router
+// answered 405 -- "Could not load this call. HTTP 405" for every reader who
+// clicked the tab. The status is asserted first, because 405 is the exact
+// regression: a chi subtree that declares only POST on "/" answers it.
+func TestTheCallsIndexIsTheRouteTheProjectTabNeeds(t *testing.T) {
+	ts, db, slug, pid, _ := seedPanels(t)
+
+	older, err := db.CreateConsensusCall(context.Background(), pid, 0, 1,
+		"Adopt the older thing?", "")
+	if err != nil {
+		t.Fatalf("CreateConsensusCall: %v", err)
+	}
+	// opens_at is the sort key, and two calls created in the same second would come
+	// back in whatever order the engine chose -- so the order assertion below would
+	// pass on luck. Move one back rather than sleeping.
+	if _, err := db.ExecContext(context.Background(),
+		`UPDATE consensus_calls SET opens_at = opens_at - 60 WHERE id = ?`, older.ID); err != nil {
+		t.Fatalf("age the first call: %v", err)
+	}
+	newer, err := db.CreateConsensusCall(context.Background(), pid, 0, 1,
+		"Adopt the newer thing?", "")
+	if err != nil {
+		t.Fatalf("CreateConsensusCall: %v", err)
+	}
+
+	code, raw := authGet(t, ts, "/api/v1/projects/"+slug+"/consensus", anonAuth)
+	if code == http.StatusMethodNotAllowed {
+		t.Fatalf("the calls index answered 405: GET is not registered on "+
+			"/api/v1/projects/{project_id}/consensus, which is what the project "+
+			"tab's link depends on. body: %s", raw)
+	}
+	if code != http.StatusOK {
+		t.Fatalf("calls index: status %d, body %s", code, raw)
+	}
+
+	// A bare array, like every other list endpoint in this API.
+	var rows []map[string]any
+	if err := json.Unmarshal(raw, &rows); err != nil {
+		t.Fatalf("the index is not a JSON array: %v; body %s", err, raw)
+	}
+	if len(rows) != 2 {
+		t.Fatalf("%d calls listed, want 2; body %s", len(rows), raw)
+	}
+	if got := numOf(rows[0]["id"]); got != float64(newer.ID) {
+		t.Errorf("first listed call is id %v, want the newest (%d)", got, newer.ID)
+	}
+	if got := numOf(rows[1]["id"]); got != float64(older.ID) {
+		t.Errorf("second listed call is id %v, want %d", got, older.ID)
+	}
+
+	// No tally, on any row. §6.6 hides running counts until a call closes, and a
+	// list is a public surface: shipping counts here would defeat the rule as
+	// surely as publishing them in a feed.
+	for i, row := range rows {
+		for _, banned := range []string{"tally", "consent", "support_ratio", "decisive_ratio",
+			"participants", "quorum_required"} {
+			if _, present := row[banned]; present {
+				t.Errorf("row %d carries %q; the index must not publish counts (§6.6)", i, banned)
+			}
+		}
+		if q, _ := row["question"].(string); q == "" {
+			t.Errorf("row %d has no question, so the list renders an untitled row: %v", i, row)
+		}
+	}
+}
+
+// A project with no calls is an ordinary project, not an error: the index must
+// answer an empty ARRAY. `null` would make the page's Array.isArray guard throw
+// and turn an empty project into "Could not load this project's calls."
+func TestTheCallsIndexOfAProjectWithNoCallsIsAnEmptyList(t *testing.T) {
+	ts, _, slug, _, _ := seedPanels(t)
+	code, raw := authGet(t, ts, "/api/v1/projects/"+slug+"/consensus", anonAuth)
+	if code != http.StatusOK {
+		t.Fatalf("calls index: status %d, body %s", code, raw)
+	}
+	if got := strings.TrimSpace(string(raw)); got != "[]" {
+		t.Errorf("an empty project answered %s, want []", got)
+	}
+}
+
+// The index lists call questions, which are content: it must obey the project's
+// visibility exactly as the per-call read does, and be indistinguishable from a
+// project that does not exist.
+func TestTheCallsIndexOfAPrivateProjectIsNotFoundToAStranger(t *testing.T) {
+	ts, db, slug, pid, _ := seedPanels(t)
+	if _, err := db.SetProjectVisibility(context.Background(), slug, "private"); err != nil {
+		t.Fatalf("SetProjectVisibility: %v", err)
+	}
+	if _, err := db.CreateConsensusCall(context.Background(), pid, 0, 1,
+		"A question a stranger must not read", ""); err != nil {
+		t.Fatalf("CreateConsensusCall: %v", err)
+	}
+	stranger := registerAndLogin(t, ts, "index-stranger")
+
+	code, raw := authGet(t, ts, "/api/v1/projects/"+slug+"/consensus", stranger)
+	if code != http.StatusNotFound {
+		t.Fatalf("a stranger got %d for a private project's calls, want 404; "+
+			"body: %s", code, raw)
+	}
+	if strings.Contains(string(raw), "stranger must not read") {
+		t.Errorf("the refusal leaked a call question: %s", raw)
+	}
+	missingCode, missingRaw := authGet(t, ts, "/api/v1/projects/no-such-project-at-all/consensus", stranger)
+	if missingCode != code || strings.TrimSpace(string(raw)) != strings.TrimSpace(string(missingRaw)) {
+		t.Errorf("absent project = %d %s, private project = %d %s; the two must be "+
+			"indistinguishable", missingCode, missingRaw, code, raw)
+	}
+}

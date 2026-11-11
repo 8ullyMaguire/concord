@@ -120,8 +120,8 @@ var readerInventory = []readerRow{
 		Anchor: "/hold", Routes: 2,
 		Note: "§6.6's emergency hold: the page says why a suspended call resolves nothing"},
 	{Match: "/api/v1/projects/{project_id}/consensus", Reader: "consensus.js", Anchor: "/consensus",
-		Routes: 4,
-		Note:   "open a call, read it, take a position, raise an objection"},
+		Routes: 5,
+		Note:   "open a call, read it, take a position, raise an objection, and list the project's calls (C6: the project tab's path names no call, so the page needs the index)"},
 	// §29's arena loop. Four routes, and the anchors are the RENDERED controls
 	// (the buttons and the vote form the panel builds), not the fetch paths: an
 	// anchor that is a path stays satisfied after the control is deleted.

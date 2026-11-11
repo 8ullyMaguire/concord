@@ -10,11 +10,19 @@
 </div>
 
 <!--
-  One call per page, not a list of calls.
+  One call per page, and an INDEX when none is named.
 
-  There is no endpoint that lists calls, so there is nothing to list. The page is
-  reached from a feature or a solution, which is why it reads `?call=<id>` rather
-  than taking a path segment.
+  The page reads `?call={id}` rather than taking a path segment, because a call is
+  opened from a feature or a solution and that link carries the id. But base.html's
+  project tabs link Consensus with NO query at all, so "no call named" has to be a
+  state this page renders -- C6 of the page spec, the calls index
+  (GET /api/v1/projects/{slug}/consensus). Before it existed the script asked for
+  `/consensus/` with an empty id, the router answered 405, and the tab showed
+  "Could not load this call. HTTP 405" for every project.
+
+  The index carries no counts: §6.6 hides the running tally until a call closes,
+  and the server is where that is enforced -- the list is built from the same store
+  method as the project's consensus feed, which is tally-free by design.
 
   The two measures below are shown SEPARATELY and labelled, and the client never
   derives either one. §6.6 requires two ratios with different denominators:
@@ -41,6 +49,21 @@ if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(4);}})();
     <p class="error-state-description" id="consensus-error-detail"></p>
     <button type="button" class="btn btn-secondary" id="consensus-retry">Try again</button>
   </div>
+
+  <!--
+    The calls index. Shown only when the URL names no call, which is how the
+    project page's Consensus tab arrives. It is a LIST OF LINKS, never a tally:
+    an open call's counts are hidden (§6.6) and the server sends none here.
+  -->
+  <section id="consensus-index" hidden>
+    <h2 class="section-head">Calls in this project</h2>
+    <ul class="consensus-index-list" id="consensus-index-list"></ul>
+    <p class="consensus-index-empty" id="consensus-index-empty" hidden>
+      No consensus call has been opened in this project yet. A call is opened from a
+      feature's solution arena — open a feature from the
+      <a href="/projects/{{.Slug}}">project page</a> to see whether one is ready.
+    </p>
+  </section>
 
   <article id="consensus-call" hidden>
     <h2 class="consensus-question" id="consensus-question"></h2>

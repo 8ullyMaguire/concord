@@ -276,7 +276,20 @@ are on the page at once. Neither erases the other, and neither can be recorded t
   `positions` CHECK constraint has no such value, so the store would reject them.
   Genuinely unimplemented, not deferred — recorded here so it is not mistaken for an
   omission.
-- **A calls index.** §3.3 lists no endpoint that lists calls. The page is reached
-  from a feature or a solution; without an index there is nothing to list. Tracked
-  as C6, not built here.
+- **A calls index — BUILT 2026-11-11.** It was deferred here on the reasoning that
+  "§3.3 lists no endpoint that lists calls", and that reasoning hid a broken page:
+  `base.html` renders the project tabs with `<a href="/projects/{slug}/consensus">`
+  and NO query string, so the index path is not an optional extra, it is the path
+  every reader who clicks the tab takes. Without the route the page fetched
+  `/api/v1/projects/{slug}/consensus/` with an empty call id and the router answered
+  **405**, so every project's Consensus tab read "Could not load this call. HTTP 405"
+  (measured on the live instance, 2026-11-11).
+  Now: `GET /api/v1/projects/{slug}/consensus` answers a bare array of the project's
+  calls, newest first, and the page renders them as links to `?call={id}`. The
+  handler reuses `ListConsensusCallsForFeed` rather than adding a second query — the
+  columns and the "no tally" rule are identical, and §6.6 applies to a list exactly
+  as it does to a feed. A project with no calls answers `[]`, which is the state
+  `ferrisfeed` is in: its tab now says so instead of failing.
+  (The `C6` in the earlier note collided with the plan's own `C6`, which is its
+  mutation gate — the index is named by what it is, not by that number.)
 - **Holding outcomes, merge requests, requests/answers** — separate pages in §3.1.

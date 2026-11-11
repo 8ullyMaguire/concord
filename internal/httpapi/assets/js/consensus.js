@@ -71,6 +71,15 @@
   var slug = root.getAttribute('data-project') || '';
   var callID = root.getAttribute('data-call') || '';
 
+  // The calls index (C6 of the page spec). base.html's project tab links Consensus
+  // to /projects/<slug>/consensus with NO query string, so "no call named" is an
+  // ordinary way to arrive -- not an error. Before this the script fetched
+  // `/consensus/<empty>`, which the router answers 405, and every reader who
+  // clicked the tab read "Could not load this call. HTTP 405".
+  var indexEl      = $('consensus-index');
+  var indexListEl  = $('consensus-index-list');
+  var indexEmptyEl = $('consensus-index-empty');
+
   /* Pending position, chosen by button or by key. Kept here so the two routes can
      never disagree about what is about to be submitted. */
   var pending = '';
@@ -808,8 +817,73 @@
 
   // --- reading --------------------------------------------------------------
 
+  // The index: every call in the project, newest first, each one a link to the
+  // page that shows it. The response carries NO tally -- §6.6 hides the running
+  // counts until a call closes, and the server is where that is enforced, so this
+  // renderer has nothing to hide and must not invent a column for it.
+  function renderIndex(rows) {
+    show(callEl, false);
+    show(indexEl, true);
+    indexListEl.innerHTML = '';
+    if (!rows || !rows.length) {
+      show(indexEmptyEl, true);
+      return;
+    }
+    show(indexEmptyEl, false);
+    for (var i = 0; i < rows.length; i++) {
+      var c = rows[i] || {};
+      var li = document.createElement('li');
+      li.className = 'consensus-index-call';
+
+      var a = document.createElement('a');
+      a.href = '/projects/' + encodeURIComponent(slug) + '/consensus?call=' +
+        encodeURIComponent(String(c.id));
+      a.textContent = c.question || 'Untitled call';
+      li.appendChild(a);
+
+      var bits = [];
+      if (c.status) bits.push(c.status);
+      if (c.result) bits.push('result: ' + c.result);
+      if (c.opens_at) {
+        bits.push('opened ' + new Date(c.opens_at * 1000).toISOString().slice(0, 10));
+      }
+      if (bits.length) {
+        var meta = document.createElement('p');
+        meta.className = 'consensus-index-meta';
+        meta.textContent = bits.join(' \u00b7 ');
+        li.appendChild(meta);
+      }
+      indexListEl.appendChild(li);
+    }
+  }
+
+  function loadIndex() {
+    root.setAttribute('aria-busy', 'true');
+    fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/consensus',
+      { headers: headers() })
+      .then(function (r) {
+        return r.text().then(function (txt) {
+          var data = null;
+          try { data = txt ? JSON.parse(txt) : []; } catch (e) { data = null; }
+          if (!r.ok) throw new Error((data && data.error) || ('HTTP ' + r.status));
+          // The list endpoints answer a BARE ARRAY. An object here means the route
+          // changed shape, and rendering nothing would look like an empty project.
+          if (!Array.isArray(data)) throw new Error('the calls index returned no list');
+          return data;
+        });
+      })
+      .then(function (rows) { done(); renderIndex(rows); })
+      .catch(function (err) {
+        done();
+        fail('Could not load this project\u2019s calls.', err.message);
+      });
+  }
+
   function load() {
     show(errorEl, false);
+    // No call in the URL: this is the project tab's path, so show the index
+    // instead of asking for a call that was never named.
+    if (!callID) { loadIndex(); return; }
     root.setAttribute('aria-busy', 'true');
 
     var url = '/api/v1/projects/' + encodeURIComponent(slug) + '/consensus/' +

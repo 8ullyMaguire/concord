@@ -1419,6 +1419,40 @@ func (s *Server) handleCreateConsensus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusCreated, call)
 }
 
+// handleListConsensus serves the calls index: a project's consensus calls, newest
+// first, with no tally.
+//
+// This is C6 of docs/specs/consensus-page-spec.md, which the page spec left
+// unbuilt ("§3.3 lists no endpoint that lists calls"). Leaving it unbuilt was not
+// a missing convenience, it was a broken page: base.html's project tabs link
+// Consensus to /projects/{slug}/consensus with no query, and that page's script
+// then fetched /api/v1/projects/{slug}/consensus/ with an EMPTY call id, which
+// the router answers 405 -- so every reader who clicked the tab got "Could not
+// load this call. HTTP 405", measured 2026-11-11 on the live instance.
+//
+// The store method is ListConsensusCallsForFeed, reused rather than duplicated.
+// It is the same query, and its two deliberate properties are exactly what a
+// list needs: it scans the nullable columns (feature_id for a §6.6 process
+// decision, question/description/result for calls older than migration 0014) and
+// it carries NO tally -- §6.6's hidden-tally rule applies to a list as much as to
+// a feed, so there is nothing here to hide. The name says "ForFeed" because the
+// feed was its first caller; a second caller does not need a second query.
+//
+// Not gated on a role: a call is as public as the project it belongs to, and
+// requireProjectID is the same visibility guard the per-call read uses.
+func (s *Server) handleListConsensus(w http.ResponseWriter, r *http.Request) {
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return
+	}
+	calls, err := s.Store.ListConsensusCallsForFeed(r.Context(), projectID, 100)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, calls)
+}
+
 // requireCallInProject resolves BOTH the project in the path and the call in the
 // path, and refuses unless the caller may read the project.
 //
