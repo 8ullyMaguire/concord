@@ -28,7 +28,15 @@ type CurationItem struct {
 	DecidedAt   float64 `json:"decided_at"`
 	Yes         int     `json:"yes"`
 	No          int     `json:"no"`
-	MyVote      int     `json:"my_vote"` // 1, -1, or 0
+	// Contested is derived, never stored: it is the instance's existing answer to "how many
+	// people disagree" (CapDisputeQuorum), not a second threshold invented for this page.
+	Contested bool `json:"contested"`
+	MyVote    int  `json:"my_vote"` // 1, -1, or 0
+	// CanVote is filled by the HTTP layer, not here: eligibility depends on the request's
+	// actor and on rules (trust level, project role) the store does not own. A page that
+	// renders the button regardless offers an action the server will refuse, and the refusal
+	// reads as a broken page rather than as a rule.
+	CanVote bool `json:"can_vote"`
 }
 
 // CurationPage is one page of the queue plus the position after it.
@@ -59,6 +67,10 @@ type CurationFilter struct {
 
 // CurationMaxLimit is the ceiling ListCuration clamps to, and it reports what it used.
 const CurationMaxLimit = 100
+
+// CurationStateOpen is the queue's default filter: proposals still pending, acts still applied.
+// It is a filter value, not a value any row holds -- see ListCuration.
+const CurationStateOpen = "open"
 
 // curationActions are the audit_log actions the queue lists. A whitelist rather than a LIKE so
 // an unrelated future action cannot appear in a review queue by naming itself "arena.something".
@@ -124,7 +136,15 @@ func (d *DB) ListCuration(ctx context.Context, f CurationFilter) (CurationPage, 
 		where = append(where, "q.kind = ?")
 		args = append(args, f.Kind)
 	}
-	if f.State != "" {
+	// "open" is the queue's default, and it is not a state any row carries: a proposal is open
+	// while it is `pending`, and an act is open while it is `applied` -- an act has no pending
+	// phase, it exists only after somebody did it. A page whose default filter was the literal
+	// "pending" would show every proposal and no act at all, which is the half of this queue
+	// the owner asked for.
+	if f.State == CurationStateOpen {
+		where = append(where, `((q.kind = 'act' AND q.state = 'applied') OR
+			(q.kind <> 'act' AND q.state = 'pending'))`)
+	} else if f.State != "" {
 		where = append(where, "q.state = ?")
 		args = append(args, f.State)
 	}
@@ -184,6 +204,7 @@ func (d *DB) ListCuration(ctx context.Context, f CurationFilter) (CurationPage, 
 			&it.Yes, &it.No, &it.MyVote); err != nil {
 			return CurationPage{}, fmt.Errorf("scan curation row: %w", err)
 		}
+		it.Contested = it.No >= CapDisputeQuorum
 		items = append(items, it)
 	}
 	if err := rows.Err(); err != nil {

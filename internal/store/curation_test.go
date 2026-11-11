@@ -206,3 +206,98 @@ func TestReviewingAnActIsOneRowPerReader(t *testing.T) {
 		t.Fatalf("self review: got %v, want ErrPerm", err)
 	}
 }
+
+// "Contested" is a derivation of a count, and it must use the instance's existing answer to "how
+// many people disagree" rather than a number invented for this page: a second threshold would
+// mean the queue and the capability panel disagree about what a dispute is.
+func TestCurationMarksAnActContestedAtTheDisputeQuorum(t *testing.T) {
+	d, uid, pid, fID := arenaFixture(t)
+	ctx := context.Background()
+	a, err := d.EnsureArena(ctx, ArenaFeaturePriority, pid, 0, "", "")
+	if err != nil {
+		t.Fatalf("EnsureArena: %v", err)
+	}
+	if err := d.UpsertArenaEntry(ctx, a.ID, "feature", fID); err != nil {
+		t.Fatalf("seed entry: %v", err)
+	}
+	act, err := d.RemoveFeatureFromArena(ctx, pid, a.ID, fID, uid, "spam")
+	if err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+	contested := func() bool {
+		page, err := d.ListCuration(ctx, CurationFilter{Kind: "act", State: "applied"})
+		if err != nil {
+			t.Fatalf("ListCuration: %v", err)
+		}
+		for _, it := range page.Items {
+			if it.ID == act.ID {
+				return it.Contested
+			}
+		}
+		t.Fatal("the act is missing from the queue")
+		return false
+	}
+	if contested() {
+		t.Fatal("one act removal reports itself contested with no reviews")
+	}
+	for i := 0; i < CapDisputeQuorum; i++ {
+		u, err := d.CreateUser(ctx, "contest-"+strconv.Itoa(i), "Contester")
+		if err != nil {
+			t.Fatalf("CreateUser: %v", err)
+		}
+		if _, _, err := d.ReviewAct(ctx, act.ID, u.ID, -1, "wrong"); err != nil {
+			t.Fatalf("ReviewAct: %v", err)
+		}
+	}
+	if !contested() {
+		t.Fatalf("act with %d contests is not marked contested", CapDisputeQuorum)
+	}
+}
+
+// The queue's default filter is "open", which no row carries: a proposal is open while pending,
+// an act is open while applied. Without this the page's default would list every proposal and
+// no moderation act, which is the half of the queue the owner asked for.
+func TestCurationOpenStateSpansPendingProposalsAndAppliedActs(t *testing.T) {
+	d, uid, pid, fID := arenaFixture(t)
+	ctx := context.Background()
+	if _, err := d.ProposeTaxonomyChange(ctx, 0, uid, "create", "topic:open-state", "", "r"); err != nil {
+		t.Fatalf("propose: %v", err)
+	}
+	a, err := d.EnsureArena(ctx, ArenaFeaturePriority, pid, 0, "", "")
+	if err != nil {
+		t.Fatalf("EnsureArena: %v", err)
+	}
+	if err := d.UpsertArenaEntry(ctx, a.ID, "feature", fID); err != nil {
+		t.Fatalf("UpsertArenaEntry: %v", err)
+	}
+	if _, err := d.RemoveFeatureFromArena(ctx, pid, a.ID, fID, uid, "spam"); err != nil {
+		t.Fatalf("remove: %v", err)
+	}
+
+	open, err := d.ListCuration(ctx, CurationFilter{State: CurationStateOpen})
+	if err != nil {
+		t.Fatalf("ListCuration(open): %v", err)
+	}
+	kinds := map[string]int{}
+	for _, it := range open.Items {
+		kinds[it.Kind]++
+	}
+	if kinds["taxonomy"] != 1 || kinds["act"] != 1 {
+		t.Fatalf("open state returned %v, want one pending proposal and one applied act", kinds)
+	}
+
+	// A literal state filter still means the literal state, so the Log view can ask for
+	// "applied" and get only acts.
+	applied, err := d.ListCuration(ctx, CurationFilter{State: "applied"})
+	if err != nil {
+		t.Fatalf("ListCuration(applied): %v", err)
+	}
+	for _, it := range applied.Items {
+		if it.Kind != "act" || it.State != "applied" {
+			t.Fatalf("state=applied returned %s/%s", it.Kind, it.State)
+		}
+	}
+	if len(applied.Items) != 1 {
+		t.Fatalf("state=applied returned %d rows, want 1", len(applied.Items))
+	}
+}

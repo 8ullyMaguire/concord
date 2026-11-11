@@ -206,6 +206,7 @@ func (d *DB) ConsentRecords(ctx context.Context) (int, error) {
 // user id. A fold that silently misses a column is how "my votes disappeared" gets
 // discovered months later, by the one person who cannot debug it.
 var foldColumns = []struct{ Table, Column string }{
+	{"act_reviews", "user_id"},
 	{"admin_ledger", "actor_id"},
 	{"api_tokens", "user_id"},
 	{"audit_log", "actor_id"},
