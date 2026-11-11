@@ -241,7 +241,7 @@ func (s *Server) loadTemplates() error {
 	pages := []string{"index", "search", "projects", "project", "board",
 		"login", "register", "rank", "ranking", "documents", "notfound", "finder",
 		"scout", "consensus", "audit", "settings", "feature", "complaint", "requests-detail", "requests-index", "lists", "list",
-		"taxonomy", "criteria", "merge", "contribute", "stats"}
+		"taxonomy", "curation", "criteria", "merge", "contribute", "stats"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -415,6 +415,11 @@ func (s *Server) Router() http.Handler {
 	// affects every project, so there is no slug to hang it off and nothing to
 	// hide -- the reads are public and the writes refuse on their own.
 	r.Get("/taxonomy", s.handleTaxonomyPage)
+
+	// The curation queue: one list over every proposal kind and every moderation act, where
+	// a reviewer actually votes. Instance-wide for the same reason as taxonomy -- a project's
+	// queue is a filter on the same list, not a second page.
+	r.Get("/curation", s.handleCurationPage)
 
 	// The instance census (spec §4.13, STAT-1). Instance-wide for the same reason
 	// as taxonomy: it describes the whole instance, so there is no slug and no
@@ -809,6 +814,14 @@ func (s *Server) Router() http.Handler {
 		r.Get("/proposals", s.handleListTaxonomyProposals)
 		r.Post("/proposals", s.handleProposeTaxonomyChange)
 		r.Post("/proposals/{proposal_id}/consent", s.handleConsentTaxonomyProposal)
+	})
+
+	// The curation queue (§4 of docs/plans/curation-queue.md). One read over proposals and
+	// moderation acts, and one vote route that dispatches to the deciders that already exist
+	// rather than re-implementing their eligibility rules behind a generic endpoint.
+	r.Route("/api/v1/curation", func(r chi.Router) {
+		r.Get("/", s.handleListCuration)
+		r.Post("/{kind}/{id}/vote", s.handleCurationVote)
 	})
 
 	// Emergency holds are project-scoped for writes (the hold carries a project

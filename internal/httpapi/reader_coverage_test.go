@@ -61,6 +61,12 @@ var readerInventory = []readerRow{
 		Routes: 1},
 	{Match: "/api/v1/projects/{project_id}/audit", Reader: "audit.js", Anchor: "/audit",
 		Routes: 2},
+	// The curation queue: one read over every proposal kind and every moderation act, and the
+	// one vote route that acts on them. Its own row rather than folding it into "/audit" --
+	// the anchor is the list the page renders, so deleting that list from curation.js stops
+	// satisfying this row.
+	{Match: "/api/v1/curation", Reader: "curation.js", Anchor: "curation-list",
+		Routes: 2, Note: "the queue read, and the vote that acts on it"},
 	{Match: "/api/v1/projects/{project_id}/board", Reader: "board.js", Anchor: "board",
 		Routes: 2, Note: "read the board, move a card"},
 	{Match: "/api/v1/projects/{project_id}/complaints", Reader: "complaint.js", Anchor: "/complaints",

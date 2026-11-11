@@ -1,0 +1,46 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <p class="breadcrumb"><a href="/">Home</a> / <span>Curation</span></p>
+    <h1>Curation</h1>
+    <p class="lede">Every decision waiting for a second opinion, and every decision already
+      taken &mdash; taxonomy changes, strategic weights, and moderation acts &mdash; in one
+      list. Consent to a proposal here. Endorse or contest an act here. Nothing in this list
+      is applied by the act of reviewing it.</p>
+  </div>
+</div>
+
+<div class="curation-controls">
+  <label for="curation-kind">Kind</label>
+  <select id="curation-kind">
+    <option value="">Everything</option>
+    <option value="taxonomy">Taxonomy</option>
+    <option value="strategy">Strategic weight</option>
+    <option value="act">Moderation act</option>
+  </select>
+
+  <label for="curation-state">State</label>
+  <select id="curation-state">
+    <option value="open">Waiting for review</option>
+    <option value="">Everything (the log)</option>
+    <option value="pending">Pending proposals only</option>
+    <option value="ratified">Ratified</option>
+    <option value="applied">Applied</option>
+    <option value="undone">Undone</option>
+  </select>
+
+  <label class="curation-unvoted"><input type="checkbox" id="curation-unvoted" checked>
+    Only what I have not voted on</label>
+
+  <label for="curation-q">Text</label>
+  <input type="search" id="curation-q" placeholder="tag, feature, reason">
+</div>
+
+<div id="curation-root">
+  <p class="note" id="curation-status" role="status" aria-live="polite">Loading&hellip;</p>
+  <ul class="curation-list" id="curation-list"></ul>
+  <button type="button" class="btn btn-secondary" id="curation-more" hidden>Load more</button>
+</div>
+
+<script src="{{ asset "/assets/js/curation.js" }}"></script>
+{{end}}
