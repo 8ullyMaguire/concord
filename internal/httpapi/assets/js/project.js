@@ -659,6 +659,24 @@ function apiAuth(extra) {
       '<p class="health-label"><span>health</span><span>' + pct + '%</span></p>';
   }
 
+  // §4.5.7.2's newcomer responsiveness (R12), read from the project payload that
+  // cmd/healthsync writes.
+  //
+  // HIDDEN ENTIRELY WHEN THE METRIC IS NULL -- not a dash, not "no data yet".
+  // Below the sample floor there is no number, and a labelled dash beside a
+  // "first response" heading reads as a measured bad result rather than as an
+  // absent one. healthBar above makes the opposite choice deliberately: a project
+  // with no metrics row has nothing measured at all and says so.
+  //
+  // The sample rides beside the median because five PRs and five hundred are
+  // different claims, and the reader cannot tell them apart without it.
+  function newcomerLine(proj) {
+    if (proj.newcomer_response_hours == null) return '';
+    return '<p class="health-label"><span>first response to a newcomer</span><span>' +
+      Number(proj.newcomer_response_hours).toFixed(1) + ' h (n=' +
+      Number(proj.newcomer_sample || 0) + ')</span></p>';
+  }
+
   function fmtDate(unix) {
     if (!unix) return '';
     try { return new Date(unix * 1000).toLocaleDateString(); } catch (e) { return ''; }
@@ -1417,7 +1435,7 @@ function apiAuth(extra) {
       '<a class="btn btn-primary" href="/projects/' + esc(p.slug) + '/board">Open board</a>' +
       '<a class="btn btn-secondary" href="/projects">All projects</a>' +
       '</div></div>' +
-      '<div class="card mb-6">' + badges + healthBar(p.health_score) + meta + '</div>' +
+      '<div class="card mb-6">' + badges + healthBar(p.health_score) + newcomerLine(p) + meta + '</div>' +
       '<div class="section-head"><h2 class="section-title" style="font-size:1.25rem;">Complaints</h2>' +
       '<p class="section-sub">The problems being solved. A feature needs at least one ' +
       'validated complaint behind it before it is a candidate for anything.</p></div>' +

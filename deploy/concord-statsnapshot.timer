@@ -1,0 +1,15 @@
+[Unit]
+Description=Daily instance statistics snapshot for Concord
+
+[Timer]
+# 03:10 UTC, off the top of the hour. The snapshot is a still frame of the day just ended,
+# so it runs after the day's traffic and before the operator is awake to read it.
+OnCalendar=*-*-* 03:10:00
+# Persistent so a machine that was off overnight catches up once rather than skipping the
+# day entirely. Without it a laptop that is closed at 03:10 loses a point in the series and
+# the gap is invisible in the chart -- which is the one thing a recorded series must not be.
+Persistent=true
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target

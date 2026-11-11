@@ -152,6 +152,37 @@ class DocNumbersGate(unittest.TestCase):
         self.assertIn("table count", r.stdout)
         self.assertIn("live tables", r.stdout)
 
+    def test_the_table_count_comes_from_the_tree_not_from_a_deployed_database(self):
+        """D8, the regression this gate shipped with.
+
+        It read the LIVE database, so its verdict depended on whether you had
+        deployed: it passed at tree 85 / live 84 and went red the moment `make
+        deploy` applied 0032. Worse, on a box that had never run the app the "live"
+        database was an empty temp file, so every table number was compared against
+        zero.
+
+        Two halves: a database handed in with the wrong shape must not move the
+        verdict, and a document stating the TREE's count must pass while one is
+        present.
+        """
+        import sqlite3
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as d:
+            bogus = os.path.join(d, "deployed.db")
+            con = sqlite3.connect(bogus)
+            con.execute("CREATE TABLE a (x INTEGER)")
+            con.execute("CREATE TABLE b (x INTEGER)")
+            con.commit()
+            con.close()
+            # The flag is accepted and ignored; a document claiming 2 tables (what the
+            # bogus database holds) must still be caught, and one claiming the tree's
+            # count must still pass.
+            with self._doc_containing("**Measured state:** schema 26 · 2 live tables.\n"):
+                r = run_gate("--db", bogus)
+            self.assertEqual(r.returncode, 1, "a deployed database moved the gate: " + r.stdout)
+            self.assertIn("2", r.stdout, "the finding should name the doc's number")
+
     def test_prose_is_not_exempt_merely_for_containing_was(self):
         # The first version exempted any line containing "was", which exempted the
         # very lines the gate exists to check -- hence `OK 0 measured numbers`.

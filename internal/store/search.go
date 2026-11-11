@@ -145,7 +145,7 @@ func (d *DB) SearchProjects(ctx context.Context, q string, f SearchFilters, sort
 	var ids []int64
 	for rows.Next() {
 		var hit ProjectHit
-		var health sql.NullFloat64
+		var health, newcomer sql.NullFloat64
 		var rank float64
 		// The destination list must track projectColumns field for field.
 		// ProjectHit embeds Project, so Visibility is part of the hit; leaving
@@ -154,13 +154,17 @@ func (d *DB) SearchProjects(ctx context.Context, q string, f SearchFilters, sort
 		if err := rows.Scan(&hit.ID, &hit.Slug, &hit.Name, &hit.Description,
 			&hit.GovernanceModel, &hit.License, &hit.Visibility,
 			&hit.CreatedAt, &hit.UpdatedAt,
-			&health, &rank); err != nil {
+			&health, &newcomer, &hit.NewcomerSample, &rank); err != nil {
 			rows.Close()
 			return res, err
 		}
 		if health.Valid {
 			h := health.Float64
 			hit.HealthScore = &h
+		}
+		if newcomer.Valid {
+			n := newcomer.Float64
+			hit.NewcomerResponseHours = &n
 		}
 		hit.Score = rank
 		res.Results = append(res.Results, hit)

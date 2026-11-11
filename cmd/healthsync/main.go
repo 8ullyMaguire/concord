@@ -137,9 +137,33 @@ func main() {
 			Contributors:      snap.Contributors,
 			Releases90d:       snap.Releases90d,
 		}
-		fmt.Printf("%s %s %s last_commit_age=%.1fd contributors=%d releases90d=%d %s\n",
+		// R12 / §4.5.7.2: the newcomer responsiveness is computed from the LOCAL
+		// event log, not from the forge. It is read BEFORE the write so a database
+		// error skips the project entirely rather than leaving half a measurement
+		// landed -- the same rule as a failed fetch writing nothing.
+		events, err := st.ListForgeEvents(ctx, fields.Full)
+		if err != nil {
+			fmt.Printf("FAILED %s: read forge events: %v\n", p.Slug, err)
+			failed++
+			continue
+		}
+		newcomerHours, newcomerN, newcomerOK := discovery.NewcomerResponse(events)
+		var published *float64
+		if newcomerOK {
+			published = &newcomerHours
+		}
+		// Both the median and its sample are stated: a project at 3 of the required
+		// 5 is ABSENT from the leaderboard, and the sample is what explains why. A
+		// bare NULL would be indistinguishable from a project whose webhook has
+		// never fired.
+		newcomerVerdict := fmt.Sprintf("newcomer response unknown (n=%d, floor=%d)",
+			newcomerN, discovery.NewcomerMinSample)
+		if newcomerOK {
+			newcomerVerdict = fmt.Sprintf("newcomer response %.1fh (n=%d)", newcomerHours, newcomerN)
+		}
+		fmt.Printf("%s %s %s last_commit_age=%.1fd contributors=%d releases90d=%d %s; %s\n",
 			p.Slug, p.RepoHost, fields.Full, m.LastCommitAgeDays, m.Contributors, m.Releases90d,
-			verdict)
+			verdict, newcomerVerdict)
 		if *dryRun {
 			synced++
 			continue
@@ -147,6 +171,11 @@ func main() {
 		if _, err := st.UpdateProjectMetrics(ctx, p.Slug, m,
 			snap.Stars, snap.Forks, snap.OpenIssues, snap.Commits, snap.License); err != nil {
 			fmt.Printf("FAILED %s: write: %v\n", p.Slug, err)
+			failed++
+			continue
+		}
+		if err := st.UpdateProjectNewcomer(ctx, p.Slug, published, newcomerN); err != nil {
+			fmt.Printf("FAILED %s: write newcomer: %v\n", p.Slug, err)
 			failed++
 			continue
 		}

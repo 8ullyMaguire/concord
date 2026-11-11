@@ -14,7 +14,7 @@ stale *silently*. This gate is the reconciliation.
 ## What it checks, and what it deliberately does not
 
 It checks the numbers a document states as MEASURED -- schema version, migration
-count, table count, test count -- against the tree and the live database.
+count, table count, test count -- against the TREE, and against nothing else.
 
 It does NOT check that a document is complete, nor that its prose is true. A
 document claiming a feature exists is a claim about code; this cannot settle that,
@@ -53,6 +53,7 @@ from __future__ import annotations
 import argparse
 import os
 import re
+import shutil
 import sqlite3
 import subprocess
 import sys
@@ -74,36 +75,57 @@ def latest_schema_version() -> int:
     )
 
 
-def live_facts(db_path: str) -> dict:
-    """Read the numbers from the database itself.
+_TREE_TABLES = None
 
-    Falls back to a fresh temp database when the live one is absent, so a CI box
-    that has never run the app is not blocked from checking the docs. A fresh
-    database also proves the chain applies at all, which is a bonus rather than a
-    reason to skip.
+
+def tree_tables() -> int | None:
+    """Count the tables the TREE creates, by migrating a fresh temp database.
+
+    This used to read the LIVE database's sqlite_master, which answers a different
+    question: what the deployed instance happens to have. It passed at tree 85 /
+    live 84 and went red the moment `make deploy` applied 0032 -- so the documents
+    were being gated on whether you had deployed, not on what the tree says. A gate
+    whose verdict depends on a deploy schedule is not a gate about the tree, and
+    every copy of this script in the estate inherited the defect.
+
+    The migration is run through the REAL `db.Migrate` (`-migrate-only`), not by
+    re-executing the .sql files here: a second implementation of the chain is a
+    second thing to drift, and it would not prove the chain applies. The side
+    effect is a bonus -- the gate now fails loudly if a migration is broken, which
+    is the one thing a table count is really about.
+
+    Cost is a `go run` (~0.2s warm). Cached per process, because the doc scan asks
+    once and the unit tests invoke this gate a few dozen times.
     """
+    global _TREE_TABLES
+    if _TREE_TABLES is not None:
+        return _TREE_TABLES
     import tempfile
 
-    path = db_path
-    tmp = None
-    if not os.path.exists(path):
-        tmp = tempfile.NamedTemporaryFile(suffix=".db", delete=False)
-        tmp.close()
-        path = tmp.name
+    tmpdir = tempfile.mkdtemp(prefix="concord-doccheck-")
+    path = os.path.join(tmpdir, "fresh.db")
     try:
+        proc = subprocess.run(
+            ["go", "run", "./cmd/concord", "-migrate-only", "-db", path],
+            cwd=REPO, capture_output=True, text=True,
+        )
+        if proc.returncode != 0:
+            print(
+                "the migration chain does not apply, so the table count cannot be "
+                "measured:\n  " + (proc.stderr or proc.stdout).strip(),
+                file=sys.stderr,
+            )
+            return None
         con = sqlite3.connect(path)
         try:
-            tables = con.execute(
+            _TREE_TABLES = con.execute(
                 "SELECT count(*) FROM sqlite_master WHERE type='table'"
             ).fetchone()[0]
-        except sqlite3.Error:
-            tables = None
         finally:
             con.close()
     finally:
-        if tmp:
-            os.unlink(tmp.name)
-    return {"tables": tables}
+        shutil.rmtree(tmpdir, ignore_errors=True)
+    return _TREE_TABLES
 
 
 def go_test_count() -> int:
@@ -240,7 +262,10 @@ def build_checks(facts: dict) -> list:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--db", default=DEFAULT_DB)
+    # Kept so an existing invocation does not break, and IGNORED on purpose: the
+    # table count is no longer read from any live database. Naming the old default
+    # here was how the defect was hidden -- a flag that looked like the source.
+    ap.add_argument("--db", default=None, help=argparse.SUPPRESS)
     args = ap.parse_args()
 
     if not os.path.isdir(MIGRATIONS):
@@ -250,7 +275,7 @@ def main() -> int:
     facts = {
         "migrations": migration_count(),
         "schema": latest_schema_version(),
-        "tables": live_facts(args.db)["tables"],
+        "tables": tree_tables(),
         "tests": go_test_count(),
     }
     checks = build_checks(facts)

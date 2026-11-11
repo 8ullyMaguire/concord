@@ -279,6 +279,22 @@ type Project struct {
 	CreatedAt   float64  `json:"created_at"`
 	UpdatedAt   float64  `json:"updated_at"`
 	HealthScore *float64 `json:"health_score,omitempty"` // nil until metrics exist
+
+	// NewcomerResponseHours is §4.5.7.2's newcomer responsiveness: the median
+	// hours from a first-time contributor's pull request to the first answer by
+	// somebody else (R12, computed by cmd/healthsync from `forge_events`).
+	//
+	// NULL MEANS NOT PUBLISHABLE, and the project page HIDES the line rather
+	// than printing a dash. Below the sample floor there is no number to show,
+	// and a dash beside a label still reads as "measured, badly". It is
+	// deliberately NOT omitempty: an absent key makes a client guess whether the
+	// server supports the field, while an explicit null says "asked, not
+	// published".
+	NewcomerResponseHours *float64 `json:"newcomer_response_hours"`
+	// NewcomerSample is how many responses the median rests on. It is published
+	// even when the median is NULL -- it is what explains the silence, and it is
+	// what the leaderboard filters on.
+	NewcomerSample int `json:"newcomer_sample"`
 }
 
 // The four visibility levels. See migration 0009 for what each one means and,
@@ -316,19 +332,25 @@ func (p Project) IsListed() bool { return p.Visibility == VisibilityPublic }
 const projectColumns = `p.id, p.slug, p.name, COALESCE(p.description,''),
 	p.governance_model, COALESCE(p.license,''), COALESCE(p.visibility,'public'),
 	p.created_at, p.updated_at,
-	m.health_score`
+	m.health_score, m.newcomer_response_hours, COALESCE(m.newcomer_sample, 0)`
 
 func scanProject(row interface{ Scan(...any) error }) (Project, error) {
 	var p Project
-	var health sql.NullFloat64
+	var health, newcomer sql.NullFloat64
 	if err := row.Scan(&p.ID, &p.Slug, &p.Name, &p.Description,
 		&p.GovernanceModel, &p.License, &p.Visibility,
-		&p.CreatedAt, &p.UpdatedAt, &health); err != nil {
+		&p.CreatedAt, &p.UpdatedAt, &health, &newcomer, &p.NewcomerSample); err != nil {
 		return p, err
 	}
 	if health.Valid {
 		h := health.Float64
 		p.HealthScore = &h
+	}
+	// The same pointer boundary as HealthScore: a NULL column is a nil field,
+	// never 0. A zero-hour responsiveness is the best possible score.
+	if newcomer.Valid {
+		n := newcomer.Float64
+		p.NewcomerResponseHours = &n
 	}
 	return p, nil
 }
@@ -441,13 +463,22 @@ func (d *DB) GetProject(ctx context.Context, slug string) (Project, error) {
 // GetProjectByID loads a project by its numeric ID.
 func (d *DB) GetProjectByID(ctx context.Context, projectID int64) (Project, error) {
 	var p Project
+	var health, newcomer sql.NullFloat64
 	err := d.QueryRowContext(ctx, `
 		SELECT `+projectColumns+` FROM projects p
 		LEFT JOIN project_metrics m ON m.project_id = p.id
 		WHERE p.id = ?`, projectID).Scan(
 		&p.ID, &p.Slug, &p.Name, &p.Description,
 		&p.GovernanceModel, &p.License, &p.Visibility,
-		&p.CreatedAt, &p.UpdatedAt, &p.HealthScore)
+		&p.CreatedAt, &p.UpdatedAt, &health, &newcomer, &p.NewcomerSample)
+	if health.Valid {
+		h := health.Float64
+		p.HealthScore = &h
+	}
+	if newcomer.Valid {
+		n := newcomer.Float64
+		p.NewcomerResponseHours = &n
+	}
 	if errors.Is(err, sql.ErrNoRows) {
 		return Project{}, fmt.Errorf("%w: project %d", ErrNotFound, projectID)
 	}

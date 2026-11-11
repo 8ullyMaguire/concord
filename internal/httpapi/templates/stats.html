@@ -1,0 +1,48 @@
+{{define "content"}}
+<div class="page-header">
+  <h1 class="page-title">Instance statistics</h1>
+  <p class="page-subtitle">What this instance is made of, and how long it takes. Every figure is a still frame &mdash; a census, not a trend.</p>
+</div>
+
+<div id="stats-latency" aria-busy="true">
+  <script src="{{ asset "/assets/js/skeleton.js" }}"></script>
+  <script>
+  (function () {
+    var b = document.getElementById("stats-latency");
+    if (b && window.ConcordSkeleton) { b.innerHTML = window.ConcordSkeleton.rows(3); }
+  })();
+  </script>
+</div>
+
+<div id="stats-summary" aria-busy="true">
+  <script src="{{ asset "/assets/js/skeleton.js" }}"></script>
+  <script>
+  (function () {
+    var b = document.getElementById("stats-summary");
+    if (b && window.ConcordSkeleton) { b.innerHTML = window.ConcordSkeleton.rows(4); }
+  })();
+  </script>
+</div>
+
+<div id="stats-responsiveness" aria-busy="true">
+  <script src="{{ asset "/assets/js/skeleton.js" }}"></script>
+  <script>
+  (function () {
+    var b = document.getElementById("stats-responsiveness");
+    if (b && window.ConcordSkeleton) { b.innerHTML = window.ConcordSkeleton.rows(2); }
+  })();
+  </script>
+</div>
+
+<div id="stats-rising" aria-busy="true">
+  <script src="{{ asset "/assets/js/skeleton.js" }}"></script>
+  <script>
+  (function () {
+    var b = document.getElementById("stats-rising");
+    if (b && window.ConcordSkeleton) { b.innerHTML = window.ConcordSkeleton.rows(2); }
+  })();
+  </script>
+</div>
+
+<script src="{{ asset "/assets/js/stats.js" }}"></script>
+{{end}}

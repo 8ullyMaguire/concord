@@ -49,9 +49,38 @@ def _restore(src_path, original):
     return open(src_path).read() == original
 
 
+def resolve_repo():
+    """The tree this gate is MEASURING, named out loud.
+
+    This used to default to a hardcoded ~/code/projects/concord, which is a
+    different checkout on this workstation: the gate then mutated and tested
+    that tree while the transcript, the Makefile and the reader all believed it
+    was talking about the one in the working directory. Every arm reported
+    honestly about code that was not under test -- the exact failure this file's
+    restore docstring warns about, one level up.
+
+    Resolution order, most explicit first: CONCORD_MUTATE_REPO, then the git
+    toplevel of the working directory, then the old path so a host that only has
+    that checkout keeps working.
+    """
+    if os.environ.get("CONCORD_MUTATE_REPO"):
+        return os.environ["CONCORD_MUTATE_REPO"]
+    try:
+        out = subprocess.run(["git", "rev-parse", "--show-toplevel"],
+                             capture_output=True, text=True, check=True).stdout.strip()
+        if out and os.path.isdir(os.path.join(out, "internal")):
+            return out
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        pass
+    return os.path.expanduser("~/code/projects/concord")
+
+
 def run_gate(src, test_pkg, test_file, mutants, label, repo=None):
-    repo = repo or os.path.expanduser("~/code/projects/concord")
+    repo = repo or resolve_repo()
     src_path = os.path.join(repo, src)
+    # Printed, not assumed: an arm's output must name the tree it measured, or a
+    # green run over the wrong checkout is indistinguishable from a green run.
+    print(f"[{label}] repo {repo}")
     original = open(src_path).read()
     bak = tempfile.mktemp()
     shutil.copy(src_path, bak)

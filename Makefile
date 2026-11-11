@@ -117,6 +117,14 @@ gates:
 	# and an unproven refusal is decoration.
 	python3 internal/mutate.py internal/store/store.go ./internal/store/ internal/store/themes_test.go internal/store/store_mutants.json
 	python3 internal/mutate.py internal/store/field_reports.go ./internal/store/ internal/store/field_reports_test.go internal/store/field_reports_mutants.json
+	# STAT-3.4's four rules -- the span floor, the rate's divisor, the visibility filter and
+	# the ordering. The floor is the one that carries the milestone: with a daily timer, two
+	# snapshots one day apart turn a single shipped feature into "seven per week".
+	python3 internal/mutate.py internal/store/rising.go ./internal/store/ internal/store/rising_test.go internal/store/rising_mutants.json
+	# The series' own rules, which live in the writer rather than the reader: organic only
+	# (or the slope charts an import script), correct-not-append on a second run of the same
+	# day, and a zero recorded for a project with no work yet (or "absent" means two things).
+	python3 internal/mutate.py internal/store/projectstats.go ./internal/store/ internal/store/rising_test.go internal/store/projectstats_mutants.json
 	python3 internal/mutate.py internal/store/solutions.go ./internal/store/ internal/store/solutions_test.go,internal/store/solutions_count_test.go internal/store/solutions_mutants.json
 	python3 internal/mutate.py internal/store/arenas.go ./internal/store/ internal/store/arenas_test.go internal/store/arenas_mutants.json
 	# §30's weight rule lives in internal/ranking/arena.go, and its own arm is the only
@@ -205,17 +213,23 @@ run:
 admin-build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/forgeseed ./cmd/forgeseed
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/healthsync ./cmd/healthsync
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/statsnapshot ./cmd/statsnapshot
 
 deploy-admin: admin-build
 	@echo "Installing admin commands into $(DEPLOY_DIR)..."
 	cp bin/forgeseed $(DEPLOY_DIR)/forgeseed
 	cp bin/healthsync $(DEPLOY_DIR)/healthsync
+	cp bin/statsnapshot $(DEPLOY_DIR)/statsnapshot
 	mkdir -p $(HOME)/.config/systemd/user
 	cp deploy/concord-healthsync.service deploy/concord-healthsync.timer $(HOME)/.config/systemd/user/
+	cp deploy/concord-statsnapshot.service deploy/concord-statsnapshot.timer $(HOME)/.config/systemd/user/
 	systemctl --user daemon-reload
 	systemctl --user disable --now concord-healthsync.timer 2>/dev/null || true
+	systemctl --user disable --now concord-statsnapshot.timer 2>/dev/null || true
 	@echo "Installed. Enable the hourly pass with:"
 	@echo "  systemctl --user enable --now concord-healthsync.timer"
+	@echo "Enable the daily snapshot (STAT-3) with:"
+	@echo "  systemctl --user enable --now concord-statsnapshot.timer"
 
 tidy:
 	go mod tidy
@@ -241,6 +255,14 @@ deploy: build
 	@echo "Deploying $(BINARY) to $(DEPLOY_DIR)..."
 	systemctl --user stop concord || true
 	cp bin/$(BINARY) $(DEPLOY_DIR)/$(BINARY)
+	@# statsnapshot RIDES ALONG. Its timer is enabled on the instance, it reads only the local
+	@# database, and since 0033 it shares a schema with the server: a deploy that refreshed the
+	@# server and not the writer would serve /api/v1/stats/rising from a table nothing fills --
+	@# no error, an empty card, and a scheduler quietly running last month's code. forgeseed and
+	@# healthsync stay in deploy-admin, because they reach out to three forges and enabling that
+	@# is a decision about the instance rather than a side effect of shipping a build.
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/statsnapshot ./cmd/statsnapshot
+	cp bin/statsnapshot $(DEPLOY_DIR)/statsnapshot
 	systemctl --user start concord
 	@echo "Verifying healthz on 127.0.0.1:$(DEPLOY_PORT)..."
 	@sleep 5

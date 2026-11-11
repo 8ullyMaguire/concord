@@ -14,44 +14,72 @@ Standing rules: `make verify` green before every commit; no store method without
 
 ## STAT-1 — Census with a provenance split
 
+### Measured corrections to this plan, 2026-11-06
+
+This section was written 2026-10-30 and **four of its statements do not survive contact with the
+code**. Each was found by reading the tree, and each changes what gets built:
+
+| # | the plan said | the code says | consequence |
+|---|---|---|---|
+| 1 | define `FacetCount{Value,Total,Seed,Other}` in `stats.go` | `FacetCount{Value,Count}` **already exists** in `internal/store/search.go:29` | a second type of that name will not compile; the new one is `ProvenanceCount` |
+| 2 | the split applies to `projects`/`tags`/`licenses`/`governance`/`members`/`documents` | **only `features` and `complaints` carry `origin`** (`0030_work_items.sql:21,25`). `projects` has no `origin` column and no migration adds one | those facets cannot produce a split. Spec §3.1 says "where the table carries `origin`", so they publish a plain count |
+| 3 | `Other` = "everything else" | `origin` has a fifth value, **`'unknown'`**, which `0030` wrote to every pre-existing row | folding it into `Other` reports the backfilled population as organic — the exact lie R13 exists to prevent. The split is **three-way** |
+| 4 | `documents by kind` | the table is **`project_documents`** (`0007`, rebuilt by `0023`) | a query against `documents` is a runtime error the compiler cannot catch |
+
+**Why the plain facets are still published** (the reading of spec §2 that this implements):
+§2 withholds an aggregate that cannot produce the split only over *"rows that can be created by an
+import"*. Projects are created by people — `CreateProject` requires a `user_id`
+(`internal/store/store.go:338`) — and members, documents and arenas are human actions. So those
+aggregates are not import charts and a plain count is honest. Features and complaints are the two
+that are, and they are exactly the two that carry `origin`.
+
 ### STAT-1.1 `internal/store/stats.go` (new)
 
 ```go
-// Census is the composition of the instance: what exists, not what happened. Every slice is
-// a still frame, which is the only kind of aggregate a seeded instance can publish without
-// lying: a batch import changes a total, and it changes a "per week" series.
+// Census is the composition of the instance: what exists, not what happened.
 type Census struct {
-	Projects      []FacetCount `json:"projects_by_language"`
-	Tags          []FacetCount `json:"projects_by_tag"`
-	Licenses      []FacetCount `json:"projects_by_license"`
-	Governance    []FacetCount `json:"projects_by_governance"`
-	FeatureStatus []StatusCount `json:"features_by_status"`
-	Complaints    []StatusCount `json:"complaints_by_status"`
-	Members       []FacetCount `json:"members_by_role"`
-	Documents     []FacetCount `json:"documents_by_kind"`
+	// Tables that carry `origin` publish the split.
+	FeatureStatus []ProvenanceCount `json:"features_by_status"`
+	FeatureEffort []ProvenanceCount `json:"features_by_effort"`
+	Complaints    []ProvenanceCount `json:"complaints_by_status"`
+
+	// Tables that do not: a plain count, reused from search.go's FacetCount.
+	Projects   []FacetCount `json:"projects_by_language"`
+	Tags       []FacetCount `json:"projects_by_tag"`
+	Licenses   []FacetCount `json:"projects_by_license"`
+	Governance []FacetCount `json:"projects_by_governance"`
+	Visibility []FacetCount `json:"projects_by_visibility"`
+	Members    []FacetCount `json:"members_by_role"`
+	Documents  []FacetCount `json:"documents_by_kind"`
+	Arenas     []FacetCount `json:"arenas_by_type"`
 }
 
-// FacetCount carries the split on the same struct, not as a second query: a caller that
+// ProvenanceCount carries the split on the same struct, not as a second query: a caller that
 // has to remember to fetch the split is a caller that will print a total without one.
-type FacetCount struct {
-	Value string `json:"value"`
-	Total int    `json:"total"`
-	Seed  int    `json:"seed"`   // origin IN ('seed','import')
-	Other int    `json:"other"`  // everything else; Total = Seed + Other always
+//
+// Three columns, because migration 0030 backfilled every pre-existing row to 'unknown':
+// that population predates the backfill and is neither organic nor seeded.
+type ProvenanceCount struct {
+	Value   string `json:"value"`
+	Total   int    `json:"total"`
+	Organic int    `json:"organic"` // origin IN ('api','ui')
+	Seeded  int    `json:"seeded"`  // origin IN ('seed','import')
+	Unknown int    `json:"unknown"` // origin = 'unknown' (predates the 0030 backfill)
 }
 
 func (d *DB) Census(ctx context.Context) (Census, error)
 ```
 
-`Census` reuses the facet SQL that already exists in `internal/store/search.go`
-(tag/language/license/governance top-25) and extends each with
-`SUM(CASE WHEN origin IN ('seed','import') THEN 1 ELSE 0 END)`. Top-25 stays 25: a facet list
-that grows unbounded is a second bug, and the existing queries already cap.
+`Census` issues nine grouped queries over six tables. **No query joins a fact table to a
+dimension in a way that can multiply a facet** — the `project_tags`→`tags` join is 1:1 on the
+primary key, and that is the defect the AC names (a total larger than `count(*)`), asserted in
+`TestCensusTotalNeverExceedsTableCount`.
 
-**The invariant is arithmetic:** `Total = Seed + Other` for every row, asserted in a store
-test over a fixture with one organic and one seeded row of each kind. A row where the two
-disagree is a `SUM` over a `LEFT JOIN` that multiplied — the classic facet-count defect, and
-it shows as a total larger than the table.
+The facet SQL is *not* reused from `facetsFor` (`search.go:201`): that function is scoped to a
+search result's `ids`, and a census is instance-wide. The SQL shape is similar; the scope is not.
+
+**The invariant is arithmetic:** `Total = Organic + Seeded + Unknown` for every row, asserted in
+`TestCensusProvenanceRowsSum` over a fixture holding all three populations.
 
 ### STAT-1.2 `internal/httpapi/stats.go` + route
 
@@ -59,9 +87,20 @@ it shows as a total larger than the table.
 GET /api/v1/stats/summary        # Census, public, no auth (reads are exempt from consent)
 ```
 
-Registered inside the existing `/api/v1` group. No page yet — STAT-2 renders it, and a route
-without a reader fails the reader-coverage gate, so **STAT-1 and STAT-2 must land in the same
-commit or STAT-1 ships behind a page that already exists**. Recommended: land both together.
+Registered inside the existing `/api/v1` group. GET is not mutating, so the consent gate does
+not apply (`guest_handlers.go: isMutating`) — a visitor reads the instance's own numbers without
+accepting anything first.
+
+**Shipped 2026-11-06 with its own page shell** (`GET /stats`, `templates/stats.html`,
+`assets/js/stats.js`), rather than waiting for STAT-2. The original advice was "STAT-1 and
+STAT-2 must land in the same commit or STAT-1 ships behind a page that already exists" — the
+reader-coverage gate forbids a route with no reader, and no `/stats` page existed, so the page
+was built with STAT-1. It renders the census now and gains the latency cards when STAT-2 lands;
+the API route is unchanged by that, which is the point of the page being a shell.
+
+**The page computes nothing.** It fetches `/api/v1/stats/summary` and renders the response, so
+there is one computation and two renderings (spec §3.4). The reader-inventory row is
+`{Match: "/api/v1/stats/summary", Reader: "stats.js", Anchor: "/api/v1/stats/summary", Routes: 1}`.
 
 **Verify:**
 ```sh
@@ -73,6 +112,23 @@ curl -s 127.0.0.1:8006/api/v1/stats/summary | python3 -c \
 ---
 
 ## STAT-2 — Decision latency and exposure
+
+**SHIPPED 2026-11-06.** `GET /api/v1/stats`, the three latency cards on `/stats`, the
+`/badge/{slug}.svg` + `/badge/instance.svg` badges, and the `?kind=stats` feed item.
+`make verify` green at 1167 tests. Verified live against a throwaway instance **and in a
+browser**, where the rendered cards were compared field-by-field against the API payload:
+all three medians and all three count lines matched.
+
+### Measured corrections to this plan, 2026-11-06
+
+| # | the plan said | the code says |
+|---|---|---|
+| 5 | `Latency{MedianHours, N, Unfinished, Unit}` | a fourth count is needed. A row that is **finished but was never measured** (a seeded feature inserted directly as `shipped`, with no `ready` audit row) is neither `N` nor `Unfinished`; folding it into `Unfinished` reports a shipped feature as still in progress. Shipped as `Unmeasured`. |
+| 6 | `health (— when NULL)`, read from the project | the stored `project_metrics.health_score` is **0 for all 70 live projects** — a placeholder, not a measurement. Reading the column renders "0.00" for every project, the exact lie §4.13 refuses. `DB.ProjectHealth` (scout.go:165) already computes through `discovery.HealthScore` and returns `known=false`; the badge uses it. |
+| 7 | `Triage(complaints, validations)`, `Delivery(features, transitions)`, `Decision(calls, closes)` | the plan's signatures force each caller to re-derive which rows are in the sample. Shipped as one pure `discovery.Measure([]Episode)` plus three store-level episode builders, so the sample rules are testable without a database. |
+| 8 | `Delivery`: "feature entering `ready` -> entering `shipped`" | the **target status is inside the audit `detail` string**, not a column: trust.go writes `"<from> -> <to>: <reason>"`. A `LIKE '%-> shipped%'` matches a reason that happens to contain that text, so it is parsed in Go. |
+| 9 | `Decision`: "call created -> closed" | an **open** call is inserted with `closes_at = now()` — the same instant as `opens_at` — because the column is `NOT NULL` (consensus.go:141). Computing `closes_at - opens_at` over every call measures each open call as 0.0h: the zero-day lie. The filter is `status = 'closed'`. The schema allows only `('open','closed')`, so there is no `superseded` status. |
+| 10 | a feature still in `draft` is unfinished | it is **not in the population at all**. `CreateFeature` writes no audit row and the metric measures the journey from `ready`; a draft feature has no journey. Counting one as unfinished reports every newly filed feature as a delivery in progress. |
 
 ### STAT-2.1 `internal/discovery/latency.go` (pure, table-tested)
 
@@ -146,6 +202,23 @@ recomputes.
 
 ## STAT-3 — Snapshot history, rising, and the leaderboard
 
+**SHIPPED 2026-11-06 (STAT-3.1–.3 only).** Migration `0032_instance_stats.sql`,
+`internal/store/statsnapshot.go` (`ComputeSnapshot`, `WriteSnapshot`, `SnapshotHistory`),
+`cmd/statsnapshot`, `GET /api/v1/stats/history`, and `deploy/concord-statsnapshot.{service,timer}`.
+`make verify` green at 1174 tests.
+
+Verified live: `-dry-run` prints the frame and writes nothing; two consecutive runs leave
+**exactly one row** for the day; the history route returns a bare array with `null` medians
+for an unmeasured day.
+
+### Measured corrections to this plan, 2026-11-06
+
+| # | the plan said | the code says |
+|---|---|---|
+| 11 | `no_origin INTEGER NOT NULL DEFAULT 0, -- rows that predate R10's backfill` | ambiguous about which table. `0030` backfilled **both** `features` and `complaints`, and they are one population, so the column counts both — documented in the migration. Two columns would invite a reader to compare them, and the split is a fact about tables, not rows. |
+| 12 | the medians are a `REAL` column | correct, but the Go side must not use `sql.NullFloat64` for the JSON: it has **no `MarshalJSON`**, so the API published `{"Float64":0,"Valid":false}` and a reader comparing against `null` got an object. `Snapshot` carries `*float64` for the JSON boundary and `sql.NullFloat64` for the database scan. Found by `TestStatsHistoryServesRecordedDays`. |
+| 13 | STAT-3.4 (rising) and STAT-3.5 (leaderboard) are in this milestone | **STAT-3.5 shipped 2026-11-06**, once R12 gave it a metric to rank; **STAT-3.4 shipped 2026-11-06** on `0033_project_stats.sql`. This plan statement is why STAT-3.4 came last: "rank projects by the slope of … between two snapshots" cannot be derived from `instance_stats`, which records **one instance-wide row per day** and has no project column. Implementing it honestly needed exactly that table, which `0033` now provides: `project_stats(day, project_id, organic_features_shipped, organic_complaints_filed)`, cumulative and organic, written by `cmd/statsnapshot` in the same pass as the instance row. I bound the privacy question the plan never asked: a leaderboard names projects, so it also filters `visibility='public'` — every other statistics route publishes aggregates a private project contributes to invisibly. |
+
 ### STAT-3.1 Migration `0032_instance_stats.sql`
 
 ```sql
@@ -193,11 +266,51 @@ shipped and complaints filed between two snapshots at least 14 days apart. A pro
 snapshot has no slope and is not ranked. Health is shown beside the slope, never substituted
 for it: "rising" is a change, health is a level.
 
+**Shipped 2026-11-06**, on a table this paragraph did not anticipate: `instance_stats` has no
+project column, so the slope had to come from `0033_project_stats.sql` —
+`(day, project_id, organic_features_shipped, organic_complaints_filed)`, cumulative, organic,
+`PRIMARY KEY (day, project_id)` so a second run of the same day corrects rather than appending
+a point at the same x. `cmd/statsnapshot` writes the day's project rows in the same pass as the
+instance row.
+
+`GET /api/v1/stats/rising`, five boundings the sentence above left open:
+
+- **the span is the project's own** (its first and last row), not the instance's, or a project
+  created last week is measured against a history it never had;
+- `RisingMinDays = 14` **in the query**, and a project below it is ABSENT — with a daily timer,
+  two rows one day apart turn one shipped feature into "seven per week";
+- **deltas stay signed**, because a feature can be reopened and a clamped `0` is a measurement
+  nobody took;
+- **the span is printed in every row**, since a rate over 14 days and one over 90 are different
+  claims;
+- health comes from **`ProjectHealth`, not the `health_score` column**, which is `0` for every
+  project on the live instance — the page renders a dash for unmeasured instead of a `0%`.
+
+**Verify:**
+```sh
+go build -o bin/concord ./cmd/concord && CONCORD_DB=/tmp/p.db CONCORD_LISTEN=127.0.0.1:8415 ./bin/concord &
+sqlite3 /tmp/p.db "insert into project_stats (day,project_id,organic_features_shipped,organic_complaints_filed) values ('2026-10-01',1,0,0),('2026-10-22',1,12,2)"
+curl -s 127.0.0.1:8415/api/v1/stats/rising   # -> [{...,"days":21,"features_per_week":4,...}]
+# a project with one row is absent, and so is a private one
+```
+
 ### STAT-3.5 Responsiveness leaderboard (§3.5)
 
 `GET /api/v1/stats/responsiveness` — projects ordered by `newcomer_response_hours` ascending,
 filtered to `newcomer_sample >= 5`, each row carrying `n`. A project under five samples is
 absent, not last.
+
+**Shipped 2026-11-06.** `store.ResponsivenessLeaderboard` + `handleStatsResponsiveness`, and a
+card on `/stats` that renders the API's order and never re-sorts. Three boundings the sentence
+above left open:
+
+- a **slug tiebreak** after the median, or two projects at the same number swap places between
+  requests and the ranking cannot be compared with its own previous rendering;
+- `visibility = 'public'`, because this is the one statistics surface that publishes NAMED
+  projects rather than an aggregate;
+- the floor is enforced in the QUERY as well as in `UpdateProjectNewcomer`, because a row can
+  reach this table without the writer (`TestResponsivenessLeaderboardOmitsProjectsUnderTheFloor`
+  seeds one that way — the mutant that drops the clause survives every other test).
 
 **Verify:**
 ```sh

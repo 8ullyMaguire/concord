@@ -241,7 +241,7 @@ func (s *Server) loadTemplates() error {
 	pages := []string{"index", "search", "projects", "project", "board",
 		"login", "register", "rank", "ranking", "documents", "notfound", "finder",
 		"scout", "consensus", "audit", "settings", "feature", "complaint", "requests-detail", "requests-index", "lists", "list",
-		"taxonomy", "criteria", "merge", "contribute"}
+		"taxonomy", "criteria", "merge", "contribute", "stats"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -415,6 +415,30 @@ func (s *Server) Router() http.Handler {
 	// affects every project, so there is no slug to hang it off and nothing to
 	// hide -- the reads are public and the writes refuse on their own.
 	r.Get("/taxonomy", s.handleTaxonomyPage)
+
+	// The instance census (spec §4.13, STAT-1). Instance-wide for the same reason
+	// as taxonomy: it describes the whole instance, so there is no slug and no
+	// project to be private about. The page is a shell over the API route -- one
+	// computation, two renderings.
+	r.Get("/stats", s.handleStatsPage)
+	r.Get("/api/v1/stats/summary", s.handleStatsSummary)
+	// The full statistics payload (STAT-2): census + the three latency medians +
+	// how much is instrumented. The page fetches this one too, so the latency
+	// cards and the census cards cannot drift apart.
+	r.Get("/api/v1/stats", s.handleStats)
+	// The recorded series (STAT-3). The only route in the spec that is a series
+	// rather than a frame: everything else is a still image of now.
+	r.Get("/api/v1/stats/history", s.handleStatsHistory)
+	// STAT-3.5: the projects that publish a newcomer responsiveness median,
+	// fastest first, absent below the sample floor.
+	r.Get("/api/v1/stats/responsiveness", s.handleStatsResponsiveness)
+	// STAT-3.4: rising, from the per-project series 0033 records. Absent below a
+	// 14-day span, because a shorter one has no slope worth publishing.
+	r.Get("/api/v1/stats/rising", s.handleStatsRising)
+	// Text-only SVG badges (spec §3.4). `instance` is a reserved slug mounted
+	// here, before the project lookup, so a project actually named "instance"
+	// cannot shadow its own badge.
+	r.Get("/badge/{slug}.svg", s.handleBadge)
 
 	// Consensus (docs/specs/consensus-page-spec.md). `call` is a query parameter,
 	// not a path segment, because there is no endpoint that lists calls and a
