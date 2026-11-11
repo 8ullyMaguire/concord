@@ -30,6 +30,12 @@ type AuditLogEntry struct {
 	EntityID  *int64  `json:"entity_id,omitempty"`
 	Detail    string  `json:"detail"`
 	CreatedAt float64 `json:"created_at"`
+	// Undoes names the act this entry reverses, when it is a reversal.
+	Undoes *int64 `json:"undoes,omitempty"`
+	// Undone is the other direction: some later act has reversed THIS one. A viewer that
+	// shows neither cannot tell a live act from a reversed one, which is exactly the state
+	// the moderation spec's D2 says the log must never be in.
+	Undone bool `json:"undone"`
 }
 
 // AuditEntry is a row plus the actor's display name.
@@ -45,6 +51,10 @@ type AuditLogEntry struct {
 type AuditEntry struct {
 	AuditLogEntry
 	ActorDisplayName *string `json:"actor_display_name"`
+	// CanUndo is a hint for the viewer, filled by the HTTP layer: this is an arena removal that
+	// nothing has reversed yet, and this caller may moderate the project. The restore route
+	// re-checks, because a flag computed in a read is not a permission.
+	CanUndo bool `json:"can_undo"`
 }
 
 // AuditFilter narrows the log. Every field is optional and the zero value matches
@@ -176,9 +186,11 @@ func (d *DB) ListAudit(ctx context.Context, f AuditFilter) (AuditPage, error) {
 	}
 
 	rows, err := d.QueryContext(ctx, `
-		SELECT id, project_id, actor_id, action, entity, entity_id, detail, created_at
-		FROM audit_log`+clause+`
-		ORDER BY created_at DESC, id DESC
+		SELECT a.id, a.project_id, a.actor_id, a.action, a.entity, a.entity_id, a.detail,
+		       a.created_at, a.undoes,
+		       EXISTS (SELECT 1 FROM audit_log u WHERE u.undoes = a.id)
+		FROM audit_log a`+clause+`
+		ORDER BY a.created_at DESC, a.id DESC
 		LIMIT ? OFFSET ?`, append(args, f.Limit, f.Offset)...)
 	if err != nil {
 		return AuditPage{}, err
@@ -187,10 +199,11 @@ func (d *DB) ListAudit(ctx context.Context, f AuditFilter) (AuditPage, error) {
 	actorIDs := []int64{}
 	for rows.Next() {
 		var e AuditLogEntry
-		var pid, aid, eid sql.NullInt64
+		var pid, aid, eid, undoes sql.NullInt64
 		var detail sql.NullString
+		var undone int
 		if err := rows.Scan(&e.ID, &pid, &aid, &e.Action, &e.Entity, &eid,
-			&detail, &e.CreatedAt); err != nil {
+			&detail, &e.CreatedAt, &undoes, &undone); err != nil {
 			rows.Close()
 			return AuditPage{}, err
 		}
@@ -209,6 +222,11 @@ func (d *DB) ListAudit(ctx context.Context, f AuditFilter) (AuditPage, error) {
 		// so NULL and "" are both live states. Scanning NULL into a bare string
 		// fails the whole read, which would take the viewer down over one row.
 		e.Detail = detail.String
+		if undoes.Valid {
+			v := undoes.Int64
+			e.Undoes = &v
+		}
+		e.Undone = undone != 0
 		entries = append(entries, e)
 	}
 	if err := rows.Err(); err != nil {

@@ -555,3 +555,68 @@ func TestASearchTreatsALiteralBackslashAsALiteralCharacter(t *testing.T) {
 			"character must be doubled before the wildcards are escaped", len(page.Entries), details)
 	}
 }
+
+// An audit row that reversed another has to be readable as such, in both directions: the
+// reversal names what it undid, and the undone act says it is undone. Without the pair, a log
+// shows two removals and no way to tell which of them is still in force -- which is the state
+// the moderation spec's D2 says a viewer must never put a reader in.
+func TestTheAuditLogSaysWhichActsWereReversed(t *testing.T) {
+	d, uid, pid, fID := arenaFixture(t)
+	ctx := context.Background()
+	a, err := d.EnsureArena(ctx, ArenaFeaturePriority, pid, 0, "", "")
+	if err != nil {
+		t.Fatalf("EnsureArena: %v", err)
+	}
+	if err := d.UpsertArenaEntry(ctx, a.ID, "feature", fID); err != nil {
+		t.Fatalf("UpsertArenaEntry: %v", err)
+	}
+	removed, err := d.RemoveFeatureFromArena(ctx, pid, a.ID, fID, uid, "spam")
+	if err != nil {
+		t.Fatalf("RemoveFeatureFromArena: %v", err)
+	}
+
+	// Before the reversal: the removal is live and nothing names it as undone.
+	page, err := d.ListAudit(ctx, AuditFilter{ProjectID: pid})
+	if err != nil {
+		t.Fatalf("ListAudit: %v", err)
+	}
+	var seen bool
+	for _, e := range page.Entries {
+		if e.ID == removed.ID {
+			seen = true
+			if e.Undone {
+				t.Fatalf("the removal is already reported undone")
+			}
+			if e.Undoes != nil {
+				t.Fatalf("the removal reports that it reverses something")
+			}
+		}
+	}
+	if !seen {
+		t.Fatal("the removal is missing from the log")
+	}
+
+	restored, err := d.RestoreFeatureToArena(ctx, pid, uid, removed.ID, "wrong call")
+	if err != nil {
+		t.Fatalf("RestoreFeatureToArena: %v", err)
+	}
+	page, err = d.ListAudit(ctx, AuditFilter{ProjectID: pid})
+	if err != nil {
+		t.Fatalf("ListAudit after restore: %v", err)
+	}
+	var foundUndone, foundReversal bool
+	for _, e := range page.Entries {
+		if e.ID == removed.ID {
+			foundUndone = e.Undone
+		}
+		if e.ID == restored.ID {
+			foundReversal = e.Undoes != nil && *e.Undoes == removed.ID
+		}
+	}
+	if !foundUndone {
+		t.Fatal("the removal is not reported undone after the restore")
+	}
+	if !foundReversal {
+		t.Fatal("the restore does not name the act it reverses")
+	}
+}

@@ -69,6 +69,14 @@ func (s *Server) handleListProjectAudit(w http.ResponseWriter, r *http.Request) 
 		mapError(w, err)
 		return
 	}
+	// Mark what this caller could reverse. One permission check for the page, not one per row:
+	// every entry in a project log shares the same project.
+	if s.mayModerate(r, projectID, "reviewer") {
+		for i := range page.Entries {
+			e := &page.Entries[i]
+			e.CanUndo = e.Action == "arena.remove" && !e.Undone
+		}
+	}
 	writeJSON(w, http.StatusOK, page)
 }
 

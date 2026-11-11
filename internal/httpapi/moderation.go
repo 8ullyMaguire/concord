@@ -25,19 +25,33 @@ type arenaActRequest struct {
 // CONCORD_MOD_TRUST_MIN) and a per-project role. Either is enough. A refusal says which
 // role it wanted, and requireRole's error carries the 403 through mapError.
 func (s *Server) permitModeration(w http.ResponseWriter, r *http.Request, projectID int64, minRole string) bool {
+	if getActorID(r) == 0 {
+		mapError(w, store.ErrAuth)
+		return false
+	}
+	if s.mayModerate(r, projectID, minRole) {
+		return true
+	}
+	mapError(w, &roleRefusal{minRole: minRole})
+	return false
+}
+
+// mayModerate is permitModeration without the answer being written: the same two doors (instance
+// trust, project role), for the callers that need the answer to fill a row rather than to refuse
+// a request. Two copies of the pair is how one surface ends up granting what the other denies.
+func (s *Server) mayModerate(r *http.Request, projectID int64, minRole string) bool {
 	actorID := getActorID(r)
 	if actorID == 0 {
-		mapError(w, store.ErrAuth)
 		return false
 	}
 	if lvl, err := s.Store.GetTrustLevel(r.Context(), actorID); err == nil && lvl >= config.ModTrustMin() {
 		return true
 	}
-	if err := s.requireRole(projectID, minRole, r); err != nil {
-		mapError(w, err)
+	role, err := s.Store.GetRoleForProject(r.Context(), projectID, actorID)
+	if err != nil {
 		return false
 	}
-	return true
+	return roleAtLeast(role, minRole)
 }
 
 // requiredReason trims and validates, answering 400 with the crate's sentence.

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -473,5 +474,63 @@ func TestTheAuditPageRendersForAReadableProjectAndOnlyThat(t *testing.T) {
 	privCode, _ := authGet(t, ts, "/projects/audit-page-private/audit", "")
 	if privCode != http.StatusNotFound {
 		t.Errorf("a private project's audit page answered %d, want 404: the shell alone confirms the slug exists", privCode)
+	}
+}
+
+// The audit page offers Undo, so the read that fills it has to say who may take it. The route
+// re-checks; this is the hint, and a hint that is always true is the same defect as a button the
+// server refuses.
+func TestTheAuditReadSaysWhoMayUndo(t *testing.T) {
+	ts, db := newTestServerWithStore(t)
+	slug, pid := makeProject(t, ts, "audit-undo")
+	ids := makeRankedPair(t, ts, slug, pid, "An idea")
+	ctx := context.Background()
+	owner, err := db.GetUser(ctx, "testuser")
+	if err != nil {
+		t.Fatalf("GetUser: %v", err)
+	}
+	arena, err := db.EnsureArena(ctx, store.ArenaFeaturePriority, pid, 0, "", "")
+	if err != nil {
+		t.Fatalf("EnsureArena: %v", err)
+	}
+	if err := db.UpsertArenaEntry(ctx, arena.ID, "feature", ids[0]); err != nil {
+		t.Fatalf("UpsertArenaEntry: %v", err)
+	}
+	if _, err := db.RemoveFeatureFromArena(ctx, pid, arena.ID, ids[0], owner.ID, "spam"); err != nil {
+		t.Fatalf("RemoveFeatureFromArena: %v", err)
+	}
+
+	// The project's owner: may undo.
+	_, body := doJSON(t, ts, "GET", "/api/v1/projects/"+slug+"/audit", nil)
+	entries, _ := body["entries"].([]any)
+	if len(entries) == 0 {
+		t.Fatal("the audit read is empty")
+	}
+	var undoes, undone int
+	for _, it := range entries {
+		e := it.(map[string]any)
+		if e["action"] == "arena.remove" {
+			if e["can_undo"] != true {
+				t.Fatalf("the owner is not offered Undo: %v", e["can_undo"])
+			}
+			if e["undone"] != false {
+				t.Fatalf("a live removal reports undone")
+			}
+			undoes++
+		}
+		if e["undone"] == true {
+			undone++
+		}
+	}
+	if undoes != 1 || undone != 0 {
+		t.Fatalf("removals=%d undone=%d, want 1 and 0", undoes, undone)
+	}
+
+	// Anonymous: the same rows, and no Undo offered.
+	_, anon := doJSONAnon(t, ts, "GET", "/api/v1/projects/"+slug+"/audit", nil)
+	for _, it := range anon["entries"].([]any) {
+		if it.(map[string]any)["can_undo"] == true {
+			t.Fatal("an anonymous reader is offered Undo")
+		}
 	}
 }
