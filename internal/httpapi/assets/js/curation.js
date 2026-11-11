@@ -186,7 +186,10 @@ function apiAuth(extra) {
    * has no path to live under.
    */
   function canUndo(item) {
-    return item.kind === 'act' && item.action === 'arena.remove' &&
+    // can_vote is the same standing the restore route requires, so it gates the Undo control
+    // too: the browser check on the deployed build found the button offered to an anonymous
+    // reader, which is a button that answers 401 the moment it is pressed.
+    return item.can_vote && item.kind === 'act' && item.action === 'arena.remove' &&
       item.state === 'applied' && !!item.project_slug;
   }
 

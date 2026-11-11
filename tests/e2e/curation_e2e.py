@@ -205,6 +205,9 @@ def test_a_signed_in_reader_without_standing_is_told_so(browser, server):
     card = lst.locator("[data-kind='taxonomy']").first
     expect(card.locator("button", has_text="Consent")).to_have_count(0)
     expect(card).to_contain_text("no standing")
+    # The Undo control takes the same standing as the restore route, and it took the browser to
+    # notice it was offered to a reader the route would refuse.
+    expect(lst.locator("button", has_text="Undo this removal")).to_have_count(0)
     assert pg.errors == [], pg.errors
     pg.close()
 
