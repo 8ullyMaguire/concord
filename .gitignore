@@ -11,3 +11,6 @@ __pycache__/
 
 # locally built binaries
 /capableseed
+
+# Agent scratch: plans live in docs/plans/ once written
+.hermes/
