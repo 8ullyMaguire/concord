@@ -13,9 +13,14 @@ day is live: R16/R17/R18 intake modes, milestones, roadmap and dependencies; the
 detach; the notification inbox; and the healthsync per-host credential fix.
 
 Built and deployed this day: **R16/R17/R18** — per-project intake modes, milestones, the
-roadmap and feature dependencies (`REMAINING` §43, live walk in §43.5) — and the
+roadmap and feature dependencies (`REMAINING` §43, live walk in §43.5) — the
 **complaint detach** that closes the one idea `§43.2` had recorded as half-shipped
-(`REMAINING` §44, live walk in §44.1, DOM-verified in a real browser on the live site).
+(`REMAINING` §44, live walk in §44.1), the **notification inbox** (`§45`), and the repair of the
+**consensus phase** (`§46`): 87 features claimed to be deciding while `consensus_calls` held
+none, and a feature with a real call never left `discussion`. A call now moves its feature into
+`consensus`, an outcome moves it on (sent-back returns it to `discussion`, not `rejected`), one
+open call per feature answers 409, and the 87 parked rows are openable again — deliberately not
+rewritten, because a bulk status write is the act that caused the problem.
 
 The filed inventory now stands at **26 of 29 drafts shipped, 2 not built, 9 rejected**:
 

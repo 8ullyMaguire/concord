@@ -5465,7 +5465,15 @@ person made; each is now *openable*, and turning them back to `ready` is a judge
 projects that belongs to whoever moved them. A bulk `UPDATE` here would be the same act as the
 one this pass is complaining about — a status written without the record that justifies it.
 
-**Live walk** (`concord.polarisocial.xyz`, `pre-merge-2026-11-05-63-g...`): a probe project, one
-complaint, one feature, `POST /consensus` → `201`, `GET .../features/{id}` → `"status":
-"consensus"`, `POST /consensus` again → `409 a consensus call is already open on this
-feature`. Probe rows deleted afterwards; `PRAGMA integrity_check` ok.
+**Live walk** (`concord.polarisocial.xyz`, `pre-merge-2026-11-05-63-g313b4ee`, as an ordinary
+account with no grants):
+
+    == project phase-21541, feature 5785
+    status before any call: draft
+    POST consensus  -> 201                     (call id 1)
+    status after the call: consensus
+    POST consensus again -> 409 {"error":"conflicts with current state: a consensus call is
+                                   already open on this feature"}
+
+Cleanup: projects back to 73, 0 probe accounts, `consensus_calls` back to 0,
+`PRAGMA integrity_check` ok.
