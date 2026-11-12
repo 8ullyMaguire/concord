@@ -5043,7 +5043,20 @@ SCHEDULING — not built:
   sentence "an unlinked feature ranks on nothing" was false. Replaced by
   `TestAnIdeaFirstFeatureStillRanks`, which measures it.
 
-### 43.4 Verified
+### 43.4 The browser suite found what the Go tests could not
+
+`tests/e2e/milestones_e2e.py` (4 assertions, one per page) exists because every
+claim on these pages is a DOM claim. Its first run found a real defect: `api()` in
+`milestones.js` encoded the WHOLE path, so `ms-demo/roadmap` became
+`ms-demo%2Froadmap` and the server answered `not found: project "ms-demo/roadmap"`.
+The route was right and no route test could have seen it. Its second and third runs
+found two fixture traps that are also product facts: board columns use the BOARD's
+phase vocabulary (`inbox`, not `draft`), and `feature_complaints` has no `linked_at`.
+
+Mutation-checked: making `filterCardsByMilestone` return every card fails the board
+assertion, and that is the only assertion in the suite that would notice.
+
+### 43.4a Verified
 
 `make verify` then `make gates` (serially, per `docs/prompts/continue.md`), plus the
 new suites: 9 store tests in `internal/store/milestones_test.go`, 5 route tests in

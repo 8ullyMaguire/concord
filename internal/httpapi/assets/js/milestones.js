@@ -48,7 +48,15 @@
     // The token carrier is INLINE in the fetch call on purpose: the asset audit
     // reads call sites, and a helper that adds the header one level away is exactly
     // the shape that shipped a member-only read as anonymous.
-    return fetch('/api/v1/projects/' + encodeURIComponent(path), {
+    // Only the SLUG is encoded. Encoding the whole path turned "ms-demo/roadmap"
+    // into "ms-demo%2Froadmap" and the server answered `not found: project
+    // "ms-demo/roadmap"` -- which the browser suite caught on its first run and no
+    // Go test could have: the route is correct, the URL the page built was not.
+    var cut = path.indexOf('/');
+    var url = cut < 0
+      ? '/api/v1/projects/' + encodeURIComponent(path)
+      : '/api/v1/projects/' + encodeURIComponent(path.slice(0, cut)) + path.slice(cut);
+    return fetch(url, {
       method: o.method || 'GET',
       body: o.body,
       headers: apiAuth(o.headers || {})

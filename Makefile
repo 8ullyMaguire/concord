@@ -62,6 +62,11 @@ e2e: build
 	# no probe) and the pairwise page's per-card idea link. `gates` cannot see either -- the rows
 	# are rendered client-side from an attribute, and the hrefs are built in JavaScript.
 	$(E2E_PYTEST) tests/e2e/rank_links_e2e.py -q
+	# R16/R17/R18's pages: the roadmap, one milestone, the board's milestone filter and
+	# the feature page's Planning panel. Every claim in it is a DOM claim -- the routes
+	# are covered in Go, and a route that answers correctly while the page renders
+	# nothing is the exact failure this repository keeps finding.
+	$(E2E_PYTEST) tests/e2e/milestones_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/feature_e2e.py -q
 	# §6.2's themes: the propose form, the consent state, and the expiry a reader has to be
 	# able to see. Its own suite because it needs a signed-in page and a charter of its own.
