@@ -393,6 +393,54 @@ func (d *DB) LinkComplaint(ctx context.Context, projectID, featureID, complaintI
 	return err
 }
 
+// UnlinkComplaint removes one link, the inverse LinkComplaint never had.
+//
+// That asymmetry was real and it had a cost: an idea filed against the wrong
+// complaint, or a feature converted from complaint-backed to idea-first, could be
+// moved one way through the browser and not the other. `feature_complaints` is the
+// same table `LinkComplaint` writes, so there is exactly one truth per pair.
+//
+// Policy, taken from RemoveFeatureEvidence rather than invented here: removing the
+// last piece of evidence does NOT retroactively un-ready a feature. The traceability
+// rule is enforced on the NEXT transition to ready or in_progress
+// (UpdateFeatureStatus), so the state "ready with nothing behind it" is reachable for
+// a moment and the next move forward is refused with the reason. Silently un-readying
+// work somebody is doing, or refusing a legal edit because of a status the author did
+// not choose, would both be worse -- and two removal paths in one package enforcing
+// different policies is how a rule acquires a bypass.
+//
+// Idempotent, like LinkComplaint: deleting a link that is not there leaves the same
+// state and no error, because the response is the feature's remaining complaints and
+// that list is the truth. A retried request must not fail.
+//
+// projectID is a parameter for the reason LinkComplaint's comment gives: feature and
+// complaint ids are both global, so without it this joins a feature in one project to
+// a complaint in another and no route-level check can see it.
+func (d *DB) UnlinkComplaint(ctx context.Context, projectID, featureID, complaintID int64) error {
+	f, err := d.GetFeature(ctx, featureID)
+	if err != nil {
+		return err
+	}
+	if f.ProjectID != projectID {
+		return fmt.Errorf("%w: feature %d is not in project %d", ErrNotFound, featureID, projectID)
+	}
+	c, err := d.GetComplaint(ctx, complaintID)
+	if err != nil {
+		return err
+	}
+	if c.ProjectID != projectID {
+		return fmt.Errorf("%w: complaint %d is not in project %d", ErrNotFound, complaintID, projectID)
+	}
+	if _, err := d.ExecContext(ctx,
+		`DELETE FROM feature_complaints WHERE feature_id=? AND complaint_id=?`,
+		featureID, complaintID); err != nil {
+		return err
+	}
+	now := float64(time.Now().Unix())
+	_, err = d.ExecContext(ctx, `UPDATE features SET updated_at=? WHERE id=?`, now, featureID)
+	return err
+}
+
 // SetStrategicWeight changes a feature's strategic weight (M2).
 // Maintainer+ only. Audited with old→new.
 func (d *DB) SetStrategicWeight(ctx context.Context, featureID int64, newWeight float64) error {
@@ -443,6 +491,21 @@ func (d *DB) UpdateFeatureStatus(ctx context.Context, featureID int64, status st
 			}
 			if len(blockers) > 0 {
 				return fmt.Errorf("%w: blocked by %s", ErrInvalid, describeBlockers(blockers))
+			}
+			// Evidence is re-checked HERE, not only at ready, because evidence can be
+			// removed after a feature is ready: UnlinkComplaint and RemoveFeatureEvidence
+			// both delete rows and neither un-readies anything (that policy is theirs, and
+			// it exists so an edit does not silently undo a decision). Without this check
+			// the gate on `ready` would be a gate with a hole in it -- ready, unlink, then
+			// start work -- and "committed with evidence" would be unenforceable by the
+			// time the work actually begins, which is the moment it costs something.
+			n, err := d.countFeatureEvidence(ctx, featureID)
+			if err != nil {
+				return err
+			}
+			if n == 0 {
+				return fmt.Errorf("%w: a feature starts work with evidence -- a validated "+
+					"complaint, a project document, or a field report", ErrInvalid)
 			}
 		}
 	}

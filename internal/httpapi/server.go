@@ -797,6 +797,12 @@ func (s *Server) Router() http.Handler {
 	// least one complaint and could never gain another, although the join is many-to-many and
 	// the store's own function for it had no caller anywhere.
 	r.Post("/api/v1/projects/{project_id}/features/{id}/complaints", s.handleLinkComplaint)
+	// The inverse. Without it the join could only grow: a feature filed against the wrong
+	// complaint stayed attached for good, and the filed idea "convert a feature between
+	// complaint-backed and idea-first" was a one-way door. DELETE rather than a POST to
+	// /unlink so the method states the intent, and the complaint id is a PATH segment
+	// because a DELETE with a body is not portable.
+	r.Delete("/api/v1/projects/{project_id}/features/{id}/complaints/{complaint_id}", s.handleUnlinkComplaint)
 
 	r.Route("/api/v1/projects/{project_id}/features/{id}/solutions", func(r chi.Router) {
 		r.Get("/", s.handleListSolutions)

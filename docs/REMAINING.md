@@ -6,7 +6,7 @@ the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
 **Measured state (the twenty-first pass, §34):** schema 38 · 38 migrations · 90 live tables ·
-**1262 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files · 54/54 UI mutants killed
+**1272 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files · 54/54 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
 8 project.js/arena, 4 project.js/work items) · Go mutants: 27 arms, 172 killed, 0 survived ·
 `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
@@ -4106,7 +4106,7 @@ against a seeded probe instance — the defect is a perfect score for an unmeasu
 ### 34.6 Where the numbers stand
 
 **Measured state (the twenty-first pass, §34):** schema 38 · 38 migrations · 90 live tables ·
-**1262 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files ·
+**1272 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files ·
 `make verify` exit 0 · `make gates` exit 0 (27 arms) · `make e2e` exit 0.
 
 ## §35 — The Consensus tab answered 405, because the index it links to was "out of scope"
@@ -4961,6 +4961,10 @@ shown where a reader files (the form note, and the select that stops demanding a
 complaint in `idea_first`); the evidence badge on the feature page; proof that an
 idea-first feature still ranks (a test, not a sentence).
 
+INTAKE — closed later on 2026-11-12: the one item this list recorded as half-shipped
+("convert a feature between complaint-backed and idea-first") now has its missing
+half — a detach route and control, §44 below.
+
 INTAKE — not built, with reasons:
 
 - **Changing the intake mode is a proposal, not a maintainer dial (V6).** Shipped as
@@ -4972,10 +4976,9 @@ INTAKE — not built, with reasons:
   deliberate deviation, not an oversight: it is the one place this pass chose the
   dial.
 - **Convert a feature between complaint-backed and idea-first as an act (V7).**
-  Half-shipped: `POST/DELETE .../features/{id}/evidence` converts idea -> backed and
-  back. There is still no route that UNLINKS a complaint (`POST .../complaints`
-  exists, its inverse does not), so a feature cannot be moved the other way through
-  the browser.
+  Shipped (§44): `POST/DELETE .../features/{id}/evidence` converts idea -> backed and
+  back, and `DELETE .../features/{id}/complaints/{complaint_id}` is the complaint-side
+  inverse, with a Detach control on the feature page.
 - **Intake-mode changes as their own audit kind (V5, REJECTED).** The act exists
   (`action = intake_mode`) because the store writes it; it is not a curation *kind*,
   and the modlog resolver still knows only `moderation`.
@@ -5146,3 +5149,53 @@ if it did.
   from the outside. Worth aligning when the route next changes; recorded rather than
   changed under a green suite, because renaming a request field breaks every caller
   including the one nobody remembers.
+
+## 44. The unlink, and the hole it would have opened
+
+§43.2 recorded one idea as half-shipped: evidence could be added and removed, but
+`feature_complaints` had only a create. A feature filed against the wrong complaint
+stayed attached for good, and "convert a feature between complaint-backed and
+idea-first" was a one-way door through the browser. That is now closed, and the
+interesting part is not the DELETE.
+
+**The route.** `DELETE /api/v1/projects/{project_id}/features/{id}/complaints/{complaint_id}`,
+contributor standing like the link it inverts, id in the path because a DELETE with a
+body is not portable, answering with the feature's remaining complaints so the section
+renders its own count without a re-read. Store: `UnlinkComplaint` beside `LinkComplaint`,
+idempotent and cross-project-guarded for the same reasons — both ids are global, and a
+retried request must not fail.
+
+**The policy it inherits.** Removing evidence does not un-ready anything. That decision
+was already made for documents and field reports (`RemoveFeatureEvidence`): silently
+undoing a decision because an edit touched its evidence is worse than letting the next
+reader see the state. The unlink follows it rather than inventing a second policy for
+the same act.
+
+**The hole that policy leaves, and the fix.** If removal never un-readies, then
+"ready with no evidence" is reachable — and `in_progress` only checked blockers, so the
+next move forward would have started work on a feature whose commitment had been
+quietly hollowed out. `UpdateFeatureStatus` now re-checks evidence on `in_progress` as
+well as `ready`. That is the gate the removal policy needs in order to be safe:
+removal is free, the NEXT step forward is checked. `TestUnlinkingTheLastComplaintDoesNotUnReadyButDoesBlockTheStart`
+measures all three facts — the status survives the unlink, the start is refused naming
+evidence, and a document reopens the door.
+
+**Measured, not asserted.** Five store tests and five route tests, and mutation-checked
+three ways: dropping the evidence re-check on `in_progress`, dropping the complaint's
+project guard, and making `wireUnlink` a no-op each fail exactly one test. The browser
+suite gained a fifth assertion: the Detach button is rendered, clicking it removes the
+row, and the header count follows — a handler that answers 200 and deletes nothing
+passes "no error".
+
+**Two traps paid for in the browser suite**, both worth keeping:
+
+- It set `localStorage['concord_token']`. The real key is `concord.token`
+  (`session.js`, `TOKEN_KEY`). Every page still RENDERED — reads are public — and every
+  WRITE was anonymous, so the failure appeared as a 401 in a paragraph no assertion
+  looked at. A near-miss key is the worst kind: only a write notices.
+- The detach test needed its own feature. Mutating the fixture an earlier test measured
+  makes a suite pass or fail by file order.
+
+**Still absent, and now for a different reason.** Milestone-level consensus (a call over
+a milestone as one unit) is the one filed idea with no code: it needs a new arena kind,
+its own weighting and a charter read. That is the next milestone, and it is not a route.

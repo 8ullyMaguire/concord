@@ -166,9 +166,13 @@ var readerInventory = []readerRow{
 	// the link went unbuilt for the life of the schema. The anchor is the RENDERED option:
 	// the wiring refers to the select by id, so an anchor naming the route or the control's
 	// attribute would be satisfied by a page that renders neither.
+	// Three routes now: the read, the link, and the DETACH added on 2026-11-12 -- the join
+	// could grow and never shrink, so a feature filed against the wrong complaint stayed
+	// attached for good. The anchor is the rendered Detach button, because a fetch path is
+	// present whether or not a control exists.
 	{Match: "/api/v1/projects/{project_id}/features/{id}/complaints", Reader: "feature.js",
-		Anchor: `'<option value="' + esc(c.id) + '">#'`, Routes: 2,
-		Note: "the read, and the write that pairs with it (store.LinkComplaint had no caller)"},
+		Anchor: `data-unlink-complaint="`, Routes: 3,
+		Note: "the read, the link, and the detach that pairs with it"},
 	// §4.5.7's three routes, each on its own row because the coarse /features row is satisfied by the
 	// tags panel alone -- that is precisely how a route goes unbuilt. The anchors are the RENDERED
 	// attributes, not the fetch paths: a fetch path is present whether or not a control exists.

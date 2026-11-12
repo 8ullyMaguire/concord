@@ -45,6 +45,7 @@ OWNER = "ms-owner"
 MILESTONE_TITLE = "v1 — the planning pass"
 OPEN_TITLE = "Make the export button export"
 OUTSIDE_TITLE = "Unrelated idea outside the milestone"
+DETACH_TITLE = "Idea whose complaint will be detached"
 
 
 def _register(username):
@@ -122,11 +123,15 @@ def seed(db):
 
         inside = _feature(con, pid, uid, OPEN_TITLE, complaint, milestone, 1, now)
         outside = _feature(con, pid, uid, OUTSIDE_TITLE, complaint, None, 0, now)
+        # A third feature for the detach test ONLY. It exists so that test does not mutate
+        # the evidence the grading assertions above rely on: a suite whose later test edits
+        # the fixture its earlier test measured passes or fails by file order.
+        detach = _feature(con, pid, uid, DETACH_TITLE, complaint, None, 0, now)
         con.commit()
     finally:
         con.close()
     return {"token": token, "milestone_id": milestone, "feature_id": inside,
-            "outside_id": outside}
+            "outside_id": outside, "detach_id": detach}
 
 
 def _feature(con, pid, uid, title, complaint_id, milestone_id, position, now):
@@ -155,8 +160,13 @@ def _goto(page, path, token):
     page.context.add_cookies([{
         "name": "concord_nav", "value": token, "domain": "127.0.0.1", "path": "/",
     }])
+    # 'concord.token' -- dotted, and exactly as session.js defines TOKEN_KEY. The first
+    # version of this helper set 'concord_token', so every page RENDERED (reads are
+    # public) and every WRITE was anonymous: the detach test failed with a 401 in a
+    # paragraph nobody had asserted on. A near-miss key is the worst kind: it looks right,
+    # and only a write ever notices.
     page.add_init_script(
-        "window.localStorage.setItem('concord_token', %r);" % token)
+        "window.localStorage.setItem('concord.token', %r);" % token)
     page.goto(BASE + path)
     expect(page.locator("body")).to_be_visible()
 
@@ -215,4 +225,29 @@ def test_the_feature_page_selects_its_milestone_and_shows_the_evidence_badge(ser
     badge = page.locator("[data-evidence-badge]")
     expect(badge).to_have_attribute("data-evidence-badge", "complaint")
     expect(badge).to_have_text("complaint-backed")
+    page.close()
+
+
+def test_detaching_a_complaint_leaves_the_feature_with_no_evidence(server, browser):
+    """The join could grow and never shrink until 2026-11-12: a feature filed against the
+    wrong complaint stayed attached for good.
+
+    Three things are asserted, and each one fails differently: the button is RENDERED (a
+    route with no control is the repository's recurring defect), clicking it REMOVES the
+    row (a handler that answers 200 and deletes nothing passes a "no error" check), and
+    the header count follows (a list patched by hand drifts from the count beside it).
+    """
+    page = browser.new_page()
+    _goto(page, f"/projects/{SLUG}/features/{server['detach_id']}", server["token"])
+
+    detach = page.locator("[data-unlink-complaint]").first
+    expect(detach).to_be_visible(timeout=15000)
+    expect(page.locator("text=Complaints (1)")).to_be_visible()
+
+    detach.click()
+
+    # The page reloads after a successful write, like every other writer on this page.
+    expect(page.locator("text=Complaints (0)")).to_be_visible(timeout=15000)
+    expect(page.locator("[data-unlink-complaint]")).to_have_count(0)
+    expect(page.locator("text=No validated complaint is linked")).to_be_visible()
     page.close()

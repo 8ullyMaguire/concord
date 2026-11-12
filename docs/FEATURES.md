@@ -2,7 +2,7 @@
 
 The inventory, not the argument. One line per capability a person can actually use or
 that runs on their behalf; grouping is by where you meet it, and a line covers a route
-family rather than a route (the tree registers 230 routes for the 105 features below —
+family rather than a route (the tree registers 231 routes for the 106 features below —
 `GET/POST /projects/{p}/features/` is one feature, "file and list ideas").
 
 Kept honest by two things: every entry is reachable in the tree today (the route table
@@ -22,6 +22,7 @@ something is finished lives in `docs/REMAINING.md`.
 - **Intake modes** — a project chooses complaint-first (default), idea-first, or both; idea-first lets an idea be filed before anyone is hurt.
 - **Evidence gate** — a feature cannot reach `ready` without evidence: a validated complaint, a project document, or a field report.
 - **Evidence alternatives** — attach a document or a field report to a feature instead of a complaint.
+- **Detach a complaint** — unlink one the feature was filed against by mistake, and back the change with an audit line; the feature keeps its status, and the next move forward is what re-checks that evidence exists.
 - **Evidence badge** — the feature page says whether it is complaint-backed or idea-first.
 - **Field reports** — "I tried this and here is what happened", with responses, as first-class evidence from users rather than reviewers.
 - **Feature claim** — a contributor says "I am building this", and can unclaim it.
@@ -160,4 +161,3 @@ something is finished lives in `docs/REMAINING.md`.
 - **No per-milestone board** — one board, filtered; a column's WIP limit is a claim about the project's capacity, and a per-milestone limit would make the same column mean two things.
 - **No drag-and-drop ordering** — position moves up and down, so the order has a keyboard path.
 - **No milestone-level consensus** — a consensus call is per feature; grouping features into a milestone does not make them one decision (this is the next milestone in `docs/PLAN-r4.md`).
-- **No route that unlinks a complaint** — evidence can be added and removed, but a complaint link has only its creation path (recorded in `docs/REMAINING.md` §43.2).

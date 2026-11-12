@@ -219,6 +219,11 @@
         ? '<span class="badge badge-slate">severity ' + esc(c.severity) + '</span>'
         : '') +
       '<span class="badge badge-slate">' + esc(c.status || 'unknown') + '</span>' +
+      // The inverse of the attach control. Without it the join could only grow: a feature
+      // filed against the wrong complaint stayed attached for good, and converting a
+      // feature from complaint-backed to idea-first was one-way through the browser.
+      '<button type="button" class="btn btn-quiet" data-unlink-complaint="' + esc(c.id) +
+      '" aria-label="Detach complaint #' + esc(c.id) + '">Detach</button>' +
       '</li>';
   }
 
@@ -299,9 +304,17 @@
       }
       return h;
     }
-    function send(path, payload, btn) {
+    // send is POST, which is what every writer on this page but the detach control is.
+    // sendAs exists rather than a fourth argument on send, because a positional method
+    // is the kind of call site where the next writer passes a payload and gets a JSON
+    // body it did not ask for.
+    function sendAs(method, path, payload, btn) {
       if (btn) btn.disabled = true;
-      fetch(path, { method: 'POST', headers: headers(), body: JSON.stringify(payload) })
+      fetch(path, {
+        method: method,
+        headers: headers(),
+        body: payload === undefined ? undefined : JSON.stringify(payload)
+      })
         .then(function (r) {
           return r.text().then(function (txt) {
             var body = {};
@@ -315,7 +328,8 @@
           fail(e.message || String(e));
         });
     }
-    return { fail: fail, send: send };
+    function send(path, payload, btn) { return sendAs('POST', path, payload, btn); }
+    return { fail: fail, send: send, sendAs: sendAs };
   }
 
   // §354's extra link. A feature is created WITH at least one validated complaint and could
@@ -361,6 +375,30 @@
       if (!id) { writer.fail('Pick a complaint to attach.'); return; }
       writer.send(base + '/features/' + encodeURIComponent(featureID) + '/complaints',
         { complaint_id: id }, form.querySelector('button[type=submit]'));
+    });
+  }
+
+  // wireUnlink detaches a complaint. The id is a PATH segment on the server (a DELETE
+  // with a body is not portable), so the call is DELETE .../complaints/{id}. It reloads
+  // rather than patching the list in place, like every other writer on this page: the
+  // section header carries the count and the attach control offers what is now eligible,
+  // and a hand-patched list drifts from both.
+  //
+  // Removal does not un-ready the feature: the traceability rule is re-checked on the
+  // next transition, and saying so here is cheaper than a reader discovering it as a
+  // refusal on a status they did not change.
+  function wireUnlink(base, featureID) {
+    var rows = root.querySelectorAll('[data-unlink-complaint]');
+    if (!rows.length) return;
+    var writer = pageWriter(root.querySelector('[data-complaint-error]'));
+    Array.prototype.forEach.call(rows, function (btn) {
+      btn.addEventListener('click', function () {
+        var id = Number(btn.getAttribute('data-unlink-complaint'));
+        if (!id) return;
+        btn.disabled = true;
+        writer.sendAs('DELETE', base + '/features/' + encodeURIComponent(featureID) +
+          '/complaints/' + encodeURIComponent(id), undefined, btn);
+      });
     });
   }
 
@@ -674,6 +712,7 @@
     wireContests(base, at.id);
     wireTags(base, at.id);
     wireComplaintLinks(base, at.id);
+    wireUnlink(base, at.id);
   }).catch(function (err) {
     // aria-busy is cleared on the error path too: a skeleton that spins forever
     // over an error message reads as "still loading".
