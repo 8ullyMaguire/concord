@@ -4512,8 +4512,16 @@ the row, and selecting "Expired, no consensus" renders
    audit page, not from the arena they are looking at.
 2. **A named `kind=moderation` filter on `/audit`** — `action=arena.remove` works, but you have to
    know the action name to ask.
-3. **The affected author is told nothing** (spec §8, still the weakest part of v1).
-4. **Theme proposals are expired but not queued**: they live on the themes settings page, so the
+3. **`concord-healthsync` still exits 1, for two measured reasons** -- not the sweep, but found
+   while checking which timers were on: `projects.repo_url` is set for **5 of 72** live projects
+   (the Q5 data gap), and the one URL that is wrong is `ferrisfeed` ->
+   `https://git.polarisocial.xyz/hirrolot19/ferrisfeed`, which answers `404 No such API route`
+   (Forgejo's message for a missing repo; `/api/v1/version` and another repo both answer 200 from
+   the same host, so the instance and the URL shape are fine). The other failure is a transient
+   DNS timeout against `api.github.com`. The timer is INACTIVE, so this is not running today;
+   enabling it again without the seed fix restores an hourly failure.
+4. **The affected author is told nothing** (spec §8, still the weakest part of v1).
+5. **Theme proposals are expired but not queued**: they live on the themes settings page, so the
    sweep marks them stale where no queue lists them. Correct today, and worth a queue entry if a
    reviewer ever needs to consent to one from `/curation`.
 
