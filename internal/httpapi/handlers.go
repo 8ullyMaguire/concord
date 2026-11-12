@@ -30,6 +30,37 @@ type createComplaintRequest struct {
 	ConfirmDuplicate bool `json:"confirm_duplicate"`
 }
 
+// resolveBodyProject reconciles the project in the PATH with the `project_id` an older
+// client sends in the BODY.
+//
+// Both create routes grew as "the body carries everything" and were later mounted under
+// /projects/{project_id}/..., so the same project arrives twice and the two could disagree.
+// The path wins, because it is the resource the request addresses and the one the route
+// checked the caller's standing against; a body id that contradicts it is refused rather
+// than silently ignored, because a caller that named two projects has made a mistake that
+// a silent win would hide.
+//
+// Omitting the body id is the case this exists for: it is what every honest caller does,
+// and until now it answered `project_id and author_id are required` -- a message about a
+// missing author that named the project first, from a request that had the project in its
+// URL. Found by a live probe, not by a test: the tests all sent the body field because the
+// API had always required it.
+func (s *Server) resolveBodyProject(w http.ResponseWriter, r *http.Request, bodyID int64) (int64, bool) {
+	projectID, ok := s.requireProjectID(w, r)
+	if !ok {
+		return 0, false
+	}
+	if bodyID == 0 {
+		return projectID, true
+	}
+	if bodyID != projectID {
+		mapError(w, fmt.Errorf(
+			"%w: project_id %d does not match the project in the path", store.ErrInvalid, bodyID))
+		return 0, false
+	}
+	return projectID, true
+}
+
 func (s *Server) handleCreateComplaint(w http.ResponseWriter, r *http.Request) {
 	// This handler had no authentication check while every sibling did, so a
 	// complaint could be filed anonymously: getActorID returned 0 and it was
@@ -56,6 +87,13 @@ func (s *Server) handleCreateComplaint(w http.ResponseWriter, r *http.Request) {
 	if req.StrategicMult <= 0 {
 		req.StrategicMult = 1.0
 	}
+
+	// The path's project, which the body no longer has to repeat (§ resolveBodyProject).
+	projectID, ok := s.resolveBodyProject(w, r, req.ProjectID)
+	if !ok {
+		return
+	}
+	req.ProjectID = projectID
 
 	// §6.1: duplicate detection before submit. A strong match returns 409 with the
 	// candidates and the filing proceeds only with confirm_duplicate.
@@ -327,6 +365,12 @@ func (s *Server) handleCreateFeature(w http.ResponseWriter, r *http.Request) {
 	if !readJSON(w, r, &req) {
 		return
 	}
+	// The path's project, which the body no longer has to repeat (§ resolveBodyProject).
+	projectID, ok := s.resolveBodyProject(w, r, req.ProjectID)
+	if !ok {
+		return
+	}
+	req.ProjectID = projectID
 	sims, proceed := s.checkDuplicates(w, r, store.KindFeature,
 		req.Title, req.Body, req.ProjectID, req.ConfirmDuplicate)
 	if !proceed {

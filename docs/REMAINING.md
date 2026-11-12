@@ -6,7 +6,7 @@ the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
 **Measured state (the twenty-first pass, §34):** schema 38 · 38 migrations · 90 live tables ·
-**1272 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files · 54/54 UI mutants killed
+**1276 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files · 54/54 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
 8 project.js/arena, 4 project.js/work items) · Go mutants: 27 arms, 172 killed, 0 survived ·
 `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
@@ -4106,7 +4106,7 @@ against a seeded probe instance — the defect is a perfect score for an unmeasu
 ### 34.6 Where the numbers stand
 
 **Measured state (the twenty-first pass, §34):** schema 38 · 38 migrations · 90 live tables ·
-**1272 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files ·
+**1276 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files ·
 `make verify` exit 0 · `make gates` exit 0 (27 arms) · `make e2e` exit 0.
 
 ## §35 — The Consensus tab answered 405, because the index it links to was "out of scope"
@@ -5239,3 +5239,32 @@ this feature". That is the DOM claim, which the route returning 200 cannot make.
   and still got `cookies must be accepted before interacting with this site` — the gate
   is a cookie, not a credential, so `POST /api/v1/consent` from the page's own origin is
   what unblocks the write.
+
+### 44.2 Two API shapes, aligned instead of documented
+
+§43.6 recorded two inconsistencies found by a live probe and left them alone, on the
+ground that renaming a request field breaks every caller. Both are now fixed
+compatibly, because the fix turned out not to need a rename:
+
+**The project in the path and in the body.** `POST .../features` and
+`POST .../complaints` required `project_id` in the BODY while their own list routes read
+it from the PATH. Omitting it answered `project_id and author_id are required` — a
+message about a missing author, naming the project first, for a request that had the
+project in its URL. `resolveBodyProject` now takes the path's id when the body omits
+one, and REFUSES a body id that contradicts the path rather than silently overruling it:
+a caller that named two projects has made a mistake a silent win would hide.
+
+Nothing caught this before because every test sent the body field — the API had always
+required it. That is the shape a suite cannot see: the requirement was invisible from
+inside it and obvious the first time somebody sent the URL they had copied.
+
+**`mode` versus `intake_mode`.** `PUT .../intake-mode` read `{"mode"}` and answered
+`{"intake_mode"}`, so a caller echoing the response back earned `intake_mode must be one
+of [complaint_first idea_first both]` — for a request that sent one of exactly those
+three. Both field names are read now; the client and the tests keep using `mode`, and
+the response is unchanged.
+
+Three tests and one existing one cover it: a feature filed from the path alone, a
+complaint filed from the path alone, a contradicting body id refused by name, and the
+intake mode set through the response's own field name. Mutation-checked: returning the
+empty body id unchanged (the old behaviour) fails the first two and nothing else.

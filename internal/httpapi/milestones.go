@@ -491,11 +491,21 @@ func (s *Server) handleSetIntakeMode(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
+	// Two field names for one value, and both are read: `mode` is what the settings
+	// panel and this package's tests send, and `intake_mode` is what the RESPONSE calls it.
+	// A caller that echoes the response back is doing the obvious thing, and answering
+	// "must be one of [complaint_first idea_first both]" to a request that sent one of
+	// exactly those reads as a validation bug. Found by a live probe; the fix costs one
+	// fallback and breaks neither shape.
 	var req struct {
-		Mode string `json:"mode"`
+		Mode       string `json:"mode"`
+		IntakeMode string `json:"intake_mode"`
 	}
 	if !readJSON(w, r, &req) {
 		return
+	}
+	if req.Mode == "" {
+		req.Mode = req.IntakeMode
 	}
 	if err := s.Store.SetIntakeMode(r.Context(), proj.ID, getActorID(r), req.Mode); err != nil {
 		mapError(w, err)
