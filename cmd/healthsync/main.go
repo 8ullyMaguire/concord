@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strconv"
@@ -102,7 +103,7 @@ func main() {
 		}
 	}
 
-	f := newFetcher(os.Getenv("CONCORD_FORGE_TOKEN"), *rate)
+	f := newFetcher(forgeTokens(os.Getenv), *rate)
 	synced, skipped, deferred, failed := 0, 0, 0, 0
 	for _, p := range projects {
 		fields, err := store.ParseRepoURL(p.RepoURL)
@@ -206,17 +207,71 @@ func main() {
 
 type fetcher struct {
 	client *http.Client
-	token  string
+	// tokens is host -> credential, never "the credential". See forgeTokens.
+	tokens map[string]string
 	rate   time.Duration
 	last   time.Time
 }
 
-func newFetcher(token string, rate time.Duration) *fetcher {
+func newFetcher(tokens map[string]string, rate time.Duration) *fetcher {
 	return &fetcher{
 		client: &http.Client{Timeout: 30 * time.Second},
-		token:  token,
+		tokens: tokens,
 		rate:   rate,
 	}
+}
+
+// githubTokenHosts are the hosts a GitHub personal access token belongs to. Both names answer
+// the same API and a clone URL may use either, so both are listed; nothing else ever receives it.
+var githubTokenHosts = []string{"api.github.com", "github.com"}
+
+// forgeTokens reads the credentials out of the environment, one PER HOST.
+//
+// A single CONCORD_FORGE_TOKEN sent to every forge was the bug: the variable held a GitHub
+// personal access token, the fetcher set `Authorization: token ghp_...` on every request, and
+// the self-hosted Forgejo answered 401 `user does not exist [uid: 0, name: , keyid: 0]` for all
+// 17 of its repositories -- which had been measured fine ANONYMOUSLY until the token arrived.
+// The pass went from "failed 0 of 23" to "failed 17 of 23" by adding a credential.
+//
+// So the mapping is explicit and the default is to send nothing:
+//
+//	CONCORD_FORGE_TOKEN=ghp_...            -> api.github.com, github.com
+//	CONCORD_FORGE_TOKENS=host=token,host=token
+//
+// A private Forgejo repository needs an entry of its own in CONCORD_FORGE_TOKENS; until it has
+// one the Forgejo reads stay anonymous, which is exactly what public repositories need. A
+// credential travelling to a host that did not issue it is a leak, not a convenience.
+func forgeTokens(getenv func(string) string) map[string]string {
+	tokens := map[string]string{}
+	for _, host := range githubTokenHosts {
+		if t := strings.TrimSpace(getenv("CONCORD_FORGE_TOKEN")); t != "" {
+			tokens[host] = t
+		}
+	}
+	for _, pair := range strings.Split(getenv("CONCORD_FORGE_TOKENS"), ",") {
+		host, token, ok := strings.Cut(strings.TrimSpace(pair), "=")
+		if !ok {
+			continue
+		}
+		host, token = strings.TrimSpace(host), strings.TrimSpace(token)
+		if host != "" && token != "" {
+			tokens[host] = token
+		}
+	}
+	return tokens
+}
+
+// authFor answers the credential for THIS url's host, or "" for none.
+//
+// It parses the request rather than trusting a caller-supplied host string: the four call sites
+// build URLs by concatenation, and a token chosen from the wrong one of those is how the header
+// reached Forgejo in the first place.
+func (f *fetcher) authFor(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return f.tokens[u.Host]
 }
 
 // get performs one GET with the politeness delay and the token, and decodes into out.
@@ -289,8 +344,8 @@ func (f *fetcher) get(ctx context.Context, url string, out any) error {
 		return err
 	}
 	req.Header.Set("Accept", "application/json")
-	if f.token != "" {
-		req.Header.Set("Authorization", "token "+f.token)
+	if token := f.authFor(url); token != "" {
+		req.Header.Set("Authorization", "token "+token)
 	}
 	resp, err := f.client.Do(req)
 	if err != nil {
@@ -326,8 +381,8 @@ func (f *fetcher) getTotal(ctx context.Context, url string) (int, error) {
 		return 0, err
 	}
 	req.Header.Set("Accept", "application/json")
-	if f.token != "" {
-		req.Header.Set("Authorization", "token "+f.token)
+	if token := f.authFor(url); token != "" {
+		req.Header.Set("Authorization", "token "+token)
 	}
 	resp, err := f.client.Do(req)
 	if err != nil {
@@ -428,7 +483,7 @@ func (f *fetcher) github(ctx context.Context, r store.RepoFields) (snapshot, err
 	snap.Commits = commits
 
 	n := 3
-	if f.token != "" {
+	if f.authFor(base) != "" {
 		n = 10
 	}
 	hours, sample, prs, err := f.githubReviewHours(ctx, base, n)
@@ -559,7 +614,7 @@ func (f *fetcher) gitea(ctx context.Context, root string, r store.RepoFields) (s
 	snap.Commits = commits
 
 	n := 3
-	if f.token != "" {
+	if f.authFor(base) != "" {
 		n = 10
 	}
 	hours, sample, prs, err := f.giteaReviewHours(ctx, base, n)
