@@ -23,7 +23,10 @@ Three things are still owed, and the first two are decisions rather than work:
    `pr_review`/`pr_comment` need a real pull request and review on one of these repositories before
    `newcomer_sample` stops being 0. Nothing here should synthesize that.
 
-**R16/R17/R18 are BUILT (2026-11-12): intake modes, milestones, the roadmap and dependencies.**
+**R16/R17/R18 are BUILT AND DEPLOYED (2026-11-12): intake modes, milestones, the roadmap and
+dependencies.** Live: `pre-merge-2026-11-05-51-g7efc623`, schema 38, proven with a probe account on
+its own project (`docs/REMAINING.md` §43.5 -- including the one arm the live run could NOT prove,
+and why).
 Migrations `0036`/`0037`/`0038`; `internal/store/{milestones,feature_evidence,deps}.go`; the routes
 under `/api/v1/projects/{project_id}/milestones`, `/roadmap`, `/intake-mode`, and
 `/features/{id}/{milestone,deps,evidence}`; the `/roadmap` and `/milestones/{id}` pages; the board's

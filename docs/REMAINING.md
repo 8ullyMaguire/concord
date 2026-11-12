@@ -5062,3 +5062,87 @@ assertion, and that is the only assertion in the suite that would notice.
 new suites: 9 store tests in `internal/store/milestones_test.go`, 5 route tests in
 `internal/httpapi/milestones_test.go`, and the reader-inventory rows for the seven
 new route prefixes.
+
+### 43.5 Live walk on concord.polarisocial.xyz (2026-11-12)
+
+Deployed from thinkcentre with `make deploy`: version `pre-merge-2026-11-05-51-g7efc623`,
+`schema_migrations` rows 38/37/36 present, and `milestones`, `feature_deps`,
+`feature_evidence` created on the live database.
+
+The probe is a fresh account creating its OWN project, because the live `api_tokens`
+table stores only `sha256` hashes and the owner's password is not mine to use. Every
+write below is therefore one a stranger can make; the probe rows were deleted
+afterwards (5 projects, 6 accounts, `PRAGMA integrity_check` ok, projects back to 73
+and `milestones` back to 0 -- no orphans in `features` or `milestones`).
+
+R16, the intake mode:
+
+    PUT /api/v1/projects/planprobe-142419/intake-mode  {"mode":"idea_first"}
+    {"intake_mode": "idea_first"}
+
+    PUT .../intake-mode  {"mode":"vibes"}
+    HTTP 400 {"error": "invalid: intake_mode must be one of [complaint_first idea_first both]"}
+
+R16, filing with no complaint -- the thing that was impossible before this pass:
+
+    POST .../features  {"project_id":78,"title":"Ship the thing","body":"filed with no complaint","effort":"S"}
+    {"id": 5769, "project_id": 78, "author_id": 93, "status": "draft", "elo_r": 1500, ...}
+
+R17, a milestone with a target date, a feature assigned to it, and the roadmap read
+that the page prints:
+
+    POST .../milestones  {"title":"v1 probe","target_date":1790000000}
+    {"id": 3, "status": "planned", "total": 0, "at_risk": false}
+
+    PUT .../features/5769/milestone  {"milestone_id":3}
+    {"feature_id": 5769, "open_blockers": 0}
+
+    GET .../roadmap
+    {"milestones": [{"id": 3, "title": "v1 probe", "target_date": 1790000000,
+                     "total": 1, "open": 1, "shipped": 0, "seeded": 0, "unshipped": 0,
+                     "at_risk": true}],
+     "slippage": [{"milestone_id": 3, "slip_days": null,
+                   "oldest_open_days": 0.000081}],
+     "totals": {"open": 1, "shipped": 0, "total": 1}}
+
+Two absences in that JSON are the design, not a gap: `slip_days` is `null` because
+nothing has shipped, and `seeded`/`unshipped` are 0 because a feature assigned by hand
+is neither an import nor a delivery.
+
+R18, a dependency that would close a loop:
+
+    POST .../features/5769/deps  {"blocker_id":5770}
+    {"blocker_id": 5770, "feature_id": 5769}
+
+    POST .../features/5770/deps  {"blocker_id":5769}
+    HTTP 400 {"error": "invalid: that would close a cycle: #5770 blocks #5769,
+                        #5769 blocks #5770"}
+
+The pages, on the live binary: `/projects/{slug}` 200, `/roadmap` 200,
+`/milestones/3` 200, `/board?milestone=3` 200, and the roadmap page carries
+`id="roadmap" data-slug="planprobe-142419" aria-busy="true"` -- the shell its script
+fills.
+
+**One arm could not be proven live and is not claimed.** Advancing a feature whose
+blocker is unshipped answers `403 {"error": "permission denied"}` before the blocker
+check runs, and that 403 is the role gate, not the rule: the same call on a feature
+with no dependency at all answers the same 403, and a `draft` cannot be claimed
+("a draft feature cannot be claimed; only ready or in_progress work can"). Reaching a
+state where the blocker check is the first refusal needs a feature that is `ready`,
+which needs a real consent round. `TestInProgressIsRefusedWhenBlockerOpen` covers it;
+the live run does not, and this note is why nobody should read the transcript above as
+if it did.
+
+### 43.6 Two API shapes found while walking it live
+
+- **`POST /features` takes `project_id` in the BODY while `GET /features/` reads it from
+  the PATH.** Both were already true before this pass; the probe's first attempt sent
+  only the path and was answered `project_id and author_id are required`, which reads
+  like a missing project and is a missing body field.
+- **`PUT /intake-mode` takes `{"mode": ...}` while its response says
+  `{"intake_mode": ...}`.** The client, the handler and the httpapi test all agree on
+  `mode`, so this is consistent -- but a caller reading the response shape and echoing
+  it back gets `intake_mode must be one of [...]`, which looks like a validation bug
+  from the outside. Worth aligning when the route next changes; recorded rather than
+  changed under a green suite, because renaming a request field breaks every caller
+  including the one nobody remembers.
