@@ -6,11 +6,11 @@ then `docs/ARCHITECTURE.md`. `docs/PLAN.md` covers the pre-r4 milestones (all
 complete) and `docs/concord-spec.md` is superseded — do not plan from either.
 
 **Where this stands (2026-11-12, end of day).** The public instance answers the
-`g13dddd7` build at schema 39 — `dd93634` (the API-shape fix) and everything before it is
-LIVE, and the three routes it touched were re-probed on the instance with the body field
-deliberately removed (`REMAINING` §44.3). `master` is at `997dc88`, two commits further and
-both test/docs: the detach's UI mutation arms and two stale counts the gates themselves
-caught. `forgejo/main`, `github/master` and `github/main` are in sync at `997dc88`.
+`pre-merge-2026-11-05-60-g63f752f` build at schema 39, and the inbox of §45 was walked on it
+end to end (`REMAINING` §45.5). `master` is at `75a148a` (docs on top of the feature), and
+`forgejo/main`, `github/master` and `github/main` are in sync with it. Everything built this
+day is live: R16/R17/R18 intake modes, milestones, roadmap and dependencies; the complaint
+detach; the notification inbox; and the healthsync per-host credential fix.
 
 Built and deployed this day: **R16/R17/R18** — per-project intake modes, milestones, the
 roadmap and feature dependencies (`REMAINING` §43, live walk in §43.5) — and the
@@ -47,8 +47,10 @@ owed and one is now done.
    repositories before `newcomer_sample` stops being 0. Nothing here should synthesize that — a
    self-review would write a number that means nothing.
 
-**Deployed but not yet live-proven**: the inbox of §45, until `make deploy` runs and the live
-probe is pasted in `REMAINING` §45.5 — everything this day is live.
+**Nothing is committed-but-undeployed and nothing deployed is unproven.** The five gates all
+answer green on this commit: `make verify`, `make gates` (mutation, 0 survived), `make e2e`
+(`326` tests collected across `28` suite files — the runner prints its own count), the UI
+mutants (all killed), and `make docs-check`.
 
 **What the last gates run cost, and found.** `make e2e` had not been run since these passes,
 and it does not run inside `make gates` (gates is the mutation half; `verify` is the static
