@@ -118,6 +118,13 @@ func (d *DB) RemoveFeatureFromArena(ctx context.Context, projectID, arenaID, fea
 		return ActResult{}, fmt.Errorf("reject feature: %w", err)
 	}
 
+	// The author is told, in the same transaction as the act. Skipped when the moderator acted
+	// on their own feature (notifyTx enforces that) -- they performed it and the modlog records it.
+	if err := notifyTx(ctx, tx, f.AuthorID, actorID, projectID, featureID,
+		NotificationFeatureRemoved, f.Title, strings.TrimSpace(reason)); err != nil {
+		return ActResult{}, err
+	}
+
 	act, err := insertAct(ctx, tx, projectID, actorID, ModerationAct{
 		Action:   "arena.remove",
 		Entity:   "feature",

@@ -40,14 +40,37 @@ test:
 #
 #  3. Each line is a separate process anyway, so a suite that aborts on a port
 #     clash cannot take the ones after it with it. scout_e2e takes 8423.
-E2E_PYTEST ?= python3 -m pytest -p no:cacheprovider
-
 # The interpreter the UI mutation gates hand to pytest. They run pytest as a
 # subprocess, so "which python3" has to be answerable separately from the pytest
 # flags: with a `python3` that cannot import pytest, a gate gets a non-zero exit code
 # for every mutant and reports seven kills it did not earn.
-E2E_PYTHON ?= python3
-e2e: build
+#
+# RESOLVED, NOT ASSUMED. The default used to be bare `python3`, and on a machine where
+# PATH's python3 is a venv without pytest that answered "No module named pytest" for the
+# harness selftest -- while `make gates` (which only needs the interpreter, never pytest
+# itself) stayed green. A red suite harness and a green mutation gate sat beside each
+# other for a day because each was started with a different interpreter, and every
+# `E2E_EXIT=0` in that day was the exit status of `tail`, not of make.
+#
+# So the first candidate that can actually `import pytest` wins, and if none can, the
+# e2e-python check below fails with the candidate list instead of running 27 suites
+# that all answer "No module named pytest" and calling the survivors a pass.
+E2E_PYTHON_CANDIDATES ?= python3 /usr/bin/python3 /usr/bin/python
+E2E_PYTHON ?= $(shell for p in $(E2E_PYTHON_CANDIDATES); do \
+	$$p -c 'import pytest' >/dev/null 2>&1 && { echo $$p; break; }; done)
+E2E_PYTEST ?= $(E2E_PYTHON) -m pytest -p no:cacheprovider
+
+# Every target that needs pytest as a subprocess depends on this. Order-only is not
+# enough: an empty E2E_PYTHON must stop the recipe before it reports anything.
+.PHONY: e2e-python
+e2e-python:
+	@test -n "$(E2E_PYTHON)" || { \
+		echo "no interpreter of [$(E2E_PYTHON_CANDIDATES)] can import pytest." >&2; \
+		echo "Install it (pip install --user pytest playwright) or pass E2E_PYTHON=/path/to/python3." >&2; \
+		exit 1; }
+	@echo "e2e interpreter: $(E2E_PYTHON) ($$($(E2E_PYTHON) -V 2>&1))"
+
+e2e: build e2e-python
 	$(E2E_PYTEST) tests/e2e/harness_selftest_test.py -q
 	$(E2E_PYTEST) tests/e2e/e2e_test.py -q
 	$(E2E_PYTEST) tests/e2e/finder_e2e.py -q
@@ -89,6 +112,9 @@ e2e: build
 	# §4.5.7's work-item panel: the distinctions (sized/unsized, claimed/free,
 	# validation/implementation, draft absent), the claim, the refusal, and the label.
 	$(E2E_PYTEST) tests/e2e/workitems_e2e.py -q
+	# The reader's own inbox (docs/specs/notification-spec.md): the badge is in the FIRST PAINT,
+	# looking marks nothing read, and pressing Mark read clears both the card and the header.
+	$(E2E_PYTEST) tests/e2e/notifications_e2e.py -q
 	# The audit VIEWER's mutants. Not part of `make gates` because it rebuilds
 	# the binary and runs the browser suite seven times, which is a different
 	# cost from the Go mutants: `gates` is a fast inner loop and this is not.
@@ -108,6 +134,9 @@ e2e: build
 	# route; these mutants break the PAIRING between a card and its call, which is
 	# the defect class that answers 200 either way.
 	$(E2E_PYTHON) tests/e2e/workitems_ui_mutants.py
+	# The inbox: a control that renders and does nothing, a read that drops the credential, and
+	# an empty state that talks about the feature instead of the reader.
+	$(E2E_PYTHON) tests/e2e/notifications_ui_mutants.py
 
 # The mutation gates. Each rewrites one source file per mutant and asserts the
 # suite goes red, so a green run means every mutant was killed. A SURVIVED entry

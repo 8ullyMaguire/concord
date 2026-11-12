@@ -195,9 +195,19 @@ def test_nav_projects_link(server, page):
 
 
 def test_footer_version(server, page):
+    """The footer names the build the reader is looking at, and the server is the authority.
+
+    This asserted the string contained "v", which held while release tags were `v0.4.0-...`
+    and broke the day they became `pre-merge-2026-11-05-...` -- a red suite caused by a tag
+    naming convention, in a check that was never about tags. Reading the version the RUNNING
+    server reports is the invariant the footer actually serves: a reader can tell which build
+    answered them, whatever the tag happens to be called.
+    """
     page.goto(BASE + "/")
     expect(page.locator(".site-footer")).to_contain_text("a forge for discussions")
-    expect(page.locator(".site-footer .muted")).to_contain_text("v")
+    version = page.request.get(BASE + "/api/v1/version").json()["version"]
+    assert version, "the server reports an empty version, so the footer cannot name a build"
+    expect(page.locator(".site-footer .muted")).to_contain_text(version)
 
 
 # ---------------------------------------------------------------- theme

@@ -5,8 +5,8 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state (the twenty-first pass, §34):** schema 38 · 38 migrations · 90 live tables ·
-**1276 Go tests** across 9 test-bearing packages · 322 e2e tests in 27 suite files · 57/57 UI mutants killed
+**Measured state (the twenty-first pass, §34):** schema 39 · 39 migrations · 91 live tables ·
+**1286 Go tests** across 9 test-bearing packages · 326 e2e tests in 28 suite files · 60/60 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
 8 project.js/arena, 4 project.js/work items) · Go mutants: 27 arms, 172 killed, 0 survived ·
 `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
@@ -4105,8 +4105,8 @@ against a seeded probe instance — the defect is a perfect score for an unmeasu
 
 ### 34.6 Where the numbers stand
 
-**Measured state (the twenty-first pass, §34):** schema 38 · 38 migrations · 90 live tables ·
-**1276 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files ·
+**Measured state (the twenty-first pass, §34):** schema 39 · 39 migrations · 91 live tables ·
+**1286 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files ·
 `make verify` exit 0 · `make gates` exit 0 (27 arms) · `make e2e` exit 0.
 
 ## §35 — The Consensus tab answered 405, because the index it links to was "out of scope"
@@ -5303,3 +5303,82 @@ harness selftest, because `python3` on this shell's PATH is a venv without it; i
 e2e tests in 25 suites; the tree collects 322 in 27) and the harness caught them. A green mutation
 gate and a red suite harness sat beside each other for a day because each was started with a
 different interpreter.
+
+## §45 — The author is told: the inbox ships, and two things it found on the way
+
+### 45.1 What was owed, and what it costs to have
+
+`moderation-spec.md` §8 said the author is not told when their contribution is removed. The
+modlog says it; the author has to go and read a modlog to learn about their own idea. That is
+now `docs/specs/notification-spec.md`, implemented as the spec's §4 describes:
+
+    migration 0039   notifications (user_id, kind, project_id, subject_id, title, reason,
+                     actor_id, created_at, read_at), two indexes
+    store            notifyTx writes inside the DECISION's transaction; ListNotifications,
+                     CountUnreadNotifications, MarkNotificationRead, MarkAllNotificationsRead
+    writers          RemoveFeatureFromArena (feature_removed) and RejectComplaint
+                     (complaint_rejected, which also became one transaction)
+    routes           GET /api/v1/notifications, POST /{id}/read, POST /read-all,
+                     GET /notifications — all self-scoped, no route takes a user id
+    page             /notifications with the header numeral rendered SERVER-SIDE in the first paint
+
+Three things about the shape are decisions rather than details:
+
+- **The title is copied at write time.** A notification is a record of a decision about a thing
+  that may be deleted afterwards; a join to `features.title` renders "(null)" exactly when it
+  matters. Same reason `subject_id` carries no foreign key.
+- **The badge is a server render, not a fetch.** It appears in the first paint and is absent
+  when it is zero — a badge reading "0" is a numeral nobody needs, and a client-side count
+  flickers in and then out.
+- **The row is written in the decision's transaction.** `TestARolledBackRemovalNotifiesNobody`
+  makes the act fail after the notification is inserted and asserts both are gone: no state
+  exists where the decision stands and the author was silently not told.
+
+### 45.2 Two defects the tests found, both of the kind that answer 200
+
+**The script ran before the session existed.** `base.html` loads `session.js` at the end of
+`<body>`, so a page script that calls `window.ConcordSession` at parse time gets `undefined`,
+`apiAuth()` returns `{}`, and every read answers 401 — for a reader who IS signed in. The
+browser suite caught it as "the page says sign in to see your notifications" on a page the
+server had rendered as signed in. The fix waits for `DOMContentLoaded`.
+
+**`removeAttribute('aria-busy')` is not `aria-busy="false"`.** The rest of the site publishes
+`="false"` when a panel is done; a page that removes the attribute instead is indistinguishable
+from one still loading to anything waiting on that value — including the browser suite, which
+hung on it. Both branches set `"false"` now.
+
+The UI mutation gate covers all three shapes (a mark-read control that renders and does nothing,
+a read that drops the credential, an empty state that talks about the feature instead of the
+reader): 3 mutants, 3 killed. The empty-state one matters most — "No notifications" is a
+sentence about the feature; "Nothing has been removed from your contributions" is a sentence
+about the reader's record, and only one of them is true before the first decision happens.
+
+### 45.3 What this does NOT do
+
+The person is told after the fact, in a page they have to open. Someone who never signs in again
+is still never told: there is no email, and shipping one is a separate decision with its own
+failure modes. That limit is in the spec's §6 and in `docs/FEATURES.md` under "Deliberately
+absent", so it does not get re-proposed as a gap.
+
+### 45.4 Two gates that had stopped being able to fail
+
+Running `make e2e` for the first time in this pass turned up two failures that were NOT this
+change, and both were of the same kind: a gate that had stopped reaching the rule it guards.
+
+**`project_panels_e2e.py::test_no_console_errors_on_any_panelled_page`** failed with four 429s.
+The limiter is 100 requests a minute per client key and the test opened eight project pages from
+ONE browser context, so the eighth crossed the budget — a red suite for a reason that has
+nothing to do with a console error. Measured against the previous commit in a throwaway worktree:
+it failed there too, so it was not a regression, it was a request count that had drifted into the
+limit as the panels grew. The test now rotates X-Forwarded-For per page, which is what every
+other suite in the file already does, and still fails on a real console error (the 429s would
+show up as errors if a page's reads were throttled — that behaviour is what it exists for).
+
+**`audit_ui_mutants.py`'s first mutant reported NOT APPLICABLE.** Its anchor was
+`esc(e.detail)`, and audit.js had since grown a `why` variable, so the mutant matched nothing and
+silently stopped testing escaping. The only reason it was visible is that the summary counts:
+7 declared, 6 killed, 1 not applicable. A gate that reports "not applicable" instead of failing
+is a gate that reports success by doing nothing — and the fix is the anchor, not the count.
+
+Both are recorded here rather than in a commit message alone, because the lesson is the same in
+both: the number to distrust is the one that says everything ran.

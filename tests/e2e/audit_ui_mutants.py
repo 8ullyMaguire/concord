@@ -44,8 +44,12 @@ JS = "internal/httpapi/assets/js/audit.js"
 SUITE = "tests/e2e/audit_e2e.py"
 
 MUTANTS = [
+    # The anchor was `esc(e.detail)` until audit.js grew the `why` variable (the detail and
+    # the undo note are chosen once, above the row). The mutant then matched nothing and
+    # reported NOT APPLICABLE -- a gate that could no longer reach the rule it guards, and
+    # the only reason it was noticed is that the count said 7 declared and 6 run.
     ("detail is written into innerHTML unescaped",
-     '\'<p class="cell-note">\' + esc(e.detail) + \'</p>\'',
+     '(why ? \'<p class="cell-note">\' + esc(why) + \'</p>\' : \'\')',
      '\'<p class="cell-note">\' + e.detail + \'</p>\''),
     ("the actor display name is written into innerHTML unescaped",
      "if (e.actor_display_name) return esc(e.actor_display_name);",

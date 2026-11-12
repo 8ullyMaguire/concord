@@ -2243,3 +2243,24 @@ a.curation-target:hover { text-decoration: underline; }
 .board-filter { display: flex; gap: 0.5rem; align-items: center; margin: 0 0 1rem; }
 .board-filter select { padding: 0.35rem 0.5rem; border: 1px solid var(--slate-200);
   border-radius: 0.35rem; font: inherit; font-size: 0.9rem; }
+
+/* The inbox (docs/specs/notification-spec.md §4.4). */
+.nav-count {
+  display: inline-block; min-width: 1.1rem; padding: 0 .3rem; margin-left: .25rem;
+  border-radius: 999px; background: var(--accent, #6366f1); color: #fff;
+  font-size: .72rem; line-height: 1.35; text-align: center; font-variant-numeric: tabular-nums;
+}
+.notif-toolbar { display: flex; align-items: center; gap: .75rem; margin: 0 0 1rem; }
+.notif-toolbar .muted { margin: 0; }
+.notif-list { list-style: none; margin: 0; padding: 0; display: grid; gap: .75rem; }
+.notif-card {
+  position: relative; padding: .85rem 1rem; border: 1px solid var(--border, #2a2a35);
+  border-radius: 10px; background: var(--surface, #16161d);
+}
+.notif-unread { border-left: 3px solid var(--accent, #6366f1); }
+.notif-head { display: flex; align-items: center; gap: .5rem; font-size: .8rem; }
+.notif-kind { text-transform: uppercase; letter-spacing: .04em; opacity: .8; }
+.notif-dot { color: var(--accent, #6366f1); }
+.notif-when { margin-left: auto; opacity: .6; font-variant-numeric: tabular-nums; }
+.notif-title { margin: .35rem 0 .2rem; font-weight: 600; }
+.notif-reason { margin: .4rem 0 0; font-style: italic; opacity: .85; }

@@ -133,7 +133,10 @@ func (d *DB) ValidateComplaint(ctx context.Context, complaintID int64) error {
 }
 
 // RejectComplaint closes a complaint with spam penalty (M1).
-func (d *DB) RejectComplaint(ctx context.Context, complaintID int64) error {
+// actorID is the moderator who rejected it, because the author is now TOLD who decided: an
+// anonymous reputation penalty was the same act without a name attached, and the notification
+// cannot render "a moderator" honestly when the caller knows exactly who it was.
+func (d *DB) RejectComplaint(ctx context.Context, complaintID, actorID int64) error {
 	c, err := d.GetComplaint(ctx, complaintID)
 	if err != nil {
 		return err
@@ -141,15 +144,29 @@ func (d *DB) RejectComplaint(ctx context.Context, complaintID int64) error {
 	if c.Status != "open" {
 		return fmt.Errorf("%w: only open complaints can be rejected", ErrInvalid)
 	}
-	now := float64(time.Now().Unix())
-	_, err = d.ExecContext(ctx, `UPDATE complaints SET status='rejected', updated_at=? WHERE id=?`, now, complaintID)
+	// One transaction for the whole decision: the status change, the reputation penalty, and
+	// the author's notification. Split across three Execs, a failure in the middle left a
+	// rejected complaint whose author was never told, and nothing afterwards could tell.
+	tx, err := d.BeginTx(ctx, nil)
 	if err != nil {
+		return fmt.Errorf("begin: %w", err)
+	}
+	defer tx.Rollback()
+
+	now := float64(time.Now().Unix())
+	if _, err := tx.ExecContext(ctx,
+		`UPDATE complaints SET status='rejected', updated_at=? WHERE id=?`, now, complaintID); err != nil {
 		return err
 	}
-	now2 := float64(time.Now().Unix())
-	_, err = d.ExecContext(ctx, `INSERT INTO reputation_events (project_id, user_id, kind, points, created_at)
-		VALUES (?, ?, 'complaint_rejected', -1, ?)`, c.ProjectID, c.AuthorID, now2)
-	return err
+	if _, err := tx.ExecContext(ctx, `INSERT INTO reputation_events (project_id, user_id, kind, points, created_at)
+		VALUES (?, ?, 'complaint_rejected', -1, ?)`, c.ProjectID, c.AuthorID, now); err != nil {
+		return err
+	}
+	if err := notifyTx(ctx, tx, c.AuthorID, actorID, c.ProjectID, c.ID,
+		NotificationComplaintRejected, c.Title, "rejected as spam"); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 // CloseComplaint marks a complaint as closed (M1).

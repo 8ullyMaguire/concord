@@ -32,7 +32,7 @@ func TestRejectComplaintClosesItAndPenalisesTheAuthor(t *testing.T) {
 		t.Fatalf("GetReputation before: %v", err)
 	}
 
-	if err := st.RejectComplaint(ctx, c.ID); err != nil {
+	if err := st.RejectComplaint(ctx, c.ID, 0); err != nil {
 		t.Fatalf("RejectComplaint: %v", err)
 	}
 
@@ -68,7 +68,7 @@ func TestRejectComplaintClosesItAndPenalisesTheAuthor(t *testing.T) {
 
 	// (3) And it is terminal. A second rejection must not punish twice, which is what
 	// the "only open complaints can be rejected" precondition is for.
-	if err := st.RejectComplaint(ctx, c.ID); !errors.Is(err, ErrInvalid) {
+	if err := st.RejectComplaint(ctx, c.ID, 0); !errors.Is(err, ErrInvalid) {
 		t.Errorf("rejecting a closed complaint returned %v, want ErrInvalid", err)
 	}
 	again, err := st.GetReputation(ctx, proj.ID, uid)
@@ -96,7 +96,7 @@ func TestAValidatedComplaintCannotThenBeRejected(t *testing.T) {
 	if err := st.ValidateComplaint(ctx, c.ID); err != nil {
 		t.Fatalf("ValidateComplaint: %v", err)
 	}
-	if err := st.RejectComplaint(ctx, c.ID); !errors.Is(err, ErrInvalid) {
+	if err := st.RejectComplaint(ctx, c.ID, 0); !errors.Is(err, ErrInvalid) {
 		t.Errorf("rejecting a validated complaint returned %v, want ErrInvalid", err)
 	}
 	got, err := st.GetComplaint(ctx, c.ID)

@@ -46,9 +46,21 @@ type createComplaintRequest struct {
 // URL. Found by a live probe, not by a test: the tests all sent the body field because the
 // API had always required it.
 func (s *Server) resolveBodyProject(w http.ResponseWriter, r *http.Request, bodyID int64) (int64, bool) {
-	projectID, ok := s.requireProjectID(w, r)
-	if !ok {
-		return 0, false
+	// The path is tried and may name NOTHING: these routes are also reached with a project id
+	// in the path segment (`/projects/5/complaints`), which resolves no slug and used to be
+	// harmless because nothing read the path. Falling back to the body keeps that working and
+	// is the honest reading -- on these two routes the BODY is what names the project, and the
+	// path is a locator. Only when both resolve and disagree is the caller refused.
+	var projectID int64
+	if proj, err := s.Store.GetProject(r.Context(), chi.URLParam(r, "project_id")); err == nil {
+		projectID = proj.ID
+	}
+	if projectID == 0 {
+		if bodyID == 0 {
+			mapError(w, store.ErrNotFound)
+			return 0, false
+		}
+		return bodyID, true
 	}
 	if bodyID == 0 {
 		return projectID, true
@@ -271,7 +283,7 @@ func (s *Server) handleRejectComplaint(w http.ResponseWriter, r *http.Request) {
 		mapError(w, err)
 		return
 	}
-	if err := s.Store.RejectComplaint(r.Context(), c.ID); err != nil {
+	if err := s.Store.RejectComplaint(r.Context(), c.ID, getActorID(r)); err != nil {
 		mapError(w, err)
 		return
 	}

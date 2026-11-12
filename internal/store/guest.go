@@ -232,6 +232,11 @@ var foldColumns = []struct{ Table, Column string }{
 	{"lists", "created_by"},
 	{"members", "user_id"},
 	{"merge_approvals", "user_id"},
+	// The inbox (docs/specs/notification-spec.md). Both columns, because a guest can be the
+	// READER of a decision and can also be the MODERATOR who made one; folding only the first
+	// would leave decisions attributed to an identity that no longer exists.
+	{"notifications", "user_id"},
+	{"notifications", "actor_id"},
 	{"merge_requests", "author_id"},
 	{"merge_requests", "closed_by"},
 	{"objections", "user_id"},

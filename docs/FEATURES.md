@@ -130,6 +130,7 @@ something is finished lives in `docs/REMAINING.md`.
 - **Visibility** — public, unlisted or private, changed as an audited act.
 - **Cookie consent** — the notice is recorded server-side against the reader, so what is stored and why is answered before anything is.
 - **Contribute** — "what should I do next", a single ranked suggestion drawn from the work that is actually unblocked.
+- **Notifications** — your own inbox of decisions about your contributions (an idea removed from an arena, a complaint rejected as spam) with the reason and who decided; unread count rendered server-side on every page, and reading the page marks nothing read.
 
 ## Trust the record
 
@@ -160,4 +161,5 @@ something is finished lives in `docs/REMAINING.md`.
 - **No git hosting** — Concord reads forges (Forgejo, GitHub) rather than being one; merge requests reference external refs.
 - **No per-milestone board** — one board, filtered; a column's WIP limit is a claim about the project's capacity, and a per-milestone limit would make the same column mean two things.
 - **No drag-and-drop ordering** — position moves up and down, so the order has a keyboard path.
+- **No email** — notifications are an inbox you open, not a message pushed to you; there is no outbound mail configuration on this instance.
 - **No milestone-level consensus** — a consensus call is per feature; grouping features into a milestone does not make them one decision (this is the next milestone in `docs/PLAN-r4.md`).

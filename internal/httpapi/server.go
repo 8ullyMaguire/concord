@@ -242,7 +242,7 @@ func (s *Server) loadTemplates() error {
 		"login", "register", "rank", "ranking", "documents", "notfound", "finder",
 		"scout", "consensus", "audit", "settings", "feature", "complaint", "requests-detail", "requests-index", "lists", "list",
 		"taxonomy", "curation", "criteria", "merge", "contribute", "stats",
-		"roadmap", "milestone"}
+		"roadmap", "milestone", "notifications"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -1011,6 +1011,13 @@ func (s *Server) Router() http.Handler {
 	// reader opens, and requireProjectID reads chi's {project_id}, which is empty
 	// on a page route.
 	r.Get("/projects/{slug}/audit", s.handleAuditPage)
+
+	// The reader's own inbox (docs/specs/notification-spec.md). Self-scoped on purpose: every
+	// route takes the reader from the session, and no route takes a user id.
+	r.Get("/notifications", s.handleNotificationsPage)
+	r.Get("/api/v1/notifications", s.handleListNotifications)
+	r.Post("/api/v1/notifications/{id}/read", s.handleMarkNotificationRead)
+	r.Post("/api/v1/notifications/read-all", s.handleMarkAllNotificationsRead)
 	// Settings. The charter, the members and the criteria profiles: three endpoints that
 	// had handlers, guards and store tests for their whole life and NO reader in
 	// assets/js. Mounted on {slug} with the page routes for the same reason as audit.
@@ -1164,6 +1171,10 @@ type pageData struct {
 	ConsentAccepted bool
 	ConsentVersion  string
 
+	// UnreadNotifications is the reader's unread count, decided per request for the header
+	// badge. Zero renders NO badge, so the zero value is also correct for a signed-out reader.
+	UnreadNotifications int
+
 	// Path is the request path, used by the shared layout to render the project
 	// tab bar without every page handler having to thread a slug through its own
 	// anonymous struct.
@@ -1195,6 +1206,17 @@ func (s *Server) pageFor(r *http.Request, title string) pageData {
 		// request is, so every page that already calls pageFor carries it without
 		// a per-handler field to forget.
 		p.ConsentAccepted = s.consentAccepted(r)
+		// The unread count, decided by the SERVER for the same reason the consent notice is:
+		// a badge that arrives from a second request is a badge that appears late, and one
+		// that a reader could see as absent and then present. Signed-out readers get zero
+		// without a query.
+		if uid := actorID(r); uid != 0 {
+			if n, err := s.Store.CountUnreadNotifications(r.Context(), uid); err == nil {
+				p.UnreadNotifications = n
+			}
+			// A failed count renders no badge rather than a red page: the inbox itself is a
+			// click away, and a broken badge must not take the article down with it.
+		}
 	}
 	return p
 }

@@ -837,15 +837,38 @@ def test_the_owner_sees_a_private_projects_panels(browser, server):
         ctx.close()
 
 
-def test_no_console_errors_on_any_panelled_page(page):
+def test_no_console_errors_on_any_panelled_page(browser):
     """The fixture's page listener collects errors; a page that renders cleanly
     has none. Checked across every panel shape so a TypeError in one branch
-    cannot hide behind the happy path."""
-    for slug in ["panels-confirmed", "panels-disputed", "panels-unasserted",
-                 "panels-empty", "panels-reports", "panels-standings",
-                 "panels-alternatives", "panels-unanswered"]:
-        open_project(page, slug)
-    assert not page.errors, f"console/page errors: {page.errors}"
+    cannot hide behind the happy path.
+
+    ONE CLIENT KEY PER PAGE, and that is the whole difficulty of this test. The limiter is
+    100 requests a minute per client key, and eight project pages from one context share a
+    key: each page loads its document plus a dozen API reads, so the eighth page crossed the
+    budget and this failed with four 429s -- a red suite for a reason that has nothing to do
+    with a console error. Measured against the previous commit, unmodified: it failed there
+    too, so it was not a regression, it was a count that had drifted into the limit.
+
+    What this must NOT do is hide the 429s: a page whose reads are rate limited would show
+    console errors, which is exactly what this test is for. Rotating the key keeps the test
+    about the panels while giving each page the budget the limiter assumes a reader has.
+    """
+    slugs = ["panels-confirmed", "panels-disputed", "panels-unasserted",
+             "panels-empty", "panels-reports", "panels-standings",
+             "panels-alternatives", "panels-unanswered"]
+    errors = []
+    for n, slug in enumerate(slugs):
+        ctx = browser.new_context(extra_http_headers={"X-Forwarded-For": f"10.55.0.{n + 1}"})
+        pg = ctx.new_page()
+        pg.errors = []
+        pg.on("pageerror", lambda e, pg=pg: pg.errors.append(str(e)))
+        pg.on("console", lambda m, pg=pg: pg.errors.append(m.text) if m.type == "error" else None)
+        try:
+            open_project(pg, slug)
+            errors.extend(f"{slug}: {e}" for e in pg.errors)
+        finally:
+            ctx.close()
+    assert not errors, f"console/page errors: {errors}"
 
 # --- §M1's complaint verdicts: the two controls on a complaint card ---------------
 #

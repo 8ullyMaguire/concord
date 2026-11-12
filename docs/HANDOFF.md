@@ -6,7 +6,7 @@ then `docs/ARCHITECTURE.md`. `docs/PLAN.md` covers the pre-r4 milestones (all
 complete) and `docs/concord-spec.md` is superseded — do not plan from either.
 
 **Where this stands (2026-11-12, end of day).** The public instance answers the
-`g13dddd7` build at schema 38 — `dd93634` (the API-shape fix) and everything before it is
+`g13dddd7` build at schema 39 — `dd93634` (the API-shape fix) and everything before it is
 LIVE, and the three routes it touched were re-probed on the instance with the body field
 deliberately removed (`REMAINING` §44.3). `master` is at `997dc88`, two commits further and
 both test/docs: the detach's UI mutation arms and two stale counts the gates themselves
@@ -27,20 +27,28 @@ The filed inventory now stands at **26 of 29 drafts shipped, 2 not built, 9 reje
   generous, while enforcing it per query string would make one column mean two things.
 - The 9 ideas scored below 6 (V3–V5) stayed rejected, with the reason in their bodies.
 
-Three things are still owed, and the first two are decisions rather than work:
+**§8 shipped (2026-11-12, later the same day).** The author is now told: an inbox at
+`/notifications` with a server-rendered unread numeral in the header, written in the same
+transaction as the decision (`docs/specs/notification-spec.md`, `REMAINING` §45). Two things were
+owed and one is now done.
 
-1. **The author is told nothing** when their idea is removed or rejected — spec §8, and there
-   is no inbox to tell them in.
-2. **`CONCORD_FORGE_TOKEN`** — 4 private GitHub repositories cannot be seeded and the
-   anonymous window is 60 requests an hour shared with every other consumer on the host. The
-   token has to come from the owner (TLS/OAuth choice included).
-3. **R12's review half has never fired**: push events are proven end to end
-   (`forge_events`), and `pr_review`/`pr_comment` need a real pull request and review on one
-   of these repositories before `newcomer_sample` stops being 0. Nothing here should
-   synthesize that.
+**Two things are still owed, and both are decisions rather than work:**
 
-**Deployed but not yet live-proven**: nothing. **Committed but not deployed**: only the two
-test/docs commits above — no production code is waiting for a deploy.
+1. **`CONCORD_FORGE_TOKEN` is SET** (a GitHub PAT in `~/.config/concord/forge-token.env`, the
+   unit's EnvironmentFile). Setting it exposed a defect worth knowing: the fetcher sent that one
+   token to EVERY forge, so Forgejo answered 401 `user does not exist` for all 17 of its
+   repositories and the pass went from "failed 0 of 23" to "failed 17 of 23". Credentials are now
+   per host (`CONCORD_FORGE_TOKEN` = GitHub's, `CONCORD_FORGE_TOKENS=host=token,...` for anything
+   else) and an unlisted host gets no header. After the fix the same pass synced 23 of 23.
+   **Still open**: 4 private GitHub repositories need the token to have access to them, and a
+   private Forgejo repository needs its own entry in `CONCORD_FORGE_TOKENS`.
+2. **R12's review half has never fired**: push events are proven end to end (`forge_events`), and
+   `pr_review`/`pr_comment` need a real pull request and review by a SECOND person on one of these
+   repositories before `newcomer_sample` stops being 0. Nothing here should synthesize that — a
+   self-review would write a number that means nothing.
+
+**Deployed but not yet live-proven**: the inbox of §45, until `make deploy` runs and the live
+probe in `REMAINING` §45.5 is pasted there. Everything else this day is live.
 
 **What the last gates run cost, and found.** `make e2e` had not been run since these passes,
 and it does not run inside `make gates` (gates is the mutation half; `verify` is the static
@@ -56,7 +64,7 @@ Q5's data half was 31 slugs from mechanical before §39 took it to 23 measured r
 
 **Moderation M1 is built and deployed (2026-11-11).** The arena-removal request is served:
 `POST /api/v1/projects/{slug}/moderation/arena/remove` and `.../arena/restore`, one append-only
-audit act each, with migration `0034` (the live database is at schema 38). Permission is
+audit act each, with migration `0034` (the live database is at schema 39). Permission is
 `users.trust_level >= CONCORD_MOD_TRUST_MIN` (default 1) **or** project role `reviewer`; measured
 on the instance, 88 accounts sit at 87×0 and 1×1, so the trust half means "the owner and whoever
 the owner promotes" and the role half is what lets a project moderate its own arena. The idea is
@@ -202,8 +210,8 @@ lands, which is why this file does not carry one)
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 1276 tests, schema 38, 90 tables,
-38 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
+Measured, not remembered: `make verify` green, 1286 tests, schema 39, 91 tables,
+39 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 
 The **public instance** runs this build too, as of 2026-10-16: `concord.polarisocial.xyz`

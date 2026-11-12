@@ -250,7 +250,7 @@ be rewritten. Federation and MCP are listed in the plan for later.
 
 ## Status
 
-Measured against the running instance (schema 38, 90 tables, 1276 tests; the build it is
+Measured against the running instance (schema 39, 91 tables, 1286 tests; the build it is
 running is whatever `GET /api/v1/version` answers, which is deliberately not written down here --
 a version string in a status paragraph is stale the moment the next commit lands), not against the
 plan's own history. "Shipped"
@@ -293,7 +293,7 @@ count) and "agents are excluded" (`users` has no agent flag).
 
 ### Where the next milestone should go
 
-**Updated 2026-11-12.** R12–R15 are deployed (`pre-merge-2026-11-05-41-ga4d6cfd`, schema 38 (in the tree; the deployed binary is still 35), both
+**Updated 2026-11-12.** R12–R15 are deployed (`pre-merge-2026-11-05-41-ga4d6cfd`, schema 39 (in the tree; the deployed binary is still 35), both
 timers installed), so the deploy that this section used to ask for is done. **The next product
 milestone is R16 + R17**: the instance cannot accept an idea that is not pain, and it cannot group the
 ideas it already holds. Both are spec'd (`docs/specs/idea-intake-and-milestones-spec.md`), planned per

@@ -204,6 +204,13 @@ var readerInventory = []readerRow{
 	{Match: "/api/v1/projects/{project_id}/roadmap", Reader: "milestones.js",
 		Anchor: `data-roadmap-column="`, Routes: 1,
 		Note: "page and API read one shape (spec §5)"},
+	// The inbox (docs/specs/notification-spec.md). One reader file for all three routes: the
+	// list, marking one read, and marking all, because a route the page never calls is the
+	// defect class this inventory exists for -- and the badge in base.html is a SERVER render,
+	// so it cannot stand in for a client reader.
+	{Match: "/api/v1/notifications", Reader: "notifications.js",
+		Anchor: `data-read-all`, Routes: 3,
+		Note: "the inbox, one decision marked read, and mark-all (spec §4.3)"},
 	{Match: "/api/v1/projects/{project_id}/intake-mode", Reader: "settings.js",
 		Anchor: `data-intake-mode="`, Routes: 1,
 		Note: "the one control that changes what a project may be asked to file"},

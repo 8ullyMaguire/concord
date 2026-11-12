@@ -80,6 +80,15 @@
            what most of it is: taxonomy changes waiting for consent, with moderation acts and
            strategic weights in the same list. A queue nobody can find is a queue nobody works. -->
       <a href="/curation">Curation</a>
+      <!-- The reader's inbox (docs/specs/notification-spec.md). Beside Sign in because it
+           belongs to the reader rather than to any project, and it is the only page whose
+           content is about that person's own contributions.
+
+           The unread count is rendered by the SERVER, in the first paint, and only when it is
+           above zero: a badge that arrives by a second request flickers, and a badge reading
+           "0" is a numeral nobody needs. Signing out hides it because the count comes back 0
+           for an anonymous reader -- no client-side branch to forget. -->
+      <a href="/notifications" data-notifications-link>Notifications{{if gt .UnreadNotifications 0}} <span class="nav-count" data-unread-count="{{.UnreadNotifications}}">{{.UnreadNotifications}}</span>{{end}}</a>
       <a href="/login" data-auth-link="login">Sign in</a>
       <!-- Shown only while signed in, by session.js. The endpoint this calls
            existed from the start (POST /api/v1/auth/logout) but nothing in the
