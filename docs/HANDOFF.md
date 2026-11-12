@@ -5,19 +5,26 @@ For the implementing agent taking over from here. Read this, then
 then `docs/ARCHITECTURE.md`. `docs/PLAN.md` covers the pre-r4 milestones (all
 complete) and `docs/concord-spec.md` is superseded — do not plan from either.
 
-**Where this stands (2026-11-11).** R12–R15 are merged into `master` from `forgejo/main`
-(`REMAINING` §34) and are **NOT deployed**: the public instance still answers
-`pre-merge-2026-11-05-4-gde880a5`, which predates migrations `0032`/`0033` and the
-`statsnapshot` timer. So the first task is `make deploy` plus `make deploy-admin` on
-thinkcentre, not a feature — until then every `/stats` number in §34 is a local
-measurement and the live host does not serve those routes at all.
+**Where this stands (2026-11-12).** The public instance answers
+`pre-merge-2026-11-05-41-ga4d6cfd` at schema 35, deployed from `master` (`forgejo/main` and both
+`github` branches are at the same commit). R12–R15 are deployed, the `statsnapshot` and
+`proposalsweep` timers are installed, moderation M1–M3 are shipped (`REMAINING` §36–§38, §40), the
+§39 seed measures **23 of 73** projects, and `forge_events` holds its **first row** with 17 Forgejo
+hooks registered (`REMAINING` §41).
 
-After that deploy, the blocker is **Q5's data half**, and it is 31 slugs from being
-mechanical: 69 of the 74 seed entries carry no repository, so `concord-healthsync`
-writes `synced 5, skipped 0, failed 1 of 6` and exits 1 every hour, `sort=health` stays a
-constant ordering and `min_health>0` stays empty for 68 of 73 projects. A bounded walk of
-`~/code` and `~/code-local` found an origin remote for 31 of those 69 — the rest need a
-person. The one failed fetch is `ferrisfeed`, whose `repo_url` answers 404.
+Three things are still owed, and the first two are decisions rather than work:
+
+1. **The author is told nothing** when their idea is removed or rejected — spec §8, and there is no
+   inbox to tell them in.
+2. **`CONCORD_FORGE_TOKEN`** — 4 private GitHub repositories cannot be seeded and the anonymous
+   window is 60 requests an hour shared with every other consumer on the host. The token has to
+   come from the owner (TLS/OAuth choice included).
+3. **R12's review half has never fired**: one push event is proven end to end, and
+   `pr_review`/`pr_comment` need a real pull request and review on one of these repositories before
+   `newcomer_sample` stops being 0. Nothing here should synthesize that.
+
+Historical, for the ordering argument only: R12–R15 were merged but undeployed until 2026-11-12, and
+Q5's data half was 31 slugs from mechanical before §39 took it to 23 measured repositories of 73.
 
 **Moderation M1 is built and deployed (2026-11-11).** The arena-removal request is served:
 `POST /api/v1/projects/{slug}/moderation/arena/remove` and `.../arena/restore`, one append-only

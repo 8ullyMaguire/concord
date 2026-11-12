@@ -4686,13 +4686,138 @@ would read as "moderation has done nothing here".
 | `tests/e2e/rank_links_e2e.py` | 4 passed (anonymous, reviewer, contributor, and the vote-beside-the-link) |
 | `tests/e2e/audit_e2e.py` | 11 passed, including `kind=moderation` narrowing 3 rows to 2 and the 400 |
 
-`make verify` and `make gates` are recorded in the commit body for this pass, from their own
-output, rather than here: a row in this table that says "all passed" before the run has finished is
-the exact claim this file exists to prevent.
+| `make verify` | exit 0 — `go vet`, `gofmt`, `go test ./...`, the build, `check_doc_numbers` (15 measured numbers agree), `check_spec_drift`, `check_e2e_sync` (4 bounded, 0 racy), `unittest discover -s scripts` |
+| `make gates` | 27 arms, every mutant killed, **0 survived**, exit 0 — and `internal/store/audit.go` is one of the armed files, so the new `IN (…)` clause was mutated by the gate as well as by hand |
 
-### 40.6 Still owed after this pass
+### 40.7 The live walk, on the deployed binary
+
+Deployed 2026-11-12 10:44 as `pre-merge-2026-11-05-41-ga4d6cfd` (`make deploy` → `✓ healthz OK`).
+Every line below is `concord.polarisocial.xyz`, not the 127.0.0.1:8006 dev instance.
+
+```
+$ curl -s https://concord.polarisocial.xyz/api/v1/projects/concord/audit?kind=moderation
+{"entries": [], "total": 0, "offset": 0, "limit": 3}          # 200; the log holds 800 rows unfiltered
+
+$ curl -s .../audit?kind=moderaton
+{"error": "invalid: \"moderaton\" is not a kind of audit entry; the kinds are: moderation"}   # 400
+
+$ curl -s .../audit?kind=moderation&action=create_feature
+total 0                                                       # the two clauses compose by AND
+```
+
+Zero is the TRUE answer here: the live database holds no `arena.*` or `feature.reject` row at all
+(`select action, count(*) ... group by 1` returns nothing), so the family filter has nothing to
+admit. The non-trivial narrowing — 3 rows to 2, with the non-moderation act excluded — is the
+browser suite's job and it asserts it.
+
+```
+$ curl -s .../projects/concord/ranking | grep -o 'data-can-moderate="[a-z]*"'
+data-can-moderate="false"                                     # anonymous
+
+$ curl -s -H "Authorization: Bearer $TOKEN" .../projects/concord/ranking | grep -o 'data-can-moderate="[a-z]*"'
+data-can-moderate="true"                                      # polaris, trust 1, maintainer of concord
+```
+
+A real browser against the deployed site, with the same token, at 332 rows:
+
+```
+rows: 332   attribute: true   moderate links: 332
+first 3 hrefs: /projects/concord/features/1905#moderation-panel, …/1898#…, …/1897#…
+click → /projects/concord/features/1905#moderation-panel, #moderation-panel present, its reason
+field and "Remove this idea from the arena?" intact
+```
+
+```
+/rank: 2 cards, each with .rank-open, hrefs /projects/concord/features/340 and …/1892 (distinct)
+       vote buttons still "A is better / B is better / Both equally / Neither"
+/audit: #audit-kind options [["", "All entries"], ["moderation", "Moderation"]]
+nav:    href="/projects/concord/audit">Modlog<
+```
+
+### 40.8 Still owed after this pass
 
 1. **The affected author is told nothing** — spec §8, still the weakest part of v1, and still the
    owner's call because there is no inbox to tell them in.
 2. **A forge token** (`CONCORD_FORGE_TOKEN`) — §39.6's first item, untouched here.
 3. **M4, extraction to `polaris-ledger-go`** — deliberately gated on a second Go adopter.
+
+## §41 — R12's pipe had two closed ends, and both are now open
+
+### 41.1 What was measured, before anything was changed
+
+`forge_events` had zero rows. Two independent causes, both checked rather than assumed:
+
+```
+$ for r in concord darkhold suki; do curl -s -H "Authorization: token $TOKEN" \
+    "https://git.polarisocial.xyz/api/v1/repos/hirrolot19/$r/hooks"; done
+concord 0 []      darkhold 0 []      suki 0 []          # the forge had never been asked to deliver
+
+$ systemctl --user show concord -p Environment
+...CONCORD_LISTEN=... CONCORD_DB=... CONCORD_EMBED_*    # no CONCORD_FORGEJO_SECRET
+```
+
+`handleForgejoWebhook` fails closed without a secret ("webhook not configured"), so even had a hook
+existed every delivery would have been refused. A metric with a green test, no rows and a working
+reader is indistinguishable from an unbuilt feature; `deploy/README.md` now carries the three
+commands that tell them apart.
+
+### 41.2 What was built, and where the credential lives
+
+- `deploy/concord.service` reads `EnvironmentFile=-/home/alvaro/.config/concord/forge-webhook.env`
+  (0600, 64 hex characters, generated on the host). The secret is a credential shared with the
+  forge, so it is not in a unit file that lives in this repository.
+- The unit also gained the three `CONCORD_EMBED_*` lines the host had been setting BY HAND and the
+  repository's unit did not carry. Installing the repository's unit would have dropped them, and
+  the only symptom would have been embedded reads returning no vector with every test green,
+  because the tests set their own environment.
+- Seventeen hooks, one per Forgejo-backed project (`repo_url like '%git.polarisocial.xyz%'`),
+  pointing at `POST /api/v1/hooks/forgejo` with `content_type=json`, events
+  `push, pull_request, pull_request_review, pull_request_comment`. The Forgejo this instance runs
+  takes `events` as an ARRAY of names; sending the map Gitea's swagger documents answers
+  `422 []: json: slice unexpected end of JSON input`, field path empty — which is why the first
+  seventeen attempts created nothing.
+
+### 41.3 Evidence that the pipe carries water
+
+```
+$ curl -s -o /dev/null -w "%{http_code}" -X POST -H "Authorization: token $TOKEN" \
+    https://git.polarisocial.xyz/api/v1/repos/hirrolot19/concord/hooks/2/tests
+204
+
+$ sqlite3 -readonly …/concord.db "select count(*) from forge_events"
+1
+
+$ sqlite3 -readonly -line …/concord.db "select * from forge_events order by id desc limit 1"
+repo_full = hirrolot19/concord   kind = push   actor = hirrolot19   at = 1794476472.0
+
+$ ~/concord-deploy/healthsync -dry-run -only concord
+concord forgejo hirrolot19/concord last_commit_age=0.0d contributors=2 releases90d=0
+        review latency unknown (0 pull request(s) sampled, none answered);
+        newcomer response unknown (n=0, floor=5)
+synced 1, skipped 0, deferred 0, failed 0 of 1
+```
+
+The first row `forge_events` has ever held, written by a real HTTP delivery from the forge and not
+by a test. `contributors=2` is the §39 fallback proven live on the same line: this repository's
+pushes come from an address Forgejo has no account for, and the pre-§39 reader reported 0 across
+238 commits.
+
+### 41.4 What a push event does NOT do
+
+`newcomer response unknown (n=0, floor=5)` is the ABSENCE representation working, not a defect —
+R12 samples `pr_review` and `pr_comment` events, and a push carries neither. So the honest state is:
+
+- the four ingest arms are covered by `webhook_events_test.go` and by the gate that mutates it;
+- one arm (push) is proven end to end on the live instance;
+- the other three need real forge activity — a pull request and a review on one of these
+  repositories — before `newcomer_sample` stops being 0. Nothing in this repository can synthesize
+  that without writing a row that did not happen, which would corrupt the metric it is meant to
+  feed.
+
+### 41.5 Still owed, and whose decision it is
+
+1. **`CONCORD_FORGE_TOKEN`** — the four private GitHub repositories cannot be seeded, and the
+   anonymous 60-requests-an-hour window is shared with every other consumer on this host. The token
+   is a credential for the owner to install (TLS/OAuth choice included); §39's `build_forge_repos.py`
+   already aborts rather than writes when a 403 arrives.
+2. **Author notification** — spec §8, unchanged, and still not something to invent.
