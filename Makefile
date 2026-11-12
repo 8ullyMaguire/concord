@@ -206,6 +206,11 @@ gates:
 	# holds a whole pillar and one mutant list per file is how the others are kept
 	# readable.
 	python3 internal/mutate.py internal/store/consensus_solutions.go ./internal/store/ internal/store/consensus_decision_record_test.go internal/store/consensus_decision_record_mutants.json
+	# The phase the board shows and the record it names. These two lists exist because
+	# the deployed instance held 87 features at status='consensus' with zero calls: a
+	# status nothing backs, and a call the board never reflected.
+	python3 internal/mutate.py internal/store/consensus_solutions.go ./internal/store/ internal/store/feature_phase_test.go internal/store/feature_phase_mutants.json
+	python3 internal/mutate.py internal/store/consensus.go ./internal/store/ internal/store/feature_phase_test.go internal/store/consensus_phase_mutants.json
 	python3 internal/mutate.py internal/governance/governance.go ./internal/governance/ internal/governance/governance_test.go internal/governance/consensus_mutants.json
 
 fmt:

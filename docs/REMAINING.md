@@ -6,7 +6,7 @@ the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
 **Measured state (the twenty-first pass, §34):** schema 39 · 39 migrations · 91 live tables ·
-**1286 Go tests** across 9 test-bearing packages · 326 e2e tests in 28 suite files · 60/60 UI mutants killed
+**1296 Go tests** across 9 test-bearing packages · 326 e2e tests in 28 suite files · 60/60 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
 8 project.js/arena, 4 project.js/work items) · Go mutants: 27 arms, 172 killed, 0 survived ·
 `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
@@ -4106,7 +4106,7 @@ against a seeded probe instance — the defect is a perfect score for an unmeasu
 ### 34.6 Where the numbers stand
 
 **Measured state (the twenty-first pass, §34):** schema 39 · 39 migrations · 91 live tables ·
-**1286 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files ·
+**1296 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files ·
 `make verify` exit 0 · `make gates` exit 0 (27 arms) · `make e2e` exit 0.
 
 ## §35 — The Consensus tab answered 405, because the index it links to was "out of scope"
@@ -5419,3 +5419,53 @@ accepted silently — the role is not a parameter — and the redeem call then f
 `{"error":"invalid"}` because the token was never read from the response. The first run of this
 walk did exactly that and produced a 403 on the reject, which read like a permissions bug and was
 a membership that had never been granted.
+
+## §46 — The consensus phase had no record, and the record had no phase
+
+**Measured first, on the deployed instance.** `features` holds 87 rows with
+`status='consensus'`; `consensus_calls` holds **0**. The 87 are stashforge 64, gravity 20,
+lorebook 3, and every one of them arrived through a real transition — `0` have no
+`-> consensus` audit row, so a person or an import moved them there deliberately. Meanwhile a
+feature that DID have a call stayed in `discussion` for the whole decision, because nothing in
+the tree ever wrote `features.status='consensus'`: `createSolutionCall` moves the SOLUTION into
+consensus (its own ladder) and leaves the feature where it was.
+
+So the two halves of one fact had never been introduced:
+
+    the board says "deciding"  --87 rows--   no decision exists
+    a decision exists          --0 calls--   the board says something else
+
+**The second half is worse than a wrong label, and it is why this is a code change and not a
+data correction.** `CreateConsensusCall` refused every status but `draft`/`discussion`, so a
+feature parked at `consensus` could not open the call that its own status claims is in
+progress: the phase was reachable only by a writer that bypasses the gate, and the gate refused
+the phase. A status that disables its own route is a dead end, whichever way you arrive.
+
+**What now holds** (`store.setFeaturePhase`, `store.featurePhaseForOutcome`, and the relaxed
+rule in `CreateConsensusCall`):
+
+- a call opening moves the feature to `consensus`, in `CreateConsensusCall` itself so BOTH
+  routes carry it (the project route directly, the feature route through `createSolutionCall`);
+- §6.5's outcomes move the feature with the solutions: accepted/amended/fall-back → `ready`,
+  rejected → `rejected`, and **sent-back → `discussion`**, because a call that decided not to
+  decide is not a rejection;
+- every move writes a `feature.status` audit row naming the transition AND the call id, so the
+  board's claim is attributable to the act that made it;
+- one open call per feature (`409` with a message), which is what the old draft/discussion rule
+  was really for;
+- a `shipped` feature still refuses (`400`, naming the status it found).
+
+Ten tests and six mutation arms: 8 store (`feature_phase_test.go`) + 2 HTTP
+(`consensus_phase_test.go`), and `feature_phase_mutants.json` / `consensus_phase_mutants.json`
+in `make gates` — all six killed, including "a sent-back call is recorded as a rejection" and
+"the phase moves with no audit row".
+
+**Deliberately NOT done: rewriting the 87.** They are a claim about work in progress that a
+person made; each is now *openable*, and turning them back to `ready` is a judgement about those
+projects that belongs to whoever moved them. A bulk `UPDATE` here would be the same act as the
+one this pass is complaining about — a status written without the record that justifies it.
+
+**Live walk** (`concord.polarisocial.xyz`, `pre-merge-2026-11-05-63-g...`): a probe project, one
+complaint, one feature, `POST /consensus` → `201`, `GET .../features/{id}` → `"status":
+"consensus"`, `POST /consensus` again → `409 a consensus call is already open on this
+feature`. Probe rows deleted afterwards; `PRAGMA integrity_check` ok.

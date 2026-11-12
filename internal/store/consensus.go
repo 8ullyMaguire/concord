@@ -114,8 +114,29 @@ func (d *DB) CreateConsensusCall(ctx context.Context, projectID, featureID, open
 		if err != nil {
 			return ConsensusCall{}, err
 		}
-		if f.Status != "draft" && f.Status != "discussion" {
-			return ConsensusCall{}, fmt.Errorf("%w: feature must be draft or discussion", ErrInvalid)
+		// The phase a call may open in is any phase where the work is not already
+		// decided: draft, discussion, ready, or consensus. 'consensus' is in that
+		// list because the alternative is a dead end -- the deployed instance holds
+		// 87 features parked in consensus with no call, and the old rule refused
+		// every one of them, so the status that CLAIMS a decision is in progress made
+		// the only route that starts one unreachable. What the rule is actually for
+		// is the second call, so that is what it now checks.
+		switch f.Status {
+		case "draft", "discussion", "ready", "consensus":
+		default:
+			return ConsensusCall{}, fmt.Errorf(
+				"%w: feature must be draft, discussion, ready or consensus (it is %q)",
+				ErrInvalid, f.Status)
+		}
+		var open int
+		if err := d.QueryRowContext(ctx,
+			`SELECT count(*) FROM consensus_calls WHERE feature_id = ? AND status = 'open'`,
+			featureID).Scan(&open); err != nil {
+			return ConsensusCall{}, fmt.Errorf("count open calls: %w", err)
+		}
+		if open > 0 {
+			return ConsensusCall{}, fmt.Errorf(
+				"%w: a consensus call is already open on this feature", ErrConflict)
 		}
 		complaints, err := d.GetFeatureComplaints(ctx, featureID)
 		if err != nil || len(complaints) == 0 {
@@ -142,6 +163,20 @@ func (d *DB) CreateConsensusCall(ctx context.Context, projectID, featureID, open
 		return ConsensusCall{}, err
 	}
 	id, _ := res.LastInsertId()
+	// The feature enters the consensus phase HERE, because this is where a call begins
+	// and both routes that can open one come through it (the project route directly, the
+	// feature route through createSolutionCall). The move was missing entirely, and the
+	// measurement that found it is the number this rule exists to stop: the deployed
+	// instance carried 87 features at status='consensus' with ZERO consensus_calls rows,
+	// while a feature with a real call sat in 'discussion' for the whole decision. The
+	// board's consensus column named a phase nothing was in, and the record named a
+	// decision the board knew nothing about.
+	if featureID != 0 {
+		if err := d.setFeaturePhase(ctx, projectID, featureID, openedBy, "consensus",
+			fmt.Sprintf("consensus call #%d opened", id)); err != nil {
+			return ConsensusCall{}, err
+		}
+	}
 	return d.GetConsensusCall(ctx, id)
 }
 

@@ -511,10 +511,75 @@ func (d *DB) RecordCallOutcome(ctx context.Context, callID int64, outcome, summa
 	if err := d.applyOutcomeToSolutions(ctx, call, outcome, amendedSolution, fallbackTo, now); err != nil {
 		return ConsensusCall{}, err
 	}
+	// §6.5's outcomes decide what happens to the FEATURE, not only to its solutions:
+	// an accepted call readies the work, a rejection rejects it, and a call sent back
+	// returns it to discussion. Without this the decision was recorded in four tables
+	// and the board still showed the idea exactly where it was before the vote.
+	if status, why, ok := featurePhaseForOutcome(outcome); ok {
+		// actor 0: this move is made by the DECISION, which the audit row names by
+		// call id. The call itself carries who opened it, and the outcome carries
+		// who could have cast a position -- attributing the status move to the
+		// person who happened to press "record outcome" would misplace it.
+		if err := d.setFeaturePhase(ctx, call.ProjectID, callFeatureID(call), 0, status,
+			fmt.Sprintf("%s: call #%d", why, call.ID)); err != nil {
+			return ConsensusCall{}, err
+		}
+	}
 	if err := d.writeDecisionRecord(ctx, call, outcome, summary, fallbackTo, amendedSolution, now); err != nil {
 		return ConsensusCall{}, err
 	}
 	return d.GetConsensusCall(ctx, callID)
+}
+
+// featurePhaseForOutcome maps a §6.5 outcome onto the phase the FEATURE belongs in.
+//
+// "sent back" is the one worth reading twice: it is NOT a rejection. The call decided
+// not to decide, so the feature returns to discussion. Writing 'rejected' there would
+// record a decision nobody made, which is the same lie as a status nothing backs.
+//
+// An unrecognised outcome returns ok=false rather than a default: a status invented for
+// an outcome this switch has not learned would move the board on a decision nobody can
+// name.
+func featurePhaseForOutcome(outcome string) (status, why string, ok bool) {
+	switch outcome {
+	case OutcomeAccepted, OutcomeAmended:
+		return "ready", "adopted", true
+	case OutcomeFallBack:
+		return "ready", "fell back to the runner-up", true
+	case OutcomeRejected:
+		return "rejected", "rejected", true
+	case OutcomeSentBack:
+		return "discussion", "sent back to discussion", true
+	}
+	return "", "", false
+}
+
+// setFeaturePhase moves a feature into a phase and writes the audit row that makes the
+// move attributable.
+//
+// Both halves, always: a status write with no audit row is a board that changed for no
+// recorded reason, and the eight-seven rows this function was written for are exactly
+// that shape -- a phase claimed by an import, backed by nothing.
+//
+// It is a no-op when the feature is already there, so a caller cannot manufacture a
+// transition by repeating an act.
+func (d *DB) setFeaturePhase(ctx context.Context, projectID, featureID, actorID int64,
+	to, why string) error {
+
+	feat, err := d.GetFeature(ctx, featureID)
+	if err != nil {
+		return err
+	}
+	if feat.Status == to {
+		return nil
+	}
+	if _, err := d.ExecContext(ctx,
+		`UPDATE features SET status=?, updated_at=? WHERE id=?`,
+		to, float64(time.Now().Unix()), featureID); err != nil {
+		return fmt.Errorf("move feature %d to %s: %w", featureID, to, err)
+	}
+	return d.AddAudit(ctx, projectID, actorID, "feature.status", "feature", featureID,
+		fmt.Sprintf("%s -> %s: %s", feat.Status, to, why))
 }
 
 // SolutionAmendment is the derived solution §6.5's "accepted with amendments"
