@@ -279,3 +279,75 @@ changed.
 A second Go adopter must supply the same three things and nothing else. If it needs a
 fourth — an act with an expiry, say — the act table grows in both languages in one
 commit, or the mirror has drifted.
+
+## 11. Expiry: the queue has to be finishable
+
+### 11.1 The problem, measured
+
+§6 lists pending proposals oldest-first and nothing ever removed one. Every proposal table
+already models `stale` — `taxonomy_proposals`, `strategic_weight_proposals` and
+`strategic_theme_proposals` all carry `CHECK (status IN ('pending','ratified','rejected',
+'withdrawn','stale'))` — and nothing in the tree ever wrote it (`grep -rn "status *= *'stale'"
+internal/` before this change: no writer). The queue therefore grew monotonically.
+
+That matters more here than in most products because the queue's value is that a reviewer can
+start at the top and reach the end. A list that cannot be finished does not get finished; it gets
+scanned and abandoned, and the proposals at the bottom are invisible in the only way that counts.
+
+### 11.2 The decision
+
+**A one-shot daily command marks pending proposals older than a TTL as `stale`. It does not
+withdraw them, delete them, or apply anything.**
+
+- **TTL**: 30 days (`CONCORD_PROPOSAL_TTL_DAYS`, `-ttl-days`). 0 disables the sweep — a legitimate
+  setting for a small instance — and is distinguishable from unset, which defaults to 30.
+- **Effect**: `status='stale'`, one audit act per proposal (`stale_taxonomy_proposal`,
+  `stale_weight_proposal`, `stale_theme_proposal`), `actor_id` **NULL**, detail
+  `{"reason": "no consensus within 30 days", "proposed_by": N, "consents": K, "cutoff": ...}`.
+- **In the UI**: the open queue (`state=open`) excludes it, because `open` is defined as pending.
+  It stays in the log, and the log's state filter gained "Expired, no consensus" so it is
+  reachable by name rather than only by knowing the word `stale`.
+- **Where it runs**: `cmd/proposalsweep` under `concord-proposalsweep.timer`, daily at 03:20 UTC
+  after the statistics snapshot. Installed and ENABLED by `make deploy-admin`, unlike the two
+  forge-touching timers that target installs disabled: this one reads and writes only the local
+  database, and a sweep installed but never enabled is a queue that still never drains.
+
+### 11.3 The alternatives, and why each lost
+
+- **Auto-withdraw** (set `withdrawn`): `withdrawn` means the proposer took it back. Writing it on
+  their behalf puts words in their mouth, and the log would then show a person acting who did not.
+- **Delete the row**: erases the fact that someone proposed something. A governance system whose
+  record of proposals depends on whether they succeeded cannot audit its own history.
+- **`rejected`**: implies a decision was taken. Nobody decided; the clock ran out. The two states
+  have different consequences for the proposer (a rejected idea needs a better case; an expired
+  one needs attention or a re-proposal).
+- **One summary act per sweep**: a count is not auditable. "3 proposals expired today" answers
+  none of the questions a reader asks of a log ("which, whose, how much support did it have").
+- **Sweep on read** (expire inside `ListCuration`): turns a GET into a write, makes page latency
+  depend on the size of the backlog, and makes the expiry time "whenever somebody looked".
+- **A goroutine in the server**: dies and re-runs on every deploy; the server restarts far more
+  often than 24 hours, so the schedule would be wrong most of the time and silent when wrong.
+- **An act with an expiry in `polaris-ledger`** (§10's trigger): expiry here is policy about a
+  *proposal*, not a property of an act. The crate is untouched, and §10's rule — a fourth thing a
+  second adopter needs means the act table grows in both languages — does not fire.
+
+### 11.4 Consequences
+
+- A proposer whose proposal expired may propose again immediately: the one-pending-per-target
+  indexes (0012, 0028) only constrain `status='pending'`, so a stale row does not block a fresh one.
+- Expiry writes acts, so the audit log grows by the number of abandoned proposals. That is the
+  intended cost: an expiry a reader cannot find afterwards is a deletion with extra steps.
+- The sweep is idempotent (`UPDATE … WHERE status='pending'`), so a timer that fires twice in a
+  minute, or a machine catching up after being off (timer `Persistent=true`), changes nothing twice.
+
+### 11.5 Success criteria
+
+1. `proposalsweep -db X -dry-run` lists exactly the proposals a subsequent real run marks, and
+   writes no act.
+2. After the real run, `SELECT status FROM taxonomy_proposals WHERE id = <old>` is `stale`, and
+   `SELECT COUNT(*) FROM audit_log WHERE action='stale_taxonomy_proposal' AND entity_id = <old>`
+   is 1 with a NULL `actor_id`.
+3. A second run marks 0.
+4. `GET /api/v1/curation?state=open` no longer lists it; `?state=stale` does.
+5. `make verify` green.
+
