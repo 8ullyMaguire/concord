@@ -5,43 +5,43 @@ For the implementing agent taking over from here. Read this, then
 then `docs/ARCHITECTURE.md`. `docs/PLAN.md` covers the pre-r4 milestones (all
 complete) and `docs/concord-spec.md` is superseded — do not plan from either.
 
-**Where this stands (2026-11-12).** The public instance answers
-`pre-merge-2026-11-05-41-ga4d6cfd` at schema 35, deployed from `master` (`forgejo/main` and both
-`github` branches are at the same commit). R12–R15 are deployed, the `statsnapshot` and
-`proposalsweep` timers are installed, moderation M1–M3 are shipped (`REMAINING` §36–§38, §40), the
-§39 seed measures **23 of 73** projects, and `forge_events` holds its **first row** with 17 Forgejo
-hooks registered (`REMAINING` §41).
+**Where this stands (2026-11-12, end of day).** The public instance answers
+`pre-merge-2026-11-05-53-g9043a47` at schema 38. `master` is one commit ahead of it
+(`dd93634`, the API-shape fix below) and that commit is NOT deployed yet. `forgejo/main`,
+`github/master` and `github/main` are in sync at that commit.
+
+Built and deployed this day: **R16/R17/R18** — per-project intake modes, milestones, the
+roadmap and feature dependencies (`REMAINING` §43, live walk in §43.5) — and the
+**complaint detach** that closes the one idea `§43.2` had recorded as half-shipped
+(`REMAINING` §44, live walk in §44.1, DOM-verified in a real browser on the live site).
+
+The filed inventory now stands at **26 of 29 drafts shipped, 2 not built, 9 rejected**:
+
+- **A consensus call over a milestone as one unit** (V6) is the one product idea with no
+  code. It needs a new arena kind, its own weighting and a charter read — the shape of the
+  solution arena, not a route. That is the next product milestone.
+- **Milestone-scoped WIP** is deliberately not built: a column's limit is a claim about the
+  project's capacity, and a limit scoped to one milestone would be several times too
+  generous, while enforcing it per query string would make one column mean two things.
+- The 9 ideas scored below 6 (V3–V5) stayed rejected, with the reason in their bodies.
 
 Three things are still owed, and the first two are decisions rather than work:
 
-1. **The author is told nothing** when their idea is removed or rejected — spec §8, and there is no
-   inbox to tell them in.
-2. **`CONCORD_FORGE_TOKEN`** — 4 private GitHub repositories cannot be seeded and the anonymous
-   window is 60 requests an hour shared with every other consumer on the host. The token has to
-   come from the owner (TLS/OAuth choice included).
-3. **R12's review half has never fired**: one push event is proven end to end, and
-   `pr_review`/`pr_comment` need a real pull request and review on one of these repositories before
-   `newcomer_sample` stops being 0. Nothing here should synthesize that.
+1. **The author is told nothing** when their idea is removed or rejected — spec §8, and there
+   is no inbox to tell them in.
+2. **`CONCORD_FORGE_TOKEN`** — 4 private GitHub repositories cannot be seeded and the
+   anonymous window is 60 requests an hour shared with every other consumer on the host. The
+   token has to come from the owner (TLS/OAuth choice included).
+3. **R12's review half has never fired**: push events are proven end to end
+   (`forge_events`), and `pr_review`/`pr_comment` need a real pull request and review on one
+   of these repositories before `newcomer_sample` stops being 0. Nothing here should
+   synthesize that.
 
-**R16/R17/R18 are BUILT AND DEPLOYED (2026-11-12): intake modes, milestones, the roadmap and
-dependencies.** Live: `pre-merge-2026-11-05-51-g7efc623`, schema 38, proven with a probe account on
-its own project (`docs/REMAINING.md` §43.5 -- including the one arm the live run could NOT prove,
-and why).
-Migrations `0036`/`0037`/`0038`; `internal/store/{milestones,feature_evidence,deps}.go`; the routes
-under `/api/v1/projects/{project_id}/milestones`, `/roadmap`, `/intake-mode`, and
-`/features/{id}/{milestone,deps,evidence}`; the `/roadmap` and `/milestones/{id}` pages; the board's
-`?milestone=` filter; the milestones feed. 9 store tests and 5 route tests, and every ruled-on idea's
-verdict is in `docs/REMAINING.md` §43.2 — 25 of the 29 drafts shipped, 3 were not built for reasons
-recorded there (a milestone-level consensus call needs its own arena kind; the intake mode is a
-maintainer dial rather than a proposal; milestone-scoped WIP would make one column's limit mean two
-things), 1 is half-shipped (evidence converts idea -> backed, but nothing unlinks a complaint), and
-the 9 rejected ideas stayed rejected.
-
-**The next product milestone** is the one §43.2 names and does not build: a **consensus call over a
-milestone as one unit** (a new arena kind, its weighting, and a charter read — the same shape as the
-solution arena). Behind it: a route that UNLINKS a complaint (the inverse of
-`POST /features/{id}/complaints`), which is the missing half of "convert a feature between
-complaint-backed and idea-first".
+**Deployed but not yet live-proven**: nothing. **Committed but not deployed**: `dd93634` —
+`POST .../features` and `POST .../complaints` now take the project from the PATH instead of
+requiring `project_id` in the body, and `PUT .../intake-mode` accepts both `mode` and
+`intake_mode` (`REMAINING` §44.2). Deploy it with `make deploy` and re-run the §44.1 probe
+with the body field removed.
 
 Historical, for the ordering argument only: R12–R15 were merged but undeployed until 2026-11-12, and
 Q5's data half was 31 slugs from mechanical before §39 took it to 23 measured repositories of 73.
