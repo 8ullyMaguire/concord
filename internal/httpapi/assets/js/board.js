@@ -20,6 +20,37 @@ function apiAuth(extra) {
     });
   }
 
+  // The board filter: ONE board, narrowed. A board per milestone would multiply
+  // the WIP limits by the number of milestones, and a limit that applies to a fifth
+  // of the work is a limit five times too generous.
+  function boardQuery() {
+    var ms = new URLSearchParams(window.location.search).get('milestone');
+    return ms ? '?milestone=' + encodeURIComponent(ms) : '';
+  }
+
+  function paintFilter(box, milestones) {
+    if (!milestones.length) return;
+    var page = box.parentNode;
+    if (!page || page.querySelector('[data-board-filter]')) return;
+    var cur = new URLSearchParams(window.location.search).get('milestone') || '';
+    var opts = '<option value="">Whole board</option>' + milestones.map(function (m) {
+      return '<option value="' + esc(m.id) + '"' + (String(m.id) === cur ? ' selected' : '') + '>' +
+        esc(m.title) + ' (' + (m.open || 0) + ' open)</option>';
+    }).join('');
+    var wrap = document.createElement('div');
+    wrap.className = 'board-filter';
+    wrap.setAttribute('data-board-filter', '');
+    wrap.innerHTML = '<label class="form-label" for="board-milestone">Milestone</label>' +
+      '<select id="board-milestone">' + opts + '</select>';
+    page.insertBefore(wrap, box);
+    wrap.querySelector('select').addEventListener('change', function (ev) {
+      var url = new URL(window.location.href);
+      if (ev.target.value) url.searchParams.set('milestone', ev.target.value);
+      else url.searchParams.delete('milestone');
+      window.location.href = url.toString();
+    });
+  }
+
   function slugFromPath() {
     var parts = window.location.pathname.split('/').filter(Boolean);
     return parts.length >= 2 && parts[0] === 'projects' ? decodeURIComponent(parts[1]) : '';
@@ -70,11 +101,16 @@ function apiAuth(extra) {
           // By slug, not p.id: the project-scoped routes resolve a slug.
           // Passing p.id 404s, and the fallbacks below turn that into an empty
           // board that looks like a project with nothing on it.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/board', { headers: apiAuth() }).then(function (r) { return r.ok ? r.json() : { columns: [], cards: [] }; }),
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/features', { headers: apiAuth() }).then(function (r) { return r.ok ? r.json() : []; })
-        ]).then(function (res) { return { project: p, board: res[0], features: res[1] }; });
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/board' + boardQuery(), { headers: apiAuth() }).then(function (r) { return r.ok ? r.json() : { columns: [], cards: [] }; }),
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/features', { headers: apiAuth() }).then(function (r) { return r.ok ? r.json() : []; }),
+          // The filter's own options (spec §4.2 item 5). Tolerant: a project with no
+          // milestones, or a reader who cannot list them, still gets its board.
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/milestones', { headers: apiAuth() })
+            .then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; })
+        ]).then(function (res) { return { project: p, board: res[0], features: res[1], milestones: res[2] }; });
       })
       .then(function (ctx) {
+        paintFilter(box, ctx.milestones || []);
         var columns = (ctx.board && ctx.board.columns) || [];
         var cards = (ctx.board && ctx.board.cards) || [];
         var titles = {};

@@ -241,7 +241,8 @@ func (s *Server) loadTemplates() error {
 	pages := []string{"index", "search", "projects", "project", "board",
 		"login", "register", "rank", "ranking", "documents", "notfound", "finder",
 		"scout", "consensus", "audit", "settings", "feature", "complaint", "requests-detail", "requests-index", "lists", "list",
-		"taxonomy", "curation", "criteria", "merge", "contribute", "stats"}
+		"taxonomy", "curation", "criteria", "merge", "contribute", "stats",
+		"roadmap", "milestone"}
 
 	s.pages = make(map[string]*template.Template, len(pages))
 	for _, name := range pages {
@@ -468,6 +469,7 @@ func (s *Server) Router() http.Handler {
 	r.Get("/projects/{slug}/rss.xml", s.handleProjectFeed)
 	r.Get("/projects/{slug}/atom.xml", s.handleProjectFeed)
 	r.Get("/projects/{slug}/board/feed.xml", s.handleBoardFeed)
+	r.Get("/projects/{slug}/milestones/feed.xml", s.handleMilestoneFeed)
 	r.Get("/projects/{slug}/board/atom.xml", s.handleBoardFeed)
 	r.Get("/projects/{slug}/consensus/feed.xml", s.handleConsensusFeed)
 	r.Get("/projects/{slug}/consensus/atom.xml", s.handleConsensusFeed)
@@ -698,6 +700,17 @@ func (s *Server) Router() http.Handler {
 		r.Post("/", s.handleCreateFeature)
 		r.Route("/{id}", func(r chi.Router) {
 			r.Get("/", s.handleGetFeature)
+			// The milestone a feature belongs to (§4), the work it waits on (§6) and
+			// the non-complaint evidence it cites (§3.4). Mounted on the feature
+			// because all three are properties OF the feature; a project-level
+			// collection for each would be three more lists nobody reads.
+			r.Put("/milestone", s.handleSetFeatureMilestone)
+			r.Get("/deps", s.handleGetFeatureDeps)
+			r.Post("/deps", s.handleAddFeatureDep)
+			r.Delete("/deps", s.handleRemoveFeatureDep)
+			r.Get("/evidence", s.handleListFeatureEvidence)
+			r.Post("/evidence", s.handleAddFeatureEvidence)
+			r.Delete("/evidence", s.handleRemoveFeatureEvidence)
 			// Proposes a strategic-weight change; it does not apply one
 			// directly (§6.2 -- weight is consensus-ratified, not a
 			// maintainer dial).
@@ -718,6 +731,28 @@ func (s *Server) Router() http.Handler {
 			r.Delete("/claim", s.handleReleaseClaim)
 		})
 	})
+
+	// Milestones and the roadmap (R17/R18). The roadmap is a READ of the same
+	// milestones the page renders, on purpose: a page that computed its own numbers
+	// would be a page whose numbers can disagree with the route's.
+	r.Route("/api/v1/projects/{project_id}/milestones", func(r chi.Router) {
+		r.Get("/", s.handleListMilestones)
+		r.Post("/", s.handleCreateMilestone)
+		r.Route("/{id}", func(r chi.Router) {
+			r.Get("/", s.handleGetMilestone)
+			r.Patch("/", s.handleUpdateMilestone)
+			r.Put("/status", s.handleSetMilestoneStatus)
+			r.Post("/close", s.handleCloseMilestone)
+			// §6: a selection into the milestone, and the order inside it.
+			r.Post("/features", s.handleAssignFeatures)
+			r.Put("/order", s.handleReorderMilestone)
+		})
+	})
+	r.Get("/api/v1/projects/{project_id}/roadmap", s.handleRoadmap)
+	// The intake mode (§3.1): whether a feature must trace to a complaint HERE.
+	// Maintainer-gated like every other governance column, and audited by the store
+	// so the column and the log cannot disagree.
+	r.Put("/api/v1/projects/{project_id}/intake-mode", s.handleSetIntakeMode)
 
 	// Work items, project-scoped: the fifteen-minute complaint queue and the ready
 	// features nobody has claimed. Readable by anyone who can read the project, like
@@ -990,6 +1025,11 @@ func (s *Server) Router() http.Handler {
 	r.Get("/projects/{slug}/requests/{id}", s.handleRequestPage)
 
 	r.Get("/projects/{slug}/ranking", s.handleRankingPage)
+	// The roadmap (R18) and one milestone (§4.2). Mounted on {slug} with the other
+	// page routes for the reason audit's comment gives: requireProjectID reads
+	// chi's {project_id}, which is empty on a page route.
+	r.Get("/projects/{slug}/roadmap", s.handleRoadmapPage)
+	r.Get("/projects/{slug}/milestones/{id}", s.handleMilestonePage)
 	r.Get("/projects/{slug}/criteria", s.handleCriteriaPage)
 	r.Get("/projects/{slug}/merge", s.handleMergePage)
 	r.Get("/projects/{slug}/documents", s.handleDocumentsPage)

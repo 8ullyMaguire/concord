@@ -497,6 +497,35 @@
       "</form></section>";
   }
 
+  // Intake mode (R16, spec §3.1): whether a feature filed HERE must trace to a
+  // complaint. It sits in Settings rather than on the filing form because it is a
+  // governance choice, and the form only ever REPORTS it.
+  //
+  // The three options are spelled out in the page, not only in the API's CHECK: a
+  // maintainer choosing "idea_first" is choosing that unbacked ideas are legitimate
+  // input, and a dropdown whose labels are column values hides that.
+  function intakePanel(project) {
+    var mode = (project && project.intake_mode) || "complaint_first";
+    var labels = {
+      complaint_first: "Complaint-first &mdash; every feature traces to reported pain (the default)",
+      idea_first: "Idea-first &mdash; ideas may be filed before anybody is hurt",
+      both: "Both &mdash; either is accepted"
+    };
+    var opts = Object.keys(labels).map(function (k) {
+      return '<option value="' + esc(k) + '"' + (k === mode ? " selected" : "") + ">" + labels[k] + "</option>";
+    }).join("");
+    return '<section class="panel"><h2>Intake</h2>' +
+      '<p class="form-note">The intake mode decides what counts as legitimate input on the ' +
+      "filing form. Whichever it is, a feature still needs evidence before it can reach " +
+      "ready &mdash; the difference is whether an idea may be FILED without a complaint.</p>" +
+      '<div class="field"><label class="form-label" for="intake-mode">Intake mode</label>' +
+      '<select id="intake-mode" data-intake-mode="' + esc(mode) + '">' + opts + "</select>" +
+      '<p class="form-note">Currently <code data-intake-current>' + esc(mode) + "</code>.</p></div>" +
+      '<div class="detail-actions"><button type="button" class="btn btn-primary" data-intake-save>' +
+      "Save intake mode</button></div>" +
+      '<p class="form-status" data-intake-status hidden></p></section>';
+  }
+
   // Invites: the grant a protected project hands out. Member-only, so the panel says so
   // rather than rendering an empty table for a visitor who cannot read it.
   function invitesPanel(inv) {
@@ -550,6 +579,7 @@
       '<section class="panel"><h2>Criteria profiles</h2>' + profileList(profiles) + "</section>" +
       completenessPanel(completeness) +
       strategyPanel(strategy) +
+      intakePanel(project) +
       visibilityPanel(project) +
       tagsPanel(tags) +
       languagesPanel(languages) +
@@ -606,6 +636,7 @@
       wireConsent();
       wirePropose();
       wireThemes();
+      wireIntake();
       wireVisibility();
       wireTags();
       wireLanguages();
@@ -652,6 +683,28 @@
         if (btn) btn.disabled = false;
         say("Could not reach the server: " + (err.message || String(err)), true);
       });
+  }
+
+  // The intake mode is a governance column, so this is a WRITE with the server's
+  // refusal reported verbatim: a maintainer who is not a maintainer should learn
+  // that from the response, not from a control that silently does nothing.
+  function wireIntake() {
+    var btn = document.querySelector("[data-intake-save]");
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      var sel = document.getElementById("intake-mode");
+      var note = document.querySelector("[data-intake-status]");
+      write("/api/v1/projects/" + encodeURIComponent(slug) + "/intake-mode", "PUT",
+        { mode: sel.value },
+        function () {
+          if (note) {
+            note.hidden = false;
+            note.textContent = "Intake mode set to " + sel.value + ".";
+          }
+          reload();
+        },
+        btn);
+    });
   }
 
   function wireVisibility() {

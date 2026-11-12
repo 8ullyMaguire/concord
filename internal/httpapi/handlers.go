@@ -1947,7 +1947,16 @@ func (s *Server) handleGetBoard(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	columns, cards, err := s.Store.GetBoard(r.Context(), projectID)
+	// ?milestone=ID narrows what the board DRAWS (spec §4.2 item 5). Absent or
+	// unparseable means the whole board: a filter nobody asked for would change the
+	// default page, and a typo must not empty it.
+	var milestone *int64
+	if raw := r.URL.Query().Get("milestone"); raw != "" {
+		if id, err := strconv.ParseInt(raw, 10, 64); err == nil && id > 0 {
+			milestone = &id
+		}
+	}
+	columns, cards, err := s.Store.GetBoardForMilestone(r.Context(), projectID, milestone)
 	if err != nil {
 		mapError(w, err)
 		return

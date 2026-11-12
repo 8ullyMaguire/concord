@@ -137,6 +137,7 @@
   <a class="detail-tab{{if eq .Sub "board"}} is-active{{end}}" href="/projects/{{.Slug}}/board">Board</a>
   <a class="detail-tab{{if eq .Sub "rank"}} is-active{{end}}" href="/projects/{{.Slug}}/rank">Vote</a>
   <a class="detail-tab{{if eq .Sub "ranking"}} is-active{{end}}" href="/projects/{{.Slug}}/ranking">Ranking</a>
+  <a class="detail-tab{{if or (eq .Sub "roadmap") (eq .Sub "milestones")}} is-active{{end}}" href="/projects/{{.Slug}}/roadmap">Roadmap</a>
   <a class="detail-tab{{if eq .Sub "criteria"}} is-active{{end}}" href="/projects/{{.Slug}}/criteria">Criteria</a>
   <a class="detail-tab{{if eq .Sub "merge"}} is-active{{end}}" href="/projects/{{.Slug}}/merge">Merge</a>
   <a class="detail-tab{{if eq .Sub "documents"}} is-active{{end}}" href="/projects/{{.Slug}}/documents">Documents</a>

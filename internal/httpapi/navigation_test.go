@@ -486,8 +486,10 @@ func TestLayoutRendersEachPieceOnce(t *testing.T) {
 	// 6 or 8 depending which, and both look like a real defect.
 	n := strings.Count(body, `class="detail-tab"`) +
 		strings.Count(body, `class="detail-tab is-active"`)
-	if n != 12 {
-		t.Errorf("page renders %d tabs, want 12", n)
+	// Roadmap joined on 2026-11-12 with R17's page, and the number moved with it --
+	// which is the whole reason this is a count and not a presence check.
+	if n != 13 {
+		t.Errorf("page renders %d tabs, want 13", n)
 	}
 	// Exactly one lit tab. Two lit tabs means the active state is decorative.
 	if n := strings.Count(body, "is-active"); n != 1 {

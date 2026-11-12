@@ -66,6 +66,21 @@ type BoardCard struct {
 // A feature whose status matches no phase is omitted rather than forced into a
 // column. Guessing a phase would be the same fabrication one level down.
 func (d *DB) GetBoard(ctx context.Context, projectID int64) ([]BoardColumn, []BoardCard, error) {
+	return d.GetBoardForMilestone(ctx, projectID, nil)
+}
+
+// GetBoardForMilestone is the board, optionally narrowed to one milestone's
+// features (spec §4.2 item 5).
+//
+// ONE board, filtered -- never a board per milestone. A column's WIP limit is a
+// statement about the project's capacity, and a limit that applied to a fifth of
+// the work would be a limit five times too generous; so the filter narrows what is
+// DRAWN, and the limits stay the project's.
+//
+// A nil milestoneID is the unfiltered board, not "the backlog": the board has
+// always shown everything, and a filter that silently meant "unassigned" would
+// change the default page for every reader.
+func (d *DB) GetBoardForMilestone(ctx context.Context, projectID int64, milestoneID *int64) ([]BoardColumn, []BoardCard, error) {
 	columns, err := d.GetBoardColumns(ctx, projectID)
 	if err != nil {
 		return nil, nil, err
@@ -74,6 +89,11 @@ func (d *DB) GetBoard(ctx context.Context, projectID int64) ([]BoardColumn, []Bo
 	if err != nil {
 		return nil, nil, err
 	}
+	// `placed` is computed from the UNFILTERED cards. Deriving a card is what the
+	// board does for a feature that has a row: narrowing the cards first would make
+	// a filtered-out feature look unplaced, and its derived twin would appear in its
+	// STATUS's column -- a card in the wrong phase, under a filter that claims to
+	// show less. That is the bug the first version of this function had.
 	placed := make(map[int64]bool, len(cards))
 	for _, c := range cards {
 		if c.FeatureID != 0 {
@@ -84,7 +104,48 @@ func (d *DB) GetBoard(ctx context.Context, projectID int64) ([]BoardColumn, []Bo
 	if err != nil {
 		return nil, nil, err
 	}
-	return columns, append(cards, derived...), nil
+	all := append(cards, derived...)
+	if milestoneID == nil {
+		return columns, all, nil
+	}
+	keep, err := d.featureMilestones(ctx, projectID)
+	if err != nil {
+		return nil, nil, err
+	}
+	return columns, filterCardsByMilestone(all, keep, *milestoneID), nil
+}
+
+// featureMilestones is feature id -> milestone id (0 for the backlog), read once
+// for the filter rather than per card.
+func (d *DB) featureMilestones(ctx context.Context, projectID int64) (map[int64]int64, error) {
+	rows, err := d.QueryContext(ctx,
+		`SELECT id, COALESCE(milestone_id, 0) FROM features WHERE project_id = ?`, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make(map[int64]int64, 256)
+	for rows.Next() {
+		var id, ms int64
+		if err := rows.Scan(&id, &ms); err != nil {
+			return nil, err
+		}
+		out[id] = ms
+	}
+	return out, rows.Err()
+}
+
+// filterCardsByMilestone keeps the cards whose feature belongs to the milestone.
+// A card with no feature (a hand-written card) is dropped: it belongs to no
+// milestone, and a filter is a claim about membership.
+func filterCardsByMilestone(cards []BoardCard, keep map[int64]int64, milestoneID int64) []BoardCard {
+	out := make([]BoardCard, 0, len(cards))
+	for _, c := range cards {
+		if ms, ok := keep[c.FeatureID]; ok && ms == milestoneID {
+			out = append(out, c)
+		}
+	}
+	return out
 }
 
 // featureStatusToPhase maps a feature's workflow status onto the board phase it

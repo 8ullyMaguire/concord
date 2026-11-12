@@ -152,7 +152,7 @@ func (d *DB) SearchProjects(ctx context.Context, q string, f SearchFilters, sort
 		// it out of this Scan is what produced "expected 11 destination
 		// arguments, not 10" once the column was added.
 		if err := rows.Scan(&hit.ID, &hit.Slug, &hit.Name, &hit.Description,
-			&hit.GovernanceModel, &hit.License, &hit.Visibility,
+			&hit.GovernanceModel, &hit.License, &hit.Visibility, &hit.IntakeMode,
 			&hit.CreatedAt, &hit.UpdatedAt,
 			&health, &newcomer, &hit.NewcomerSample, &rank); err != nil {
 			rows.Close()

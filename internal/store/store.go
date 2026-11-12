@@ -275,7 +275,12 @@ type Project struct {
 	// Visibility is one of VisibilityPrivate, VisibilityUnlisted,
 	// VisibilityProtected, VisibilityPublic. It is always set: the column is
 	// NOT NULL with a CHECK, so "unset" is a state the database refuses.
-	Visibility  string   `json:"visibility"`
+	Visibility string `json:"visibility"`
+	// IntakeMode decides whether a feature must trace to a complaint (spec
+	// docs/specs/idea-intake-and-milestones-spec.md §3.1): complaint_first (the
+	// default, and the product's premise), idea_first (ideas may be filed before
+	// anybody is hurt) or both. Always set -- NOT NULL with a CHECK.
+	IntakeMode  string   `json:"intake_mode"`
 	CreatedAt   float64  `json:"created_at"`
 	UpdatedAt   float64  `json:"updated_at"`
 	HealthScore *float64 `json:"health_score,omitempty"` // nil until metrics exist
@@ -331,6 +336,7 @@ func (p Project) IsListed() bool { return p.Visibility == VisibilityPublic }
 
 const projectColumns = `p.id, p.slug, p.name, COALESCE(p.description,''),
 	p.governance_model, COALESCE(p.license,''), COALESCE(p.visibility,'public'),
+	p.intake_mode,
 	p.created_at, p.updated_at,
 	m.health_score, m.newcomer_response_hours, COALESCE(m.newcomer_sample, 0)`
 
@@ -338,7 +344,7 @@ func scanProject(row interface{ Scan(...any) error }) (Project, error) {
 	var p Project
 	var health, newcomer sql.NullFloat64
 	if err := row.Scan(&p.ID, &p.Slug, &p.Name, &p.Description,
-		&p.GovernanceModel, &p.License, &p.Visibility,
+		&p.GovernanceModel, &p.License, &p.Visibility, &p.IntakeMode,
 		&p.CreatedAt, &p.UpdatedAt, &health, &newcomer, &p.NewcomerSample); err != nil {
 		return p, err
 	}
@@ -469,7 +475,7 @@ func (d *DB) GetProjectByID(ctx context.Context, projectID int64) (Project, erro
 		LEFT JOIN project_metrics m ON m.project_id = p.id
 		WHERE p.id = ?`, projectID).Scan(
 		&p.ID, &p.Slug, &p.Name, &p.Description,
-		&p.GovernanceModel, &p.License, &p.Visibility,
+		&p.GovernanceModel, &p.License, &p.Visibility, &p.IntakeMode,
 		&p.CreatedAt, &p.UpdatedAt, &health, &newcomer, &p.NewcomerSample)
 	if health.Valid {
 		h := health.Float64

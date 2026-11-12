@@ -214,10 +214,15 @@ func isDBReceiver(recv *ast.FieldList) bool {
 // caught by it, so these three have to come back LIVE with a production caller.
 var anchors = map[string]string{
 	"CreateFeature": "internal/httpapi/handlers.go",
-	"GetBoard":      "internal/httpapi/handlers.go",
-	"LinkComplaint": "internal/httpapi/complaint_links.go",
-	"ListFeatures":  "internal/httpapi/handlers.go",
-	"AddAudit":      "internal/store/complaints.go",
+	// GetBoard lost its last production caller to GetBoardForMilestone (R17's board
+	// filter) on 2026-11-12: the handler needs the filtered form, so it calls the
+	// filtered form. The anchor moves with the caller -- the point of the anchor is
+	// that SOME production path reaches the method, and one that names a file which no
+	// longer calls it is a stale assertion rather than a failing one.
+	"GetBoardForMilestone": "internal/httpapi/handlers.go",
+	"LinkComplaint":        "internal/httpapi/complaint_links.go",
+	"ListFeatures":         "internal/httpapi/handlers.go",
+	"AddAudit":             "internal/store/complaints.go",
 }
 
 // exportNote is what the inventory says about a method the measurement cannot vouch for.

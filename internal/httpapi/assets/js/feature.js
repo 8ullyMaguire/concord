@@ -364,6 +364,108 @@
     });
   }
 
+  // depLink names the blocker and its state: "blocked by #12 (ready)" is actionable,
+  // "blocked" is not.
+  function depLink(slug, b) {
+    return '<a href="/projects/' + esc(slug) + '/features/' + esc(b.id) + '">' + esc(b.title) + '</a>' +
+      ' <span class="ms-badge">' + esc(b.status) + '</span>';
+  }
+
+  function send(method, path, body) {
+    return fetch(path, {
+      method: method,
+      headers: (function () {
+        var h = { 'Content-Type': 'application/json' };
+        var tok = window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {};
+        for (var k in tok) { if (Object.prototype.hasOwnProperty.call(tok, k)) h[k] = tok[k]; }
+        return h;
+      })(),
+      body: body === undefined ? undefined : JSON.stringify(body)
+    }).then(function (r) {
+      if (!r.ok) {
+        return r.text().then(function (t) {
+          var m = t;
+          try { m = JSON.parse(t).error || t; } catch (e) { /* plain text */ }
+          throw new Error(m || ('HTTP ' + r.status));
+        });
+      }
+      return r.status === 204 ? null : r.json().catch(function () { return null; });
+    });
+  }
+
+  function status(el, msg, isError) {
+    if (!el) return;
+    el.hidden = !msg;
+    el.textContent = msg || '';
+    el.style.color = isError ? '#b91c1c' : '';
+  }
+
+  function wireMilestone(base, featureID) {
+    var panel = document.querySelector('[data-milestone-select]');
+    if (!panel) return;
+    var sel = panel.querySelector('[data-ms-select]');
+    var msg = panel.querySelector('[data-ms-status]');
+    var btn = panel.querySelector('[data-ms-save]');
+    btn.addEventListener('click', function () {
+      var v = sel.value;
+      send('PUT', base + '/features/' + featureID + '/milestone',
+        { milestone_id: v ? Number(v) : null }).then(function () {
+        status(msg, 'Saved. Reload to see the progress bar move.');
+      }).catch(function (e) { status(msg, e.message, true); });
+    });
+  }
+
+  function wireDeps(base, featureID) {
+    var panel = document.querySelector('[data-deps-panel]');
+    if (!panel) return;
+    var msg = panel.querySelector('[data-dep-status]');
+    var input = panel.querySelector('#dep-add');
+    panel.querySelector('[data-dep-add]').addEventListener('click', function () {
+      var id = Number(input.value);
+      if (!id) return;
+      // A cycle is refused here naming the path, so the message is the server's,
+      // not a generic "invalid".
+      send('POST', base + '/features/' + featureID + '/deps', { blocker_id: id })
+        .then(function () { window.location.reload(); })
+        .catch(function (e) { status(msg, e.message, true); });
+    });
+    panel.querySelectorAll('[data-dep-remove]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        send('DELETE', base + '/features/' + featureID + '/deps?blocker_id=' + b.getAttribute('data-dep-remove'))
+          .then(function () { window.location.reload(); })
+          .catch(function (e) { status(msg, e.message, true); });
+      });
+    });
+  }
+
+  function wireEvidence(base, featureID) {
+    var panel = document.querySelector('[data-evidence-panel]');
+    if (!panel) return;
+    var msg = document.querySelector('[data-evidence-status]');
+    var kind = document.getElementById('ev-kind');
+    var ref = document.getElementById('ev-ref');
+    var add = document.querySelector('[data-evidence-add]');
+    if (add) {
+      add.addEventListener('click', function () {
+        var id = Number(ref.value);
+        if (!id) return;
+        send('POST', base + '/features/' + featureID + '/evidence',
+          { kind: kind.value, ref_id: id })
+          .then(function () { window.location.reload(); })
+          .catch(function (e) { status(msg, e.message, true); });
+      });
+    }
+    document.querySelectorAll('[data-evidence-remove]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var parts = b.getAttribute('data-evidence-remove').split(':');
+        send('DELETE', base + '/features/' + featureID + '/evidence?kind=' +
+          encodeURIComponent(parts[0]) + '&ref_id=' + encodeURIComponent(parts[1]))
+          .then(function () { window.location.reload(); })
+          .catch(function (e) { status(msg, e.message, true); });
+      });
+    });
+  }
+
   function notFound(slug, id) {
     return '<div class="empty-state"><p class="empty-state-title">No such feature</p>' +
       '<p class="muted">Feature ' + esc(id) + ' does not exist in ' + esc(slug) +
@@ -403,7 +505,13 @@
     // "this project's complaint list is not readable by you" into "could not load this
     // feature", which is a different and wrong statement -- and it is the statement every
     // other read on this page makes when it fails, so it would be believed.
-    json(base + '/complaints?status=validated').catch(function () { return []; })
+    json(base + '/complaints?status=validated').catch(function () { return []; }),
+    // R17/R18's three reads, each TOLERANT for the reason the complaint list is:
+    // these exist for controls, and a page that cannot offer a control must still
+    // render the feature it is about.
+    json(base + '/milestones').catch(function () { return []; }),
+    json(base + '/features/' + encodeURIComponent(at.id) + '/deps').catch(function () { return {}; }),
+    json(base + '/features/' + encodeURIComponent(at.id) + '/evidence').catch(function () { return []; })
   ]).then(function (res) {
     var f = res[0];
     if (!f) {
@@ -430,7 +538,12 @@
       '<a href="/projects/' + esc(at.slug) + '">' + esc(at.slug) + '</a> / ' +
       '<span>Feature</span></p>' +
       '<h1>' + esc(f.title || 'Untitled feature') + ' ' +
-      '<span class="badge badge-slate">' + esc(f.status || 'proposed') + '</span></h1>' +
+      '<span class="badge badge-slate">' + esc(f.status || 'proposed') + '</span> ' +
+      // The evidence badge (spec §3.3): whether this feature traces to reported pain
+      // or was filed as an idea. It is the answer to "why is this here at all", and
+      // it is derived from what the page actually loaded rather than from a flag.
+      '<span class="ms-badge" data-evidence-badge="' + (complaints.length ? 'complaint' : 'idea') + '">' +
+      (complaints.length ? 'complaint-backed' : 'idea-first') + '</span></h1>' +
       (f.body ? '<p class="lede">' + esc(f.body) + '</p>' : '') +
       '</div></div>';
 
@@ -496,8 +609,68 @@
       '</form>' +
       '<p class="form-status" data-tag-error hidden></p>');
 
+    // Planning (R17/R18): the milestone this feature belongs to and the work it
+    // waits on. Always rendered, because "no milestone" is an answer -- the
+    // features no milestone claims ARE the backlog (spec §4.1).
+    var milestones = Array.isArray(res[6]) ? res[6] : [];
+    var msOpts = milestones.map(function (m) {
+      var sel = (f.milestone_id && Number(f.milestone_id) === Number(m.id)) ? ' selected' : '';
+      return '<option value="' + esc(m.id) + '"' + sel + '>' + esc(m.title) + '</option>';
+    }).join('');
+    var deps = res[7] || {};
+    var blockedBy = Array.isArray(deps.blocked_by) ? deps.blocked_by : [];
+    var blocks = Array.isArray(deps.blocks) ? deps.blocks : [];
+    html += section('Planning',
+      '<div class="ms-panel" data-milestone-select="' + esc(at.id) + '">' +
+      '<h2>Milestone</h2>' +
+      '<div class="ms-row"><select data-ms-select aria-label="Milestone">' +
+      '<option value="">&mdash; none (backlog) &mdash;</option>' + msOpts + '</select>' +
+      '<button type="button" class="btn" data-ms-save>Save</button>' +
+      (milestones.length ? '' : '<a class="muted" href="/projects/' + esc(at.slug) + '/roadmap">Create a milestone on the roadmap</a>') +
+      '</div><p class="form-status" data-ms-status hidden></p></div>' +
+      '<div class="ms-panel" data-deps-panel="' + esc(at.id) + '">' +
+      '<h2>Dependencies</h2>' +
+      '<p class="muted">Blocked by ' + (blockedBy.length ? '' : 'nothing') + '</p>' +
+      (blockedBy.length ? '<ul class="linked-list">' + blockedBy.map(function (b) {
+        return '<li>' + depLink(at.slug, b) +
+          ' <button type="button" class="btn btn-quiet" data-dep-remove="' + esc(b.id) + '">Remove</button></li>';
+      }).join('') + '</ul>' : '') +
+      '<p class="muted">Blocks ' + (blocks.length ? '' : 'nothing') + '</p>' +
+      (blocks.length ? '<ul class="linked-list">' + blocks.map(function (b) {
+        return '<li data-blocked-by="' + esc(b.id) + '">' +
+          '<a href="/projects/' + esc(at.slug) + '/features/' + esc(b.id) + '">' + esc(b.title) + '</a>' +
+          ' <span class="ms-badge">' + esc(b.status) + '</span></li>';
+      }).join('') + '</ul>' : '') +
+      '<div class="ms-row"><label class="form-label" for="dep-add">Blocked by feature #</label>' +
+      '<input id="dep-add" type="number" min="1" placeholder="feature id">' +
+      '<button type="button" class="btn" data-dep-add>Add</button></div>' +
+      '<p class="form-status" data-dep-status hidden></p></div>');
+
+    // Evidence that is not a complaint (§3.4). Rendered beside the complaints
+    // section because together they answer the one question the intake rule asks:
+    // why does this feature exist at all?
+    var evidence = Array.isArray(res[8]) ? res[8] : [];
+    html += section('Other evidence (' + evidence.length + ')',
+      (evidence.length
+        ? '<ul class="linked-list" data-evidence-panel="' + esc(at.id) + '">' + evidence.map(function (ev) {
+            return '<li>' + esc(ev.kind === 'document' ? 'Document' : 'Field report') +
+              ' #' + esc(ev.ref_id) + (ev.title ? ' &middot; ' + esc(ev.title) : '') +
+              ' <button type="button" class="btn btn-quiet" data-evidence-remove="' +
+              esc(ev.kind) + ':' + esc(ev.ref_id) + '">Remove</button></li>';
+          }).join('') + '</ul>'
+        : '<p class="muted" data-evidence-panel="' + esc(at.id) + '">No document or field report is cited as evidence.</p>') +
+      '<div class="ms-row"><label class="form-label" for="ev-kind">Cite</label>' +
+      '<select id="ev-kind" aria-label="Evidence kind"><option value="document">Document</option>' +
+      '<option value="field_report">Field report</option></select>' +
+      '<input id="ev-ref" type="number" min="1" aria-label="Reference id" placeholder="id">' +
+      '<button type="button" class="btn" data-evidence-add>Add</button></div>' +
+      '<p class="form-status" data-evidence-status hidden></p>');
+
     root.innerHTML = html;
     done();
+    wireMilestone(base, at.id);
+    wireDeps(base, at.id);
+    wireEvidence(base, at.id);
     wireContests(base, at.id);
     wireTags(base, at.id);
     wireComplaintLinks(base, at.id);

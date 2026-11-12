@@ -18,6 +18,78 @@ import (
 // set rather than a range check so "XL" is spelled the same way everywhere.
 var validEffortSizes = map[string]bool{"S": true, "M": true, "L": true, "XL": true}
 
+// The intake modes (spec docs/specs/idea-intake-and-milestones-spec.md §3.1).
+// Constants rather than literals because the CHECK constraint, the refusal
+// message and the tests must agree on the spelling, and a typo in one of them
+// is a mode that silently behaves like its neighbour.
+const (
+	IntakeComplaintFirst = "complaint_first"
+	IntakeIdeaFirst      = "idea_first"
+	IntakeBoth           = "both"
+)
+
+// ValidIntakeModes is what a route may accept, in the order a form shows them.
+var ValidIntakeModes = []string{IntakeComplaintFirst, IntakeIdeaFirst, IntakeBoth}
+
+// projectIntakeMode reads the one column that decides §6.2's traceability rule.
+// It returns ErrNotFound rather than a zero value for a missing project, so a
+// caller cannot mistake "no such project" for "complaint_first".
+func (d *DB) projectIntakeMode(ctx context.Context, projectID int64) (string, error) {
+	var mode string
+	err := d.QueryRowContext(ctx,
+		`SELECT intake_mode FROM projects WHERE id = ?`, projectID).Scan(&mode)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", fmt.Errorf("%w: project %d", ErrNotFound, projectID)
+	}
+	return mode, err
+}
+
+// countFeatureEvidence counts everything that can stand as the reason a feature
+// exists: a linked complaint, or an alternative evidence row (a document revision
+// or a field report). §3.4: the rule is about EVIDENCE, not about the complaints
+// table, so a project documenting itself does not have to restate its own spec
+// as pain.
+func (d *DB) countFeatureEvidence(ctx context.Context, featureID int64) (int, error) {
+	var n int
+	err := d.QueryRowContext(ctx, `
+		SELECT (SELECT count(*) FROM feature_complaints WHERE feature_id = ?)
+		     + (SELECT count(*) FROM feature_evidence   WHERE feature_id = ?)`,
+		featureID, featureID).Scan(&n)
+	return n, err
+}
+
+// SetIntakeMode changes a project's intake mode and records the act.
+//
+// The mode decides whose work counts as legitimate input, so the change is an
+// audit act as well as a column: docs/REMAINING.md §42 records that the value and
+// the row must not be able to disagree.
+func (d *DB) SetIntakeMode(ctx context.Context, projectID, actorID int64, mode string) error {
+	valid := false
+	for _, m := range ValidIntakeModes {
+		if m == mode {
+			valid = true
+			break
+		}
+	}
+	if !valid {
+		return fmt.Errorf("%w: intake_mode must be one of %v", ErrInvalid, ValidIntakeModes)
+	}
+	prev, err := d.projectIntakeMode(ctx, projectID)
+	if err != nil {
+		return err
+	}
+	if prev == mode {
+		return nil
+	}
+	if _, err := d.ExecContext(ctx,
+		`UPDATE projects SET intake_mode = ?, updated_at = ? WHERE id = ?`,
+		mode, float64(time.Now().Unix()), projectID); err != nil {
+		return err
+	}
+	return d.AddAudit(ctx, projectID, actorID, "intake_mode", "project", projectID,
+		prev+" -> "+mode)
+}
+
 // Feature represents a proposed solution linked to complaints.
 type Feature struct {
 	ID              int64    `json:"id"`
@@ -34,8 +106,14 @@ type Feature struct {
 	EloRD           float64  `json:"elo_rd"`
 	EloVol          float64  `json:"elo_vol"`
 	StrategicWeight float64  `json:"strategic_weight"`
-	CreatedAt       float64  `json:"created_at"`
-	UpdatedAt       float64  `json:"updated_at"`
+	// MilestoneID is NULL for the backlog, which is a real answer rather than a
+	// missing value: the features no milestone claims ARE the backlog (spec §4.1).
+	MilestoneID *int64 `json:"milestone_id"`
+	// MilestonePosition orders the feature inside its milestone (§6); 0 means
+	// "wherever", which is what almost every row says.
+	MilestonePosition int     `json:"milestone_position"`
+	CreatedAt         float64 `json:"created_at"`
+	UpdatedAt         float64 `json:"updated_at"`
 }
 
 // FeaturePriority carries a feature's priority score for the leaderboard.
@@ -71,8 +149,25 @@ type FeatureComplaintLink struct {
 // claims: 'S' is how big the change is, 1-10 is how many points it costs.
 // Collapsing them into one field is what made the original column unreadable.
 func (d *DB) CreateFeature(ctx context.Context, projectID, authorID int64, title, body, effort string, impact, effortScore *int, linkedComplaints []int64) (Feature, error) {
-	if projectID == 0 || authorID == 0 || len(linkedComplaints) == 0 {
-		return Feature{}, fmt.Errorf("%w: project_id, author_id, and at least one validated complaint are required", ErrInvalid)
+	if projectID == 0 || authorID == 0 {
+		return Feature{}, fmt.Errorf("%w: project_id and author_id are required", ErrInvalid)
+	}
+	// §6.2's traceability rule is per PROJECT, not per instance (spec §3.1). The
+	// old message stated it as the platform's law, which was true while every
+	// project was complaint_first and became wrong the moment one could say
+	// otherwise -- so a reader in an idea_first project was told to file a
+	// complaint the project does not ask for.
+	if len(linkedComplaints) == 0 {
+		mode, err := d.projectIntakeMode(ctx, projectID)
+		if err != nil {
+			return Feature{}, err
+		}
+		if mode == IntakeComplaintFirst {
+			return Feature{}, fmt.Errorf(
+				"%w: this project is complaint_first, so a feature needs at least one validated "+
+					"complaint; a maintainer can change the project's intake mode to idea_first or both",
+				ErrInvalid)
+		}
 	}
 	if effort == "" {
 		effort = "M"
@@ -125,12 +220,12 @@ func (d *DB) GetFeature(ctx context.Context, id int64) (Feature, error) {
 	err := d.QueryRowContext(ctx, `
 		SELECT id, project_id, author_id, title, body, effort, impact, effort_score,
 			impact_ratio, status, elo_r, elo_rd, elo_vol, strategic_weight,
-			created_at, updated_at
+			created_at, updated_at, milestone_id, milestone_position
 		FROM features WHERE id=?`, id).Scan(
 		&f.ID, &f.ProjectID, &f.AuthorID, &f.Title, &f.Body, &f.Effort,
 		&f.Impact, &f.EffortScore, &f.ImpactRatio,
 		&f.Status, &f.EloR, &f.EloRD, &f.EloVol, &f.StrategicWeight,
-		&f.CreatedAt, &f.UpdatedAt)
+		&f.CreatedAt, &f.UpdatedAt, &f.MilestoneID, &f.MilestonePosition)
 	if errors.Is(err, sql.ErrNoRows) {
 		return Feature{}, fmt.Errorf("%w: feature %d", ErrNotFound, id)
 	}
@@ -141,7 +236,7 @@ func (d *DB) GetFeature(ctx context.Context, id int64) (Feature, error) {
 func (d *DB) ListFeatures(ctx context.Context, projectID int64, status string) ([]Feature, error) {
 	query := `SELECT id, project_id, author_id, title, body, effort, impact, effort_score,
 		impact_ratio, status, elo_r, elo_rd, elo_vol, strategic_weight,
-		created_at, updated_at
+		created_at, updated_at, milestone_id, milestone_position
 		FROM features WHERE project_id=?`
 	var args []any = []any{projectID}
 	if status != "" {
@@ -160,7 +255,7 @@ func (d *DB) ListFeatures(ctx context.Context, projectID int64, status string) (
 		if err := rows.Scan(&f.ID, &f.ProjectID, &f.AuthorID, &f.Title, &f.Body,
 			&f.Effort, &f.Impact, &f.EffortScore, &f.ImpactRatio,
 			&f.Status, &f.EloR, &f.EloRD, &f.EloVol, &f.StrategicWeight,
-			&f.CreatedAt, &f.UpdatedAt); err != nil {
+			&f.CreatedAt, &f.UpdatedAt, &f.MilestoneID, &f.MilestonePosition); err != nil {
 			return nil, err
 		}
 		features = append(features, f)
@@ -313,8 +408,44 @@ func (d *DB) SetStrategicWeight(ctx context.Context, featureID int64, newWeight 
 	return d.AddAudit(ctx, f.ProjectID, 0, "set_strategic_weight", "feature", featureID, fmt.Sprintf("weight: %f → %f", f.StrategicWeight, newWeight))
 }
 
-// UpdateFeatureStatus changes a feature's status (M2).
+// UpdateFeatureStatus applies the two rules that belong where work actually moves:
+// §6.2's evidence rule (spec §3.2 item 4) and the dependency rule (spec §6).
+//
+// They live in the store rather than in the two handlers that call it, because a
+// rule enforced at one entry point is a rule with a bypass -- and the board's move
+// route, the trust route and any future caller all end up here.
 func (d *DB) UpdateFeatureStatus(ctx context.Context, featureID int64, status string) error {
+	if status == "ready" || status == "in_progress" {
+		if _, err := d.GetFeature(ctx, featureID); err != nil {
+			return err
+		}
+		if status == "ready" {
+			// An idea may be FILED without a complaint in an idea_first project
+			// (spec §3.1), but it may not be COMMITTED to without evidence.
+			n, err := d.countFeatureEvidence(ctx, featureID)
+			if err != nil {
+				return err
+			}
+			// NO mode exemption. idea_first frees the FILING (spec §3.1); reaching
+			// ready is a commitment to build, and §3.2's gate asks for evidence at
+			// that point in every mode. The escape hatch is §3.4's alternatives -- a
+			// document or a field report -- not a mode that switches the rule off,
+			// because a mode that did would be a mode where "ready" means nothing.
+			if n == 0 {
+				return fmt.Errorf("%w: a feature reaches ready with evidence -- a validated "+
+					"complaint, a project document, or a field report", ErrInvalid)
+			}
+		}
+		if status == "in_progress" {
+			blockers, err := d.OpenBlockers(ctx, featureID)
+			if err != nil {
+				return err
+			}
+			if len(blockers) > 0 {
+				return fmt.Errorf("%w: blocked by %s", ErrInvalid, describeBlockers(blockers))
+			}
+		}
+	}
 	now := float64(time.Now().Unix())
 	_, err := d.ExecContext(ctx, `UPDATE features SET status=?, updated_at=? WHERE id=?`, status, now, featureID)
 	return err

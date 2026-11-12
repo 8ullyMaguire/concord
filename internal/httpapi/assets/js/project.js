@@ -959,6 +959,31 @@ function apiAuth(extra) {
   // server-rendered state: a complaint that appeared without a validation
   // round-trip would be shown as filed even when the server rejected it, and
   // the author would believe they had reported something.
+  // intakeMode and intakeNote read the project's mode once, in the two places the
+  // form needs it: what it will accept, and what it asks for.
+  //
+  // The default is complaint_first -- the same default the migration carries -- so a
+  // project whose payload predates the column (or a cached page) still behaves the
+  // way it always did rather than silently accepting unbacked ideas.
+  function intakeMode(p) {
+    return (p && p.intake_mode) || 'complaint_first';
+  }
+
+  function intakeNote(p) {
+    var mode = intakeMode(p);
+    if (mode === 'idea_first') {
+      return 'Idea-first: file an idea before anybody is hurt. It may be filed without a ' +
+        'complaint, but it still needs evidence (a complaint, a document or a field report) ' +
+        'before it can reach ready.';
+    }
+    if (mode === 'both') {
+      return 'Both are accepted here: answer one of the complaints above, or file an idea if ' +
+        'nothing is broken yet. Evidence is still required before ready.';
+    }
+    return 'A solution to one of the complaints above. Pick which it answers — this project ' +
+      'is complaint-first, so a feature traces to reported pain.';
+  }
+
   function forms(p) {
     if (!(window.ConcordSession && window.ConcordSession.instance().signedIn())) {
       return '<div class="empty-state"><p class="empty-state-title">Sign in to take part</p>' +
@@ -992,17 +1017,24 @@ function apiAuth(extra) {
         '<p class="form-status" data-status hidden></p>' +
       '</form>' +
 
-      '<form class="card" id="feature-form" method="post" action="#">' +
+      '<form class="card" id="feature-form" method="post" action="#" data-intake-mode="' +
+        intakeMode(p) + '">' +
         '<h3 class="form-title">Propose a feature</h3>' +
-        '<p class="form-note">A solution to one of the complaints above. Pick which ' +
-        'it answers — an unlinked feature has no pain score and never ranks.</p>' +
+        // The note states THIS project's intake mode, not the platform's premise, and
+        // it is the only place a reader learns what the form will accept before
+        // submitting. The old text -- "an unlinked feature has no pain score and never
+        // ranks" -- was false: /ranking reads features.elo_r and never joins
+        // complaints, so an unlinked feature ranks on its comparisons like any other.
+        '<p class="form-note">' + intakeNote(p) + '</p>' +
         '<label class="field"><span>Title</span>' +
         '<input name="title" required maxlength="200" placeholder="Search falls back to substring matching"></label>' +
         dupPanel('feature') +
         '<label class="field"><span>What it would do</span>' +
         '<textarea name="body" rows="3" required></textarea></label>' +
-        '<label class="field"><span>Answers complaint</span>' +
-        '<select name="complaint_id"><option value="">Choose…</option>' +
+        '<label class="field"><span>Answers complaint' +
+        (intakeMode(p) === 'complaint_first' ? '' : ' (optional)') + '</span>' +
+        '<select name="complaint_id"><option value="">' +
+        (intakeMode(p) === 'complaint_first' ? 'Choose…' : 'None — file it as an idea') + '</option>' +
           (window.__complaints || []).map(function (c) {
             return '<option value="' + esc(c.id) + '">' + esc(c.title) + '</option>';
           }).join('') +
@@ -1093,8 +1125,14 @@ function apiAuth(extra) {
         ev.preventDefault();
         var fd = new FormData(featureForm);
         var complaintId = Number(fd.get('complaint_id') || 0);
-        if (!complaintId) {
-          setStatus(featureForm, 'Pick the complaint this feature answers. An unlinked feature has no pain score, so it never ranks.', true);
+        // Only complaint_first REQUIRES the link. In idea_first/both the server accepts
+        // an unbacked idea, and a form that still demanded a complaint would be the
+        // client refusing what the project just said was legitimate.
+        // The mode is read off the FORM, not from a variable: wire() receives the
+        // project's id, not the project, and an extra read would be a second source
+        // for a value the render already had.
+        if (!complaintId && featureForm.getAttribute('data-intake-mode') === 'complaint_first') {
+          setStatus(featureForm, 'This project is complaint-first: pick the complaint this feature answers, or a maintainer can change the intake mode in Settings.', true);
           return;
         }
         setStatus(featureForm, 'Proposing…', false);
@@ -1102,7 +1140,7 @@ function apiAuth(extra) {
           project_id: projectID,
           title: String(fd.get('title') || '').trim(),
           body: String(fd.get('body') || '').trim(),
-          linked_complaints: [complaintId]
+          linked_complaints: complaintId ? [complaintId] : []
         }).then(function () {
           window.location.reload();
         }).catch(function (err) {
@@ -1375,12 +1413,42 @@ function apiAuth(extra) {
     }
   }
 
-  function render(p, features, complaints, documents, panels, requests, lists, workItems) {
+  // nextMilestone picks the nearest OPEN milestone: the dated ones first, in date
+  // order, then the undated ones. It returns null rather than an empty object so the
+  // caller can decide not to render a card at all -- a card saying "no milestone" on
+  // every project without one is noise, not information.
+  function nextMilestone(roadmap) {
+    var ms = (roadmap && roadmap.milestones) || [];
+    var open = ms.filter(function (m) { return m.status === 'planned' || m.status === 'active'; });
+    if (!open.length) return null;
+    open.sort(function (a, b) {
+      if (a.target_date && b.target_date) return a.target_date - b.target_date;
+      if (a.target_date) return -1;
+      if (b.target_date) return 1;
+      return a.id - b.id;
+    });
+    return open[0];
+  }
+
+  function render(p, features, complaints, documents, panels, requests, lists, workItems, roadmap) {
     panels = panels || {};
     var badges = '<div class="pill-row" style="margin-top:0.75rem;">' +
       '<span class="badge badge-indigo">' + esc(p.governance_model || 'governed') + '</span>' +
       (p.license ? '<span class="badge badge-slate">' + esc(p.license) + '</span>' : '') +
       '</div>';
+
+    // The next milestone, on the overview (R17). Rendered only when there IS one:
+    // a permanent "no milestone" card would be noise on the many projects that do
+    // not plan that way, and it would also make "the next milestone" look like a
+    // feature the product always has.
+    var next = nextMilestone(roadmap);
+    var nextCard = next
+      ? '<a class="card ms-next" href="/projects/' + esc(p.slug) + '/milestones/' + esc(next.id) + '">' +
+        '<div class="card-title">Next milestone: ' + esc(next.title) + '</div>' +
+        '<p class="card-text">' + (next.target_date ? 'target ' + esc(fmtDate(next.target_date)) : 'no date set') +
+        ' &middot; ' + (next.open || 0) + ' open of ' + (next.total || 0) +
+        (next.at_risk ? ' &middot; <strong>at risk</strong>' : '') + '</p></a>'
+      : '';
 
     var meta = '<div class="meta-row">' +
       (p.created_at ? '<span class="meta-item">created ' + esc(fmtDate(p.created_at)) + '</span>' : '') +
@@ -1436,9 +1504,13 @@ function apiAuth(extra) {
       '<a class="btn btn-secondary" href="/projects">All projects</a>' +
       '</div></div>' +
       '<div class="card mb-6">' + badges + healthBar(p.health_score) + newcomerLine(p) + meta + '</div>' +
+      nextCard +
       '<div class="section-head"><h2 class="section-title" style="font-size:1.25rem;">Complaints</h2>' +
-      '<p class="section-sub">The problems being solved. A feature needs at least one ' +
-      'validated complaint behind it before it is a candidate for anything.</p></div>' +
+      '<p class="section-sub">The problems being solved. ' +
+      (intakeMode(p) === 'complaint_first'
+        ? 'A feature needs at least one validated complaint behind it before it can reach ready.'
+        : 'A feature may be filed as an idea here; evidence is required before ready.') +
+      '</p></div>' +
       (complaints && complaints.length
         ? '<div class="grid-responsive-2">' + complaintCards(complaints, p.slug) + '</div>'
         : '<div class="empty-state"><div class="empty-state-icon">\u{1F4CC}</div>' +
@@ -1566,7 +1638,13 @@ function apiAuth(extra) {
           // Non-fatal as well -- a failed work-item read costs the panel, not the page.
           fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/work-items', { headers: apiAuth() })
             .then(function (r) { return r.ok ? r.json() : []; })
-            .catch(function () { return []; })
+            .catch(function () { return []; }),
+          // The next milestone on the overview (R17: "the next milestone on the
+          // project overview"). Appended LAST for the positional reason above, and
+          // non-fatal: a project with no milestones is the ordinary case.
+          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/roadmap', { headers: apiAuth() })
+            .then(function (r) { return r.ok ? r.json() : null; })
+            .catch(function () { return null; })
         ])
           .then(function (res) {
             // Positional, in the order of the Promise.all above. Requests is
@@ -1585,7 +1663,7 @@ function apiAuth(extra) {
               fieldReports: res[4],
               solutions: res[5],
               alternatives: res[6]
-            }, requests, lists, workItems);
+            }, requests, lists, workItems, res[10]);
             if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
             wire(box, slug, p.id);
           });

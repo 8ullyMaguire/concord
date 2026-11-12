@@ -314,6 +314,61 @@ func (s *Server) handleBoardFeed(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// --- R17: the milestones feed ------------------------------------------------
+
+// handleMilestoneFeed publishes opens and closes.
+//
+// A milestone is the one object here whose whole point is a DATE, and a date
+// nobody is told about is a date nobody plans around -- so the same rows the
+// roadmap page prints are published as a feed, with the time they last changed
+// shape (which only the audit log knows).
+func (s *Server) handleMilestoneFeed(w http.ResponseWriter, r *http.Request) {
+	format, ok := resolveFeedFormat(r, feedSuffix(r))
+	if !ok {
+		writeJSON(w, http.StatusBadRequest, map[string]string{"error": "unsupported format"})
+		return
+	}
+	base, ok := s.feedBase(w)
+	if !ok {
+		return
+	}
+	projectID, slug, ok := s.feedProjectID(w, r)
+	if !ok {
+		return
+	}
+	events, err := s.Store.MilestoneEvents(r.Context(), projectID)
+	if err != nil {
+		mapError(w, err)
+		return
+	}
+	self, alt := feedSelfAndAlt(base, "/projects/"+slug+"/milestones/feed.xml", "/projects/"+slug+"/roadmap")
+	f := Feed{
+		Title:       slug + ": milestones",
+		SelfURL:     self,
+		AltURL:      alt,
+		Description: "Milestones on " + slug + ": opened, moved and closed, most recently changed first.",
+	}
+	for _, e := range events {
+		when := e.CreatedAt
+		title := e.Title + " opened"
+		if e.StatusChangedAt > 0 {
+			when = e.StatusChangedAt
+			title = e.Title + " is " + e.Status
+		}
+		f.Items = append(f.Items, FeedItem{
+			ID:         feedPath(base, "/projects/"+slug+"/milestones/"+strconv.FormatInt(e.MilestoneID, 10)),
+			Title:      title,
+			Link:       feedPath(base, "/projects/"+slug+"/milestones/"+strconv.FormatInt(e.MilestoneID, 10)),
+			Updated:    floatTime(when),
+			Categories: []string{e.Status},
+		})
+	}
+	f.Updated = feedUpdated(f.Items)
+	if err := writeFeed(w, format, f); err != nil {
+		mapError(w, err)
+	}
+}
+
 // --- F4: consensus calls, WITHOUT the tally ----------------------------------
 
 func (s *Server) handleConsensusFeed(w http.ResponseWriter, r *http.Request) {
