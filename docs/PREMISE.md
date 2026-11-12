@@ -1,63 +1,97 @@
 # Concord — the premise
 
-Concord is a forge: a place to host code, discuss changes, and ship software. What makes it different is what it does *between* the code. It turns the messy, political, exhausting job of deciding what to build into something structured, transparent, and shared.
+Concord is a forge: host code, discuss changes, ship software. What makes it different is
+what it does *between* the code — it turns the political, exhausting job of deciding what to
+build into something structured, transparent and shared.
 
-*(This is the short version, written to be shared. The full spec lives in `concord-spec-r4.md` next to this file.)*
+*(The short version, written to be handed to someone. The full argument is
+`concord-spec-r4.md`; the inventory of what exists today is `docs/FEATURES.md`; the status
+counts live in `docs/HANDOFF.md` and this file does not repeat them.)*
 
 ## The problem
 
-Every software project answers the same questions — what hurts, what to build, what to merge — and today's forges answer them badly:
+Every project answers the same three questions — what hurts, what to build, what to merge —
+and today's forges answer them badly:
 
-- Feature requests pile up in issue trackers as competing demands. Noise wins, loudness wins, and whoever files the most tickets wins.
-- Roadmaps live in a maintainer's head. Contributors can't see why something matters, so they can't help decide.
+- Feature requests pile up as competing demands. Loudness wins; whoever files most wins.
+- Roadmaps live in a maintainer's head, so contributors cannot see why anything matters and
+  cannot help decide.
 - Maintainers burn out carrying every decision alone.
-- "Awesome lists" — how the ecosystem organizes its knowledge — are markdown files in git repos: no way to classify entries, no way to rank them, merge wars over what gets in.
-- Search is an afterthought. Try finding "well-maintained Rust CLIs, permissive license, active in the last month" on any forge.
+- "Awesome lists" are markdown files: unclassifiable, unrankable, merge wars over what's in.
+- Search is an afterthought. Try finding "well-maintained Rust CLIs, permissive license,
+  active last month" on any forge.
 
 ## The flip
 
-Code hosting is the substrate. Decisions are the product.
+Code hosting is the substrate. **Decisions are the product.**
 
-1. **Complaints, not feature requests.** Work starts as a structured problem report: who is hurt, how often, what the workaround costs. A feature must trace back to validated complaints. "I have this too" is a first-class interaction.
+1. **Complaints, not feature requests.** Work starts as a structured problem report: who is
+   hurt, how often, what the workaround costs. A feature traces back to validated complaints,
+   and "I have this too" is a first-class act rather than a comment nobody counts.
 
-2. **Solutions compete.** Proposed features are ranked by pairwise comparison (Glicko-2): "which should we build first, A or B?" Cheap to answer, hard to spam, mathematically transparent. Priority is computed, never hand-assigned.
+2. **Solutions compete.** Features are ranked by pairwise comparison ("which first, A or B?")
+   under Glicko-2: cheap to answer, hard to spam, and the arithmetic is inspectable. Priority
+   is computed, never assigned by hand.
 
-3. **Consensus, not command.** Features pass a formal consent round — consent, stand aside, abstain, or block with a stated principle and remedy — with quorum. An unresolved block needs a supermajority or a logged, overridable safety veto. Maintainers exist and matter, but their powers are housekeeping and safety. Nobody steers alone; a project can opt into maintainer-led mode, but the default is collective.
+3. **Consensus, not command.** A feature passes a consent round — consent, stand aside,
+   abstain, or block with a stated principle and remedy — with quorum. An unresolved block
+   needs a supermajority, or a logged safety veto that can itself be overridden. Maintainers
+   do housekeeping and safety, not direction; a project may opt into maintainer-led mode, but
+   collective is the default.
 
-4. **Kanban with teeth.** Work moves through phases, and each advance is gated: nothing reaches Ready without consensus; nothing lands without a reviewer's technical approval and a quorum of collaborator confirmations. WIP limits protect attention.
+4. **Planning is written down.** Features group into milestones with dates and statuses, on a
+   roadmap that shows planned against shipped. A dependency that would close a loop is
+   refused by name, and work cannot start on top of an unshipped blocker.
 
-5. **Discovery is the point.** Projects are exhaustively, collaboratively tagged. Search is a query language, not a box: filter by tag, language and its percentage, license, governance model, and a transparent maintenance-health score — commit recency, review latency, contributor breadth, release cadence — where every component is exposed so you can reweight it yourself. API-first, with facets on every result. And when search isn't enough, ask the forge: the request board lets you describe what you need in plain language and get community-ranked project answers, so nobody has to start a Reddit thread or trawl alternativeto.net.
+5. **Kanban with teeth.** Each phase change is gated: nothing reaches Ready without evidence
+   and consensus, nothing lands without a technical approval and a quorum of collaborator
+   confirmations. WIP limits protect attention.
 
-6. **Lists are objects, not files.** Awesome lists become collaborative databases: anyone proposes entries, quorum admits them, pairwise ranking orders them, and search finds entries across every list on the instance.
+6. **Discovery is the point.** Projects are exhaustively, collaboratively tagged. Search is a
+   query language, not a box — tags, language share, license, governance, and a transparent
+   maintenance-health score whose every component you can reweight yourself, with facets on
+   every result. When a query is not enough, ask the forge: the request board takes plain
+   language and returns community-ranked answers.
 
-7. **Users run the site.** Instance admins keep the lights on — uptime, configuration, backups, legal — and hold no content authority. Moderation, curation, tags, and direction all run through the same user-driven quorum machinery, and every use of admin power is logged and auditable. And taking part does not begin with an account: a visitor can file a complaint, comment or vote as a nameless guest until the instance reaches a configurable size, and registering moves what they did into their account rather than abandoning it. The door closes by being asked to (create an account, once the place is big enough to be worth signing up for), not by a form.
+7. **Lists are objects, not files.** An awesome list is a database: entries are proposed,
+   admitted by quorum, ordered by pairwise ranking, and findable from search across lists.
 
-8. **Fork-friendly.** Consensus failing is a feature, not a crisis: fork the project or the instance. Federation (ActivityPub/ForgeFed) is on the roadmap, so forks can still share complaints, lists, and code.
+8. **Users run the site.** Instance admins keep the lights on — uptime, config, backups,
+   legal — and hold no content authority. Moderation, curation, tagging and direction run
+   through the same quorum machinery, and every act of admin power is logged and auditable.
+   Taking part does not begin with an account: a visitor can file, comment and vote as a
+   nameless guest until the instance reaches a configured size, and registering carries what
+   they did into their account. The door closes by being asked to sign up, not by a form.
+
+9. **Fork-friendly.** Consensus failing is not a crisis: fork the project or the instance.
+   Federation (ActivityPub/ForgeFed) is on the roadmap so forks can share complaints, lists
+   and code.
 
 ## What Concord is not
 
-It is not a GitHub clone with extra buttons, and it does not replace git. It starts as a decision layer over an existing Forgejo or Gitea instance — OAuth login, webhooks, bot-mediated merges — and grows into a full forge from there. It is not raw vote-based democracy either: it is consent-based, blocks require remedies, and silence never decides anything.
+Not a GitHub clone with extra buttons, and not a replacement for git. It begins as a decision
+layer over an existing Forgejo or Gitea instance — OAuth login, webhooks, bot-mediated merges
+— and grows into a forge. Nor is it raw vote-counting democracy: it is consent-based, blocks
+must carry remedies, and silence never decides anything.
 
 ## Status
 
-Built and running: a live instance at <https://concord.polarisocial.xyz>. Go, chi, SQLite; the
-complaint board and request board; the Glicko-2 pairwise ranking, including the per-project
-criteria table; the full consent round (stances, stand-asides, blocks with remedies, quorum, the
-second override window, and a decision record written as an ADR); the merge gate; taxonomy and tag
-proposals; collaborative lists; documents; search with facets; the moderation and audit surfaces.
-A visitor with no account can take part (§7) until the instance passes its configured monthly-active
-threshold, and the cookie notice states what is stored and why before anything is.
+Running at <https://concord.polarisocial.xyz>: the complaint board, request board, Glicko-2
+pairwise ranking with per-project criteria, the full consent round (stances, stand-asides,
+blocks with remedies, quorum, override window, decision record), the merge gate, milestones
+and the roadmap, feature dependencies, taxonomy and tag proposals, collaborative lists,
+documents, faceted search, and the moderation and audit surfaces. A visitor without an account
+can take part until the instance passes its configured monthly-active threshold, and the
+cookie notice states what is stored before anything is.
 
-Verified rather than asserted: in-memory test databases per test, 1262 Go tests, several hundred
-browser tests, and 134 Go mutation gates plus 33 JavaScript ones — every mutant must be killed, so a
-green run means the rule it names was actually exercised rather than merely declared. `make verify`,
-`make gates` and `make e2e` are the three commands, and `docs/HANDOFF.md` carries the counts this
-paragraph deliberately does not repeat: a number written in two places is a number that disagrees
-with itself eventually, and this file is the one a stranger reads first.
+Everything above is verified rather than asserted: per-test in-memory databases, Go and
+JavaScript mutation gates where every mutant must be killed, and browser suites that drive the
+real pages. `make verify`, `make gates` and `make e2e` are the three commands.
 
-Not built yet, stated plainly: federation (ActivityPub/ForgeFed) — today a fork is a fork with no
-shared state; email verification and captcha — so the guest door is rate-limited by address rather
-than proven-human; and there is no retention policy for guests who never register.
+Not built, stated plainly: federation — today a fork is a fork with no shared state; email
+verification and captcha — so the guest door is rate-limited by address rather than proven
+human; a retention policy for guests who never register; and a consensus call over a whole
+milestone rather than one feature.
 
-If this sounds like your kind of forge, read `concord-spec-r4.md` and join in — the whole point is
+If this sounds like your kind of forge, read `concord-spec-r4.md` and join in — the point is
 that direction is decided by the people who show up.
