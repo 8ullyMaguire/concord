@@ -103,7 +103,7 @@ func main() {
 	}
 
 	f := newFetcher(os.Getenv("CONCORD_FORGE_TOKEN"), *rate)
-	synced, skipped, failed := 0, 0, 0
+	synced, skipped, deferred, failed := 0, 0, 0, 0
 	for _, p := range projects {
 		fields, err := store.ParseRepoURL(p.RepoURL)
 		if err != nil {
@@ -115,6 +115,16 @@ func main() {
 		}
 		snap, err := f.snapshot(ctx, p.RepoHost, fields)
 		if err != nil {
+			// A rate limit is not this project's failure and not this command's: the forge is
+			// asking for a pause, the data is unchanged, and the next pass reads it. Counting it
+			// as failed made the timer exit 1 every hour on a shared IP, which trains an operator
+			// to ignore the unit -- and the unit has to stay loud for the failures that ARE bugs
+			// (a wrong URL, a moved repository). Deferred, and said out loud in the summary.
+			if isRateLimited(err) {
+				fmt.Printf("DEFERRED %s: %v\n", p.Slug, err)
+				deferred++
+				continue
+			}
 			fmt.Printf("FAILED %s: %v\n", p.Slug, err)
 			failed++
 			continue
@@ -181,12 +191,14 @@ func main() {
 		}
 		synced++
 	}
-	fmt.Printf("synced %d, skipped %d, failed %d of %d\n", synced, skipped, failed, len(projects))
+	fmt.Printf("synced %d, skipped %d, deferred %d, failed %d of %d\n",
+		synced, skipped, deferred, failed, len(projects))
 	if failed > 0 {
 		os.Exit(1)
 	}
-	if synced == 0 {
+	if synced == 0 && deferred == 0 {
 		// Nothing measured is not success. Exit non-zero so the timer's journal shows it.
+		// Deferred-only is different: the pass ran and the forge asked it to wait.
 		fmt.Fprintln(os.Stderr, "no project could be measured")
 		os.Exit(1)
 	}
@@ -208,6 +220,63 @@ func newFetcher(token string, rate time.Duration) *fetcher {
 }
 
 // get performs one GET with the politeness delay and the token, and decodes into out.
+
+// isRateLimited reports whether a fetch failed because the forge asked for a pause rather than
+// because the repository is gone. GitHub and Forgejo both answer 403 with the words "rate limit"
+// in the body; a 404 says the repository moved, which is a data bug and must stay a failure.
+func isRateLimited(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "403") && strings.Contains(msg, "rate limit")
+}
+
+// forgejoCommit is one row of a Gitea/Forgejo /commits page, reduced to the identity fields.
+type forgejoCommit struct {
+	// Author is the FORGE ACCOUNT the commit is linked to, and it is null whenever the commit's
+	// email is not one the instance knows -- which on this instance is the common case, because
+	// the repositories are pushed from a mail address Forgejo has no account for.
+	Author struct {
+		Login string `json:"login"`
+		Name  string `json:"name"`
+	} `json:"author"`
+	// Commit is the commit itself, and its author is always present.
+	Commit struct {
+		Author struct {
+			Name  string `json:"name"`
+			Email string `json:"email"`
+		} `json:"author"`
+	} `json:"commit"`
+}
+
+// countForgejoAuthors counts distinct people in one /commits page.
+//
+// The fallback order is the point. Reading only `author.login` reported 0 contributors for a
+// repository with 238 commits by one person, and the project page then showed "0 contributors" --
+// a falsehood rendered as a measurement. `author` is null for most repositories here, so the
+// linked account cannot be the primary source; the commit's own email can, and it is stable
+// across display-name changes. The name is the last resort, because two people can share one.
+func countForgejoAuthors(commits []forgejoCommit) int {
+	authors := map[string]bool{}
+	for _, c := range commits {
+		who := c.Author.Login
+		if who == "" {
+			who = c.Commit.Author.Email
+		}
+		if who == "" {
+			who = c.Commit.Author.Name
+		}
+		if who == "" {
+			who = c.Author.Name
+		}
+		if who != "" {
+			authors[who] = true
+		}
+	}
+	return len(authors)
+}
+
 func (f *fetcher) get(ctx context.Context, url string, out any) error {
 	if f.rate > 0 {
 		if wait := f.rate - time.Since(f.last); wait > 0 {
@@ -459,26 +528,11 @@ func (f *fetcher) gitea(ctx context.Context, root string, r store.RepoFields) (s
 
 	// Gitea has no contributors endpoint on every version, so distinct commit authors is the
 	// measure: it is the same population the scorer means by "breadth", read from commits.
-	var commitsPage []struct {
-		Author struct {
-			Login string `json:"login"`
-			Name  string `json:"name"`
-		} `json:"author"`
-	}
+	var commitsPage []forgejoCommit
 	if err := f.get(ctx, base+"/commits?limit=50", &commitsPage); err != nil {
 		return snap, fmt.Errorf("commits: %w", err)
 	}
-	authors := map[string]bool{}
-	for _, c := range commitsPage {
-		who := c.Author.Login
-		if who == "" {
-			who = c.Author.Name
-		}
-		if who != "" {
-			authors[who] = true
-		}
-	}
-	snap.Contributors = len(authors)
+	snap.Contributors = countForgejoAuthors(commitsPage)
 
 	var releases []struct {
 		PublishedAt *time.Time `json:"published_at"`

@@ -50,8 +50,17 @@ under `concord-proposalsweep.timer` (daily 03:20 UTC, installed AND enabled by `
 marks pending proposals older than `CONCORD_PROPOSAL_TTL_DAYS` (default 30, `0` disables) as
 `stale`, one audit act each with a NULL actor, and the queue stops listing them. It does not
 withdraw: `withdrawn` would put a decision in the proposer's mouth they did not make.
-Still owed: a named `kind=moderation` filter on `/audit`, the standings-page link (`M3`), and
-telling the affected author anything at all (§8 of the spec). Spec
+Q5's data half shipped as §39: `scripts/build_forge_repos.py` (+ `make forge-seed`) rebuilds
+`seed/forge_repos.json` from the catalog and the forges, verifies every URL before writing it,
+and refuses to write at all when a forge answers 403 (`--offline` rebuilds from the database
+instead). The seed went from 5 to **23 of 73** verified repositories; `forgeseed` applied 20. The
+same pass fixed two ingest defects: `contributors` read 0 for every Forgejo repository whose commits
+are not linked to a forge account (now falls back to the commit's own email/name), and a 403 rate
+limit failed the whole job (now `deferred`, exit 0; a 404 is never softened). `make deploy-admin` no
+longer disables the timers it installs, and `concord-healthsync.timer` is enabled.
+Still owed: a forge token (`CONCORD_FORGE_TOKEN`) so the four private repositories can be seeded and
+GitHub's anonymous window stops being shared, and telling the affected author anything at all (§8 of
+the spec, the weakest part of v1 — no inbox exists). Spec
 `docs/specs/moderation-spec.md`, plan `docs/plans/moderation.md`, estate verdict
 `~/secondbrain/10-Projects/polaris-estate-moderation-2026-11-11.md`.
 Two facts the plan turned on, both still true: `RemoveArenaEntry` had no caller before this, and

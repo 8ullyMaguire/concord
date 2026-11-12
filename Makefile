@@ -235,8 +235,10 @@ deploy-admin: admin-build
 	cp deploy/concord-statsnapshot.service deploy/concord-statsnapshot.timer $(HOME)/.config/systemd/user/
 	cp deploy/concord-proposalsweep.service deploy/concord-proposalsweep.timer $(HOME)/.config/systemd/user/
 	systemctl --user daemon-reload
-	systemctl --user disable --now concord-healthsync.timer 2>/dev/null || true
-	systemctl --user disable --now concord-statsnapshot.timer 2>/dev/null || true
+	@# No `disable --now` here. This target INSTALLS units; it does not decide whether a job is
+	@# running. Disabling on every install meant a redeploy silently switched off an hourly pass
+	@# somebody had turned on deliberately, and the only symptom was data that quietly stopped
+	@# arriving. A fresh install leaves them disabled by default, which is the intended state.
 	@echo "Installed. Enable the hourly pass with:"
 	@echo "  systemctl --user enable --now concord-healthsync.timer"
 	@echo "Enable the daily snapshot (STAT-3) with:"
@@ -246,6 +248,15 @@ deploy-admin: admin-build
 	@# local database, and a sweep that is installed but never enabled is a queue that never drains.
 	systemctl --user enable --now concord-proposalsweep.timer
 	@echo "proposalsweep enabled (daily, 03:20 UTC + up to 5m)."
+
+# Q5: regenerate seed/forge_repos.json from the live catalog and the two forges. Verification of
+# every URL happens inside the script -- a URL that does not answer 200 anonymously is written as a
+# skip with the reason, because healthsync has no token on this host and would fail on it hourly.
+# CONCORD_LIVE_DB overrides the database, which is otherwise the deployed instance's.
+forge-seed:
+	python3 scripts/build_forge_repos.py \
+		--db "$${CONCORD_LIVE_DB:-$$HOME/.local/share/concord/concord.db}" \
+		--out seed/forge_repos.json
 
 tidy:
 	go mod tidy

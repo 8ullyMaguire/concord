@@ -4512,16 +4512,96 @@ the row, and selecting "Expired, no consensus" renders
    audit page, not from the arena they are looking at.
 2. **A named `kind=moderation` filter on `/audit`** — `action=arena.remove` works, but you have to
    know the action name to ask.
-3. **`concord-healthsync` still exits 1, for two measured reasons** -- not the sweep, but found
-   while checking which timers were on: `projects.repo_url` is set for **5 of 72** live projects
-   (the Q5 data gap), and the one URL that is wrong is `ferrisfeed` ->
-   `https://git.polarisocial.xyz/hirrolot19/ferrisfeed`, which answers `404 No such API route`
-   (Forgejo's message for a missing repo; `/api/v1/version` and another repo both answer 200 from
-   the same host, so the instance and the URL shape are fine). The other failure is a transient
-   DNS timeout against `api.github.com`. The timer is INACTIVE, so this is not running today;
-   enabling it again without the seed fix restores an hourly failure.
+3. **`concord-healthsync`** -- FIXED, and the fix turned up two defects in the ingest itself.
+   See §39: the seed went from 5 to 23 verified repositories, `contributors` no longer reads 0 for
+   every Forgejo repository, and a rate limit is now *deferred* rather than reported as a failure.
 4. **The affected author is told nothing** (spec §8, still the weakest part of v1).
 5. **Theme proposals are expired but not queued**: they live on the themes settings page, so the
    sweep marks them stale where no queue lists them. Correct today, and worth a queue entry if a
    reviewer ever needs to consent to one from `/curation`.
 
+## §39 — Q5's data half: 5 of 74 became 23 of 73, and the two defects the ingest was hiding
+
+### 39.1 What Q5 was
+
+R9 shipped the repository-identity ingest and left `seed/forge_repos.json` at **5 of 74** entries,
+the rest skipped with the reason `"not stated (Q5)"`. Two consequences, both measured today:
+
+- `sort=health` ranked almost entirely unknown projects.
+- `concord-healthsync` exited 1 every hour: one seeded URL (`ferrisfeed` ->
+  `hirrolot19/ferrisfeed`) answers `404 No such API route`, and one GitHub fetch hit a DNS timeout.
+
+### 39.2 The decision: generate the file, verify every URL, never guess
+
+`scripts/build_forge_repos.py` (and `make forge-seed`) rebuilds `seed/forge_repos.json` from the
+catalog and the two forges:
+
+1. **A slug gets a repository only when the name matches on one of the two accounts, or an alias in
+   the script's `ALIASES` table says why it is the same project.** Three aliases exist, each with
+   its justification beside it: `ferrisfeed` -> `piefed-rs` (the site is that deployment, and the
+   local checkout named `ferrisfeed` has its origin there), `feedgen` -> `bluesky-feedgen`, and
+   `ficnexus` -> the GitHub copy (the Forgejo one is private).
+2. **Every URL is fetched before it is written.** A URL that does not answer 200 anonymously is
+   written as a skip with the measured reason, because `healthsync` has no token on this host and
+   would fail on it hourly.
+3. **A 403 is not a 404.** The first regeneration proved this the expensive way: GitHub's
+   unauthenticated window was spent, six verification calls answered 403, and the script wrote
+   them as skips -- which `forgeseed` applies by CLEARING the repository. Six good entries were
+   silently unseeded. `verify()` now retries, then **aborts the run without writing a file**, and
+   `--offline` rebuilds the file from what the database already holds for the hours the forges
+   cannot be asked. Verified: `ABORTED: github 8ullyMaguire/ficnexus answered 403 on 4 attempts;
+   nothing written`, and no file existed afterwards.
+
+### 39.3 The result
+
+```
+$ make forge-seed            # online; verified
+17/73 slugs carry a verified repository   <- rate-limited hour, see 39.2
+$ python3 scripts/build_forge_repos.py --db ... --offline --out seed/forge_repos.json
+23/73 slugs carry a repository
+$ ./bin/forgeseed -db ... 
+applied 20 of 73 (3 already set, 0 cleared, 50 skipped)
+$ sqlite3 concord.db "select count(*) from projects where repo_url != ''"
+23
+```
+
+The skips are now specific: four private repositories (`suki`, `blackrep`, `ascend`,
+`ao3downloader` -- `404` anonymously, and the ingest has no token), two on `git.disroot.org` which
+is not one of the three hosts `ParseRepoURL` accepts, three upstream Lemmy projects that are not
+the user's repositories, one belonging to another author, four that do not exist anywhere
+(`media-wiki` aside), a mirror that would double-count, and a slug that records a broken checkout.
+
+### 39.4 Two defects the ingest was hiding
+
+**Contributors was 0 for most repositories, including ones with hundreds of commits.** Gitea's
+`author` object on a commit is NULL when the commit's email is not linked to a forge account, and
+that is the common case here (the pushes come from `hirrolot19@post.cc`, which the instance does
+not know). Reading only `author.login` produced `contributors=0` for a repository with 238 commits
+by one person, and the project page then rendered "0 contributors" -- a falsehood shown as a
+measurement. `countForgejoAuthors` now falls back to the commit's own identity: login, then email
+(stable across display-name changes), then name. Live: `concord contributors=2`,
+`gravity contributors=3`, `lorebook contributors=3`.
+
+**A rate limit failed the whole job.** Six GitHub repositories answered 403 on a shared IP and the
+unit exited 1, which trains an operator to ignore the one unit that has to stay loud for the
+failures that ARE bugs. `isRateLimited` classifies 403 + "rate limit" as **deferred**: reported in
+the summary, exit 0. A 404 is never softened -- that is a wrong URL, the thing Q5 was about.
+Live: `synced 17, skipped 0, deferred 6, failed 0 of 23`, unit finished cleanly.
+
+### 39.5 Operational change
+
+`make deploy-admin` no longer runs `systemctl --user disable --now` on the timers it installs. It
+installs units; it does not get to decide whether a job is running. Disabling on every install
+meant a redeploy silently switched off a pass somebody had turned on, and the only symptom was
+data that quietly stopped arriving. `concord-healthsync.timer` is now enabled on this host.
+
+### 39.6 Still owed
+
+1. **A forge token.** `CONCORD_FORGE_TOKEN` unset is why four private repositories stay unseeded
+   and why GitHub's 60/hour anonymous window is shared with everything else on the IP. One token
+   in the unit's `Environment=` fixes both; it needs a credential, which this session does not
+   handle.
+2. **`contributors` for GitHub** comes from the contributors endpoint (capped at 100, a floor not a
+   count) and for Forgejo from the first 50 commits -- the two are not the same measure across
+   hosts. Recorded, not unified.
+3. **M3, the standings-page link**, and the named `kind=moderation` filter on `/audit` (§38.4).
