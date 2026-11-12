@@ -5199,3 +5199,43 @@ passes "no error".
 **Still absent, and now for a different reason.** Milestone-level consensus (a call over
 a milestone as one unit) is the one filed idea with no code: it needs a new arena kind,
 its own weighting and a charter read. That is the next milestone, and it is not a route.
+
+### 44.1 Live walk: the detach on concord.polarisocial.xyz
+
+Deployed `pre-merge-2026-11-05-53-g9043a47`. Probe account, own project, own
+complaint; rows deleted afterwards (projects 77 -> 73, no orphan features,
+`PRAGMA integrity_check` ok).
+
+    POST .../complaints  {"project_id":78,"title":"Export drops rows (154815)", ...}
+    POST .../complaints/2395/validate -> 200
+    POST .../features    {"project_id":78, ..., "linked_complaints":[2395]} -> 5773
+    GET  .../features/5773/complaints -> 1 entry  (status validated)
+
+    DELETE .../features/5773/complaints/2395
+    HTTP 200 {"complaints": [], "feature_id": 5773}
+
+    DELETE .../features/5773/complaints/2395      (again)
+    HTTP 200 {"complaints": [], "feature_id": 5773}      <- idempotent, not an error
+
+    GET .../audit/?action=unlink_complaint
+    {"id": 9196, "action": "unlink_complaint", "entity": "feature", "entity_id": 5772,
+     "detail": "complaint 2394: The export drops the last row", ...}
+
+And in a real browser on the live site, signed in, after accepting cookies: the
+feature page rendered `Complaints (1)` with one Detach button; clicking it landed on
+`Complaints (0)`, zero buttons, and the sentence "No validated complaint is linked to
+this feature". That is the DOM claim, which the route returning 200 cannot make.
+
+**Three shapes this walk cost, all worth knowing before the next probe:**
+
+- `POST /complaints` takes `project_id` in the BODY, exactly like `POST /features`,
+  although both lists are read from the path. Sending only the path answers
+  `project_id and author_id are required`.
+- **Duplicate detection is instance-wide and it gates a probe.** A complaint whose title
+  matches an existing one is refused with "an almost identical entry already exists"
+  and needs `confirm_duplicate: true`; the same is true of the feature. A re-run of the
+  same probe is therefore blocked by its own previous run, which is the feature working.
+- **The live browser needs the consent cookie too.** A scripted page had a valid token
+  and still got `cookies must be accepted before interacting with this site` — the gate
+  is a cookie, not a credential, so `POST /api/v1/consent` from the page's own origin is
+  what unblocks the write.
