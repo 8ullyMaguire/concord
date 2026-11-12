@@ -48,7 +48,7 @@ owed and one is now done.
    self-review would write a number that means nothing.
 
 **Deployed but not yet live-proven**: the inbox of §45, until `make deploy` runs and the live
-probe in `REMAINING` §45.5 is pasted there. Everything else this day is live.
+probe is pasted in `REMAINING` §45.5 — everything this day is live.
 
 **What the last gates run cost, and found.** `make e2e` had not been run since these passes,
 and it does not run inside `make gates` (gates is the mutation half; `verify` is the static

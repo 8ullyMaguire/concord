@@ -5382,3 +5382,40 @@ is a gate that reports success by doing nothing — and the fix is the anchor, n
 
 Both are recorded here rather than in a commit message alone, because the lesson is the same in
 both: the number to distrust is the one that says everything ran.
+
+### 45.5 Live walk: the inbox on concord.polarisocial.xyz
+
+Deployed `pre-merge-2026-11-05-60-g63f752f` (schema 39, migration 0039 applied). Two probe
+accounts, because `notifyTx` skips a self-decision — one account rejecting its own complaint
+would prove the opposite of what this walk is for. The second account joined through an invite,
+which is the only route that writes a membership.
+
+    POST .../projects/notif-221924/invites          -> token
+    POST /api/v1/auth/redeem-invite {"token":...}  -> {"status":"joined","role":"contributor"}
+    POST .../projects/notif-221924/complaints      -> id 2405 ("Buy my course", by the author)
+    POST .../complaints/2405/reject   (as the moderator)  -> HTTP 200
+
+    GET /api/v1/notifications   (as the author)
+    {"notifications":[{"id":1,"kind":"complaint_rejected","project_id":76,
+      "project_slug":"notif-221924","subject_id":2405,"title":"Buy my course (221924)",
+      "reason":"rejected as spam","actor":"notifmod221924","created_at":1794518366,
+      "read":false}],"unread":1}
+
+    GET /notifications with the author's navigation cookie
+    data-unread-count="1"                       <- in the FIRST PAINT, server-rendered
+    occurrences of the signed-out text: 0
+
+    POST /api/v1/notifications/read-all  -> {"marked":1}
+    data-unread-count occurrences after clearing: 0
+
+    GET /api/v1/notifications (as the moderator) -> {"notifications":[],"unread":0}
+
+Cleanup: projects back to 73, notifications 0, 0 features without a project, 0 probe accounts,
+`PRAGMA integrity_check` ok.
+
+**One shape this cost, worth knowing before the next probe:** an invite is minted with an empty
+body and answered as `{"token": ...}`, and redeemed as `{"token": ...}`. A `{"role": ...}` body is
+accepted silently — the role is not a parameter — and the redeem call then fails with
+`{"error":"invalid"}` because the token was never read from the response. The first run of this
+walk did exactly that and produced a 403 on the reject, which read like a permissions bug and was
+a membership that had never been granted.
