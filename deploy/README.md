@@ -27,3 +27,27 @@ journalctl --user -u concord.service -f
 - **8006**: Concord API (Cloudflare route)
 - **5432**: PostgreSQL (gravity)
 - **8191**: Ollama (local)
+
+## Timers (admin jobs)
+
+`make deploy-admin` installs the three one-shot jobs and their units.
+
+| Timer | When | Enabled by deploy-admin? | What it does |
+|---|---|---|---|
+| `concord-healthsync.timer` | hourly | no | reads repository health from GitHub / Forgejo / Codeberg |
+| `concord-statsnapshot.timer` | 03:10 UTC daily | no | writes one `instance_stats` row for the day |
+| `concord-proposalsweep.timer` | 03:20 UTC daily | **yes** | marks undecided proposals `stale` after `CONCORD_PROPOSAL_TTL_DAYS` (default 30, `0` disables) |
+
+The two forge-touching jobs are installed disabled: switching them on spends someone's rate limit
+against shared infrastructure, so whoever accepts that cost enables them. The sweep reads and
+writes only the local database, and a sweep installed but never enabled is a queue that never
+drains — so it is the one this target turns on.
+
+Run it by hand before trusting the timer:
+
+```bash
+~/concord-deploy/proposalsweep -dry-run      # the list, no writes
+~/concord-deploy/proposalsweep -v            # the list, and the marks
+journalctl --user -u concord-proposalsweep.service -n 20
+```
+
