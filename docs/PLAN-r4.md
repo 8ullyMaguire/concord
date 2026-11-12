@@ -293,6 +293,15 @@ count) and "agents are excluded" (`users` has no agent flag).
 
 ### Where the next milestone should go
 
+**Updated 2026-11-12, end of day.** The one product idea with no code is **V6, milestone-level
+consensus**, and it is now spec'd AND planned rather than merely named:
+`docs/specs/milestone-consensus-spec.md` (problem, non-goals, the three readiness conditions, the
+outcome→status table) and `docs/plans/milestone-consensus.md` (migration `0040`, store
+signatures, routes, the test per rule, the mutation arms, the live walk). It is the next thing to
+build, and the plan is written so an implementer who has never seen this tree can start at M1.
+Two open questions there are the owner's, not the implementer's: who may open a milestone call,
+and whether its quorum counts project members or the milestone's contributors.
+
 **Updated 2026-11-12.** R12–R15 are deployed (`pre-merge-2026-11-05-41-ga4d6cfd`, schema 39 (in the tree; the deployed binary is still 35), both
 timers installed), so the deploy that this section used to ask for is done. **The next product
 milestone is R16 + R17**: the instance cannot accept an idea that is not pain, and it cannot group the
