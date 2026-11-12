@@ -4689,7 +4689,7 @@ would read as "moderation has done nothing here".
 | `make verify` | exit 0 — `go vet`, `gofmt`, `go test ./...`, the build, `check_doc_numbers` (15 measured numbers agree), `check_spec_drift`, `check_e2e_sync` (4 bounded, 0 racy), `unittest discover -s scripts` |
 | `make gates` | 27 arms, every mutant killed, **0 survived**, exit 0 — and `internal/store/audit.go` is one of the armed files, so the new `IN (…)` clause was mutated by the gate as well as by hand |
 
-### 40.7 The live walk, on the deployed binary
+### 40.6 The live walk, on the deployed binary
 
 Deployed 2026-11-12 10:44 as `pre-merge-2026-11-05-41-ga4d6cfd` (`make deploy` → `✓ healthz OK`).
 Every line below is `concord.polarisocial.xyz`, not the 127.0.0.1:8006 dev instance.
@@ -4734,7 +4734,7 @@ field and "Remove this idea from the arena?" intact
 nav:    href="/projects/concord/audit">Modlog<
 ```
 
-### 40.8 Still owed after this pass
+### 40.7 Still owed after this pass
 
 1. **The affected author is told nothing** — spec §8, still the weakest part of v1, and still the
    owner's call because there is no inbox to tell them in.
