@@ -2,8 +2,8 @@
 
 The inventory, not the argument. One line per capability a person can actually use or
 that runs on their behalf; grouping is by where you meet it, and a line covers a route
-family rather than a route (the tree registers 230 routes for roughly the 150 features
-below — `GET/POST /projects/{p}/features/` is one feature, "file and list ideas").
+family rather than a route (the tree registers 230 routes for the 105 features below —
+`GET/POST /projects/{p}/features/` is one feature, "file and list ideas").
 
 Kept honest by two things: every entry is reachable in the tree today (the route table
 in `internal/httpapi/server.go` plus the packages under `internal/`), and the ones that
@@ -101,8 +101,10 @@ something is finished lives in `docs/REMAINING.md`.
 - **Finder** — a short questionnaire that narrows to projects that fit, with back, session and lift-the-constraint steps.
 - **Scout** — discovery of projects on other forges, harvested as candidates rather than added silently.
 - **Curation queue** — human review of what discovery found and what tagging proposed, ranked and votable.
+- **Capabilities** — a catalog of what a project can do (API, webhooks, plugins…), each with assertions that are confirmed or disputed, where "nobody has said anything" is a different state from "somebody recorded unknown".
+- **Documents** — project-level documents with a kind, full-text search, and delete, which also serve as evidence for a feature.
 - **Stats** — site and per-project summaries, history, and rising projects.
-- **Similar projects** — nearest neighbours in the embedding space, so "like this but" is one click.
+- **Similar (duplicate detection)** — text in, near-duplicates out, for complaints, features, requests and projects; an unconfigured instance says so rather than returning an empty list that reads as "nothing similar exists".
 
 ## Ask for help (the request board)
 
@@ -125,6 +127,8 @@ something is finished lives in `docs/REMAINING.md`.
 - **Guest access** — a bounded, MAU-limited guest identity so a drive-by contribution is possible without an account.
 - **Trust levels** — standing computed from behaviour, used for what a reader may do without being trusted by name.
 - **Visibility** — public, unlisted or private, changed as an audited act.
+- **Cookie consent** — the notice is recorded server-side against the reader, so what is stored and why is answered before anything is.
+- **Contribute** — "what should I do next", a single ranked suggestion drawn from the work that is actually unblocked.
 
 ## Trust the record
 
