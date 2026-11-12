@@ -6,11 +6,17 @@ then `docs/ARCHITECTURE.md`. `docs/PLAN.md` covers the pre-r4 milestones (all
 complete) and `docs/concord-spec.md` is superseded — do not plan from either.
 
 **Where this stands (2026-11-12, end of day).** The public instance answers the
-`pre-merge-2026-11-05-60-g63f752f` build at schema 39, and the inbox of §45 was walked on it
-end to end (`REMAINING` §45.5). `master` is at `75a148a` (docs on top of the feature), and
-`forgejo/main`, `github/master` and `github/main` are in sync with it. Everything built this
-day is live: R16/R17/R18 intake modes, milestones, roadmap and dependencies; the complaint
-detach; the notification inbox; and the healthsync per-host credential fix.
+`pre-merge-2026-11-05-63-g313b4ee` build at schema 39 — both live walks were run on it
+(`REMAINING` §45.5 the inbox, §46 the consensus phase). `master` is three commits ahead of that
+build and all three are docs: the walks, the handoff, and the V6 spec+plan. `forgejo/main`,
+`github/master` and `github/main` are in sync with `master`. Everything built this day is live:
+R16/R17/R18 intake modes, milestones, roadmap and dependencies; the complaint detach; the
+notification inbox; the healthsync per-host credential fix; and the consensus phase repair.
+
+**The next thing to build is V6, and it is ready to start**: milestone-level consensus, spec'd
+at `docs/specs/milestone-consensus-spec.md` and planned step by step at
+`docs/plans/milestone-consensus.md` (migration 0040 onward). Two questions in that spec are
+yours, not the implementer's — who may open a milestone call, and whose quorum it needs.
 
 Built and deployed this day: **R16/R17/R18** — per-project intake modes, milestones, the
 roadmap and feature dependencies (`REMAINING` §43, live walk in §43.5) — the
