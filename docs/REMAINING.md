@@ -5268,3 +5268,38 @@ Three tests and one existing one cover it: a feature filed from the path alone, 
 complaint filed from the path alone, a contradicting body id refused by name, and the
 intake mode set through the response's own field name. Mutation-checked: returning the
 empty body id unchanged (the old behaviour) fails the first two and nothing else.
+
+### 44.3 Live walk: the path alone, on the deployed build
+
+Deployed the `g13dddd7` build, then ran `path_probe.sh` against
+`concord.polarisocial.xyz` — a fresh project, a fresh account, and **no `project_id` in
+either body**, which is the shape the old API refused and the shape a reader copying the
+URL produces.
+
+    POST .../projects/pathprobe-163437/complaints
+      {"title":"Importer writes duplicates (163437)","body":"repro","severity":3,...}
+    -> created (id 2403), validated
+
+    POST .../projects/pathprobe-163437/features
+      {"title":"Complete the importer (163437)","body":"rows","effort":"M",
+       "linked_complaints":[2403]}
+    -> {"id": 5783, "project_id": 75, "author_id": 89, "status": "draft", ...}
+
+    POST .../projects/pathprobe-163437/complaints   {"project_id": 999999, ...}
+    -> HTTP 400 {"error": "invalid: project_id 999999 does not match the project in the path"}
+
+    PUT  .../projects/pathprobe-163437/intake-mode  {"intake_mode": "both"}
+    -> {"intake_mode": "both"}
+
+The body id `75` on the feature is the path's project, not something the request said — that
+is the fix, visible in the response. Cleanup: `projects` back to 73, 0 features without a
+project, 0 probe accounts, `PRAGMA integrity_check` ok.
+
+**A note on how the day's evidence was read.** `make gates` does not run `make e2e` — gates
+is the mutation half, verify is the static half, and the browser suites are their own target.
+Run for the first time since these passes, `make e2e` answered `No module named pytest` on the
+harness selftest, because `python3` on this shell's PATH is a venv without it; it needs
+`E2E_PYTHON=/usr/bin/python3`. Under that, two numbers no other gate reads were stale (311
+e2e tests in 25 suites; the tree collects 322 in 27) and the harness caught them. A green mutation
+gate and a red suite harness sat beside each other for a day because each was started with a
+different interpreter.

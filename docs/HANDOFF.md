@@ -5,10 +5,12 @@ For the implementing agent taking over from here. Read this, then
 then `docs/ARCHITECTURE.md`. `docs/PLAN.md` covers the pre-r4 milestones (all
 complete) and `docs/concord-spec.md` is superseded — do not plan from either.
 
-**Where this stands (2026-11-12, end of day).** The public instance answers
-`pre-merge-2026-11-05-53-g9043a47` at schema 38. `master` is one commit ahead of it
-(`dd93634`, the API-shape fix below) and that commit is NOT deployed yet. `forgejo/main`,
-`github/master` and `github/main` are in sync at that commit.
+**Where this stands (2026-11-12, end of day).** The public instance answers the
+`g13dddd7` build at schema 38 — `dd93634` (the API-shape fix) and everything before it is
+LIVE, and the three routes it touched were re-probed on the instance with the body field
+deliberately removed (`REMAINING` §44.3). `master` is at `997dc88`, two commits further and
+both test/docs: the detach's UI mutation arms and two stale counts the gates themselves
+caught. `forgejo/main`, `github/master` and `github/main` are in sync at `997dc88`.
 
 Built and deployed this day: **R16/R17/R18** — per-project intake modes, milestones, the
 roadmap and feature dependencies (`REMAINING` §43, live walk in §43.5) — and the
@@ -37,11 +39,17 @@ Three things are still owed, and the first two are decisions rather than work:
    of these repositories before `newcomer_sample` stops being 0. Nothing here should
    synthesize that.
 
-**Deployed but not yet live-proven**: nothing. **Committed but not deployed**: `dd93634` —
-`POST .../features` and `POST .../complaints` now take the project from the PATH instead of
-requiring `project_id` in the body, and `PUT .../intake-mode` accepts both `mode` and
-`intake_mode` (`REMAINING` §44.2). Deploy it with `make deploy` and re-run the §44.1 probe
-with the body field removed.
+**Deployed but not yet live-proven**: nothing. **Committed but not deployed**: only the two
+test/docs commits above — no production code is waiting for a deploy.
+
+**What the last gates run cost, and found.** `make e2e` had not been run since these passes,
+and it does not run inside `make gates` (gates is the mutation half; `verify` is the static
+half). Running it answered `No module named pytest` on the harness selftest, because `python3`
+on this PATH is a venv without it — the suites need `E2E_PYTHON=/usr/bin/python3`. Behind that
+sat two numbers nothing else reads: the tracker claimed 311 e2e tests in 25 suite files and
+the tree collects 322 in 27. A green mutation gate and a red suite harness coexisted for a whole
+day because each was run with a different interpreter, and that is worth remembering before
+trusting a summary line.
 
 Historical, for the ordering argument only: R12–R15 were merged but undeployed until 2026-11-12, and
 Q5's data half was 31 slugs from mechanical before §39 took it to 23 measured repositories of 73.
