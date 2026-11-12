@@ -20,6 +20,7 @@ OUT = REPO / "docs" / "IDEAS.md"
 
 def render(data: dict) -> str:
     ideas = data["ideas"]
+    has_value = any("value" in i for v in ideas.values() for i in v)
     total = sum(len(v) for v in ideas.values())
     out = []
     w = out.append
@@ -36,6 +37,13 @@ def render(data: dict) -> str:
     w("Every idea in part 3 exists on the live instance as a draft feature linked to that theme's "
       "complaint, filed by `scripts/file_ideas.py`. The effort tag is the filer's estimate "
       "(**S** hours, **M** a day or two, **L** a week, **XL** more), never a promise.\n")
+    if has_value:
+        w("Where an idea carries `V<n>`, that is its value out of ten and it is uploaded as the "
+          "feature's `impact`, with `effort_score` as weeks, so the page's impact-over-effort "
+          "order is this document's order. The filing rule was stated before the scores were "
+          "written: **6 or more is filed as a draft, 3 to 5 is filed as `rejected` with the "
+          "reason inside the body, below 3 is not worth a row.** An idea below the line is kept "
+          "as a rejected row on purpose -- a decision recorded is a decision not re-litigated.\n")
 
     w("---\n")
     w("## Part 1 — shipped\n")
@@ -68,7 +76,8 @@ def render(data: dict) -> str:
         w(f"### {t['label']} ({len(items)})\n")
         w(f"> **Complaint:** _{t['complaint_title']}._ {t['complaint_body']}\n")
         for i, idea in enumerate(items, 1):
-            w(f"{i}. **{idea['title']}** ({idea['effort']}) — {idea['body']}")
+            score = f"**V{idea['value']}** · " if "value" in idea else ""
+            w(f"{i}. **{idea['title']}** ({score}{idea['effort']}) — {idea['body']}")
         w("")
 
     w("---\n")

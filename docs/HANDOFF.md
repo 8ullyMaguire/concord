@@ -23,6 +23,17 @@ Three things are still owed, and the first two are decisions rather than work:
    `pr_review`/`pr_comment` need a real pull request and review on one of these repositories before
    `newcomer_sample` stops being 0. Nothing here should synthesize that.
 
+**The next product milestone is R16 + R17 — intake modes and milestones (spec'd 2026-11-12).** Two
+things this instance cannot do, both measured: a feature cannot exist without a validated complaint
+(332 of 332 features on `concord` carry one, so nothing else can be filed and a project that wants
+ideas first has to invent pain), and a plan has no representation at all (no milestone table; 330
+drafts read as one pile; and the board derives a card for every feature, so a `board_cards` row
+means "somebody moved it", not "it is on the board"). Spec
+`docs/specs/idea-intake-and-milestones-spec.md`, plan `docs/plans/idea-intake-and-milestones.md`
+(M1 intake modes, M2 milestones, M3 roadmap, M4 dependencies), and 38 scored ideas across four new
+themes in `docs/IDEAS.md`. Read the spec's §1 before the code: it is the measurement that licenses
+the change.
+
 Historical, for the ordering argument only: R12–R15 were merged but undeployed until 2026-11-12, and
 Q5's data half was 31 slugs from mechanical before §39 took it to 23 measured repositories of 73.
 

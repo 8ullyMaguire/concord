@@ -1,6 +1,6 @@
 # Concord — feature depth catalog
 
-_Generated from `seed/concord_ideas.json` on 2026-10-30. 26 shipped surfaces, 6 planned milestones, 311 filed ideas across 24 themes._
+_Generated from `seed/concord_ideas.json` on 2026-11-12. 26 shipped surfaces, 6 planned milestones, 349 filed ideas across 28 themes._
 
 Three parts, and the order matters:
 
@@ -9,6 +9,8 @@ Three parts, and the order matters:
 3. **Filed** — ideas that were NOT already on the roadmap, grouped by the complaint they answer.
 
 Every idea in part 3 exists on the live instance as a draft feature linked to that theme's complaint, filed by `scripts/file_ideas.py`. The effort tag is the filer's estimate (**S** hours, **M** a day or two, **L** a week, **XL** more), never a promise.
+
+Where an idea carries `V<n>`, that is its value out of ten and it is uploaded as the feature's `impact`, with `effort_score` as weeks, so the page's impact-over-effort order is this document's order. The filing rule was stated before the scores were written: **6 or more is filed as a draft, 3 to 5 is filed as `rejected` with the reason inside the body, below 3 is not worth a row.** An idea below the line is kept as a rejected row on purpose -- a decision recorded is a decision not re-litigated.
 
 ---
 
@@ -88,7 +90,7 @@ Every idea in part 3 exists on the live instance as a draft feature linked to th
 
 ---
 
-## Part 3 — filed: 311 ideas
+## Part 3 — filed: 349 ideas
 
 Grouped by theme. The line under each heading is the complaint the ideas are filed against on the instance — the reason the group exists, in pain terms rather than feature terms.
 
@@ -523,6 +525,64 @@ Grouped by theme. The line under each heading is the complaint the ideas are fil
 12. **Documentation for every public API route, generated** (M) — The router's table rendered as an OpenAPI document, with a test that a route without a description fails the build.
 13. **A quarterly architecture review recorded as a decision** (S) — One decision record per quarter reviewing the module graph, the dependency rules and the known debt, so the architecture has a history rather than a legend.
 
+### Intake: ideas without an invented complaint (10)
+
+> **Complaint:** _I have to invent a complaint to record an idea._ Every feature must trace to a validated complaint. A project that wants to collect ideas before anyone has suffered from anything must therefore file fictional pain: the complaint becomes a formality written to satisfy a validator, and the feature list fills with invented problems.
+
+1. **Per-project intake mode: complaint-first, idea-first, or both** (**V10** · L) — `projects` gains `intake_mode` CHECKed to `complaint_first|idea_first|both`, defaulting to `complaint_first` so a deploy changes no existing project's behaviour. Read at the one place that enforces the rule (`CreateFeature`) and echoed by the new-idea form, so the product has one answer to "may I file an idea here?"
+2. **Let a feature be created without a complaint when the mode allows it** (**V9** · S) — `CreateFeature` refuses an empty linked-complaint set today with a message about the requirement rather than the project's policy. Make the guard mode-aware and make the refusal name the mode and the route to change it, instead of a rule the reader cannot look up.
+3. **Prove that an idea-first feature still ranks** (**V8** · S) — The shipped copy says an unlinked feature "ranks on nothing", which is a claim about the ranking that no code enforces: `/ranking` reads `features.elo_r` directly and never touches complaints. Either make the sentence true or delete it, and add the test that holds whichever answer is chosen, because a doc claim about ranking is a claim about a number readers act on.
+4. **Acquire-a-complaint gate before a feature reaches ready** (**V8** · S) — Idea-first intake still ends at a commitment only when someone has felt the pain. Let `ready` require at least one validated complaint unless the project's mode is `idea_first`, and put the refusal in the status transition where the other §6.2 rules already live -- not in a second checker.
+5. **Convert a feature between complaint-backed and idea-first, as an act** (**V7** · S) — Features filed before a mode change, and ideas that later acquire pain, both need the other shape. A link/unlink act with an `audit_log` row, reversible the way moderation is (a second act, not a mutated row), so the project's ledger can show how a given idea got its evidence.
+6. **Show the intake mode where a reader files** (**V7** · S) — The form that asks for a complaint should say whether the project requires one. Render the project's mode on the new-idea form and on the overview beside the governance model, both of which already load the project -- this is a template change, not a query.
+7. **Badge the evidence: complaint-backed versus idea-first** (**V7** · S) — A reader judging an idea needs to know whether somebody suffered it or somebody liked it. One badge in the features list and one line on the feature page, read from the same linked-complaint count the page already loads.
+8. **Changing the intake mode is a proposal, not a maintainer dial** (**V6** · M) — The mode decides whose work counts as legitimate input, which is a charter question rather than a setting. Route it through the curation queue as a new proposal kind so it inherits the existing consent, quorum and audit machinery instead of a bespoke endpoint.
+9. **Evidence alternatives: a document or a field report instead of a complaint** (**V6** · M) — Some ideas answer a written spec section or a field report rather than a complaint. Let the evidence requirement be satisfied by one of the three, with the same validation rule, so a project documenting itself does not have to restate its own spec as pain.
+10. **Intake-mode changes as their own audit kind** (**V5** · S) — An `intake` kind on the modlog, resolved through the store vocabulary the way `moderation` already is. Bundled with the proposal kind above it is redundant; alone it is a filter over rows nobody searches for yet.
+
+### Milestones: grouping what is being planned (10)
+
+> **Complaint:** _I cannot group the ideas I am planning into one milestone._ Phases live in board_columns and themes live in tags, so a plan exists only as prose in a PLAN file. The instance cannot answer which ideas belong to the release a maintainer is working towards, so a hundred and thirty drafted ideas read as one undifferentiated pile.
+
+1. **A milestones table with a target date and a status** (**V9** · M) — `milestones(id, project_id, title, body, target_date, status CHECK(planned|active|done|cancelled), created_at)` with `UNIQUE(project_id, title)`. Nullable `target_date`, because a milestone dated by wish is a deadline nobody agreed to. Append-only migration `0036`.
+2. **features.milestone_id, nullable, indexed** (**V8** · S) — One nullable FK plus `CREATE INDEX features_milestone ON features(milestone_id)`. Nullable is the whole design: a backlog is the set of features no milestone claims, and a default milestone would make that set unrepresentable.
+3. **The milestone page: its features, grouped by status** (**V8** · M) — `/projects/{slug}/milestones/{id}` reusing the existing status grouping and the same counts the board computes, plus progress as closed/total. A page whose only job is to show one group is cheap; the value is that every later surface links to something.
+4. **Assign and unassign from the feature page** (**V8** · S) — `PUT /api/v1/projects/{slug}/features/{id}/milestone` with `{milestone_id|null}`, gated on the project's role ladder. Unassigning must be as easy as assigning, or the first wrong click is permanent until a database edit.
+5. **Filter the board by milestone** (**V7** · S) — A `milestone` query parameter on the board read, composing with the existing phase filter. One board, filtered -- not a board per milestone, which would fork the WIP limits and the card placement rules.
+6. **Milestone progress that cannot be an import artefact** (**V7** · M) — Closed-over-total is the same trap instance statistics already fell into: 925 of 1,874 features have no creation event, so a progress bar computed from `status` alone measures a seeding script. Derive it from status transitions that carry an audit row, and show the provenance split beside it.
+7. **Closing a milestone: unfinished work carries forward, one act per feature** (**V7** · M) — A `done` milestone with open features is a lie; a blocked close is a trap. Move them to a named successor with an audit act each, so "why did this feature move" is answerable from the log rather than from memory.
+8. **At-risk flag when the target date has passed with open features** (**V6** · S) — Derived, never stored: `target_date < now() AND open > 0`. Storing it would need a job to keep it true, and a stale "on track" badge is worse than no badge.
+9. **A consensus call over a milestone as one unit** (**V6** · L) — §6.2's calls are per feature. A milestone is the size at which a maintainer actually asks for consent, and the existing call machinery already handles eligibility, quorum and the hidden tally -- the work is the many-to-one mapping, not the rules.
+10. **Hand-ordered milestones with drag reordering** (**V5** · M) — `position` per project and a drag handle. Ordered by `target_date` already answers it, and hand order is a second ordering to keep in sync with the dates the moment either changes.
+
+### Roadmap: planned versus merely filed (8)
+
+> **Complaint:** _I cannot tell what is planned from what is merely written down._ A draft feature means somebody had the idea. Nothing on the instance distinguishes it from a commitment, so the roadmap exists in a document, drifts from the page, and no reader can see what is coming without opening a repository.
+
+1. **A roadmap page with milestones on a timeline** (**V8** · L) — `/projects/{slug}/roadmap` renders each milestone as a column with its features grouped by status, ordered by target date, and works with zero milestones (the empty state names what to create rather than apologising).
+2. **A roadmap read route** (**V7** · S) — `GET /api/v1/projects/{slug}/roadmap` returning milestones with their counts, so the page and any third party read one shape. Every page in this repo that computes its own numbers is one page whose numbers can disagree with the route's.
+3. **Slippage: planned versus shipped per milestone** (**V7** · M) — For each closed milestone, the hours between target date and the last shipment, and for each open one the age of its oldest open feature. This is the number a roadmap is for, and it is computable from `audit_log` plus `target_date` with no new storage.
+4. **The next milestone on the project overview** (**V6** · S) — One line naming the earliest open milestone and its remaining count, on the page a reader actually lands on. The roadmap page is for people who already decided to look; this is for the ones who did not.
+5. **A feed item when a milestone opens or closes** (**V6** · S) — The project feed already publishes decisions; a plan changing is a decision. One item per transition, through the existing feed writer rather than a second one.
+6. **A milestone badge SVG** (**V5** · S) — The instance badge already answers "what is this project". A second SVG for the current milestone is another endpoint to keep alive for a surface that mostly appears in READMEs nobody re-reads.
+7. **Generate the roadmap by parsing docs/PLAN-r4.md** (**V4** · L) — A doc parser as the source of the roadmap makes the document the schema. The instance should own the plan and the document should describe it, or the two disagree the first time somebody edits prose.
+8. **iCal export of milestone target dates** (**V4** · M) — A calendar feed implies the dates are commitments. Until slippage is measured, exporting them advertises a schedule the project cannot keep.
+
+### Scheduling: what blocks what (10)
+
+> **Complaint:** _Grouping is not scheduling: I cannot say what blocks what._ A milestone's contents can be listed but not ordered, because nothing records that one idea must land before another. WIP limits exist per phase and dependencies do not exist at all, so a plan that is real in somebody's head cannot be expressed on the board.
+
+1. **Feature dependencies: blocks and blocked_by** (**V8** · L) — `feature_deps(blocker_id, blocked_id)` with both FKs and a unique pair. A feature with an open blocker refuses `in_progress` at the same transition that already enforces the §6.2 rules, so the constraint exists where work moves rather than in a report nobody reads.
+2. **A blocked badge with the blocking feature named** (**V7** · S) — In the list and on the card: the count of open blockers, and on the feature page their titles. A dependency nobody can see is a dependency that gets ignored until the day it bites.
+3. **Bulk assign a selection of features to a milestone** (**V7** · M) — Multi-select in the features list, one `PUT .../milestone` per feature in one transaction. Grouping 130 ideas one page-load at a time is what makes people keep their plan in a spreadsheet.
+4. **Order the features inside a milestone** (**V6** · M) — `position` on the milestone-feature relationship, not on the feature, because the same feature can be third in one milestone and last in another. Reorder via drag, persisted as integers with gaps.
+5. **Milestone-scoped WIP: the board's limits read the milestone's size** (**V6** · M) — `board_columns.wip_limit` is fixed per project (3 in progress, 4 in review) and takes no account of how much a milestone contains. Show the milestone's share of each column beside the limit, which is a read, not a second limit to enforce.
+6. **Refuse a dependency cycle, naming the cycle** (**V6** · S) — A depth-first walk on insert returning the path found, so the refusal is `a blocks b blocks a` rather than `invalid`. Two nodes and a shared blocker is the shape that ships without it.
+7. **Place a card for every new feature** (**V3** · S) — Measured after this list was first written, and it refutes the idea: `GetBoard` returns a DERIVED card for every feature, so all 332 already appear in `inbox`; `board_cards` holds 20 rows because a row is written only when somebody MOVES a card (that is what `?feature_id=` on `PUT /board/cards/0/move` is for). Seeding a row per feature would therefore duplicate what the renderer already derives and would make "placed" mean nothing. The real gap the measurement found is smaller and different: a derived card and a placed row are indistinguishable to a reader, and neither is in the API's response as such.
+8. **Milestone-scoped board columns** (**V3** · XL) — A board per milestone, each with its own phases. Two boards over one backlog means two answers to "what phase is this in", and the filter above delivers the useful part of this for a fraction of the cost.
+9. **A dependency graph view** (**V5** · L) — Nodes and edges for a project's features rendered in SVG. Pretty, and the blocked badge plus the refusal already prevent the harm; this shows the shape to people who already know it.
+10. **Auto-assign new features to the current milestone** (**V5** · S) — A per-project toggle that puts every new feature in the active milestone. It makes the backlog unrepresentable -- the set no milestone claims is exactly what a backlog is -- and a mode change is the cheaper way to express the intent.
+
 ---
 
 ## Totals
@@ -553,8 +613,12 @@ Grouped by theme. The line under each heading is the complaint the ideas are fil
 | Measurement | 12 |
 | Community and retention | 12 |
 | The project's own quality | 13 |
-| **all** | **311** |
+| Intake: ideas without an invented complaint | 10 |
+| Milestones: grouping what is being planned | 10 |
+| Roadmap: planned versus merely filed | 8 |
+| Scheduling: what blocks what | 10 |
+| **all** | **349** |
 
-Effort mix: S 127, M 142, L 42, XL 0.
+Effort mix: S 146, M 154, L 48, XL 1.
 
 This file is generated. Edit `seed/concord_ideas.json`, then re-run `python3 scripts/render_ideas.py`; a test in `scripts/` fails when the two disagree.

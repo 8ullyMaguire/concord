@@ -128,7 +128,7 @@ def main() -> int:
     print(f"existing: {len(have_features)} features, {len(complaints_by_title)} complaints")
 
     only = {s.strip() for s in args.only.split(",") if s.strip()}
-    created = skipped = 0
+    created = skipped = rejected = 0
     per_theme = {}
     for theme in data["themes"]:
         key = theme["key"]
@@ -184,25 +184,47 @@ def main() -> int:
                 created += 1
                 n += 1
                 continue
-            st, resp = cli.call("POST", f"{api}/features/", {
+            payload = {
                 "project_id": pid,
                 "title": idea["title"],
                 "body": body,
                 "effort": idea["effort"],
                 "linked_complaints": [complaint_id],
                 "confirm_duplicate": True,
-            })
+            }
+            # The seed may carry a value out of ten and a cost in weeks. They are uploaded as the
+            # feature's own impact and effort_score, which are the columns the page's
+            # impact-over-effort order reads -- so the file that states the score and the row that
+            # shows it cannot disagree.
+            if "value" in idea:
+                payload["impact"] = idea["value"]
+            if "weeks" in idea:
+                payload["effort_score"] = idea["weeks"]
+            st, resp = cli.call("POST", f"{api}/features/", payload)
             if st != 201:
                 print(f"  ! feature {idea['title']!r}: {st} {resp}", file=sys.stderr)
                 continue
+            # Below the stated bar the row is filed REJECTED rather than omitted: the verdict and
+            # its reason live in the body, so the next session does not re-propose an idea that
+            # already lost. The bar is 6, fixed before any score was written.
+            if idea.get("value", 10) < 6 and isinstance(resp, dict) and "id" in resp:
+                # PUT .../status carries only status and reason, and it is trust-gated
+                # (handleSetFeatureStatus), which is why the filer needs the owner's token.
+                st2, resp2 = cli.call("PUT", f"{api}/features/{resp['id']}/status",
+                                      {"status": "rejected",
+                                       "reason": "below the value bar (6/10)"})
+                if st2 != 200:
+                    print(f"  ! reject {idea['title']!r}: {st2} {resp2}", file=sys.stderr)
+                else:
+                    rejected += 1
             have_features.add(idea["title"])
             created += 1
             n += 1
         per_theme[key] = n
         print(f"  {key}: +{n}")
 
-    print(f"\nfiled {created} new features, skipped {skipped} that already existed, "
-          f"{cli.calls} requests")
+    print(f"\nfiled {created} new features ({rejected} as rejected, below the value bar), "
+          f"skipped {skipped} that already existed, {cli.calls} requests")
     print("per theme: " + ", ".join(f"{k}={v}" for k, v in per_theme.items()))
     return 0
 

@@ -4837,3 +4837,95 @@ R12 samples `pr_review` and `pr_comment` events, and a push carries neither. So 
    is a credential for the owner to install (TLS/OAuth choice included); §39's `build_forge_repos.py`
    already aborts rather than writes when a 403 arrives.
 2. **Author notification** — spec §8, unchanged, and still not something to invent.
+
+## §42 — The intake-and-milestones inventory: 38 scored ideas, one of them killed by its own measurement
+
+### 42.1 The gap, measured before anything was written
+
+The request was "feature ideas are limited to complaints; some projects may want idea-first, others
+want milestones on the kanban". Both halves were a query, not an opinion:
+
+| measurement | value |
+|---|---|
+| features on project `concord` (id 49) | 332 |
+| of those, with no linked complaint | **0** |
+| features by status | 330 `draft`, 2 `rejected` |
+| `board_cards` rows for those 332 | 20 |
+| tables whose name contains `milestone` | 0 — the word appears in `0001_init.sql` only inside comments |
+
+So the traceability rule *works completely* (nothing has slipped through) and *admits nothing else*
+(a project that wants ideas before pain has one legal move: invent the pain). And a plan has no
+representation at all: 330 drafts are one pile, phases live in `board_columns`, themes live in tags.
+
+### 42.2 The rule, stated before the scores existed
+
+A value out of ten and a cost in weeks per idea, uploaded as the feature's own `impact` and
+`effort_score` so the page's impact-over-effort order *is* the document's order. **6 or more: filed as
+a draft. 3 to 5: filed as `rejected`, reason in the body, so nobody re-proposes it. Below 3: no row.**
+29 cleared the bar; 9 did not.
+
+### 42.3 What is on the instance now
+
+Filed by `scripts/file_ideas.py` (58 requests, idempotent by title), four new themes — *intake modes*,
+*milestones*, *roadmap view*, *scheduling* — each with its complaint validated:
+
+```
+$ curl -s .../api/v1/projects/concord/features/ | jq length                    # 370  (332 + 38)
+$ sqlite3 -readonly … "select count(*), sum(status='draft'), sum(status='rejected'),
+                              count(impact), count(effort_score)
+                         from features where project_id=49"
+370|360|10|58|58          # the 38 new rows carry impact and weeks; 20 pre-existing rows already did
+$ sqlite3 … "select count(*) from complaints where project_id=49"               # 49 (45 + 4)
+$ sqlite3 … "select impact, effort_score, round(impact_ratio,2) from features where id=5755"
+5|1|5.0                                                                          # the score is the ratio the page sorts on
+```
+
+A `board_cards` row in `inbox` was written for each of the 29 drafts (30, before the correction
+below), through the route the board itself uses (`PUT /board/cards/0/move?feature_id=…&to=inbox`).
+
+### 42.4 The idea its own measurement killed
+
+The first draft carried **"place a card for every new feature" at V7**, on the strength of
+`board_cards` holding 20 rows against 332 features. The board page then rendered **362** cards in
+`inbox`. `GetBoard` returns a DERIVED card for every feature; a `board_cards` row is written only when
+somebody MOVES one, and `handleMoveCard`'s own comment says a derived card "has no row and therefore
+no id". Seeding a row per feature would duplicate what the renderer derives and make "placed" mean
+nothing.
+
+The idea was demoted to **V3 and rejected** in `seed/concord_ideas.json`, the rendered
+`docs/IDEAS.md`, the spec (§6, §9), the plan (step S12 became a finding), the `PLAN-r4` R17 row and
+`HANDOFF.md`. The live row was corrected in place (`UPDATE features SET body=…, impact=3,
+effort_score=3, status='rejected'` plus one `audit_log` row), because **there is no HTTP route to edit
+a feature's body, impact or effort** — `PUT .../features/{id}/status` is trust-gated to the status
+only, and the filer is idempotent by title, so a re-run would have skipped the stale row rather than
+corrected it. That missing route is the §42.6 debt this pass found by needing it.
+
+What survives from the killed idea is smaller and true: a derived card and a placed row are
+indistinguishable to a reader and neither is identified as such in `GET .../board`'s response.
+
+### 42.5 The documents
+
+- `docs/specs/idea-intake-and-milestones-spec.md` — §3 intake modes, §4 milestones, §5 roadmap, §6
+  scheduling, §7 ten invariants each with its test, §8 non-goals, §9 the nine that lost, §10 the
+  filing record. It also settles a **false claim in the shipped copy**: "an unlinked feature ranks on
+  nothing" is enforced by no code — `/ranking` reads `features.elo_r` and never joins complaints.
+- `docs/plans/idea-intake-and-milestones.md` — M1 and M2 step by step with real SQL and Go (migrations
+  `0036`/`0037`, `IntakeMode` on `Project` through `projectColumns`+`scanProject`, the mode-aware guard
+  in `CreateFeature`, the evidence rule moved into `UpdateFeatureStatus`, `internal/store/milestones.go`,
+  the route block, the page and its `pages` entry, the reader-inventory rows). M3/M4 are route lists.
+- `docs/PLAN-r4.md` — rows **R16/R17/R18**, and "where the next milestone should go" now names them
+  instead of asking for a deploy that has happened.
+- `docs/IDEAS.md` — re-rendered from the seed; the renderer prints `V<n>` where a score exists and
+  states the 6/3/3 rule in its preamble.
+- `scripts/file_ideas.py` — uploads `impact`/`effort_score` and files a sub-threshold idea as
+  `rejected` in the same pass, so the file's verdict and the row's status cannot disagree.
+
+### 42.6 Still owed
+
+1. **M1 and M2 are specified and planned, not built.** `docs/plans/idea-intake-and-milestones.md` is
+   the entry point; step S1 is `0036_intake_modes.sql`.
+2. **No route edits a feature's body, impact or effort.** `PUT .../features/{id}/status` is the only
+   write, and it is trust-gated to the status. A correction needs SQL plus an audit row by hand —
+   which is what §42.4 had to do. This is a real gap, not a design choice anybody recorded.
+3. **`?kind=intake`** for the modlog is filed at V5 and rejected; if the intake mode becomes a
+   proposal (V6), it comes back for free through the curation kind resolver.

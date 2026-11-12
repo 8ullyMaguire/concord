@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-30",
+ "generated": "2026-11-12",
  "themes": [
   {
    "key": "discovery",
@@ -168,6 +168,34 @@
    "severity": 3,
    "complaint_title": "The project's own quality is unverified",
    "complaint_body": "Claims in the docs drift from the code, there is no status page, no incident log, no fuzzing and no measured restore; the gates exist but nobody publishes their scores."
+  },
+  {
+   "key": "intake_modes",
+   "label": "Intake: ideas without an invented complaint",
+   "severity": 3,
+   "complaint_title": "I have to invent a complaint to record an idea",
+   "complaint_body": "Every feature must trace to a validated complaint. A project that wants to collect ideas before anyone has suffered from anything must therefore file fictional pain: the complaint becomes a formality written to satisfy a validator, and the feature list fills with invented problems."
+  },
+  {
+   "key": "milestones",
+   "label": "Milestones: grouping what is being planned",
+   "severity": 4,
+   "complaint_title": "I cannot group the ideas I am planning into one milestone",
+   "complaint_body": "Phases live in board_columns and themes live in tags, so a plan exists only as prose in a PLAN file. The instance cannot answer which ideas belong to the release a maintainer is working towards, so a hundred and thirty drafted ideas read as one undifferentiated pile."
+  },
+  {
+   "key": "roadmap_view",
+   "label": "Roadmap: planned versus merely filed",
+   "severity": 3,
+   "complaint_title": "I cannot tell what is planned from what is merely written down",
+   "complaint_body": "A draft feature means somebody had the idea. Nothing on the instance distinguishes it from a commitment, so the roadmap exists in a document, drifts from the page, and no reader can see what is coming without opening a repository."
+  },
+  {
+   "key": "scheduling",
+   "label": "Scheduling: what blocks what",
+   "severity": 3,
+   "complaint_title": "Grouping is not scheduling: I cannot say what blocks what",
+   "complaint_body": "A milestone's contents can be listed but not ordered, because nothing records that one idea must land before another. WIP limits exist per phase and dependencies do not exist at all, so a plan that is real in somebody's head cannot be expressed on the board."
   }
  ],
  "ideas": {
@@ -447,7 +475,7 @@
    },
    {
     "title": "Nudge the people whose vote would decide a call",
-    "body": "When a call is one vote from quorum, notify exactly the members who have not voted, once, with the deadline \u2014 not a broadcast.",
+    "body": "When a call is one vote from quorum, notify exactly the members who have not voted, once, with the deadline — not a broadcast.",
     "effort": "S"
    },
    {
@@ -559,7 +587,7 @@
    },
    {
     "title": "A public log of every role change",
-    "body": "Who promoted whom, with the reason field mandatory, in the audit ledger's existing format \u2014 promotion is the highest-leverage admin action and the least documented today.",
+    "body": "Who promoted whom, with the reason field mandatory, in the audit ledger's existing format — promotion is the highest-leverage admin action and the least documented today.",
     "effort": "S"
    },
    {
@@ -591,7 +619,7 @@
    },
    {
     "title": "A reviewer-facing evidence bundle",
-    "body": "One page per report: the content, the history of the reporter and the reported, prior reports, and the action taken last time \u2014 so decisions are consistent.",
+    "body": "One page per report: the content, the history of the reporter and the reported, prior reports, and the action taken last time — so decisions are consistent.",
     "effort": "M"
    },
    {
@@ -648,7 +676,7 @@
    },
    {
     "title": "Per-project, per-event-type preferences that persist",
-    "body": "A matrix of project \u00d7 event (decision, ship, reply, mention) stored server-side, with a 'quiet project' switch that is one click.",
+    "body": "A matrix of project × event (decision, ship, reply, mention) stored server-side, with a 'quiet project' switch that is one click.",
     "effort": "M"
    },
    {
@@ -730,7 +758,7 @@
    },
    {
     "title": "An instance-wide 'recently decided' feed",
-    "body": "Across projects, what was ratified, overridden or blocked, with the tally \u2014 the single best signal that the instance is alive.",
+    "body": "Across projects, what was ratified, overridden or blocked, with the tally — the single best signal that the instance is alive.",
     "effort": "S"
    },
    {
@@ -782,7 +810,7 @@
    },
    {
     "title": "Inline anchors for every spec section",
-    "body": "Stable permalinks per heading, and every reference elsewhere (issues, decisions, code comments) can cite \u00a7section as a link rather than a string.",
+    "body": "Stable permalinks per heading, and every reference elsewhere (issues, decisions, code comments) can cite §section as a link rather than a string.",
     "effort": "S"
    },
    {
@@ -894,7 +922,7 @@
    },
    {
     "title": "Show the requester what happened to their ask, unprompted",
-    "body": "One email at the moment the outcome is known \u2014 built, declined, deferred \u2014 not a dashboard they have to remember to check.",
+    "body": "One email at the moment the outcome is known — built, declined, deferred — not a dashboard they have to remember to check.",
     "effort": "S"
    },
    {
@@ -978,7 +1006,7 @@
   "portability": [
    {
     "title": "A one-click full export of a project's data",
-    "body": "Complaints, features, votes, decisions, documents and audit in a documented JSON layout, zipped, streamed, with a checksum \u2014 the honest counter to a walled garden.",
+    "body": "Complaints, features, votes, decisions, documents and audit in a documented JSON layout, zipped, streamed, with a checksum — the honest counter to a walled garden.",
     "effort": "M"
    },
    {
@@ -1028,7 +1056,7 @@
    },
    {
     "title": "Backups documented and restore-tested",
-    "body": "A written restore procedure with a measured restore time, exercised on a schedule \u2014 the difference between a backup and a hope.",
+    "body": "A written restore procedure with a measured restore time, exercised on a schedule — the difference between a backup and a hope.",
     "effort": "M"
    },
    {
@@ -1060,7 +1088,7 @@
    },
    {
     "title": "Localisation infrastructure with one real second language",
-    "body": "Message files, a language switch, plural and date handling \u2014 and at least one fully translated locale, because a half-built i18n layer rots.",
+    "body": "Message files, a language switch, plural and date handling — and at least one fully translated locale, because a half-built i18n layer rots.",
     "effort": "L"
    },
    {
@@ -1214,7 +1242,7 @@
    },
    {
     "title": "Per-project visibility enforced in one place with a test matrix",
-    "body": "Private, unlisted, protected and public each get a table of who may read what, and a test per cell \u2014 the current enforcement is spread across handlers.",
+    "body": "Private, unlisted, protected and public each get a table of who may read what, and a test per cell — the current enforcement is spread across handlers.",
     "effort": "L"
    },
    {
@@ -1410,7 +1438,7 @@
    },
    {
     "title": "A real empty state for every panel",
-    "body": "Each panel explains what would fill it and links to the action that starts it \u2014 the current mix of blank boxes and 'no data' is the most visible thinness.",
+    "body": "Each panel explains what would fill it and links to the action that starts it — the current mix of blank boxes and 'no data' is the most visible thinness.",
     "effort": "S"
    },
    {
@@ -1502,7 +1530,7 @@
    },
    {
     "title": "A weekly generated digest reviewed by a human before sending",
-    "body": "Draft, preview, edit, send \u2014 the model writes, a person signs.",
+    "body": "Draft, preview, edit, send — the model writes, a person signs.",
     "effort": "M"
    },
    {
@@ -1544,7 +1572,7 @@
    },
    {
     "title": "A static mirror for the small-web",
-    "body": "Publish each project as plain HTML on a static host, regenerated on ship \u2014 the site survives its own server being down.",
+    "body": "Publish each project as plain HTML on a static host, regenerated on ship — the site survives its own server being down.",
     "effort": "M"
    },
    {
@@ -1591,7 +1619,7 @@
    },
    {
     "title": "Decision throughput per week, with the trend",
-    "body": "Calls opened versus decided per week, and the median time in each state \u2014 the single chart that says whether governance is functioning.",
+    "body": "Calls opened versus decided per week, and the median time in each state — the single chart that says whether governance is functioning.",
     "effort": "M"
    },
    {
@@ -1616,7 +1644,7 @@
    },
    {
     "title": "Experiment flags with a stated expiry",
-    "body": "A flag registry where every flag has an owner and an end date, and the build fails when one expires \u2014 the only way flags do not become permanent branches.",
+    "body": "A flag registry where every flag has an owner and an end date, and the build fails when one expires — the only way flags do not become permanent branches.",
     "effort": "M"
    },
    {
@@ -1653,7 +1681,7 @@
    },
    {
     "title": "A contributor's public portfolio page",
-    "body": "What they filed, validated, shipped and decided, exportable and linkable \u2014 the thing a contributor actually wants to show.",
+    "body": "What they filed, validated, shipped and decided, exportable and linkable — the thing a contributor actually wants to show.",
     "effort": "M"
    },
    {
@@ -1698,7 +1726,7 @@
    },
    {
     "title": "A leaving page that asks one question",
-    "body": "When someone deletes an account, one optional question with fixed answers, aggregated and published \u2014 the only reliable source of why people leave.",
+    "body": "When someone deletes an account, one optional question with fixed answers, aggregated and published — the only reliable source of why people leave.",
     "effort": "S"
    },
    {
@@ -1772,6 +1800,280 @@
     "title": "A quarterly architecture review recorded as a decision",
     "body": "One decision record per quarter reviewing the module graph, the dependency rules and the known debt, so the architecture has a history rather than a legend.",
     "effort": "S"
+   }
+  ],
+  "intake_modes": [
+   {
+    "title": "Per-project intake mode: complaint-first, idea-first, or both",
+    "value": 10,
+    "effort": "L",
+    "weeks": 6,
+    "body": "`projects` gains `intake_mode` CHECKed to `complaint_first|idea_first|both`, defaulting to `complaint_first` so a deploy changes no existing project's behaviour. Read at the one place that enforces the rule (`CreateFeature`) and echoed by the new-idea form, so the product has one answer to \"may I file an idea here?\""
+   },
+   {
+    "title": "Let a feature be created without a complaint when the mode allows it",
+    "value": 9,
+    "effort": "S",
+    "weeks": 1,
+    "body": "`CreateFeature` refuses an empty linked-complaint set today with a message about the requirement rather than the project's policy. Make the guard mode-aware and make the refusal name the mode and the route to change it, instead of a rule the reader cannot look up."
+   },
+   {
+    "title": "Prove that an idea-first feature still ranks",
+    "value": 8,
+    "effort": "S",
+    "weeks": 1,
+    "body": "The shipped copy says an unlinked feature \"ranks on nothing\", which is a claim about the ranking that no code enforces: `/ranking` reads `features.elo_r` directly and never touches complaints. Either make the sentence true or delete it, and add the test that holds whichever answer is chosen, because a doc claim about ranking is a claim about a number readers act on."
+   },
+   {
+    "title": "Acquire-a-complaint gate before a feature reaches ready",
+    "value": 8,
+    "effort": "S",
+    "weeks": 1,
+    "body": "Idea-first intake still ends at a commitment only when someone has felt the pain. Let `ready` require at least one validated complaint unless the project's mode is `idea_first`, and put the refusal in the status transition where the other §6.2 rules already live -- not in a second checker."
+   },
+   {
+    "title": "Convert a feature between complaint-backed and idea-first, as an act",
+    "value": 7,
+    "effort": "S",
+    "weeks": 1,
+    "body": "Features filed before a mode change, and ideas that later acquire pain, both need the other shape. A link/unlink act with an `audit_log` row, reversible the way moderation is (a second act, not a mutated row), so the project's ledger can show how a given idea got its evidence."
+   },
+   {
+    "title": "Show the intake mode where a reader files",
+    "value": 7,
+    "effort": "S",
+    "weeks": 1,
+    "body": "The form that asks for a complaint should say whether the project requires one. Render the project's mode on the new-idea form and on the overview beside the governance model, both of which already load the project -- this is a template change, not a query."
+   },
+   {
+    "title": "Badge the evidence: complaint-backed versus idea-first",
+    "value": 7,
+    "effort": "S",
+    "weeks": 1,
+    "body": "A reader judging an idea needs to know whether somebody suffered it or somebody liked it. One badge in the features list and one line on the feature page, read from the same linked-complaint count the page already loads."
+   },
+   {
+    "title": "Changing the intake mode is a proposal, not a maintainer dial",
+    "value": 6,
+    "effort": "M",
+    "weeks": 3,
+    "body": "The mode decides whose work counts as legitimate input, which is a charter question rather than a setting. Route it through the curation queue as a new proposal kind so it inherits the existing consent, quorum and audit machinery instead of a bespoke endpoint."
+   },
+   {
+    "title": "Evidence alternatives: a document or a field report instead of a complaint",
+    "value": 6,
+    "effort": "M",
+    "weeks": 3,
+    "body": "Some ideas answer a written spec section or a field report rather than a complaint. Let the evidence requirement be satisfied by one of the three, with the same validation rule, so a project documenting itself does not have to restate its own spec as pain."
+   },
+   {
+    "title": "Intake-mode changes as their own audit kind",
+    "value": 5,
+    "effort": "S",
+    "weeks": 1,
+    "body": "An `intake` kind on the modlog, resolved through the store vocabulary the way `moderation` already is. Bundled with the proposal kind above it is redundant; alone it is a filter over rows nobody searches for yet."
+   }
+  ],
+  "milestones": [
+   {
+    "title": "A milestones table with a target date and a status",
+    "value": 9,
+    "effort": "M",
+    "weeks": 3,
+    "body": "`milestones(id, project_id, title, body, target_date, status CHECK(planned|active|done|cancelled), created_at)` with `UNIQUE(project_id, title)`. Nullable `target_date`, because a milestone dated by wish is a deadline nobody agreed to. Append-only migration `0036`."
+   },
+   {
+    "title": "features.milestone_id, nullable, indexed",
+    "value": 8,
+    "effort": "S",
+    "weeks": 1,
+    "body": "One nullable FK plus `CREATE INDEX features_milestone ON features(milestone_id)`. Nullable is the whole design: a backlog is the set of features no milestone claims, and a default milestone would make that set unrepresentable."
+   },
+   {
+    "title": "The milestone page: its features, grouped by status",
+    "value": 8,
+    "effort": "M",
+    "weeks": 3,
+    "body": "`/projects/{slug}/milestones/{id}` reusing the existing status grouping and the same counts the board computes, plus progress as closed/total. A page whose only job is to show one group is cheap; the value is that every later surface links to something."
+   },
+   {
+    "title": "Assign and unassign from the feature page",
+    "value": 8,
+    "effort": "S",
+    "weeks": 1,
+    "body": "`PUT /api/v1/projects/{slug}/features/{id}/milestone` with `{milestone_id|null}`, gated on the project's role ladder. Unassigning must be as easy as assigning, or the first wrong click is permanent until a database edit."
+   },
+   {
+    "title": "Filter the board by milestone",
+    "value": 7,
+    "effort": "S",
+    "weeks": 1,
+    "body": "A `milestone` query parameter on the board read, composing with the existing phase filter. One board, filtered -- not a board per milestone, which would fork the WIP limits and the card placement rules."
+   },
+   {
+    "title": "Milestone progress that cannot be an import artefact",
+    "value": 7,
+    "effort": "M",
+    "weeks": 3,
+    "body": "Closed-over-total is the same trap instance statistics already fell into: 925 of 1,874 features have no creation event, so a progress bar computed from `status` alone measures a seeding script. Derive it from status transitions that carry an audit row, and show the provenance split beside it."
+   },
+   {
+    "title": "Closing a milestone: unfinished work carries forward, one act per feature",
+    "value": 7,
+    "effort": "M",
+    "weeks": 3,
+    "body": "A `done` milestone with open features is a lie; a blocked close is a trap. Move them to a named successor with an audit act each, so \"why did this feature move\" is answerable from the log rather than from memory."
+   },
+   {
+    "title": "At-risk flag when the target date has passed with open features",
+    "value": 6,
+    "effort": "S",
+    "weeks": 1,
+    "body": "Derived, never stored: `target_date < now() AND open > 0`. Storing it would need a job to keep it true, and a stale \"on track\" badge is worse than no badge."
+   },
+   {
+    "title": "A consensus call over a milestone as one unit",
+    "value": 6,
+    "effort": "L",
+    "weeks": 6,
+    "body": "§6.2's calls are per feature. A milestone is the size at which a maintainer actually asks for consent, and the existing call machinery already handles eligibility, quorum and the hidden tally -- the work is the many-to-one mapping, not the rules."
+   },
+   {
+    "title": "Hand-ordered milestones with drag reordering",
+    "value": 5,
+    "effort": "M",
+    "weeks": 3,
+    "body": "`position` per project and a drag handle. Ordered by `target_date` already answers it, and hand order is a second ordering to keep in sync with the dates the moment either changes."
+   }
+  ],
+  "roadmap_view": [
+   {
+    "title": "A roadmap page with milestones on a timeline",
+    "value": 8,
+    "effort": "L",
+    "weeks": 6,
+    "body": "`/projects/{slug}/roadmap` renders each milestone as a column with its features grouped by status, ordered by target date, and works with zero milestones (the empty state names what to create rather than apologising)."
+   },
+   {
+    "title": "A roadmap read route",
+    "value": 7,
+    "effort": "S",
+    "weeks": 1,
+    "body": "`GET /api/v1/projects/{slug}/roadmap` returning milestones with their counts, so the page and any third party read one shape. Every page in this repo that computes its own numbers is one page whose numbers can disagree with the route's."
+   },
+   {
+    "title": "Slippage: planned versus shipped per milestone",
+    "value": 7,
+    "effort": "M",
+    "weeks": 3,
+    "body": "For each closed milestone, the hours between target date and the last shipment, and for each open one the age of its oldest open feature. This is the number a roadmap is for, and it is computable from `audit_log` plus `target_date` with no new storage."
+   },
+   {
+    "title": "The next milestone on the project overview",
+    "value": 6,
+    "effort": "S",
+    "weeks": 1,
+    "body": "One line naming the earliest open milestone and its remaining count, on the page a reader actually lands on. The roadmap page is for people who already decided to look; this is for the ones who did not."
+   },
+   {
+    "title": "A feed item when a milestone opens or closes",
+    "value": 6,
+    "effort": "S",
+    "weeks": 1,
+    "body": "The project feed already publishes decisions; a plan changing is a decision. One item per transition, through the existing feed writer rather than a second one."
+   },
+   {
+    "title": "A milestone badge SVG",
+    "value": 5,
+    "effort": "S",
+    "weeks": 1,
+    "body": "The instance badge already answers \"what is this project\". A second SVG for the current milestone is another endpoint to keep alive for a surface that mostly appears in READMEs nobody re-reads."
+   },
+   {
+    "title": "Generate the roadmap by parsing docs/PLAN-r4.md",
+    "value": 4,
+    "effort": "L",
+    "weeks": 6,
+    "body": "A doc parser as the source of the roadmap makes the document the schema. The instance should own the plan and the document should describe it, or the two disagree the first time somebody edits prose."
+   },
+   {
+    "title": "iCal export of milestone target dates",
+    "value": 4,
+    "effort": "M",
+    "weeks": 3,
+    "body": "A calendar feed implies the dates are commitments. Until slippage is measured, exporting them advertises a schedule the project cannot keep."
+   }
+  ],
+  "scheduling": [
+   {
+    "title": "Feature dependencies: blocks and blocked_by",
+    "value": 8,
+    "effort": "L",
+    "weeks": 6,
+    "body": "`feature_deps(blocker_id, blocked_id)` with both FKs and a unique pair. A feature with an open blocker refuses `in_progress` at the same transition that already enforces the §6.2 rules, so the constraint exists where work moves rather than in a report nobody reads."
+   },
+   {
+    "title": "A blocked badge with the blocking feature named",
+    "value": 7,
+    "effort": "S",
+    "weeks": 1,
+    "body": "In the list and on the card: the count of open blockers, and on the feature page their titles. A dependency nobody can see is a dependency that gets ignored until the day it bites."
+   },
+   {
+    "title": "Bulk assign a selection of features to a milestone",
+    "value": 7,
+    "effort": "M",
+    "weeks": 3,
+    "body": "Multi-select in the features list, one `PUT .../milestone` per feature in one transaction. Grouping 130 ideas one page-load at a time is what makes people keep their plan in a spreadsheet."
+   },
+   {
+    "title": "Order the features inside a milestone",
+    "value": 6,
+    "effort": "M",
+    "weeks": 3,
+    "body": "`position` on the milestone-feature relationship, not on the feature, because the same feature can be third in one milestone and last in another. Reorder via drag, persisted as integers with gaps."
+   },
+   {
+    "title": "Milestone-scoped WIP: the board's limits read the milestone's size",
+    "value": 6,
+    "effort": "M",
+    "weeks": 3,
+    "body": "`board_columns.wip_limit` is fixed per project (3 in progress, 4 in review) and takes no account of how much a milestone contains. Show the milestone's share of each column beside the limit, which is a read, not a second limit to enforce."
+   },
+   {
+    "title": "Refuse a dependency cycle, naming the cycle",
+    "value": 6,
+    "effort": "S",
+    "weeks": 1,
+    "body": "A depth-first walk on insert returning the path found, so the refusal is `a blocks b blocks a` rather than `invalid`. Two nodes and a shared blocker is the shape that ships without it."
+   },
+   {
+    "title": "Place a card for every new feature",
+    "value": 3,
+    "effort": "S",
+    "weeks": 3,
+    "body": "Measured after this list was first written, and it refutes the idea: `GetBoard` returns a DERIVED card for every feature, so all 332 already appear in `inbox`; `board_cards` holds 20 rows because a row is written only when somebody MOVES a card (that is what `?feature_id=` on `PUT /board/cards/0/move` is for). Seeding a row per feature would therefore duplicate what the renderer already derives and would make \"placed\" mean nothing. The real gap the measurement found is smaller and different: a derived card and a placed row are indistinguishable to a reader, and neither is in the API's response as such."
+   },
+   {
+    "title": "Milestone-scoped board columns",
+    "value": 3,
+    "effort": "XL",
+    "weeks": 9,
+    "body": "A board per milestone, each with its own phases. Two boards over one backlog means two answers to \"what phase is this in\", and the filter above delivers the useful part of this for a fraction of the cost."
+   },
+   {
+    "title": "A dependency graph view",
+    "value": 5,
+    "effort": "L",
+    "weeks": 6,
+    "body": "Nodes and edges for a project's features rendered in SVG. Pretty, and the blocked badge plus the refusal already prevent the harm; this shows the shape to people who already know it."
+   },
+   {
+    "title": "Auto-assign new features to the current milestone",
+    "value": 5,
+    "effort": "S",
+    "weeks": 1,
+    "body": "A per-project toggle that puts every new feature in the active milestone. It makes the backlog unrepresentable -- the set no milestone claims is exactly what a backlog is -- and a mode change is the cheaper way to express the intent."
    }
   ]
  },
