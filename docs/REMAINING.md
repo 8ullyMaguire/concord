@@ -4802,6 +4802,22 @@ by a test. `contributors=2` is the §39 fallback proven live on the same line: t
 pushes come from an address Forgejo has no account for, and the pre-§39 reader reported 0 across
 238 commits.
 
+And then the forge delivered on its own, which is the part a test button cannot prove:
+
+```
+$ sqlite3 -readonly -header -column …/concord.db \
+    "select repo_full, kind, actor, datetime(at,'unixepoch','localtime') at_local, \
+            datetime(received_at,'unixepoch','localtime') recv from forge_events order by id"
+repo_full           kind  actor       at_local             recv
+hirrolot19/concord  push  hirrolot19  2026-11-12 10:41:12  2026-11-12 10:48:52   <- the hook test
+hirrolot19/concord  push  hirrolot19  2026-11-12 10:52:28  2026-11-12 10:52:50   <- a `git push`
+hirrolot19/concord  push  hirrolot19  2026-11-12 10:53:38  2026-11-12 10:53:41   <- a `git push`
+```
+
+The last two were pushed from this session's own commits, and the delivery lag is seconds — so the
+hook fires on real forge activity, not only on the API's test endpoint. `git push` is now itself a
+smoke test for R12's ingest.
+
 ### 41.4 What a push event does NOT do
 
 `newcomer response unknown (n=0, floor=5)` is the ABSENCE representation working, not a defect —
