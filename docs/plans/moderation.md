@@ -1,9 +1,9 @@
 # Moderation — implementation plan
 
 **Date:** 2026-11-11 · **Spec:** `docs/specs/moderation-spec.md` · **Branch:** `master`
-**Status:** M1 is **built, verified and deployed** (2026-11-11, commit `4c8be43`, live
-`pre-merge-2026-11-05-21-g7f28992`, schema 34). M2–M4 are still plan. The deviation and its
-reason are recorded at the end of §2.
+**Status:** M1–M3 are **built, verified and deployed** (M1 2026-11-11 commit `4c8be43`; M2 as the
+curation queue, `docs/REMAINING.md` §36–§37; M3 2026-11-12, §40). M4 is still plan and still gated
+on a second Go adopter. M1's three deviations are recorded at the end of §2.
 
 ## 0. How to use this plan
 
@@ -703,6 +703,59 @@ Acceptance:
 5. `assets/js/moderation.js` appears in `reader_coverage_test.go`'s inventory with its two
    routes, and `make a11y-check` stays green (the panel is a `<section>` with a heading and
    labelled inputs).
+
+### 4b. M3 as specified against the tree, 2026-11-12
+
+M1 shipped two of §4's five items, and the deviation note under §2 says why: the feature-page
+panel (items 1–2) exists because `reader_coverage_test.go` refuses an API route with no reader,
+and `assets/js/moderation.js` already carries its inventory row (item 5). What is left is the two
+outbound links, the named filter, and one nav label no milestone claimed:
+
+| item | what | files |
+|---|---|---|
+| 3 | a "Moderate" link on each `/ranking` row, only for a reader with standing | `internal/httpapi/handlers.go` (`handleRankingPage`), `templates/ranking.html`, `assets/js/ranking.js` |
+| 4 | each `/rank` card links to its idea page; the vote buttons keep working | `assets/js/rank.js`, `assets/css/style.css` |
+| — | `?kind=moderation` on the audit read, so a reader need not know `arena.remove` | `internal/store/audit.go`, `internal/store/curation.go`, `internal/httpapi/audit.go`, `assets/js/audit.js` |
+| — | the tab reads "Modlog" (spec §7, last bullet — shipped by nothing) | `templates/base.html` |
+
+**Standing is decided by the SERVER, not by a probe.** Item 3 says "no fetch", and the panel's
+probe *is* a fetch. `handleRankingPage` therefore calls `mayModerate(r, proj.ID, "reviewer")` —
+the same two axes the routes enforce — and renders `data-can-moderate="true|false"` on
+`#ranking-root`; `ranking.js` reads the attribute and emits the link only when it is true. The
+navigation cookie is what makes this work in a signed-in browser, because a navigation cannot
+carry the bearer header (the same reason `projectReadable` works). The panel stays the authority:
+a token-only client sees no link and still gets the panel's own probe on the feature page.
+
+**`kind` reuses the queue's vocabulary.** `isCurationAction` in `internal/store/curation.go` is
+already the one place that says which actions are moderation acts; it becomes an exported
+`IsModerationAction` plus `ModerationActions()`, and `kind=moderation` resolves to that slice. A
+second list would drift from the queue the first time an act is added. An unknown kind is a
+**400** naming the kinds that exist, never a silently unfiltered log — "the filter was ignored"
+and "the filter matched everything" render identically.
+
+Steps, each with the command that proves it:
+
+1. `store`: `AuditFilter` gains `Actions []string`; `ListAudit` emits `action IN (…)` when it is
+   set (composing with the other clauses by AND, like every filter in this log).
+   `AuditKindActions(kind) ([]string, error)` returns `ErrInvalid` for an unknown name.
+   `go test ./internal/store/ -run 'AuditKind|AuditFilter' -count=1` → `ok`.
+2. `httpapi`: `handleListProjectAudit` reads `kind`, answers 400 through `mapError` on an unknown
+   one. `go test ./internal/httpapi/ -run 'AuditKind|Audit' -count=1` → `ok`.
+3. `handleRankingPage` passes `CanModerate`; the template renders the attribute; `ranking.js`
+   adds the link in a seventh cell (`.cell-mod`) with `href`
+   `/projects/{slug}/features/{id}#moderation-panel`. Anonymous and contributor readers must NOT
+   get it: `go test ./internal/httpapi/ -run 'RankingPage' -count=1`.
+4. `rank.js`'s `featureCard()` gains `<a class="rank-open" href="…/features/{id}">Open the idea</a>`
+   in the card head, above the body and far from `#rank-actions`. Browser test: the link exists,
+   its href names the card's own id, and clicking a vote button still posts.
+5. The audit page's filter row gains `#audit-kind` (`All entries` / `Moderation`), included in
+   `filtered` so the count line stays honest.
+6. Tests: store (`kind` narrows to the four acts; unknown kind refused), httpapi (200/400),
+   `tests/e2e/audit_e2e.py` (the select narrows the rendered rows), and a new
+   `tests/e2e/rank_links_e2e.py` (the two links, with and without the `concord_nav` cookie),
+   added to `make e2e`'s list with its own `PORT`.
+7. `make verify`, then `make gates`, then the new suites by hand, then `make deploy` and the
+   live proof.
 
 ## 5. M4 — extraction (ordering + acceptance)
 

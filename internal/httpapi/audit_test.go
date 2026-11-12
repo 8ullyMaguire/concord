@@ -534,3 +534,55 @@ func TestTheAuditReadSaysWhoMayUndo(t *testing.T) {
 		}
 	}
 }
+
+// §M3's named filter over HTTP. The kind is resolved by the store, so these two tests are about
+// the two things only the handler can get wrong: answering a family at all, and REFUSING an
+// unknown one instead of rendering the whole log.
+func TestAKindFilterNarrowsToTheModerationActs(t *testing.T) {
+	ts, st := newTestServerWithStore(t)
+
+	p := seedAuditProject(t, st, "audit-kind")
+	owner := auditOwnerID(t, st)
+	for _, row := range []struct{ action, detail string }{
+		{"arena.remove", "spam"},
+		{"arena.restore", "not spam"},
+		{"set_visibility", "made public"},
+		{"create_invite", "code a"},
+	} {
+		if err := st.AddAudit(t.Context(), p.ID, owner, row.action, "feature", 1, row.detail); err != nil {
+			t.Fatalf("add audit %s: %v", row.action, err)
+		}
+	}
+
+	page := getAudit(t, ts, "/api/v1/projects/audit-kind/audit?kind=moderation")
+	if page.Total != 2 || len(page.Entries) != 2 {
+		t.Fatalf("kind=moderation returned %d entries (total %d), want the 2 acts",
+			len(page.Entries), page.Total)
+	}
+	for _, e := range page.Entries {
+		if !store.IsModerationAction(e.Action) {
+			t.Errorf("kind=moderation returned a %q row", e.Action)
+		}
+	}
+}
+
+// An unknown kind is 400 with the kinds named. The alternative -- ignore it -- returns the whole
+// log, and a whole log renders identically to a filter that matched everything.
+func TestAnUnknownKindIsRefusedWithTheKindsNamed(t *testing.T) {
+	ts, st := newTestServerWithStore(t)
+	seedAuditProject(t, st, "audit-kind-bad")
+
+	code, body := authGet(t, ts, "/api/v1/projects/audit-kind-bad/audit?kind=moderaton", "")
+	if code != http.StatusBadRequest {
+		t.Fatalf("kind=moderaton answered %d, want 400; body %s", code, body)
+	}
+	if !strings.Contains(string(body), "moderation") {
+		t.Fatalf("the refusal does not name the kinds that exist: %s", body)
+	}
+	// And the same query spelled correctly is 200, so this test cannot pass by the route being
+	// broken for both spellings.
+	code, body = authGet(t, ts, "/api/v1/projects/audit-kind-bad/audit?kind=moderation", "")
+	if code != http.StatusOK {
+		t.Fatalf("kind=moderation answered %d, want 200; body %s", code, body)
+	}
+}

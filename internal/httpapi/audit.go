@@ -24,6 +24,23 @@ func (s *Server) handleListProjectAudit(w http.ResponseWriter, r *http.Request) 
 	q := r.URL.Query()
 	f.Action = q.Get("action")
 	f.EntityType = q.Get("entity_type")
+	// `kind` names a FAMILY of actions: `kind=moderation` is the four acts in the moderation
+	// spec's vocabulary, so a reader asking "what has moderation done here" does not have to
+	// know that the answer is spelled `arena.remove`. It composes with `action` by AND, because
+	// every filter in this log does -- `kind=moderation&action=arena.remove` means the removals,
+	// and `kind=moderation&action=create_feature` means nothing, which is the truth.
+	//
+	// An UNKNOWN kind is a 400 rather than an ignored parameter. An ignored one returns the whole
+	// log, and a whole log renders exactly like a filter that matched everything, so a typo would
+	// be reported as "moderation has done nothing" instead of "there is no such kind".
+	if kind := q.Get("kind"); kind != "" {
+		actions, err := store.AuditKindActions(kind)
+		if err != nil {
+			mapError(w, err)
+			return
+		}
+		f.Actions = actions
+	}
 	// `q`, not `text`. The API spells it `q` because a bare `text` next to
 	// `action` and `entity_type` reads as "the text of the entry" rather than
 	// "text to search entries for", and the filter spans both action and detail.

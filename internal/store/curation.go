@@ -307,14 +307,36 @@ func (d *DB) ReviewAct(ctx context.Context, auditID, userID int64, vote int, rat
 	return yes, no, nil
 }
 
+// ModerationActions is the act vocabulary from docs/specs/moderation-spec.md §5, minus
+// `moderation.undo`, which is a dispatch over the act it names rather than an act of its own.
+//
+// ONE list, in one place: the curation queue's whitelist, the audit viewer's `kind=moderation`
+// filter and the undo control all have to agree about what a moderation act is, and a second
+// copy drifts the first time an act is added.
+var moderationActions = []string{
+	"arena.remove", "arena.restore", "feature.reject", "feature.unreject",
+}
+
+// ModerationActions returns a copy, so a caller cannot reorder the package's vocabulary by
+// sorting the slice it was handed.
+func ModerationActions() []string {
+	return append([]string(nil), moderationActions...)
+}
+
+// IsModerationAction reports whether an audit action names a moderation act.
+func IsModerationAction(action string) bool {
+	for _, a := range moderationActions {
+		if a == action {
+			return true
+		}
+	}
+	return false
+}
+
 // isCurationAction reports whether an audit action is one the queue lists and reviewers may
 // review. One function so the SQL whitelist and the store check cannot disagree.
 func isCurationAction(action string) bool {
-	switch action {
-	case "arena.remove", "arena.restore", "feature.reject", "feature.unreject":
-		return true
-	}
-	return false
+	return IsModerationAction(action)
 }
 
 // VoteOnCuration is the write side of the queue: it dispatches to the function that already

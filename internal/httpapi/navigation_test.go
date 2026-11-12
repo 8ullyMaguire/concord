@@ -296,7 +296,11 @@ func TestProjectTabMarksTheCurrentPage(t *testing.T) {
 
 	cases := []struct{ path, want string }{
 		{"/projects/mark-project", "Overview"},
-		{"/projects/mark-project/audit", "Audit"},
+		// The label is "Modlog", not "Audit": spec §7's last bullet asks for the nav entry to say
+		// what the page is for, on the same route. The first run of this suite after the rename
+		// failed here with `marks "Modlog" active, expected "Audit"` -- which is the assertion
+		// doing its job, since the pair (route, label) is exactly what changed.
+		{"/projects/mark-project/audit", "Modlog"},
 		{"/projects/mark-project/consensus", "Consensus"},
 		{"/projects/mark-project/board", "Board"},
 		{"/projects/mark-project/ranking", "Ranking"},

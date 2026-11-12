@@ -2321,10 +2321,19 @@ func (s *Server) handleRankingPage(w http.ResponseWriter, r *http.Request) {
 		s.notFoundPage(w, r, "There is no project at this address.")
 		return
 	}
+	// Standing is decided HERE, on the server, and handed to the page as one attribute.
+	//
+	// M3's acceptance says the /ranking control must cost no fetch, and the feature page's panel
+	// probe is a fetch. So the page renders `data-can-moderate` from the same pair of axes the
+	// routes enforce (mayModerate = instance trust OR the project's reviewer role) and the script
+	// emits the link only when it is true. A token-only client renders anonymous here -- a
+	// navigation cannot carry the bearer header, which is why the nav cookie exists -- and that is
+	// the safe direction: no link, and the panel still probes on the page it links to.
 	s.render(w, http.StatusOK, "ranking", struct {
 		pageData
-		Slug string
-	}{s.pageFor(r, "Ranking - "+slug), slug})
+		Slug        string
+		CanModerate bool
+	}{s.pageFor(r, "Ranking - "+slug), slug, s.mayModerate(r, proj.ID, "reviewer")})
 }
 
 func (s *Server) handleAuditPage(w http.ResponseWriter, r *http.Request) {

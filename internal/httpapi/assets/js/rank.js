@@ -100,10 +100,18 @@
       'this page as they are proposed.');
   }
 
+  // A card names the idea it shows and links to it. The link is in the card HEAD, above the
+  // body: the whole point (spec §7) is that the pairwise page gains no destructive control and no
+  // click target near the vote buttons, because a button that acts on the option under the
+  // reader's cursor is a mis-click generator. The head is the far end of the card from
+  // #rank-actions, and the href carries THIS card's id -- a shared or hardcoded href is how both
+  // cards end up opening the same idea.
   function featureCard(f, side) {
-    return '<article class="rank-card" data-side="' + side + '">' +
+    return '<article class="rank-card" data-side="' + side + '" data-feature="' + f.id + '">' +
       '<header class="rank-card-head">' +
         '<span class="rank-label">Option ' + side + '</span>' +
+        '<a class="rank-open" href="/projects/' + encodeURIComponent(slug) +
+          '/features/' + f.id + '">Open the idea</a>' +
       '</header>' +
       '<h2 class="rank-title">' + esc(f.title) + '</h2>' +
       '<p class="rank-body">' + esc(f.body || '') + '</p>' +

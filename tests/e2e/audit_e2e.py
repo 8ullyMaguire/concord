@@ -22,6 +22,7 @@ reads as a broken page rather than as a throttle.
 
 import itertools
 import sqlite3
+import urllib.error
 import tempfile
 import time
 
@@ -36,6 +37,9 @@ BASE = f"http://127.0.0.1:{PORT}"
 SLUG = "audit-demo"
 PRIVATE = "audit-private"
 EMPTY = "audit-empty"
+# §M3's named filter needs a log where the moderation acts are a MINORITY: over a log that is
+# entirely acts, `kind=moderation` is indistinguishable from no filter at all.
+MOD = "audit-moderation"
 
 _ips = itertools.count(1)
 
@@ -68,6 +72,7 @@ def seed(db):
     pid = project(SLUG)
     project(PRIVATE, visibility="private")
     project(EMPTY)
+    modpid = project(MOD)
 
     def audit(project_id, actor, action, detail, at):
         # created_at is explicit rather than defaulted: the store orders by it,
@@ -113,6 +118,14 @@ def seed(db):
     # deleted account rather than as an id.
     audit(pid, 987654, "revoke_invite", "by an account that no longer exists",
           now - 10)
+
+    # The moderation family (docs/specs/moderation-spec.md §5) beside a row that is NOT an act,
+    # on their own project so the assertions above keep their counts.
+    audit(modpid, owner, "arena.remove",
+          '{"reason": "duplicate of the other idea", "prev": {"status": "draft"}}', now - 40)
+    audit(modpid, owner, "arena.restore",
+          '{"reason": "reversed: it was not a duplicate"}', now - 30)
+    audit(modpid, owner, "set_visibility", "made the project public", now - 20)
 
     con.commit()
     con.close()
@@ -320,3 +333,39 @@ def test_a_detail_containing_html_is_escaped_not_executed(page):
         "a <script> tag in a display name EXECUTED")
     assert page.evaluate("() => document.querySelectorAll('table tbody img').length") == 0, (
         "an audit action name or display name produced a live <img> element")
+
+
+def test_the_kind_filter_narrows_to_the_moderation_family(page):
+    """`kind=moderation` is a FAMILY (arena.remove/restore + reject/unreject), not a name.
+
+    The complaint it answers: `action=arena.remove` works, but you have to know that spelling
+    before you can ask "what has moderation done here". Two assertions again -- the acts are
+    present AND the non-act is absent -- because a filter that returns the whole log satisfies
+    the first one on its own.
+    """
+    open_audit(page, MOD)
+    expect(page.locator("table tbody tr")).to_have_count(3, timeout=15000)
+
+    page.select_option("#audit-kind", "moderation")
+    page.click("#audit-apply")
+    page.wait_for_function(
+        "() => document.querySelectorAll('table tbody tr').length === 2", timeout=15000)
+
+    tbody = page.locator("table tbody")
+    expect(tbody).to_contain_text("arena.remove")
+    expect(tbody).to_contain_text("arena.restore")
+    expect(tbody).not_to_contain_text("set_visibility")
+    # The count line is what tells a reader the filter narrowed rather than the log being short.
+    expect(page.locator("[data-audit-count]")).to_contain_text("excluded 1")
+    assert not page.errors, f"JS errors: {page.errors}"
+
+
+def test_an_unknown_kind_is_refused_rather_than_ignored(server):
+    """A typo must not render the whole log.
+
+    An ignored `kind` returns every row, and a whole log looks exactly like a filter that matched
+    everything -- so the reader would conclude moderation had done these things.
+    """
+    with pytest.raises(urllib.error.HTTPError) as exc:
+        harness.api(BASE, "GET", f"/api/v1/projects/{MOD}/audit?kind=moderaton")
+    assert exc.value.code == 400, f"an unknown kind answered {exc.value.code}, want 400"

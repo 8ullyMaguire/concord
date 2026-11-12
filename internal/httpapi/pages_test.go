@@ -434,3 +434,77 @@ func TestAssetVersionWorksWithoutATemplateLoad(t *testing.T) {
 		t.Errorf("a correctly hashed asset served without a template load got %q", cc)
 	}
 }
+
+// §M3 item 3: the standings page offers a per-row moderation link ONLY to a reader with
+// standing, and it decides that on the SERVER.
+//
+// The assertion is on the attribute the script reads, not on the link: the rows are rendered
+// client-side, so a Go test cannot see them (see the skill's "a shell page cannot be verified by
+// a Go test"). What Go CAN prove is the standing decision -- and it must prove it in both
+// directions, because a page that always said "true" would render a control for every anonymous
+// reader and every test that checked the reviewer's side would still pass.
+func TestTheRankingPageDecidesModerationStandingOnTheServer(t *testing.T) {
+	ts, st := newTestServerWithStore(t)
+	p := seedAuditProject(t, st, "rank-standing")
+
+	if _, err := st.CreateUser(t.Context(), "rank-reviewer", "Rae Viewer"); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	if _, err := st.CreateUser(t.Context(), "rank-plain", "Plain Reader"); err != nil {
+		t.Fatalf("CreateUser: %v", err)
+	}
+	var reviewerID, plainID int64
+	if err := st.QueryRowContext(t.Context(),
+		`SELECT id FROM users WHERE username = 'rank-reviewer'`).Scan(&reviewerID); err != nil {
+		t.Fatalf("look up reviewer: %v", err)
+	}
+	if err := st.QueryRowContext(t.Context(),
+		`SELECT id FROM users WHERE username = 'rank-plain'`).Scan(&plainID); err != nil {
+		t.Fatalf("look up plain reader: %v", err)
+	}
+	if _, err := st.ExecContext(t.Context(),
+		`INSERT INTO members (project_id, user_id, role, joined_at) VALUES (?,?,'reviewer',1)`,
+		p.ID, reviewerID); err != nil {
+		t.Fatalf("add reviewer: %v", err)
+	}
+	if _, err := st.ExecContext(t.Context(),
+		`INSERT INTO members (project_id, user_id, role, joined_at) VALUES (?,?,'contributor',1)`,
+		p.ID, plainID); err != nil {
+		t.Fatalf("add contributor: %v", err)
+	}
+
+	path := "/projects/rank-standing/ranking"
+
+	// Anonymous: no standing, and the page still renders (it is public).
+	code, body := authGet(t, ts, path, anonymousMarker)
+	if code != http.StatusOK {
+		t.Fatalf("anonymous ranking page: %d, want 200", code)
+	}
+	if !strings.Contains(string(body), `data-can-moderate="false"`) {
+		t.Fatalf("an anonymous reader is not marked as unable to moderate:\n%s", body)
+	}
+
+	// A contributor is signed in and still has no standing: the role ladder, not the login, is
+	// the gate.
+	// authGet sets the header verbatim, so the scheme has to be in the string: a bare token
+	// reaches bearerToken() without its "Bearer " prefix and is treated as anonymous -- which
+	// would make this test pass for the wrong reader (measured: it did, first run).
+	plainTok := "Bearer " + tokenFor(t, st, "rank-plain")
+	code, body = authGet(t, ts, path, plainTok)
+	if code != http.StatusOK {
+		t.Fatalf("contributor ranking page: %d, want 200", code)
+	}
+	if !strings.Contains(string(body), `data-can-moderate="false"`) {
+		t.Fatalf("a contributor is marked as a moderator:\n%s", body)
+	}
+
+	// A reviewer may moderate, so the attribute flips.
+	revTok := "Bearer " + tokenFor(t, st, "rank-reviewer")
+	code, body = authGet(t, ts, path, revTok)
+	if code != http.StatusOK {
+		t.Fatalf("reviewer ranking page: %d, want 200", code)
+	}
+	if !strings.Contains(string(body), `data-can-moderate="true"`) {
+		t.Fatalf("a project reviewer is not marked as able to moderate:\n%s", body)
+	}
+}

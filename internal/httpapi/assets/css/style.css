@@ -821,7 +821,11 @@ a.card { display: block; color: inherit; }
   display: flex;
   flex-direction: column;
 }
-.rank-card-head { margin-bottom: 0.5rem; }
+.rank-card-head { margin-bottom: 0.5rem; display: flex; align-items: baseline;
+  justify-content: space-between; gap: 0.75rem; }
+.rank-open { font-size: 0.85rem; white-space: nowrap; }
+.cell-mod { white-space: nowrap; }
+.rank-moderate { font-size: 0.85rem; }
 .rank-label {
   font-size: 0.7rem;
   font-weight: 600;

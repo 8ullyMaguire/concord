@@ -6,7 +6,7 @@ the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
 **Measured state (the twenty-first pass, §34):** schema 35 · 35 migrations · 87 live tables ·
-**1242 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files · 54/54 UI mutants killed
+**1248 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files · 54/54 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
 8 project.js/arena, 4 project.js/work items) · Go mutants: 27 arms, 172 killed, 0 survived ·
 `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
@@ -4106,7 +4106,7 @@ against a seeded probe instance — the defect is a perfect score for an unmeasu
 ### 34.6 Where the numbers stand
 
 **Measured state (the twenty-first pass, §34):** schema 35 · 35 migrations · 87 live tables ·
-**1242 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files ·
+**1248 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files ·
 `make verify` exit 0 · `make gates` exit 0 (27 arms) · `make e2e` exit 0.
 
 ## §35 — The Consensus tab answered 405, because the index it links to was "out of scope"
@@ -4508,10 +4508,10 @@ the row, and selecting "Expired, no consensus" renders
 
 ### 38.4 Still owed
 
-1. **M3, the standings-page link** — a maintainer still reaches moderation from `/curation` or the
-   audit page, not from the arena they are looking at.
-2. **A named `kind=moderation` filter on `/audit`** — `action=arena.remove` works, but you have to
-   know the action name to ask.
+1. **M3, the standings-page link** — SHIPPED in §40: `/ranking` rows carry a "Moderate" link for a
+   reader the SERVER marks as having standing (`data-can-moderate`), with no probe per row.
+2. **A named `kind=moderation` filter on `/audit`** — SHIPPED in §40, resolved from the queue's own
+   act vocabulary; an unknown kind is 400 rather than an unfiltered log.
 3. **`concord-healthsync`** -- FIXED, and the fix turned up two defects in the ingest itself.
    See §39: the seed went from 5 to 23 verified repositories, `contributors` no longer reads 0 for
    every Forgejo repository, and a rate limit is now *deferred* rather than reported as a failure.
@@ -4605,3 +4605,94 @@ data that quietly stopped arriving. `concord-healthsync.timer` is now enabled on
    count) and for Forgejo from the first 50 commits -- the two are not the same measure across
    hosts. Recorded, not unified.
 3. **M3, the standings-page link**, and the named `kind=moderation` filter on `/audit` (§38.4).
+
+## §40 — M3's controls: the standing is decided by the server, the kind filter speaks the act vocabulary
+
+### 40.1 What M1 had already shipped, and what was actually owed
+
+§4 of `docs/plans/moderation.md` lists five acceptance items. M1 shipped two and a half of them
+(the feature-page panel, the contributor's absent panel, and `moderation.js`'s reader-inventory
+row), because `TestEveryAPIRouteIsDeclaredWithAReaderOrAReason` refuses a route no page can reach.
+The half that was owed is the outbound half — a maintainer could reach moderation from `/curation`
+or the audit page, never from the arena they were looking at — plus the named filter §38.4 listed:
+
+1. a "Moderate" link on every `/ranking` row, for a reader with standing;
+2. a link from each `/rank` card to its own idea page, with no new target near the vote buttons;
+3. `?kind=moderation` on the audit read, so a reader does not have to know the word `arena.remove`;
+4. the tab labelled "Modlog" (spec §7's last bullet, which no milestone had claimed).
+
+### 40.2 The decision that carried the item: standing is decided by the SERVER
+
+The acceptance says "no fetch", and the feature page's panel probe **is** a fetch. A standings
+table that probed per row would cost one request per feature, for every reader, including the ones
+who cannot moderate. So `handleRankingPage` calls `mayModerate(r, proj.ID, "reviewer")` — the same
+two axes the routes enforce, instance trust or the project's `reviewer` role — and renders one
+attribute:
+
+```html
+<div id="ranking-root" aria-busy="true" data-can-moderate="true|false">
+```
+
+`ranking.js` reads it and emits the cell (header **and** row) only when it is true. Three
+consequences worth stating, because each is a way the item could have been shipped wrong:
+
+- **A signed-in reader is not a moderator.** The gate is the role ladder, so a contributor sees
+  exactly what an anonymous visitor sees. The test asserts the false case for both, because a page
+  that always said `true` would pass a test that only ever looked at the reviewer.
+- **A token-only client renders `false`.** A navigation cannot carry the bearer header — that is
+  why the `concord_nav` cookie exists — so the server sees no actor. That is the safe direction:
+  no link, and the panel still probes on the page it links to, where the authority actually is.
+- **The cell is absent, not disabled.** A column of controls that all refuse teaches a reader to
+  ignore the column.
+
+### 40.3 `kind=moderation` reuses the queue's vocabulary instead of copying it
+
+`isCurationAction` in `internal/store/curation.go` was already the single place that says which
+audit actions are moderation acts. It became `IsModerationAction` + `ModerationActions()`, and
+`AuditKindActions("moderation")` resolves to that slice. The audit filter gained
+`AuditFilter.Actions`, emitted as `action IN (…)` and composing with the other clauses by AND.
+
+**An unknown kind is a 400 naming the kinds that exist**, not an ignored parameter:
+
+```
+$ curl -s '.../projects/concord/audit?kind=moderaton'
+{"error":"invalid: \"moderaton\" is not a kind of audit entry; the kinds are: moderation"}
+```
+
+The alternative is the failure class this log has produced twice: an ignored filter returns the
+whole log, and a whole log renders identically to a filter that matched everything — so a typo
+would read as "moderation has done nothing here".
+
+### 40.4 What the two browser suites found that the Go gates could not
+
+- **A self-vote is refused, correctly, and it killed the first fixture.** `rank_links_e2e.py`
+  originally authored both ideas as the owner and then had that owner vote; the page rendered
+  `you proposed one of these features` / `a feature cannot be ranked by the person who proposed
+  it`. Not a page defect — the rule working — and the fixture now authors the ideas as somebody
+  else. Worth keeping in the file's history: a voting fixture needs two identities.
+- **`authGet` sets the Authorization header VERBATIM**, so a bare token reaches `bearerToken()`
+  without its `Bearer ` scheme and is treated as anonymous. The reviewer half of the standing test
+  failed on first run with "a project reviewer is not marked as able to moderate", which reads like
+  a permission bug and was a test bug. `tokenFor` returns the token; the caller must add the
+  scheme.
+
+### 40.5 Evidence
+
+| gate | result |
+|---|---|
+| `go test ./internal/store/ -run 'KindFilter\|KindAndAnAction\|UnknownAuditKind'` | 3 passed |
+| `go test ./internal/httpapi/ -run 'KindFilter\|UnknownKind\|RankingPageDecides'` | 3 passed |
+| mutants killed | the `IN (…)` clause dropped; standing hardcoded `true`; the link never rendered; both cards pointing at one id — 4/4, each restored byte-identical |
+| `tests/e2e/rank_links_e2e.py` | 4 passed (anonymous, reviewer, contributor, and the vote-beside-the-link) |
+| `tests/e2e/audit_e2e.py` | 11 passed, including `kind=moderation` narrowing 3 rows to 2 and the 400 |
+
+`make verify` and `make gates` are recorded in the commit body for this pass, from their own
+output, rather than here: a row in this table that says "all passed" before the run has finished is
+the exact claim this file exists to prevent.
+
+### 40.6 Still owed after this pass
+
+1. **The affected author is told nothing** — spec §8, still the weakest part of v1, and still the
+   owner's call because there is no inbox to tell them in.
+2. **A forge token** (`CONCORD_FORGE_TOKEN`) — §39.6's first item, untouched here.
+3. **M4, extraction to `polaris-ledger-go`** — deliberately gated on a second Go adopter.

@@ -50,12 +50,37 @@ function apiAuth(extra) {
   var root = document.getElementById('ranking-root');
   var slug = slugFromPath();
 
+  // Whether this reader may moderate, decided by the SERVER from the same permission pair the
+  // moderation routes enforce and handed over as an attribute on the root.
+  //
+  // It is deliberately not a probe. The panel on the feature page probes with a real act
+  // (`confirm:false`), which costs a request; a standings table that probed once per row would
+  // cost one request per feature, and one per page that is never used by the readers who cannot
+  // moderate anyway. An attribute is zero requests, and the panel remains the authority: this
+  // link decides where the reader LANDS, not what they may do there.
+  var CAN_MODERATE = (root && root.getAttribute('data-can-moderate')) === 'true';
+
   function errorState(message) {
     return '<div class="empty-state error-state">' +
       '<div class="empty-state-icon">\u26A0</div>' +
       '<p class="empty-state-title">Could not load the ranking</p>' +
       '<p class="empty-state-description">' + esc(message) + '</p>' +
       '<button class="btn btn-primary" id="ranking-retry">Try again</button></div>';
+  }
+
+  // The moderation cell: a link to the feature page's panel, never a second implementation.
+  //
+  // It is rendered from the server's standing decision, so a reader without it gets no cell at
+  // all -- not a disabled control, not a lock icon. A column of controls that all refuse teaches
+  // a reader to ignore the column.
+  function modCell(p) {
+    if (!CAN_MODERATE) return '';
+    var href = '/projects/' + encodeURIComponent(slug) + '/features/' + p.id + '#moderation-panel';
+    return '<td class="cell-mod"><a class="rank-moderate" href="' + href + '">Moderate</a></td>';
+  }
+
+  function modHead() {
+    return CAN_MODERATE ? '<th><span class="dim">Moderate</span></th>' : '';
   }
 
   function row(p, i, tally) {
@@ -75,6 +100,7 @@ function apiAuth(extra) {
       '<td class="cell-num">' + num(p.strategic_weight) + '</td>' +
       '<td class="cell-num">' + num(p.priority_score) + '</td>' +
       '<td class="cell-num">' + esc(participation) + '</td>' +
+      modCell(p) +
       '</tr>';
   }
 
@@ -109,7 +135,7 @@ function apiAuth(extra) {
       '<div class="table-scroll"><table class="ranking-table">' +
         '<thead><tr>' +
           '<th>#</th><th>Feature</th><th>Rating</th><th>Pain</th>' +
-          '<th>Weight</th><th>Priority</th><th>Votes</th>' +
+          '<th>Weight</th><th>Priority</th><th>Votes</th>' + modHead() +
         '</tr></thead>' +
         '<tbody>' +
         priorities.map(function (p, i) { return row(p, i, byId[p.id]); }).join('') +

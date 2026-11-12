@@ -58,6 +58,10 @@ e2e: build
 	$(E2E_PYTEST) tests/e2e/curation_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/audit_undo_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/audit_e2e.py -q
+	# M3's outbound links: the standings page's per-row Moderate link (server-decided standing,
+	# no probe) and the pairwise page's per-card idea link. `gates` cannot see either -- the rows
+	# are rendered client-side from an attribute, and the hrefs are built in JavaScript.
+	$(E2E_PYTEST) tests/e2e/rank_links_e2e.py -q
 	$(E2E_PYTEST) tests/e2e/feature_e2e.py -q
 	# §6.2's themes: the propose form, the consent state, and the expiry a reader has to be
 	# able to see. Its own suite because it needs a signed-in page and a charter of its own.

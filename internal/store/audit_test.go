@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 )
 
@@ -618,5 +620,90 @@ func TestTheAuditLogSaysWhichActsWereReversed(t *testing.T) {
 	}
 	if !foundReversal {
 		t.Fatal("the restore does not name the act it reverses")
+	}
+}
+
+// §M3's named filter: `kind=moderation` is a FAMILY, and the family is the spec's act
+// vocabulary rather than a list written here. Two assertions, because they fail differently:
+// the positive one catches a filter that narrows to nothing, and the negative one catches a
+// filter that narrows to nothing USEFUL (the whole log looks like a successful filter when only
+// its count is read).
+func TestAKindFilterNarrowsToTheWholeModerationFamily(t *testing.T) {
+	d, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+	auditRow(t, d, pid, uid, "arena.remove", "feature", 11, "spam", 1001)
+	auditRow(t, d, pid, uid, "arena.restore", "feature", 11, "not spam", 1002)
+	auditRow(t, d, pid, uid, "set_visibility", "project", pid, "made private", 1003)
+	auditRow(t, d, pid, uid, "create_feature", "feature", 12, "an idea", 1004)
+
+	actions, err := AuditKindActions("moderation")
+	if err != nil {
+		t.Fatalf("AuditKindActions(moderation): %v", err)
+	}
+	if len(actions) != len(ModerationActions()) {
+		t.Fatalf("kind resolved to %d actions, the vocabulary has %d", len(actions), len(ModerationActions()))
+	}
+
+	page, err := d.ListAudit(ctx, AuditFilter{ProjectID: pid, Actions: actions})
+	if err != nil {
+		t.Fatalf("ListAudit(actions): %v", err)
+	}
+	if len(page.Entries) != 2 || page.Total != 2 {
+		t.Fatalf("got %d entries (total %d), want the 2 moderation acts", len(page.Entries), page.Total)
+	}
+	for _, e := range page.Entries {
+		if !IsModerationAction(e.Action) {
+			t.Errorf("the kind filter returned a %q row, which is not a moderation act", e.Action)
+		}
+	}
+}
+
+// A kind and an action compose by AND, like every other filter in this log. Coherent pairs
+// narrow; incoherent ones are empty, which is the truth rather than a reason to relax the query.
+func TestAKindAndAnActionComposeByAnd(t *testing.T) {
+	d, uid, pid := setupWithProject(t)
+	ctx := context.Background()
+	auditRow(t, d, pid, uid, "arena.remove", "feature", 11, "spam", 1001)
+	auditRow(t, d, pid, uid, "arena.restore", "feature", 11, "not spam", 1002)
+
+	actions, err := AuditKindActions("moderation")
+	if err != nil {
+		t.Fatalf("AuditKindActions: %v", err)
+	}
+	one, err := d.ListAudit(ctx, AuditFilter{ProjectID: pid, Actions: actions, Action: "arena.remove"})
+	if err != nil {
+		t.Fatalf("ListAudit: %v", err)
+	}
+	if len(one.Entries) != 1 || one.Entries[0].Action != "arena.remove" {
+		t.Fatalf("kind+action returned %d entries, want the one removal", len(one.Entries))
+	}
+	none, err := d.ListAudit(ctx, AuditFilter{ProjectID: pid, Actions: actions, Action: "create_feature"})
+	if err != nil {
+		t.Fatalf("ListAudit: %v", err)
+	}
+	if len(none.Entries) != 0 {
+		t.Fatalf("kind=moderation with a non-moderation action returned %d rows, want 0", len(none.Entries))
+	}
+}
+
+// An unknown kind is an ERROR, not a filter that quietly matches nothing or everything.
+//
+// The failure it prevents: an ignored `kind` returns the whole log, and a whole log is exactly
+// what a working filter over everything returns -- so a typo in a URL would be read as
+// "moderation has done nothing here" rather than "there is no such kind".
+func TestAnUnknownAuditKindIsRefusedRatherThanIgnored(t *testing.T) {
+	_, err := AuditKindActions("moderaton")
+	if err == nil {
+		t.Fatal("an unknown kind was accepted; the log would render unfiltered")
+	}
+	if !errors.Is(err, ErrInvalid) {
+		t.Fatalf("error %v does not wrap ErrInvalid, so the handler cannot answer 400", err)
+	}
+	if !strings.Contains(err.Error(), "moderation") {
+		t.Fatalf("the refusal (%v) does not name the kinds that exist", err)
+	}
+	// The empty kind is the ABSENCE of the filter, not an unknown one.
+	if got, err := AuditKindActions(""); got != nil || err != nil {
+		t.Fatalf("AuditKindActions(\"\") = %v, %v; want no actions and no error", got, err)
 	}
 }

@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"database/sql"
+	"fmt"
 	"strings"
 )
 
@@ -60,8 +61,14 @@ type AuditEntry struct {
 // AuditFilter narrows the log. Every field is optional and the zero value matches
 // everything for the project.
 type AuditFilter struct {
-	ProjectID  int64
-	Action     string
+	ProjectID int64
+	Action    string
+	// Actions narrows to a SET of actions at once. It exists for `kind=moderation`, which is a
+	// family (arena.remove, arena.restore, feature.reject, feature.unreject) rather than a name:
+	// a reader looking for "what did moderation do" should not have to know the act vocabulary,
+	// and asking for the family one action at a time is four requests whose union no total
+	// describes. Composes with Action by AND, like every other clause here.
+	Actions    []string
 	ActorID    int64
 	EntityType string
 	EntityID   int64
@@ -69,6 +76,23 @@ type AuditFilter struct {
 	Since      float64
 	Offset     int
 	Limit      int
+}
+
+// AuditKindActions resolves a NAMED family of audit actions to its members.
+//
+// The alternative -- letting the page translate a kind into action names -- is a second copy of
+// the vocabulary in JavaScript, and it drifts the first time an act is added. An unknown kind is
+// an error rather than an empty filter: a log that silently ignores `kind=moderaton` shows every
+// row, which is indistinguishable from a filter that matched everything.
+func AuditKindActions(kind string) ([]string, error) {
+	switch kind {
+	case "":
+		return nil, nil
+	case "moderation":
+		return ModerationActions(), nil
+	}
+	return nil, fmt.Errorf("%w: %q is not a kind of audit entry; the kinds are: moderation",
+		ErrInvalid, kind)
 }
 
 // AuditPage is one page of entries plus the total it was drawn from.
@@ -124,6 +148,17 @@ func (d *DB) ListAudit(ctx context.Context, f AuditFilter) (AuditPage, error) {
 	if f.Action != "" {
 		where = append(where, "action = ?")
 		args = append(args, f.Action)
+	}
+	// A SET, not a name. The placeholders are built from the length so the count of bind values
+	// and the count of `?` cannot disagree -- a mismatch here is a runtime error naming the wrong
+	// number of arguments, which reads as a broken endpoint rather than a broken filter.
+	if len(f.Actions) > 0 {
+		marks := make([]string, len(f.Actions))
+		for i, a := range f.Actions {
+			marks[i] = "?"
+			args = append(args, a)
+		}
+		where = append(where, "action IN ("+strings.Join(marks, ",")+")")
 	}
 	if f.ActorID != 0 {
 		where = append(where, "actor_id = ?")

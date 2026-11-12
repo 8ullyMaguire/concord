@@ -58,6 +58,14 @@ same pass fixed two ingest defects: `contributors` read 0 for every Forgejo repo
 are not linked to a forge account (now falls back to the commit's own email/name), and a 403 rate
 limit failed the whole job (now `deferred`, exit 0; a 404 is never softened). `make deploy-admin` no
 longer disables the timers it installs, and `concord-healthsync.timer` is enabled.
+**M3 shipped next (2026-11-12, §40).** `/ranking` rows carry a "Moderate" link for a reader the
+SERVER marks as having standing — `handleRankingPage` calls `mayModerate` and renders one
+`data-can-moderate` attribute, so the page costs no probe per row and a contributor sees what an
+anonymous visitor sees. `/rank` cards link to their own idea page from the card head, with the vote
+buttons untouched. `?kind=moderation` filters the audit read from the queue's own act vocabulary, and
+an unknown kind is a 400 naming the kinds rather than an ignored parameter that would render the
+whole log. The project tab now reads "Modlog" (spec §7's last bullet, which no milestone had
+claimed). Browser suites: `tests/e2e/rank_links_e2e.py` (4) and `tests/e2e/audit_e2e.py` (11).
 Still owed: a forge token (`CONCORD_FORGE_TOKEN`) so the four private repositories can be seeded and
 GitHub's anonymous window stops being shared, and telling the affected author anything at all (§8 of
 the spec, the weakest part of v1 — no inbox exists). Spec
@@ -159,7 +167,7 @@ lands, which is why this file does not carry one)
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 1242 tests, schema 35, 86 tables,
+Measured, not remembered: `make verify` green, 1248 tests, schema 35, 86 tables,
 35 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 

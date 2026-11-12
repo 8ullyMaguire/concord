@@ -47,7 +47,10 @@ function apiAuth(extra) {
   // pushed into the query string: nothing on this site makes a filter shareable,
   // and a filter in the URL is a second source of truth to keep in step with
   // the controls.
-  var state = { action: '', q: '' };
+  // `kind` is a NAMED family of actions ("moderation"), resolved by the SERVER. The page never
+  // translates a kind into action names: that would be a second copy of the act vocabulary, and
+  // it would drift the first time an act is added to the spec.
+  var state = { kind: '', action: '', q: '' };
 
   function whenUnix(seconds) {
     if (seconds == null || isNaN(seconds)) return '—';
@@ -114,12 +117,19 @@ function apiAuth(extra) {
   }
 
   function controls(actions) {
+    // One option, because one family exists today. A kind the server does not know answers 400
+    // with the sentence naming the kinds, so this list is a convenience, not the contract.
+    var kinds = '<option value="">All entries</option>' +
+      '<option value="moderation"' + (state.kind === 'moderation' ? ' selected' : '') +
+      '>Moderation</option>';
     var opts = '<option value="">All actions</option>';
     (actions || []).forEach(function (a) {
       opts += '<option value="' + esc(a) + '"' + (a === state.action ? ' selected' : '') + '>' +
         esc(a) + '</option>';
     });
     return '<div class="audit-controls">' +
+      '<label for="audit-kind">Kind</label>' +
+      '<select id="audit-kind">' + kinds + '</select>' +
       '<label for="audit-action">Action</label>' +
       '<select id="audit-action">' + opts + '</select>' +
       '<label for="audit-q">Search</label>' +
@@ -166,7 +176,7 @@ function apiAuth(extra) {
   }
 
   function render(page, actions, unfilteredTotal) {
-    var filtered = state.action !== '' || state.q !== '';
+    var filtered = state.kind !== '' || state.action !== '' || state.q !== '';
     if (!page || !page.entries || page.entries.length === 0) {
       root.innerHTML = emptyState(page || { total: 0 }, actions, unfilteredTotal, filtered);
       return;
@@ -215,6 +225,7 @@ function apiAuth(extra) {
 
   function query() {
     var params = [];
+    if (state.kind) params.push('kind=' + encodeURIComponent(state.kind));
     if (state.action) params.push('action=' + encodeURIComponent(state.action));
     // `q`, matching the API. Sending `text` here would return every row and
     // look exactly like a filter that matched too much.
@@ -232,7 +243,7 @@ function apiAuth(extra) {
 
   function load(note) {
     var base = '/api/v1/projects/' + encodeURIComponent(slug);
-    var filtered = state.action !== '' || state.q !== '';
+    var filtered = state.kind !== '' || state.action !== '' || state.q !== '';
     var fetches = [
       fetch(base + '/audit' + query(), { headers: apiAuth() }).then(function (r) {
         if (!r.ok) throw new Error('audit: HTTP ' + r.status);
@@ -281,8 +292,10 @@ function apiAuth(extra) {
       if (!e.target) return;
       if (e.target.id === 'audit-retry') { load(); return; }
       if (e.target.id === 'audit-apply') {
+        var kind = document.getElementById('audit-kind');
         var sel = document.getElementById('audit-action');
         var box = document.getElementById('audit-q');
+        state.kind = kind ? kind.value : '';
         state.action = sel ? sel.value : '';
         state.q = box ? box.value.trim() : '';
         load();

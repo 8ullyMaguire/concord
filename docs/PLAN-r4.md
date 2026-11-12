@@ -250,7 +250,7 @@ be rewritten. Federation and MCP are listed in the plan for later.
 
 ## Status
 
-Measured against the running instance (schema 35, 86 tables, 1242 tests; the build it is
+Measured against the running instance (schema 35, 86 tables, 1248 tests; the build it is
 running is whatever `GET /api/v1/version` answers, which is deliberately not written down here --
 a version string in a status paragraph is stale the moment the next commit lands), not against the
 plan's own history. "Shipped"
@@ -386,9 +386,13 @@ unreliable as a test that never met its mutant.
 log could be written by twenty call sites and read by none until this pass.
 Nothing on this page mentioned that.
 
-**Also queued, on the owner's request (2026-11-11): moderation.** Spec and plan are written
-and nothing is built — `docs/specs/moderation-spec.md`, `docs/plans/moderation.md`. It answers
-the arena-removal request as one mechanism: an act with a reason, a reversal that is a second
+**Also queued, on the owner's request (2026-11-11): moderation.** Spec and plan are written, and
+**M1, M2 and M3 have since shipped** (`docs/specs/moderation-spec.md`, `docs/plans/moderation.md`;
+as-built in `docs/REMAINING.md` §36–§38 and §40). M4 — extraction to `polaris-ledger-go` — is still
+plan and still gated on a second Go adopter. The paragraph below is kept for the ordering argument
+it makes, not as a status.
+
+It answers the arena-removal request as one mechanism: an act with a reason, a reversal that is a second
 act, and the audit log grown into a filterable modlog with a keyset cursor. It deliberately
 lands *after* the deploy above, because it changes the schema (migration `0034`) and the deploy
 is what proves the previous three migrations on the live host. One thing it settles in passing:
