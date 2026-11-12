@@ -8,6 +8,12 @@ Type=simple
 ExecStart=/home/alvaro/concord-deploy/concord
 Environment=CONCORD_LISTEN=127.0.0.1:8006
 Environment=CONCORD_DB=/home/alvaro/.local/share/concord/concord.db
+# The webhook secret is READ FROM A FILE, not baked in here: it is a credential shared with the
+# forge, and a unit file that lives in the repository is not where a credential belongs. Without
+# it `handleForgejoWebhook` fails closed ("webhook not configured") -- which is the correct default,
+# and it was also the measured reason forge_events had zero rows for a week: no hook existed on any
+# repository AND this service had no secret, so nothing could ever have arrived.
+EnvironmentFile=-/home/alvaro/.config/concord/forge-webhook.env
 WorkingDirectory=/home/alvaro/concord-deploy
 Restart=always
 RestartSec=5
