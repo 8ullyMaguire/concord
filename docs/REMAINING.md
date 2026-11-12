@@ -6,7 +6,7 @@ the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
 **Measured state (the twenty-first pass, §34):** schema 35 · 35 migrations · 87 live tables ·
-**1239 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files · 54/54 UI mutants killed
+**1242 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files · 54/54 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
 8 project.js/arena, 4 project.js/work items) · Go mutants: 27 arms, 172 killed, 0 survived ·
 `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
@@ -4106,7 +4106,7 @@ against a seeded probe instance — the defect is a perfect score for an unmeasu
 ### 34.6 Where the numbers stand
 
 **Measured state (the twenty-first pass, §34):** schema 35 · 35 migrations · 87 live tables ·
-**1239 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files ·
+**1242 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files ·
 `make verify` exit 0 · `make gates` exit 0 (27 arms) · `make e2e` exit 0.
 
 ## §35 — The Consensus tab answered 405, because the index it links to was "out of scope"
@@ -4436,4 +4436,84 @@ reversed.
 3. **`/audit` does not filter by "moderation acts only"** as a named filter: `action=arena.remove`
    works, but a reader has to know the action name to ask for it. A `kind=moderation` shortcut is a
    one-line client change and a named filter the API does not have yet.
+
+## §38 — Proposal expiry: the queue is now finishable
+
+### 38.1 The gap §37.5 named
+
+Every proposal table has modelled `stale` since 0012/0015/0028 and nothing ever wrote it. The
+queue listed pending proposals oldest-first, so it grew monotonically — and a queue nobody can
+finish is a queue nobody finishes. This was the largest remaining hole in the moderation surface
+and §37.5 (item 1) said so.
+
+### 38.2 What shipped
+
+- `store.ExpireProposals(ctx, cutoff, dryRun)` sweeps the three proposal kinds in one transaction:
+  `UPDATE … SET status='stale' WHERE status='pending' AND created_at < cutoff`, guarded by
+  `status='pending'` so a second run finds nothing and writes no second act. `RowsAffected()==0`
+  means another writer decided it in between, and such a row is not reported as expired.
+- One audit act per proposal (`stale_taxonomy_proposal`, `stale_weight_proposal`,
+  `stale_theme_proposal`) with **`actor_id` NULL** — nobody did this, and recording a person would
+  attribute an automatic expiry to them — and a detail carrying the reason, the proposer, the
+  consent count and the cutoff.
+- `cmd/proposalsweep`: `-dry-run` lists exactly what a real run would mark, `-ttl-days` overrides
+  `CONCORD_PROPOSAL_TTL_DAYS` (default 30, `0` disables), `-v` prints a line per proposal, and the
+  successful run prints one line with the count so `grep` in the journal finds it.
+- `deploy/concord-proposalsweep.{service,timer}`, daily 03:20 UTC, after the statistics snapshot,
+  `Persistent=true`. `make deploy-admin` installs **and enables** it — the only one of the three
+  timers it enables, because this one touches nothing but the local database and a sweep installed
+  but never enabled is a queue that still never drains.
+- The queue's state filter gained **"Expired, no consensus"**; the label mapping in `curation.js`
+  says `expired, no consensus` rather than the raw status, because `stale` is a word the reader has
+  never seen.
+
+The full decision and its seven rejected alternatives are in `docs/specs/moderation-spec.md` §11.
+
+### 38.3 Measured
+
+```
+$ go test ./internal/store/ -run TestExpireProposals -count=1 -v
+=== RUN   TestExpireProposalsMarksOnlyOldPendingOnes
+--- PASS: TestExpireProposalsMarksOnlyOldPendingOnes (0.25s)
+=== RUN   TestExpireProposalsLeavesOneActPerProposal
+--- PASS: TestExpireProposalsLeavesOneActPerProposal (0.28s)
+=== RUN   TestExpireProposalsDryRunWritesNothing
+--- PASS: TestExpireProposalsDryRunWritesNothing (0.21s)
+ok  	git.polarisocial.xyz/concord/concord/internal/store	0.747s
+```
+
+Mutation check, because a test that passes on unfixed code is not evidence: inverting the cutoff
+(`p.created_at < ?` → `> ?`) failed all three, including `0 acts for the expired proposal, want 1`
+and `dry run reported 0 expired, dry=true; want 3 and true`. Restored, green.
+
+Against a copy of the live database with one aged taxonomy proposal and one aged theme proposal:
+
+```
+$ proposalsweep -db /tmp/sweep.db -dry-run
+taxonomy	stale	1	project=1	proposer=1	consents=0
+theme	stale	1	project=1	proposer=1	consents=0
+proposalsweep: would mark 2 proposal(s) older than 30 days as stale
+$ proposalsweep -db /tmp/sweep.db
+proposalsweep: marked 2 proposal(s) older than 30 days as stale
+$ proposalsweep -db /tmp/sweep.db
+proposalsweep: marked 0 proposal(s) older than 30 days as stale
+$ sqlite3 /tmp/sweep.db "select id,action,entity_id,actor_id,detail from audit_log where action like 'stale_%'"
+8969|stale_taxonomy_proposal|1||{"consents":0,"cutoff":1791849427,"proposed_by":1,"reason":"no consensus within 30 days"}
+8970|stale_theme_proposal|1||{"consents":0,"cutoff":1791849427,"proposed_by":1,"reason":"no consensus within 30 days"}
+```
+
+And the queue, in a browser against that copy: `state=open` returns 0 items, `state=stale` returns
+the row, and selecting "Expired, no consensus" renders
+`taxonomy · create · expired, no consensus` with `1 shown.`
+
+### 38.4 Still owed
+
+1. **M3, the standings-page link** — a maintainer still reaches moderation from `/curation` or the
+   audit page, not from the arena they are looking at.
+2. **A named `kind=moderation` filter on `/audit`** — `action=arena.remove` works, but you have to
+   know the action name to ask.
+3. **The affected author is told nothing** (spec §8, still the weakest part of v1).
+4. **Theme proposals are expired but not queued**: they live on the themes settings page, so the
+   sweep marks them stale where no queue lists them. Correct today, and worth a queue entry if a
+   reviewer ever needs to consent to one from `/curation`.
 

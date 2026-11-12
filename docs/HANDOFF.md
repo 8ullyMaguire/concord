@@ -45,8 +45,13 @@ The per-project audit page now carries the same half: a row renders the act's **
 first, gated on `can_undo` from the same permission pair the route uses (`mayModerate`, extracted
 from `permitModeration`). `audit_log.undoes` plus an `EXISTS` give both directions of a reversal in
 one read. Suite: `tests/e2e/audit_undo_e2e.py` (3 tests, §37).
-Still owed: proposal expiry (the largest remaining gap -- `stale` is modelled and nothing sets it),
-a named `kind=moderation` filter on `/audit`, and the standings-page link (`M3`). Spec
+Proposal expiry shipped next (§38 in REMAINING, §11 in the moderation spec): `cmd/proposalsweep`
+under `concord-proposalsweep.timer` (daily 03:20 UTC, installed AND enabled by `make deploy-admin`)
+marks pending proposals older than `CONCORD_PROPOSAL_TTL_DAYS` (default 30, `0` disables) as
+`stale`, one audit act each with a NULL actor, and the queue stops listing them. It does not
+withdraw: `withdrawn` would put a decision in the proposer's mouth they did not make.
+Still owed: a named `kind=moderation` filter on `/audit`, the standings-page link (`M3`), and
+telling the affected author anything at all (§8 of the spec). Spec
 `docs/specs/moderation-spec.md`, plan `docs/plans/moderation.md`, estate verdict
 `~/secondbrain/10-Projects/polaris-estate-moderation-2026-11-11.md`.
 Two facts the plan turned on, both still true: `RemoveArenaEntry` had no caller before this, and
@@ -145,7 +150,7 @@ lands, which is why this file does not carry one)
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 1239 tests, schema 35, 86 tables,
+Measured, not remembered: `make verify` green, 1242 tests, schema 35, 86 tables,
 35 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 
