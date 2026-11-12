@@ -27,6 +27,9 @@
     <option value="ratified">Ratified</option>
     <option value="applied">Applied</option>
     <option value="undone">Undone</option>
+        <!-- The state proposalsweep (spec §8.6) writes. It is not in the default view: an expired
+             proposal is history, and the queue's job is work someone can still do. -->
+        <option value="stale">Expired, no consensus</option>
   </select>
 
   <label class="curation-unvoted"><input type="checkbox" id="curation-unvoted" checked>

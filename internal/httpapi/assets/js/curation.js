@@ -47,7 +47,10 @@ function apiAuth(extra) {
   function stateLabel(state) {
     return {
       pending: 'waiting for review', ratified: 'ratified', rejected: 'rejected',
-      withdrawn: 'withdrawn', applied: 'applied', undone: 'undone'
+      withdrawn: 'withdrawn', applied: 'applied', undone: 'undone',
+      // Not 'stale': the reader never saw the word before and it does not say what happened.
+      // proposalsweep (spec §8.6) marks a proposal this, and it leaves the open queue.
+      stale: 'expired, no consensus'
     }[state] || state;
   }
 

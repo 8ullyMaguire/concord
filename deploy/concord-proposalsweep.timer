@@ -1,0 +1,15 @@
+[Unit]
+Description=Daily proposal expiry sweep for Concord
+
+[Timer]
+# 03:20 UTC, after the statistics snapshot at 03:10. The sweep writes audit acts, and the snapshot
+# reads the tables the day's traffic produced; running the sweep first would put acts into a day
+# the snapshot has already summarised, which makes the series jump for a reason nobody remembers.
+OnCalendar=*-*-* 03:20:00
+# A machine that was off at 03:20 catches up once on the next boot. Without this a laptop that is
+# closed overnight expires nothing for days, and the gap is invisible.
+Persistent=true
+RandomizedDelaySec=5m
+
+[Install]
+WantedBy=timers.target

@@ -222,15 +222,18 @@ admin-build:
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/forgeseed ./cmd/forgeseed
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/healthsync ./cmd/healthsync
 	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/statsnapshot ./cmd/statsnapshot
+	CGO_ENABLED=0 go build -trimpath -ldflags "-s -w -X main.version=$(VERSION)" -o bin/proposalsweep ./cmd/proposalsweep
 
 deploy-admin: admin-build
 	@echo "Installing admin commands into $(DEPLOY_DIR)..."
 	cp bin/forgeseed $(DEPLOY_DIR)/forgeseed
 	cp bin/healthsync $(DEPLOY_DIR)/healthsync
 	cp bin/statsnapshot $(DEPLOY_DIR)/statsnapshot
+	cp bin/proposalsweep $(DEPLOY_DIR)/proposalsweep
 	mkdir -p $(HOME)/.config/systemd/user
 	cp deploy/concord-healthsync.service deploy/concord-healthsync.timer $(HOME)/.config/systemd/user/
 	cp deploy/concord-statsnapshot.service deploy/concord-statsnapshot.timer $(HOME)/.config/systemd/user/
+	cp deploy/concord-proposalsweep.service deploy/concord-proposalsweep.timer $(HOME)/.config/systemd/user/
 	systemctl --user daemon-reload
 	systemctl --user disable --now concord-healthsync.timer 2>/dev/null || true
 	systemctl --user disable --now concord-statsnapshot.timer 2>/dev/null || true
@@ -238,6 +241,11 @@ deploy-admin: admin-build
 	@echo "  systemctl --user enable --now concord-healthsync.timer"
 	@echo "Enable the daily snapshot (STAT-3) with:"
 	@echo "  systemctl --user enable --now concord-statsnapshot.timer"
+	@# proposalsweep is the one timer this target ENABLES. The other two are switched on by whoever
+	@# accepts the rate limit they spend against shared forges; this one reads and writes only the
+	@# local database, and a sweep that is installed but never enabled is a queue that never drains.
+	systemctl --user enable --now concord-proposalsweep.timer
+	@echo "proposalsweep enabled (daily, 03:20 UTC + up to 5m)."
 
 tidy:
 	go mod tidy

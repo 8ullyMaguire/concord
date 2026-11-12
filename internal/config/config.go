@@ -79,6 +79,21 @@ func TrustLevelMin() int {
 // and trust_config.max_level is 1. The default of 1 therefore means "the owner and whoever
 // the owner promotes" -- raising it is an operator decision, not a side effect of this
 // feature.
+// ProposalTTLDays is how long a proposal may sit unanswered before proposalsweep marks it stale
+// (spec §8.6). Default 30 days; 0 disables expiry, which is a legitimate setting for a small
+// instance and must stay distinguishable from "unset".
+func ProposalTTLDays() int {
+	v := os.Getenv("CONCORD_PROPOSAL_TTL_DAYS")
+	if v == "" {
+		return 30
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil || n < 0 {
+		return 30
+	}
+	return n
+}
+
 func ModTrustMin() int {
 	v := os.Getenv("CONCORD_MOD_TRUST_MIN")
 	if v == "" {
