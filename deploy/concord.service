@@ -8,6 +8,13 @@ Type=simple
 ExecStart=/home/alvaro/concord-deploy/concord
 Environment=CONCORD_LISTEN=127.0.0.1:8006
 Environment=CONCORD_DB=/home/alvaro/.local/share/concord/concord.db
+# The embedding endpoint was set BY HAND on this host and was missing from the unit in the
+# repository, so installing the repository's unit would silently drop it and every embedded read
+# (search, the finder, the contribution feed) would fall back to no vector. A unit file that does
+# not carry the deployment's real environment is a file that cannot be installed.
+Environment=CONCORD_EMBED_URL=http://127.0.0.1:11434
+Environment=CONCORD_EMBED_MODEL=nomic-embed-text:latest
+Environment=CONCORD_EMBED_TIMEOUT_MS=8000
 # The webhook secret is READ FROM A FILE, not baked in here: it is a credential shared with the
 # forge, and a unit file that lives in the repository is not where a credential belongs. Without
 # it `handleForgejoWebhook` fails closed ("webhook not configured") -- which is the correct default,
