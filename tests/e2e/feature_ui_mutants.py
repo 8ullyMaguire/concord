@@ -33,6 +33,25 @@ change it. Every mutant here is a client-side defect: the Go side answers the sa
   the select is never rendered        the panel silently becomes the "nothing to attach"
                                       paragraph, which reads as a fact about the project
                                       rather than as a missing control.
+
+And the DETACH (2026-11-12), which is the inverse of that link. It needs its own suite
+because the detach test lives in `milestones_e2e.py` -- the join could grow and never
+shrink, and the browser is the only place a control that renders but does nothing is
+visible:
+
+  the detach is never wired           the button renders, the click does nothing, the
+                                      complaint stays attached, and nothing on the page
+                                      says so. This is the defect the pass removed.
+
+  the detach URL drops the id         DELETE .../complaints/ answers "No such API route",
+                                      which reads like a missing route and is a missing
+                                      path segment.
+
+  the detach sends POST               the same silence, one method over: the route answers
+                                      404 and the evidence stays.
+
+Both suites run from this file. A SURVIVED line in the detach half means the fixture lost
+its linked complaint, never that the wiring is unnecessary.
 """
 
 import os
@@ -44,6 +63,7 @@ from ui_mutants import run_mutants
 
 JS = "internal/httpapi/assets/js/feature.js"
 SUITE = "tests/e2e/feature_e2e.py"
+DETACH_SUITE = "tests/e2e/milestones_e2e.py"
 
 MUTANTS = [
     ("the tags panel is never rendered",
@@ -68,5 +88,26 @@ MUTANTS = [
      "    var eligible = [];"),
 ]
 
+DETACH_MUTANTS = [
+    ("the detach control is never wired",
+     "var rows = root.querySelectorAll('[data-unlink-complaint]');",
+     "var rows = [];"),
+    ("the detach URL drops the complaint id",
+     "'/complaints/' + encodeURIComponent(id), undefined, btn);",
+     "'/complaints/', undefined, btn);"),
+    ("the detach sends POST where the route answers DELETE",
+     "writer.sendAs('DELETE',",
+     "writer.sendAs('POST',"),
+    # A FOURTH MUTANT WAS TRIED AND REMOVED, and the reason matters more than the count.
+    # Inverting the `if (!id) return` guard survived, because every button this page
+    # renders carries an id (`data-unlink-complaint="${c.id}"`), so no fixture can produce
+    # a button without one. A mutant the suite cannot reach is not unproven code, it is a
+    # missing fixture nothing needs -- and leaving it in would have made this gate print
+    # UNPROVEN forever for a defect that has no shape on this page. If the button ever
+    # starts rendering conditionally, the guard needs a fixture rather than a mutant.
+]
+
 if __name__ == "__main__":
-    sys.exit(run_mutants(JS, SUITE, MUTANTS, "feature.js"))
+    rc = run_mutants(JS, SUITE, MUTANTS, "feature.js")
+    rc |= run_mutants(JS, DETACH_SUITE, DETACH_MUTANTS, "feature.js (detach)")
+    sys.exit(rc)

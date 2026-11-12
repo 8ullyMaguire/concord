@@ -206,6 +206,11 @@ docs-check:
 	python3 scripts/check_spec_drift.py
 	python3 -m unittest discover -s scripts -p 'test_*.py'
 	python3 scripts/check_doc_numbers.py
+	# docs/IDEAS.md is rendered from seed/concord_ideas.json, and the renderer grew a
+	# --check mode that nothing called: a document a reader opens and the rows the
+	# instance holds could disagree with no gate saying so. It needs no token and no
+	# database, so it belongs here rather than in the e2e half.
+	python3 scripts/render_ideas.py --check
 
 # E2E synchronisation. In `verify` because the pattern it bans is invisible to
 # every other check: a sleep-then-read test passes on a fast machine and fails on

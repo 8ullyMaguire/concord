@@ -6,7 +6,7 @@ the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
 **Measured state (the twenty-first pass, §34):** schema 38 · 38 migrations · 90 live tables ·
-**1276 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files · 54/54 UI mutants killed
+**1276 Go tests** across 9 test-bearing packages · 322 e2e tests in 27 suite files · 57/57 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
 8 project.js/arena, 4 project.js/work items) · Go mutants: 27 arms, 172 killed, 0 survived ·
 `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
