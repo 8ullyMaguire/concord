@@ -23,23 +23,29 @@ Three things are still owed, and the first two are decisions rather than work:
    `pr_review`/`pr_comment` need a real pull request and review on one of these repositories before
    `newcomer_sample` stops being 0. Nothing here should synthesize that.
 
-**The next product milestone is R16 + R17 — intake modes and milestones (spec'd 2026-11-12).** Two
-things this instance cannot do, both measured: a feature cannot exist without a validated complaint
-(332 of 332 features on `concord` carry one, so nothing else can be filed and a project that wants
-ideas first has to invent pain), and a plan has no representation at all (no milestone table; 330
-drafts read as one pile; and the board derives a card for every feature, so a `board_cards` row
-means "somebody moved it", not "it is on the board"). Spec
-`docs/specs/idea-intake-and-milestones-spec.md`, plan `docs/plans/idea-intake-and-milestones.md`
-(M1 intake modes, M2 milestones, M3 roadmap, M4 dependencies), and 38 scored ideas across four new
-themes in `docs/IDEAS.md`. Read the spec's §1 before the code: it is the measurement that licenses
-the change.
+**R16/R17/R18 are BUILT (2026-11-12): intake modes, milestones, the roadmap and dependencies.**
+Migrations `0036`/`0037`/`0038`; `internal/store/{milestones,feature_evidence,deps}.go`; the routes
+under `/api/v1/projects/{project_id}/milestones`, `/roadmap`, `/intake-mode`, and
+`/features/{id}/{milestone,deps,evidence}`; the `/roadmap` and `/milestones/{id}` pages; the board's
+`?milestone=` filter; the milestones feed. 9 store tests and 5 route tests, and every ruled-on idea's
+verdict is in `docs/REMAINING.md` §43.2 — 25 of the 29 drafts shipped, 3 were not built for reasons
+recorded there (a milestone-level consensus call needs its own arena kind; the intake mode is a
+maintainer dial rather than a proposal; milestone-scoped WIP would make one column's limit mean two
+things), 1 is half-shipped (evidence converts idea -> backed, but nothing unlinks a complaint), and
+the 9 rejected ideas stayed rejected.
+
+**The next product milestone** is the one §43.2 names and does not build: a **consensus call over a
+milestone as one unit** (a new arena kind, its weighting, and a charter read — the same shape as the
+solution arena). Behind it: a route that UNLINKS a complaint (the inverse of
+`POST /features/{id}/complaints`), which is the missing half of "convert a feature between
+complaint-backed and idea-first".
 
 Historical, for the ordering argument only: R12–R15 were merged but undeployed until 2026-11-12, and
 Q5's data half was 31 slugs from mechanical before §39 took it to 23 measured repositories of 73.
 
 **Moderation M1 is built and deployed (2026-11-11).** The arena-removal request is served:
 `POST /api/v1/projects/{slug}/moderation/arena/remove` and `.../arena/restore`, one append-only
-audit act each, with migration `0034` (the live database is at schema 35). Permission is
+audit act each, with migration `0034` (the live database is at schema 38). Permission is
 `users.trust_level >= CONCORD_MOD_TRUST_MIN` (default 1) **or** project role `reviewer`; measured
 on the instance, 88 accounts sit at 87×0 and 1×1, so the trust half means "the owner and whoever
 the owner promotes" and the role half is what lets a project moderate its own arena. The idea is
@@ -185,8 +191,8 @@ lands, which is why this file does not carry one)
 > current state. What is true now is the two tables at the end of this file and
 > `docs/KNOWN-ISSUES.md`.
 
-Measured, not remembered: `make verify` green, 1248 tests, schema 35, 86 tables,
-35 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
+Measured, not remembered: `make verify` green, 1262 tests, schema 38, 90 tables,
+38 migrations, 15MB CGO-free binary. If a number here disagrees with the tree,
 the tree wins and this file is the bug.
 
 The **public instance** runs this build too, as of 2026-10-16: `concord.polarisocial.xyz`
@@ -208,7 +214,8 @@ Details: `docs/REMAINING.md` §22.8–§22.9.
   and uphold, κ=200.
 - **Consensus gating (R4) is partial.** `0019_solution_consensus_calls.sql`. The
   gate and the agenda exist; **`decision_records` does not**, so the ADR §6.5
-  requires on close is unimplemented. This is the next milestone.
+  requires on close is unimplemented. (Unchanged by R16/R17/R18: those added milestones, not
+  release-gating.)
 - **Embeddings shipped but need a manual backfill.** The live instance's index was
   backfilled to 100% on 2026-10-16 (feature 284 embedded, project 1 — REMAINING §22.9),
   so the check below is now a maintenance habit rather than a known gap.

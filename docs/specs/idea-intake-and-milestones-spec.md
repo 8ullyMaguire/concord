@@ -228,3 +228,34 @@ The theme complaints are the pain statements, not the features: *"I have to inve
 record an idea"*, *"I cannot group the ideas I am planning into one milestone"*, *"I cannot tell what
 is planned from what is merely written down"*, *"Grouping is not scheduling: I cannot say what blocks
 what"*.
+
+## 11. As built (2026-11-12)
+
+Three decisions here were made while writing the code, and each is a place the
+document and the implementation legitimately diverge. The divergence is recorded
+rather than smoothed over, because a spec that quietly rewrites itself after the
+fact cannot be used to check the next change.
+
+**11.1 The ready gate has no mode exemption.** §3.1 frees the FILING in an
+`idea_first` project, and an early draft of the store read that as "and therefore
+frees `ready`". It does not: `ready` is a commitment to build, and the code asks for
+evidence there in every mode. The escape hatch is §3.4's alternatives — a project
+document or a field report counts — not a mode that switches the rule off. Without
+this, `ready` would mean "somebody clicked" in exactly the projects that have the
+least other support.
+
+**11.2 Ordering inside a milestone is a column, not a join table** (`§6`).
+`features.milestone_position` rather than `milestone_features(position)` because a
+feature belongs to at most one milestone: a join table for a one-to-many is a second
+primary key to keep in step with the first. The order is written by
+`PUT .../milestones/{id}/order` with the whole list, so the server never infers what
+a "move" meant.
+
+**11.3 The intake mode ships as a maintainer write, not a proposal** (§3.5). The
+proposal machinery proposes a feature weight or a theme weight — both have an arena
+that supplies the comparison. "This project should accept ideas" has no comparator,
+and building one to justify a single CHECKed column would be ceremony. The write is
+maintainer-gated and audited (`action = intake_mode`), which is the same standard the
+visibility column is held to. This is the one item in the filed inventory that lost
+its shape on contact with the code, and it is listed as such in
+`docs/REMAINING.md` §43.2.

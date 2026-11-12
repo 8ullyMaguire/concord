@@ -5,8 +5,8 @@ The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails whe
 the schema/runtime numbers goes stale, and the e2e numbers are gated by
 `tests/e2e/harness_selftest_test.py`, so this file cannot quietly become fiction.
 
-**Measured state (the twenty-first pass, §34):** schema 35 · 35 migrations · 87 live tables ·
-**1248 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files · 54/54 UI mutants killed
+**Measured state (the twenty-first pass, §34):** schema 38 · 38 migrations · 90 live tables ·
+**1262 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files · 54/54 UI mutants killed
 (7 audit.js, 9 consensus.js, 5 consent.js, 2 auth.js, 8 project.js, 5 settings.js, 6 feature.js,
 8 project.js/arena, 4 project.js/work items) · Go mutants: 27 arms, 172 killed, 0 survived ·
 `make verify` exit 0, `make gates` exit 0, `make e2e` exit 0.
@@ -4105,8 +4105,8 @@ against a seeded probe instance — the defect is a perfect score for an unmeasu
 
 ### 34.6 Where the numbers stand
 
-**Measured state (the twenty-first pass, §34):** schema 35 · 35 migrations · 87 live tables ·
-**1248 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files ·
+**Measured state (the twenty-first pass, §34):** schema 38 · 38 migrations · 90 live tables ·
+**1262 Go tests** across 9 test-bearing packages · 311 e2e tests in 25 suite files ·
 `make verify` exit 0 · `make gates` exit 0 (27 arms) · `make e2e` exit 0.
 
 ## §35 — The Consensus tab answered 405, because the index it links to was "out of scope"
@@ -4929,3 +4929,123 @@ indistinguishable to a reader and neither is identified as such in `GET .../boar
    which is what §42.4 had to do. This is a real gap, not a design choice anybody recorded.
 3. **`?kind=intake`** for the modlog is filed at V5 and rejected; if the intake mode becomes a
    proposal (V6), it comes back for free through the curation kind resolver.
+
+## 43. R16/R17/R18 built: intake modes, milestones, roadmap, dependencies
+
+Everything in this section is code on `master` with tests, not a plan. The ledger
+below names every one of the 38 filed ideas by its verdict, because "we built the
+milestone" and "we built the idea called milestones" are different claims and only
+the second one is answerable.
+
+### 43.1 Schema (append-only, three migrations)
+
+`0036_intake_modes.sql` adds `projects.intake_mode` (`complaint_first` default,
+`idea_first`, `both`, CHECKed). The default IS the behaviour that shipped, so no
+existing project changed meaning; the column exists so a project can say otherwise.
+
+`0037_milestones.sql` adds `milestones` (nullable `target_date`, CHECKed status),
+`features.milestone_id` (nullable, indexed, ON DELETE SET NULL -- the unclaimed set
+IS the backlog), `features.milestone_position` (ordering inside a group), and
+`feature_evidence` (document / field report references).
+
+`0038_feature_deps.sql` adds `feature_deps(blocker_id, blocked_id)`, both cascading,
+with a CHECK that refuses the one-row self-cycle no graph walk can see.
+
+### 43.2 The ledger: all 38
+
+INTAKE — shipped: per-project intake mode (+ Settings panel + audit act); a feature
+may be filed without a complaint where the mode allows; the ready gate asks for
+evidence in EVERY mode (a document or a field report counts, so the gate has a path
+that is not "invent pain"); the evidence alternatives themselves; the intake mode
+shown where a reader files (the form note, and the select that stops demanding a
+complaint in `idea_first`); the evidence badge on the feature page; proof that an
+idea-first feature still ranks (a test, not a sentence).
+
+INTAKE — not built, with reasons:
+
+- **Changing the intake mode is a proposal, not a maintainer dial (V6).** Shipped as
+  a maintainer write with an audit act instead. The proposal kind does not exist:
+  the strategy machinery proposes FEATURE weights and THEME weights, both of which
+  have an arena to compare against; "this project should accept ideas" has no
+  comparator, and inventing one to justify a one-column change would be ceremony
+  around a decision the charter already delegates to maintainers. Recorded as a
+  deliberate deviation, not an oversight: it is the one place this pass chose the
+  dial.
+- **Convert a feature between complaint-backed and idea-first as an act (V7).**
+  Half-shipped: `POST/DELETE .../features/{id}/evidence` converts idea -> backed and
+  back. There is still no route that UNLINKS a complaint (`POST .../complaints`
+  exists, its inverse does not), so a feature cannot be moved the other way through
+  the browser.
+- **Intake-mode changes as their own audit kind (V5, REJECTED).** The act exists
+  (`action = intake_mode`) because the store writes it; it is not a curation *kind*,
+  and the modlog resolver still knows only `moderation`.
+
+MILESTONES — shipped: the table; `features.milestone_id`; the milestone page grouped
+by status; assign/unassign from the feature page; the board filter (`?milestone=`,
+one board narrowed, never a board per milestone); progress that counts audited
+shipments and reports `seeded`/`unshipped` so an imported `shipped` row cannot look
+delivered; close-with-successor (one audit act per moved feature) and cancel; the
+derived at-risk flag (overdue AND open AND not closed).
+
+MILESTONES — not built:
+
+- **A consensus call over a milestone as one unit (V6, 6w).** Not attempted: it
+  needs a new arena kind, its own weighting and a charter read. It belongs with the
+  arena work, not with a schema pass, and pretending otherwise would ship a vote
+  button that called nothing.
+- **Hand-ordering with drag (V5, REJECTED).** Position and up/down shipped instead:
+  a drag has no keyboard path, and the order is a list.
+
+ROADMAP — shipped: the `/roadmap` page; the read route whose shape the page prints
+(one shape, so totals cannot disagree with the rows); slippage from `audit_log` +
+`target_date` with `null` rather than `0` when nothing shipped; the next milestone on
+the project overview; the milestones feed (`/projects/{slug}/milestones/feed.xml`)
+with opens and closes, timed from the audit log because a milestone has no
+`updated_at`.
+
+ROADMAP — not built: the three that were REJECTED before any code (badge SVG, iCal
+export, generating the roadmap by parsing `docs/PLAN-r4.md`). The last one stays
+rejected for the reason it was filed: a document that becomes the schema cannot be
+edited without changing what the product does.
+
+SCHEDULING — shipped: `feature_deps` with blocks/blocked_by; the `in_progress`
+refusal that names its blockers; the cycle refusal that names the path it would have
+closed; the blocked badge (the feature page names each blocker and its state);
+bulk assign; order inside a milestone.
+
+SCHEDULING — not built:
+
+- **Milestone-scoped WIP (V6).** Deliberately not built, and the board filter is the
+  reason: a column's WIP limit is a claim about the project's capacity. A limit that
+  applied to one milestone's share of the work would be a limit several times too
+  generous, and enforcing it per filter would make the same column mean two things
+  depending on a query string. Recorded as a decision, with the alternative named.
+- The three REJECTED ones (card per feature, milestone-scoped board columns, a
+  dependency graph view, auto-assign to the current milestone) stay rejected.
+
+### 43.3 What this pass measured about itself
+
+- **The `placed` bug the filter nearly shipped.** `GetBoard` derives a card for every
+  feature with no `board_cards` row. Filtering the placed cards BEFORE computing
+  `placed` made a filtered-out feature look unplaced, and its derived twin appeared
+  in its status's column -- a card in the wrong phase, under a filter that claims to
+  show less. Fixed by deriving from the unfiltered set and filtering once at the end;
+  the comment in `board.go` records it.
+- **The cycle walk direction.** The first `AddDependency` walked
+  `blocked_id -> blocker_id`, which answers "what is waiting on me" and therefore
+  finds no cycle: every cycle was accepted. Mutation-checked by reversing the walk
+  and watching `TestADependencyCycleIsRefusedNamingIt` fail.
+- **The ready gate has no mode exemption.** An earlier draft let `idea_first`
+  projects reach ready with no evidence, which made `ready` mean "somebody clicked".
+  The gate is evidence in every mode; `idea_first` frees the FILING, and §3.4's
+  alternatives are the honest way past it.
+- **`/ranking` still reads `features.elo_r` and never joins complaints**, so the doc
+  sentence "an unlinked feature ranks on nothing" was false. Replaced by
+  `TestAnIdeaFirstFeatureStillRanks`, which measures it.
+
+### 43.4 Verified
+
+`make verify` then `make gates` (serially, per `docs/prompts/continue.md`), plus the
+new suites: 9 store tests in `internal/store/milestones_test.go`, 5 route tests in
+`internal/httpapi/milestones_test.go`, and the reader-inventory rows for the seven
+new route prefixes.
