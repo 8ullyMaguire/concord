@@ -383,7 +383,12 @@ fn sort_baseline_last(scores: &mut [SolutionScore]) {
                 let (a, b) = (&scores[j - 1], &scores[j]);
                 if a.is_baseline && !b.is_baseline {
                     true
-                } else if !b.is_baseline && a.is_baseline {
+                } else if !a.is_baseline && b.is_baseline {
+                    // Already in the order we want. `clippy::if_same_then_else` caught this branch comparing
+                    // `!b.is_baseline && a.is_baseline` -- the same condition as the one above, so it never
+                    // fired and a pair (ordinary, baseline) fell through to the score comparison. A baseline
+                    // with a LOW score then bubbled forward, which is exactly what this function exists to
+                    // prevent: the baseline is the thing to beat, not a recommendation to do nothing.
                     false
                 } else {
                     a.score < b.score
@@ -609,4 +614,54 @@ fn now_unix() -> f64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_or(0.0, |elapsed| elapsed.as_secs_f64())
+}
+
+#[cfg(test)]
+mod baseline_order_tests {
+    use super::*;
+
+    fn score(id: i64, score: f64, is_baseline: bool) -> SolutionScore {
+        SolutionScore {
+            solution_id: id,
+            title: format!("solution {id}"),
+            rating: score,
+            coverage: 0.0,
+            kappa: 0.0,
+            claims: Vec::new(),
+            score,
+            is_baseline,
+            distinct_voters: 0,
+            stable_hours: 0.0,
+        }
+    }
+
+    /// The baseline goes last even when its score is the WORST.
+    ///
+    /// This is the assertion `clippy::if_same_then_else` earned: the second branch of `sort_baseline_last`
+    /// compared the same condition as the first, so it never ran, the pair fell through to the score
+    /// comparison, and a low-scoring baseline moved to the front. The live probe passed because its fixture
+    /// gave the baseline the highest score -- the case where the bug is invisible.
+    #[test]
+    fn a_worst_scoring_baseline_still_sorts_last() {
+        let mut scores = vec![score(1, 0.10, false), score(2, 0.90, true), score(3, 0.50, false)];
+        sort_baseline_last(&mut scores);
+        // Descending by score, with the baseline moved to the end regardless of where its score puts it.
+        assert_eq!(scores.iter().map(|s| s.solution_id).collect::<Vec<_>>(), vec![3, 1, 2]);
+    }
+
+    #[test]
+    fn a_best_scoring_baseline_also_sorts_last() {
+        let mut scores = vec![score(1, 0.10, false), score(2, 0.99, true), score(3, 0.50, false)];
+        sort_baseline_last(&mut scores);
+        // THE CASE THE BUG WAS INVISIBLE IN, and the one that exposes it: a baseline with the HIGHEST score
+        // used to fall through to the score comparison and swap forward to the front.
+        assert_eq!(scores.iter().map(|s| s.solution_id).collect::<Vec<_>>(), vec![3, 1, 2]);
+    }
+
+    #[test]
+    fn without_a_baseline_the_order_is_the_score_order() {
+        let mut scores = vec![score(1, 0.80, false), score(2, 0.10, false), score(3, 0.40, false)];
+        sort_baseline_last(&mut scores);
+        assert_eq!(scores.iter().map(|s| s.solution_id).collect::<Vec<_>>(), vec![1, 3, 2]);
+    }
 }

@@ -20,6 +20,7 @@ pub mod feature_writes;
 pub mod features;
 pub mod holds;
 pub mod milestones;
+pub mod moderation;
 pub mod notifications;
 pub mod override_window;
 pub mod priorities;
