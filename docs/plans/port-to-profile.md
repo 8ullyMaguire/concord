@@ -1468,6 +1468,40 @@ through a subquery on `arenas`.
 Row 13's carry-in now stands at: **109 JSON routes**, 10 page routes, the four tallies defects, the vote-log zeros, and
 the FTS5-vs-tsquery equivalence question.
 
+### Row 11 — part 29: next-pair, and the discount that is not a bonus (2026-11-13, `805f69b`)
+
+```
+gate (before): GET /projects/{id}/arenas/{arena}/next-pair -> 404
+gate (after):
+  probe_s5_nextpair.py -> 15/15 ok
+  routes.py            -> go 216 / port 100   missing: 118 (108 json, 10 page)
+  cargo test -p concord-db --lib -> 36 passed
+```
+
+`crates/db/src/arena.rs` gains `pair_selection_cost`, `judged_pairs` and `next_pair`, with three unit tests pinning the
+rules that are easy to invert: **uncertainty is a DISCOUNT**, a pair including the **baseline is discounted by 150**
+("beats doing nothing" is the question every solution answers first), and a pair's identity **does not depend on which
+side it came from**. A **skip is not a judgement** — the pair stays open and is asked again — while a real vote closes
+it for that voter and for that voter only.
+
+**What the rule actually says, which my first fixture got wrong:** the discount is `0.5 * mean(RD)`, so high
+uncertainty does **not** rescue a wide rating gap. Two untouched entries 20 points apart cost `20-175 = -155`; a fresh
+entry 100 points from a measured one costs `100-107.5 = -7.5` and loses to a measured pair at `-20`. The probe asserts
+that shape now instead of the wish that "untouched always wins".
+
+**NEGATIVE CONTROL** (uncertainty as a BONUS — the historic bug its own tests caught):
+
+```
+FAIL the proposed pair is the two untouched entries: got False want True
+FAIL its sides are labelled with their titles: got {'Measured close', 'Measured strong'} want {'Untouched', 'Untouched too'}
+13/15 ok
+```
+
+**Found by failing:** `arena_entries` has neither `project_id` nor `feature_id` — it is scoped by `arena_id` and
+identifies its competitor by `(entity_type, entity_id)`. Also fixed in the probe itself: it captured the first pair
+*after* a later call had reassigned the response, so two assertions compared the wrong arena's answer — a probe bug that
+would have made a green run meaningless.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
