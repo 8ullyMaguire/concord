@@ -723,3 +723,56 @@ async fn audit_in(
     .await?;
     Ok(())
 }
+
+/// Put one feature in a milestone, at a position, or take it out (`milestone_id` `None`).
+///
+/// The response is the **count of open blockers**, not a boolean: a feature may be assigned to a milestone whose
+/// predecessors are unfinished, and the caller needs to know how much work stands in front of it. Refusing instead would
+/// be wrong — a roadmap that cannot express "this lands after X" is not a roadmap.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn set_feature_milestone(
+    pool: &PgPool,
+    project_id: i64,
+    feature_id: i64,
+    milestone_id: Option<i64>,
+    position: i64,
+) -> Result<Result<i64, Refused>, sqlx::Error> {
+    let owner: Option<i64> = sqlx::query_scalar("select project_id from features where id = $1")
+        .bind(feature_id)
+        .fetch_optional(pool)
+        .await?;
+    if owner != Some(project_id) {
+        return Ok(Err(Refused::NotFound));
+    }
+    if let Some(milestone) = milestone_id {
+        let exists: Option<i64> = sqlx::query_scalar("select id from milestones where id = $1 and project_id = $2")
+            .bind(milestone)
+            .bind(project_id)
+            .fetch_optional(pool)
+            .await?;
+        if exists.is_none() {
+            return Ok(Err(Refused::NotFound));
+        }
+    }
+    sqlx::query(
+        "update features set milestone_id = $1, milestone_position = $2, updated_at = now() where id = $3",
+    )
+    .bind(milestone_id)
+    .bind(position)
+    .bind(feature_id)
+    .execute(pool)
+    .await?;
+    // **`feature_deps` is `(blocker_id, blocked_id)`**: the blocker is the row that must finish first. Counting from the
+    // other side reports zero for every feature and reads as "nothing in the way", which is the answer that looks
+    // reassuring and is wrong. `shipped` is the reference's word for a finished blocker.
+    let open: i64 = sqlx::query_scalar(
+        "select count(*) from feature_deps dep join features f on f.id = dep.blocker_id
+          where dep.blocked_id = $1 and f.status <> 'shipped'",
+    )
+    .bind(feature_id)
+    .fetch_one(pool)
+    .await?;
+    Ok(Ok(open))
+}

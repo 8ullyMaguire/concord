@@ -610,6 +610,8 @@ pub enum Applied {
         /// The normalised name.
         name: String,
     },
+    /// The feature id is real but belongs to another project — or to none.
+    UnknownFeature,
 }
 
 /// How well-tagged a project is (§4.3's completeness meter and the under-tagged queue).
@@ -695,4 +697,91 @@ pub async fn completeness(pool: &sqlx::PgPool, project_id: i64) -> Result<Comple
         want_tags: WANT_TAGS,
         want_namespaced: WANT_NAMESPACED,
     })
+}
+
+/// Attach an existing tag to a feature (§4.5, and the input to §6.2's theme weight).
+///
+/// **The name is spelled once.** The Go store's comment records the bug a mutation run found here: it lowercased the
+/// tag itself and then re-selected by the exact name, so with the lowercasing removed `Security-Hardening` matched no
+/// row, the `INSERT … SELECT` inserted **zero rows**, and the function returned `nil` — a write that reports success and
+/// changes nothing, which is worse than one that fails. Here there is one lookup ([`global_tag_id`]) and an insert by id.
+///
+/// An unknown tag is `Invalid`, not `NotFound`: the feature the URL addresses is right there, and what is wrong is the
+/// name in the body — and the refusal names the route that can propose a new tag.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn add_feature_tag(
+    pool: &PgPool,
+    project_id: i64,
+    feature_id: i64,
+    actor_id: i64,
+    tag: &str,
+) -> Result<Result<(), Applied>, sqlx::Error> {
+    let tag = tag.trim();
+    if tag.is_empty() {
+        return Ok(Err(Applied::UnknownName {
+            name: String::new(),
+        }));
+    }
+    let owner: Option<i64> = sqlx::query_scalar("select project_id from features where id = $1")
+        .bind(feature_id)
+        .fetch_optional(pool)
+        .await?;
+    if owner != Some(project_id) {
+        // A global feature id must not be reachable through an unrelated project.
+        return Ok(Err(Applied::UnknownFeature));
+    }
+    let tag_id = global_tag_id(pool, tag).await?;
+    if tag_id == 0 {
+        return Ok(Err(Applied::UnknownName {
+            name: normalize_tag(tag),
+        }));
+    }
+    let who = if actor_id > 0 { Some(actor_id) } else { None };
+    sqlx::query(
+        "insert into feature_tags (feature_id, tag_id, applied_by, created_at)
+         values ($1, $2, $3, now()) on conflict do nothing",
+    )
+    .bind(feature_id)
+    .bind(tag_id)
+    .bind(who)
+    .execute(pool)
+    .await?;
+    Ok(Ok(()))
+}
+
+/// Detach a tag from a feature.
+///
+/// Not housekeeping: the tags decide the priority, so a wrong one silently steers the feature and must be removable by
+/// whoever can add one. Removing a tag that is not attached is a no-op rather than a refusal — the caller's intent is
+/// satisfied either way, and a page that double-submits should not see an error.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn remove_feature_tag(
+    pool: &PgPool,
+    project_id: i64,
+    feature_id: i64,
+    tag: &str,
+) -> Result<Result<(), Applied>, sqlx::Error> {
+    let owner: Option<i64> = sqlx::query_scalar("select project_id from features where id = $1")
+        .bind(feature_id)
+        .fetch_optional(pool)
+        .await?;
+    if owner != Some(project_id) {
+        return Ok(Err(Applied::UnknownFeature));
+    }
+    let tag_id = global_tag_id(pool, tag.trim()).await?;
+    if tag_id == 0 {
+        return Ok(Err(Applied::UnknownName {
+            name: normalize_tag(tag),
+        }));
+    }
+    sqlx::query("delete from feature_tags where feature_id = $1 and tag_id = $2")
+        .bind(feature_id)
+        .bind(tag_id)
+        .execute(pool)
+        .await?;
+    Ok(Ok(()))
 }

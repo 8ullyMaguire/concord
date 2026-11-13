@@ -85,6 +85,11 @@ pub enum Refused {
         /// The weight the feature carries now.
         found: f64,
     },
+    /// The request is well-formed and wrong: a weight outside the range, a missing rationale, a feature in another
+    /// project. Distinct from [`Refused::Failed`] because the HTTP answer differs — `400` for a bad request, `409` for a
+    /// write that a concurrent decision made impossible. Folding them together sent a weight of `9.0` back as a
+    /// *conflict*, which reads as "someone else got there first" and is the wrong story to tell a caller.
+    Invalid(String),
     /// The store failed.
     Failed(String),
 }
@@ -148,7 +153,7 @@ pub async fn propose(
 ) -> Result<WeightProposal, Refused> {
     let inside = move |error: sqlx::Error| Refused::Failed(error.to_string());
     if !(0.0..=3.0).contains(&weight) {
-        return Err(Refused::Failed("weight must be between 0 and 3".to_string()));
+        return Err(Refused::Invalid("weight must be between 0 and 3".to_string()));
     }
     let owner: Option<(i64, f64)> =
         sqlx::query_as("select project_id, strategic_weight from features where id = $1")
@@ -160,14 +165,14 @@ pub async fn propose(
         return Err(Refused::NotFound);
     };
     if owner_project != project_id {
-        return Err(Refused::Failed(format!(
+        return Err(Refused::Invalid(format!(
             "feature {feature_id} is not in project {project_id}"
         )));
     }
     let rationale = rationale.trim();
     if rationale.is_empty() {
         // A weight change with no stated reason is the steering lever the consensus route exists to remove.
-        return Err(Refused::Failed("a rationale is required".to_string()));
+        return Err(Refused::Invalid("a rationale is required".to_string()));
     }
     let id: i64 = sqlx::query_scalar(
         "insert into strategic_weight_proposals (project_id, feature_id, proposed_by, weight_before,
