@@ -973,6 +973,40 @@ Link header), contributors are distinct `author.login` over one commits page (Gi
 endpoint), and reviews arrive under `/api/v1/repos`. The fixture repeats one login four times so the assertion is
 the distinct count and not the page length.
 
+### Row 11 — part 11: §6.2's themes at the frontend's own routes (2026-11-13, `331556d`)
+
+```
+gate (before): GET/POST /api/v1/projects/{id}/strategy/themes       -> 404 (no route)
+               GET      /api/v1/projects/{id}/strategy/theme-proposals  -> 404
+               GET/POST /api/v1/projects/{id}/strategy/weight-proposals -> 404
+gate (after):
+  probe_s5_themes.py 41/41   probe_s5_strategy.py 17/17
+  probe_s5_taxonomy.py 18/18  probe_s5_healthsync.py 15/15
+  concord-parity 0 shape(s) disagreed of 17 checked, 4 skipped
+```
+
+`crates/db/src/themes.rs` plus nine routes in the Go's shape. **The route names were the finding**: settings.js
+reads `/api/v1/projects/{id}/strategy/themes`, and until now the port answered only the curation queue — a page
+that would have been blank at cutover while every probe passed. The curation queue stays as an extra.
+
+Rules now enforced: proposing applies nothing (asserted by comparing the live list before and after); an unknown
+tag is refused naming `/taxonomy/proposals`; weight within `[-2, 3]`; a rationale is required; one pending per
+(project, tag, namespace) via `idx_theme_one_pending`; the proposer cannot consent to their own proposal; a
+member without a qualifying contribution is not in the eligible population; a consent below threshold is
+recorded and answered **202** (200 would say the roadmap moved); a repeated click is one voice; a theme expires at
+`charter.theme_lifetime_days`; a renewal UPSERTS the same row; a zero lifetime is refused, not written born
+expired.
+
+Negative control (renewal upsert → `do nothing`, 38/41): `FAIL with the new weight: got 1.5 want 2.5` — the
+renewal ratifies and changes nothing, so the proposal says the weight moved and the weight did not.
+
+**Two of my assumptions were wrong and the probe said so:**
+1. the eligible population is 4, not 3 — the proposer is in it and merely barred from consenting. Excluding them
+   would make a three-person project believe it has two and never reach its floor;
+2. `UPDATE charters … WHERE project_id` touched zero rows (no charter row existed), so the zero-lifetime case
+   silently ran on the 90-day default and asserted 200. It is an upsert now. **A write that matches no row is not
+   a write** — the same class of mistake as a green build with an unwired route.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
