@@ -882,6 +882,43 @@ with an expiry from `charter.theme_lifetime_days`, and a zero lifetime is refuse
 expired). `kind=strategy` reaches weight proposals only; the theme table has no route. Named here so the next
 reader does not mistake the coverage for complete.
 
+### Row 11 — part 8: the health score and the newcomer median (2026-11-13, `e95811c`)
+
+```
+gate (before): crates/ranking had no health module; project_metrics.health_score was written only by the Go
+               binary and had no port.
+gate (after):
+  cargo test -p concord-ranking -> 21 + 3 + 2 passed
+  health_golden                 -> 8087 values compared over 1344 health rows, 0 mismatched
+  probe_s5_healthsync.py        -> 15/15 ok
+  concord-parity                -> 0 shape(s) disagreed of 17 checked, 4 skipped
+```
+
+`crates/ranking/src/health.rs` (score, components, normalisation, newcomer median) + `crates/db/src/metrics.rs`
+(the write) + `concord-cli healthsync --from|--newcomer`. The oracle in `scripts/parity/golden_ranking.go` grew
+1,344 health rows, five weight rows and six newcomer fixtures — 8,087 values, all the Go implementation's.
+
+**The oracle caught a real bug on its first run**, and only the oracle could have:
+```
+MISMATCH health(age=0 review=-1 c=50 r=0).7: rust 5.85627468784419625e-1 vs go 9.94963503179956965e-1
+```
+`log10(c).min(1.0) / log10(51)` clamps the logarithm instead of the ratio, scoring fifty contributors 0.5856
+instead of 0.9949. The code reads perfectly and a hand-written expectation would have been 1.0.
+
+Negative control (unmeasured guard off, 12/15): `FAIL an unmeasured project writes nothing: got
+(0.2803443825037019, …) want (0.0, None, None, …)` — a project the forge did not answer for is written over with
+the previous score and a fresh `computed_at`.
+
+**Still open on this row: the forge fetch.** No estate crate owns a forge client (`ls ~/code/polaris-*`), so the
+fetch half stays with the Go binary until one exists; `--from <dump>` applies what the fetch produced. That is the
+same split the Go binary has, and it is the one item that would block a cutover of `healthsync` specifically.
+
+**Two traps recorded for whoever runs this next.**
+1. A restored source file kept its old mtime on the network mount, so cargo reused the *mutated* artifact and a
+   test failed against code that was already correct. `touch` the file after restoring it.
+2. `probe_s5_healthsync` assumed the no-number newcomer state was `(NULL, NULL)`; the schema says
+   `newcomer_sample bigint NOT NULL DEFAULT 0`, so it is `(NULL, 0)`. A schema read beats an assumption every time.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
