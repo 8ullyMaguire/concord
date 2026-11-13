@@ -1391,6 +1391,47 @@ over a 3-criterion × 5-feature grid crossing `lower_is_better`, a single-rating
 route and a probe whose negative control is "unnamed criteria join at their default" — the behaviour the Go
 deliberately removed.
 
+### Row 11 — part 27: composite ranking, finished (2026-11-13, `d514d8f`)
+
+```
+gate (before): POST /projects/{id}/rank/composite -> 404
+gate (after):
+  probe_s5_composite.py -> 19/19 ok
+  routes.py             -> go 216 / port 98   missing: 120 (110 json, 10 page)
+  cargo test -p concord-db --lib -> 33 passed
+  cargo test -p concord-ranking -> 25 + 3 + 2 passed
+```
+
+Part 26 scoped this route and named 24 unread lines as its only unknown; they are read and the route is in.
+`crates/ranking/src/composite.rs` ports `composite`/`normalised`/`normalise_weights`/`total_confidence`;
+`crates/db/src/criteria.rs` gains `criterion_ratings` (one query, not N+1) and `profile_weights` — an absent profile is
+**404**, because an empty weight list means "rank with every default", a different query that would answer a typo with
+a plausible ranking.
+
+**Correction to part 26's note, and the correction that matters:** part 26 said a non-positive weight total becomes
+`0`. It becomes **uniform** (`1/n`), and zero would have reported every feature as scoring nothing. The Go was read
+again rather than trusted: `normaliseWeights` divides `1/len(out)`.
+
+**Two of my expectations were wrong and the probe said so** — the useful outcome, not a setback:
+
+* an ACTIVE criterion nobody has played still contributes at its own weight, so the no-body ranking explains the top
+  feature with **three** contributions and a confidence of **183.333**, not two and 100.0. That number *is* the
+  dilution `require_min_rd` exists to remove, so the probe now asserts both sides: 183.333 with the flag off,
+  **100.0** with it on;
+* `include_inactive` yields **four** contributions, not three.
+
+**NEGATIVE CONTROL** (the behaviour the Go deliberately removed — unnamed criteria joining at their own default):
+
+```
+FAIL naming one weight makes it the whole query: got 3 want 1
+FAIL and drops the criterion it did not name: got ['cost', 'speed', 'unplayed'] want ['speed']
+17/19 ok
+```
+
+**Found by failing:** `Content-Type: application/json` with an *empty* body makes axum's `Json` extractor answer 400,
+so a client that always sends the header cannot make the "no body means every default" request at all. The probe sends
+the header only when there is a body, and the helper carries the reason.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
