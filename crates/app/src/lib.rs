@@ -77,6 +77,10 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/projects/{project_id}/solutions",
             get(project_solutions),
         )
+        .route(
+            "/api/v1/projects/{project_id}/features/{id}/solutions",
+            get(feature_solutions),
+        )
         .route("/api/v1/projects/{slug}/features/{feature}/deps", get(feature_deps))
         .route("/api/v1/projects/{slug}/features/{feature}/evidence", get(feature_evidence))
         // `{slug}` and not `{project_id}`: axum refuses two routes that differ only in a parameter NAME ("Insertion
@@ -3519,5 +3523,54 @@ async fn project_solutions(
         "features": rows,
         "features_with_solutions": with_solutions,
         "features_without": without,
+    })))
+}
+
+/// `GET /projects/{id}/features/{feature}/solutions?limit=` — one feature's standings.
+///
+/// Three rules, and the second is the one that differs from its neighbours:
+///
+/// * a feature nobody has proposed for answers an **empty array**, not 404 — that is the normal state of a new feature;
+/// * a feature belonging to **another project** answers **403**, not 404. This is the Go's choice on the solutions
+///   family (`ErrPerm`), and it does not match the complaint family's 404 for the same situation: the two were written
+///   on different days and the port reproduces each rather than harmonising them behind the service's back;
+/// * `limit` defaults to **100** and only a positive integer overrides it — there is no upper cap here, unlike the
+///   leaderboard's 200.
+async fn feature_solutions(
+    State(state): State<AppState>,
+    Path((project_id, feature_id)): Path<(String, String)>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = project_by_id(&state, &project_id).await?;
+    let user = bearer_user(&state, &headers).await?;
+    if !readable(&state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    let feature_id = match feature_id.parse::<i64>() {
+        Ok(id) => id,
+        Err(_) => return Err(ApiError::invalid_request("invalid feature id")),
+    };
+    let feature = concord_db::features::feature(&state.pool, feature_id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found("no such feature"))?;
+    if feature.project_id != project.id {
+        // 403 here and 404 in the complaint routes: two families, two choices, both reproduced.
+        return Err(ApiError::forbidden("feature belongs to another project"));
+    }
+    let limit = params
+        .get("limit")
+        .and_then(|text| text.parse::<i64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(100);
+    let scores = concord_db::arena::list_solutions(&state.pool, feature_id, limit)
+        .await
+        .map_err(internal)?;
+    // Never null: the store returns nothing for a feature with no arena, and a nil slice marshals to `null`, which the
+    // page then has to special-case.
+    Ok(Json(serde_json::json!({
+        "feature_id": feature_id,
+        "solutions": scores,
     })))
 }
