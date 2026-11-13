@@ -665,3 +665,204 @@ mod baseline_order_tests {
         assert_eq!(scores.iter().map(|s| s.solution_id).collect::<Vec<_>>(), vec![1, 3, 2]);
     }
 }
+
+/// One side of a comparison as the vote log reports it.
+///
+/// The ratings are ZERO here, and that is the Go's behaviour, not an oversight of the port: `ListArenaVotes` selects
+/// only `v.a`/`v.b` (entry ids) and never joins the entries, so `R`, `RD`, `Games` and `IsBaseline` are whatever
+/// `setDerived` makes of two zeros. An audit view that cannot show what a vote CHANGED is a poor audit view — §5.2 calls
+/// this one "the appeals view" — and it is recorded as an open defect for row 13 rather than quietly answered better
+/// than the service being replaced.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct VoteSide {
+    /// `feature`, `project`, `solution` or `list_entry`.
+    pub entity_type: String,
+    /// The entity's row.
+    pub entity_id: i64,
+    /// Its display name — empty when the entity row is gone, which keeps the ranking and the log in agreement.
+    pub label: String,
+    /// Its slug, only for a project.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub slug: String,
+    /// Its rating: zero, see the type's note.
+    pub r: f64,
+    /// Its deviation: zero.
+    pub rd: f64,
+    /// `r - 2*rd`: zero.
+    pub conservative: f64,
+    /// Games played: zero.
+    pub games: i64,
+    /// Whether it is the arena's baseline: false, and a solution that says otherwise overrides it.
+    pub is_baseline: bool,
+}
+
+/// One row of the vote log.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct VoteRow {
+    /// The vote.
+    pub id: i64,
+    /// Who cast it.
+    pub voter_id: i64,
+    /// `a`, `b`, `tie`, `neither` (never `skip`: a skip is "I don't understand this", not a verdict).
+    pub outcome: String,
+    /// How much it counted.
+    pub weight: f64,
+    /// Why, if the voter said.
+    pub reason: String,
+    /// When, unix seconds.
+    pub created_at: f64,
+    /// The `a` side.
+    pub a: VoteSide,
+    /// The `b` side.
+    pub b: VoteSide,
+}
+
+/// The vote log of one arena, newest first, skips excluded.
+///
+/// Rules: skips are not votes; `limit <= 0 or > 500` becomes 100 (the handler asks for 50); the result is never null,
+/// because a client should not have to tell "no votes" from "null".
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn list_votes(pool: &PgPool, arena_id: i64, limit: i64) -> Result<Vec<VoteRow>, sqlx::Error> {
+    let limit = if limit <= 0 || limit > 500 { 100 } else { limit };
+    let rows = sqlx::query_as::<_, (i64, i64, String, i64, i64, String, f64, String, f64)>(
+        "select v.id, v.voter_id, v.entity_type, v.a, v.b, v.outcome, v.weight,
+                coalesce(v.reason, ''), extract(epoch from v.created_at)::double precision
+           from pairwise_votes v
+          where v.arena_id = $1 and v.outcome <> 'skip'
+          order by v.id desc
+          limit $2",
+    )
+    .bind(arena_id)
+    .bind(limit)
+    .fetch_all(pool)
+    .await?;
+
+    let mut labels: std::collections::HashMap<(String, i64), (String, String, bool)> =
+        std::collections::HashMap::new();
+    for (_, _, entity_type, a, b, _, _, _, _) in &rows {
+        for entity_id in [*a, *b] {
+            let key = (entity_type.clone(), entity_id);
+            if labels.contains_key(&key) {
+                continue;
+            }
+            let found = lookup_label(pool, entity_type, entity_id).await?;
+            labels.insert(key, found);
+        }
+    }
+
+    Ok(rows
+        .into_iter()
+        .map(|(id, voter_id, entity_type, a, b, outcome, weight, reason, created_at)| {
+            let side = |entity_id: i64| {
+                let (label, slug, baseline) = labels
+                    .get(&(entity_type.clone(), entity_id))
+                    .cloned()
+                    .unwrap_or_default();
+                VoteSide {
+                    entity_type: entity_type.clone(),
+                    entity_id,
+                    label,
+                    slug,
+                    // Two zeros, as the Go computes them: see `VoteSide`.
+                    conservative: 0.0,
+                    r: 0.0,
+                    rd: 0.0,
+                    games: 0,
+                    is_baseline: baseline,
+                }
+            };
+            VoteRow {
+                id,
+                voter_id,
+                outcome,
+                weight,
+                reason,
+                created_at,
+                a: side(a),
+                b: side(b),
+            }
+        })
+        .collect())
+}
+
+/// A competitor's display label, its slug when it has one, and whether it is a solution marked as the baseline.
+///
+/// A missing entity answers `("", "", false)` rather than an error: the ranking still contains it and dropping the row
+/// would make the leaderboard disagree with its own vote log.
+async fn lookup_label(
+    pool: &PgPool,
+    entity_type: &str,
+    entity_id: i64,
+) -> Result<(String, String, bool), sqlx::Error> {
+    match entity_type {
+        "feature" => {
+            let title = sqlx::query_scalar::<_, String>("select title from features where id = $1")
+                .bind(entity_id)
+                .fetch_optional(pool)
+                .await?;
+            Ok((title.unwrap_or_default(), String::new(), false))
+        }
+        "project" => {
+            let row = sqlx::query_as::<_, (String, String)>("select name, slug from projects where id = $1")
+                .bind(entity_id)
+                .fetch_optional(pool)
+                .await?;
+            Ok(row
+                .map(|(name, slug)| (name, slug, false))
+                .unwrap_or_default())
+        }
+        "solution" => {
+            let row = sqlx::query_as::<_, (String, bool)>(
+                "select title, coalesce(is_baseline, 0) <> 0 from solutions where id = $1",
+            )
+            .bind(entity_id)
+            .fetch_optional(pool)
+            .await?;
+            Ok(row
+                .map(|(title, baseline)| (title, String::new(), baseline))
+                .unwrap_or_default())
+        }
+        "list_entry" => {
+            let title = sqlx::query_scalar::<_, String>("select title from list_entries where id = $1")
+                .bind(entity_id)
+                .fetch_optional(pool)
+                .await?;
+            Ok((title.unwrap_or_default(), String::new(), false))
+        }
+        _ => Ok((String::new(), String::new(), false)),
+    }
+}
+
+/// One arena, as its routes need it.
+#[derive(Debug, Clone)]
+pub struct Arena {
+    /// The row.
+    pub id: i64,
+    /// Its project.
+    pub project_id: i64,
+    /// What it ranks: `feature`, `project`, `solution`, `list_entry`.
+    pub entity_type: String,
+    /// The question the voter is asked.
+    pub question: String,
+}
+
+/// One arena by id.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn find(pool: &PgPool, arena_id: i64) -> Result<Option<Arena>, sqlx::Error> {
+    let row = sqlx::query_as::<_, (i64, i64, String, String)>(
+        "select id, project_id, type, coalesce(question, '') from arenas where id = $1",
+    )
+    .bind(arena_id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(|(id, project_id, entity_type, question)| Arena {
+        id,
+        project_id,
+        entity_type,
+        question,
+    }))
+}
