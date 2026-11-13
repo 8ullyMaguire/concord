@@ -1,6 +1,7 @@
 [workspace]
 resolver = "2"
 members = [
+    "crates/embed",
     "crates/domain",
     "crates/ranking",
     "crates/governance",
@@ -18,6 +19,7 @@ license = "AGPL-3.0-or-later"
 repository = "https://git.polarisocial.xyz/concord/concord"
 
 [workspace.dependencies]
+concord-embed = { path = "crates/embed" }
 anyhow = "1"
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio", "matched-path"] }
 chrono = { version = "0.4", features = ["serde"] }
