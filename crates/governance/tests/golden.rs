@@ -181,6 +181,37 @@ fn the_boundaries_that_only_a_comparison_can_show() {
         Result::Overridden,
         "a support ratio exactly equal to the override bar overrides"
     );
+    // The quorum boundary itself: `participants < threshold` with participants EQUAL to the threshold.
+    // `< -> <=` survives unless this exact case exists, and it turns a quorate window into "no verdict".
+    charter.quorum_ratio = 0.5;
+    charter.quorum_min = 1;
+    let at_quorum = ConsensusCounts {
+        consent: 2,
+        participants: quorum_threshold(2, &charter) as i64,
+        eligible: 2,
+        ..Default::default()
+    };
+    assert!(
+        at_quorum.participants == quorum_threshold(at_quorum.eligible, &charter),
+        "the fixture must sit exactly on the quorum bar: {} vs {}",
+        at_quorum.participants,
+        quorum_threshold(at_quorum.eligible, &charter)
+    );
+    assert_eq!(
+        evaluate_override(&at_quorum, &charter),
+        Result::Overridden,
+        "a window exactly at quorum has a verdict, it is not insufficient"
+    );
+    let one_short = ConsensusCounts {
+        participants: quorum_threshold(at_quorum.eligible, &charter) - 1,
+        ..at_quorum
+    };
+    assert_eq!(
+        evaluate_override(&one_short, &charter),
+        Result::InsufficientQuorum,
+        "one participant short of quorum has no verdict at all"
+    );
+
     // ... and below the bar the block stands.
     let under = ConsensusCounts { consent: 1, stand_aside: 2, participants: 3, eligible: 3, ..Default::default() };
     assert_eq!(evaluate_override(&under, &charter), Result::Upheld);

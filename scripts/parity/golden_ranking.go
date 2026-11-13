@@ -97,6 +97,25 @@ func main() {
 		}
 	}
 
+	// 1c. Small-RD starts, where phi^2 and 2*phi are far apart (phi = 0.29 for rd 50: 0.083 against
+	// 0.576). The branch test is `delta^2 > phi^2 + v`, so a mutant that turns `phi*phi` into `phi+phi`
+	// is invisible at high RD -- where the two agree to three digits -- and decides the branch here.
+	for _, start := range [][3]float64{
+		{1500, 50, 0.02},
+		{1500, 100, 0.06},
+		{1600, 50, 0.02},
+		{1400, 80, 0.04},
+	} {
+		for _, one := range []opp{
+			{1500, 50, 1.0}, {1500, 50, 0.0}, {1600, 50, 1.0}, {1400, 50, 0.0},
+			{1500, 100, 0.5}, {1800, 60, 1.0}, {1200, 60, 0.0},
+		} {
+			games := []ranking.Game{{OpponentR: one.r, OpponentRD: one.rd, Score: one.score}}
+			r, rd, vol := ranking.Rate(start[0], start[1], start[2], games, 0.5)
+			row("rate1", start[0], start[1], start[2], one.r, one.rd, one.score, r, rd, vol)
+		}
+	}
+
 	// 2. apply_pairwise_vote(): the weight clamp, the zero-weight no-op and the volatility carry, each of
 	// which is a branch a survivor can delete.
 	a := ranking.Feature{R: 1520, RD: 90, Vol: 0.06, StrategicWeight: 1.5}
@@ -124,6 +143,18 @@ func main() {
 	}
 	for _, age := range []float64{-1, 0, 0.5, 1, 3, 7, 14, 30, 365} {
 		row("age_gate", age, ranking.AgeGateMultiplier(age))
+	}
+	// account_age_days had no test at all: a mutant that returns 1.0, or that adds the timestamps
+	// instead of subtracting, was free to pass. Values straddling the 7-day gate, and one where now is
+	// BEFORE created_at so the sign is live.
+	for _, pair := range [][2]float64{
+		{1_700_000_000, 1_700_000_000},
+		{1_700_000_000, 1_700_000_000 + 3 * 86_400},
+		{1_700_000_000, 1_700_000_000 + 7 * 86_400},
+		{1_700_000_000, 1_700_000_000 + 400 * 86_400},
+		{1_700_000_000, 1_600_000_000},
+	} {
+		row("account_age", pair[0], pair[1], ranking.AccountAgeDays(pair[0], pair[1]))
 	}
 	for _, args := range [][3]float64{
 		{100, 0, 30}, {100, 15, 30}, {100, 30, 30}, {100, 45, 30}, {0, 500, 30}, {100, 1, 0}, {-5, 10, 30},

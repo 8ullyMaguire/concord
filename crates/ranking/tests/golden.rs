@@ -141,6 +141,14 @@ fn every_go_number_survives_the_port() {
                     }
                 }
             }
+            "account_age" => {
+                checked += 1;
+                let (created_at, now) = (number(row, 1), number(row, 2));
+                let label = format!("account_age_days({created_at}, {now})");
+                if !same(&label, concord_ranking::account_age_days(created_at, now), number(row, 3)) {
+                    failures.push(label);
+                }
+            }
             "role" => {
                 checked += 1;
                 if !same(&format!("role_multiplier({})", row[1]), role_multiplier(&row[1]), number(row, 2)) {
@@ -245,4 +253,53 @@ fn opponents(count: usize) -> Vec<Game> {
         }
     }
     games
+}
+
+
+/// Every arm of `Outcome::parse`, and the total it round trips through. The gate reported four
+/// `delete match arm` survivors here: the oracle only ever fed it "nonsense", so deleting the arm for
+/// "a", "b", "neither" or "skip" left every assertion passing.
+#[test]
+fn outcome_parse_round_trips_every_arm() {
+    for (text, outcome) in [
+        ("a", Outcome::A),
+        ("b", Outcome::B),
+        ("both", Outcome::Both),
+        ("neither", Outcome::Neither),
+        ("skip", Outcome::Skip),
+    ] {
+        assert_eq!(Outcome::parse(text), Some(outcome), "parse {text}");
+    }
+    for nonsense in ["", "A", "Both", "win", "xyzzy"] {
+        assert_eq!(Outcome::parse(nonsense), None, "refuse {nonsense:?}");
+    }
+    // A deleted arm would also make two outcomes indistinguishable, which is the failure that matters:
+    // "skip" and "neither" both score (0,0) but only one of them is a vote the feature saw.
+    let all = [Outcome::A, Outcome::B, Outcome::Both, Outcome::Neither, Outcome::Skip];
+    let mut scores: Vec<(f64, f64)> = all.iter().map(|outcome| outcome.score_pair()).collect();
+    scores.sort_by(|left, right| left.partial_cmp(right).expect("finite scores"));
+    scores.dedup();
+    // Four, not five: neither and skip share (0.0, 0.0) and are distinguished by the outcome name, not
+    // by the score. Three would be wrong too -- both is its own pair.
+    assert_eq!(scores.len(), 4, "five outcomes, four distinct score pairs: {scores:?}");
+}
+
+/// The age gate is a ramp, so its boundary is a value rather than a branch — but the negative-age clamp
+/// and the 7-day plateau are both boundaries, and the gate reported `< -> <=` surviving here.
+#[test]
+fn the_age_gate_ramps_and_never_penalises_a_clock_skew() {
+    use concord_ranking::{age_gate_multiplier, ACCOUNT_AGE_GATE_DAYS};
+    assert!((age_gate_multiplier(0.0) - 0.0).abs() < 1e-12, "a brand-new account has no weight yet");
+    assert!(
+        (age_gate_multiplier(ACCOUNT_AGE_GATE_DAYS) - 1.0).abs() < 1e-12,
+        "the plateau starts exactly at the gate"
+    );
+    assert!(
+        (age_gate_multiplier(ACCOUNT_AGE_GATE_DAYS / 2.0) - 0.5).abs() < 1e-12,
+        "the ramp is linear, so half the window is half the weight"
+    );
+    assert!((age_gate_multiplier(365.0) - 1.0).abs() < 1e-12, "an old account is capped at 1");
+    // A negative age reads as zero days: our clock being wrong must not cost a voter their weight.
+    assert!((age_gate_multiplier(-5.0) - 0.0).abs() < 1e-12);
+    assert!((age_gate_multiplier(-5.0) - age_gate_multiplier(0.0)).abs() < 1e-12);
 }
