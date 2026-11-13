@@ -2588,6 +2588,41 @@ is measuring a decision rather than a route.
 Also: `pairwise_votes.feature_a` and `.project_id` are foreign keys, so the probe's cleanup had to delete votes before
 features — it failed at cleanup *after* every assertion passed, which is the good order for a fixture bug to appear in.
 
+### Row 11 — part 52: B6a, invites (2026-11-13, `c84e273`)
+
+```
+gate (before): POST and GET /projects/{}/invites, POST /projects/{}/invites/{}/revoke,
+               POST /auth/redeem-invite -> all 404
+gate (after):
+  probe_s5_invites.py -> 32/32 ok
+  featurevote 20/20, coverage 22/22, solutionvote 21/21, solutionwrites 24/24, solutioncall 24/24,
+  workitems 44/44, featurewrites 37/37, listwrites 41/41, criteriawrites 45/45, projsettings 28/28,
+  milestonewrites 41/41, complaintwrites 40/40, requestwrites 43/43, filing 31/31, requests 23/23, accept 15/15
+  routes.py -> go 216 / port 164   missing: 54 (44 json, 10 page)
+  concord-parity -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-db --lib -> 38 passed
+```
+
+`crates/db/src/invite_writes.rs` (new): `create`, `get`, `list`, `revoke`, `redeem`.
+
+Five properties: only a member mints or revokes, and a non-member gets **404, not 403** (a 403 confirms the project exists);
+redemption is **idempotent per (invite, user)** and the use counter advances only on a FIRST redemption; every failure is the
+**same 404**, or the endpoint is an oracle for testing tokens; revoking sets `revoked_at` and **keeps the row**; revoking twice
+is a 400. An invite grants `contributor` and nothing more — a link lets someone in, it does not confer standing to admit others.
+
+**Negative controls.**
+
+```
+the use counter advances on every redemption:  FAIL without exhausting it by themselves: got 2 want 1
+                                               FAIL so somebody else can still use it: got 404 want 200   30/32
+the expiry is not checked:                     FAIL an expired invite is the same 404: got 200 want 404    31/32
+```
+
+**Two things found by running it:** my first fixture minted `max_uses=1` and then asserted a *second* person could redeem it —
+the 404 was the cap working and the assertion was the bug; and the probe now asserts the token's **shape** (43 characters of
+base64url, no `+` or `/`), not just its presence, because a 32-character standard-base64 token works everywhere except the one
+place these get pasted.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
