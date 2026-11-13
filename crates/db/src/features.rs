@@ -165,3 +165,25 @@ pub async fn complaint_features(pool: &PgPool, complaint_id: i64) -> Result<Vec<
         .map(feature_from_row)
         .collect()
 }
+
+/// The features placed in a milestone, in their planned order (`milestone_position, id`).
+///
+/// The order is the milestone's PLAN, not a presentation preference: a planner who dragged feature B above A gets
+/// B first, and `id` only breaks ties between features nobody placed, which is why `milestone_position` defaults
+/// to 0 rather than to the row id.
+///
+/// # Errors
+/// [`sqlx::Error`] when the read fails.
+pub async fn milestone_features(pool: &PgPool, milestone_id: i64) -> Result<Vec<Feature>, sqlx::Error> {
+    let sql = format!(
+        "select {FEATURE_COLUMNS} from features where milestone_id = $1 \
+         order by milestone_position asc, id asc"
+    );
+    sqlx::query(&sql)
+        .bind(milestone_id)
+        .fetch_all(pool)
+        .await?
+        .iter()
+        .map(feature_from_row)
+        .collect()
+}

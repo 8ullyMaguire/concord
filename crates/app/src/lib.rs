@@ -53,6 +53,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/projects/{project_id}/field-reports", get(list_field_reports))
         .route("/api/v1/projects/{project_id}/complaints/{complaint}", get(get_complaint))
         .route("/api/v1/projects/{project_id}/complaints/{complaint}/features", get(complaint_features))
+        .route("/api/v1/projects/{project_id}/milestones/{milestone}", get(get_milestone))
         .route("/api/v1/projects/{slug}/documents/kinds", get(document_kinds))
         .route("/api/v1/projects/{slug}/features/{feature}/deps", get(feature_deps))
         .route("/api/v1/projects/{slug}/features/{feature}/evidence", get(feature_evidence))
@@ -2989,4 +2990,30 @@ async fn numeric_project(
         return Err(ApiError::not_found("no such project"));
     }
     Ok(project)
+}
+
+/// `GET /api/v1/projects/{project_id}/milestones/{id}` — the milestone and the work planned into it.
+///
+/// Two keys in one body, because the two are always read together: the counts answer "how far along is it" and the
+/// feature list answers "what is left", and a page that had to fetch them separately could render one without the
+/// other and show a milestone whose remaining work contradicts its own progress bar.
+async fn get_milestone(
+    State(state): State<AppState>,
+    Path((project_id, milestone)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = numeric_project(&state, &project_id, &headers).await?;
+    let id = milestone
+        .parse::<i64>()
+        .map_err(|_| ApiError::invalid_request("milestone id must be an integer"))?;
+    let found = concord_db::milestones::milestone(&state.pool, project.id, id)
+        .await
+        .map_err(internal)?;
+    let Some(found) = found else {
+        return Err(ApiError::not_found(format!("milestone {milestone}")));
+    };
+    let features = concord_db::features::milestone_features(&state.pool, found.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!({ "milestone": found, "features": features })))
 }

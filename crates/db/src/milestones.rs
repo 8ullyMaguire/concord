@@ -88,7 +88,11 @@ const COUNTS_SQL: &str = "select count(*), \
 /// [`sqlx::Error`] when a read fails.
 pub async fn list_milestones(pool: &PgPool, project_id: i64) -> Result<Vec<Milestone>, sqlx::Error> {
     let rows = sqlx::query(
-        "select id, project_id, title, body, target_date, status, \
+        // `target_date` is a TIMESTAMPTZ in this schema (the Go stored a REAL unix stamp), so it is converted in
+        // SQL. Decoding it as f64 fails with "mismatched types … FLOAT8 is not compatible with TIMESTAMPTZ", which
+        // names a column NUMBER and not a column.
+        "select id, project_id, title, body, \
+                extract(epoch from target_date)::double precision, status, \
                 extract(epoch from created_at)::double precision \
          from milestones where project_id = $1 \
          order by target_date is null, target_date, id",
@@ -246,4 +250,60 @@ pub async fn events(pool: &PgPool, project_id: i64) -> Result<Vec<Event>, sqlx::
         });
     }
     Ok(out)
+}
+
+/// One milestone, by id, inside a project — `None` when it is not that project's.
+///
+/// The `project_id` predicate is in the QUERY rather than a comparison after the read: a handler that fetches by id
+/// and compares afterwards works until somebody forgets the comparison in the next handler, and then one project's
+/// milestone is served under another's URL.
+///
+/// # Errors
+/// [`sqlx::Error`] when a read fails.
+pub async fn milestone(
+    pool: &PgPool,
+    project_id: i64,
+    id: i64,
+) -> Result<Option<Milestone>, sqlx::Error> {
+    let Some(row) = sqlx::query(
+        "select id, project_id, title, body,
+                extract(epoch from target_date)::double precision, status,
+                extract(epoch from created_at)::double precision
+           from milestones where id = $1 and project_id = $2",
+    )
+    .bind(id)
+    .bind(project_id)
+    .fetch_optional(pool)
+    .await?
+    else {
+        return Ok(None);
+    };
+    let mut milestone = Milestone {
+        id: row.try_get(0)?,
+        project_id: row.try_get(1)?,
+        title: row.try_get(2)?,
+        body: row.try_get(3)?,
+        target_date: row.try_get(4)?,
+        status: row.try_get(5)?,
+        created_at: row.try_get(6)?,
+        total: 0,
+        open: 0,
+        shipped: 0,
+        seeded: 0,
+        unshipped: 0,
+        at_risk: false,
+    };
+    let counts = sqlx::query(COUNTS_SQL).bind(milestone.id).fetch_one(pool).await?;
+    milestone.total = counts.try_get(0)?;
+    milestone.open = counts.try_get(1)?;
+    milestone.shipped = counts.try_get(2)?;
+    milestone.seeded = counts.try_get(3)?;
+    milestone.unshipped = counts.try_get(4)?;
+    // Derived, never stored, and derived the same way the list does it: two places computing `at_risk` differently
+    // is how a badge and a page start disagreeing about the same milestone.
+    milestone.at_risk = matches!(milestone.target_date, Some(target) if target > 0.0)
+        && milestone.open > 0
+        && milestone.target_date.unwrap_or(0.0) < chrono_now_unix()
+        && matches!(milestone.status.as_str(), "planned" | "active");
+    Ok(Some(milestone))
 }
