@@ -2115,6 +2115,56 @@ assign ignores feature ownership:
 done with open features under it — the exact state `/close` exists to prevent. The reference does this too and a page may
 use the route, so it is carried as-is for the cutover checklist rather than tightened here.
 
+### Row 11 — part 42: B4a, the project settings writes (2026-11-13, `aaa2ec6`)
+
+```
+gate (before): PUT /projects/{}/tags, GET /projects/{}/tags/completeness, PUT /projects/{}/languages,
+               PUT /projects/{}/intake-mode -> 404
+gate (after):
+  probe_s5_projsettings.py -> 28/28 ok
+  milestonewrites 41/41, complaintwrites 40/40, requestwrites 43/43, filing 31/31, requests 23/23, accept 15/15
+  routes.py -> go 216 / port 132   missing: 86 (76 json, 10 page)
+  concord-parity -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-db --lib -> 38 passed
+```
+
+**B4 is split, not half-done:** B4a is the four settings writes; **B4b** is the remaining ten (charter, criteria ×3,
+criteria-profiles, lists ×3, metrics, visibility). The batch count stays honest that way.
+
+`taxonomy.rs`: `apply_project_tag` (+ `Applied`), `completeness` (+ `Completeness`, carrying **both thresholds** so the
+page can explain the number). `projects.rs`: `set_languages` (+ `Invalid`), `set_intake_mode`, `INTAKE_MODES`.
+
+Rules asserted: an unknown tag name is **refused with the route that can propose one**; aliases count as existing names;
+applying twice leaves one link; tagging and languages are **contributor** work, the intake mode **maintainer**;
+percentages are bounded **both per-share and in total** (the discovery score treats them as shares, so a set summing to
+140 overstates the project wherever it is ranked); a refused language write leaves the stored set alone; a **no-op intake
+save writes no act**; and `mode`/`intake_mode` are both accepted because echoing the response back is the obvious thing.
+
+**NEGATIVE CONTROLS.**
+
+```
+unknown tag silently ignored:
+  FAIL an unknown tag is 400: got 200 want 400
+  FAIL and the refusal names the proposing route: got False want True
+  FAIL each accepted call audits apply_tags: got 3 want 2                            25/28
+language sum unchecked:
+  FAIL a sum above 100% is 400: got 200 want 400                                     26/28
+intake no-op removed:
+  FAIL and a no-op save writes NO second act: got 2 want 1                           27/28
+```
+
+**Found by running it:** a **namespaced tag is stored as the bare name plus a `namespace` column** — `topic:kanban` is
+name `kanban` with namespace `topic`, which is what `SplitTag` splits and what the apply looks up. Seeding the whole
+`topic:kanban` string as the name made every namespaced apply miss, so the meter read 3 tags / 0 namespaced where the
+probe expected 5 / 2. The Go writer does the same (`INSERT INTO tags (name, namespace) VALUES (NULL, bare, ns)`), so the
+port was right and the fixture was wrong — written down because the next person to seed taxonomy will hit it. Also
+`tags.suggested` is **BOOLEAN** here (an integer flag in SQLite) and a bare `0` is an integer literal, so the fixture
+needs `false`.
+
+**No reindex after applying tags**, deliberately: the Go store writes an fts5 table, while here `search_tsv` is a
+GENERATED column and the tag half of free-text search is an `EXISTS` over `project_tags` — the index follows the row
+without a second write that could fall out of step (same reasoning already recorded for `create_project`).
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
