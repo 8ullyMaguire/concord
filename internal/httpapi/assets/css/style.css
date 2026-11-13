@@ -12,10 +12,9 @@
      /taxonomy by a browser crawl on 2026-11-13 — so links, stat values and icons take --indigo-text, which is
      #4f46e5 at 5.74:1. One value could not satisfy both, which is what the crawl was saying on two pages in a row. */
   --indigo-text: #4f46e5;
-  /* …and a THIRD role, because this page has two surfaces: the content area is slate-100 and the header, nav and
-     footer are slate-900. --indigo-text is 5.74:1 on the light one and 2.82:1 on the dark one, so links on the dark
-     surface take #a5b4fc, which is 8.96:1 there. Three roles, three names, no single value pretending to serve all. */
-  --indigo-on-dark: #a5b4fc;
+  /* Measured, not assumed: this site has no dark surface. The header is rgba(255,255,255,.95) and the footer,
+     breadcrumb and body are slate-100. An earlier attempt at a light-indigo-for-dark-chrome existed for two
+     commits and was wrong on its own premise — the brand link it painted scored 4.46:1 on the white header. */
   /* `--muted` is asked for by 22 rules and was never defined, so each of them took its own literal fallback
      (#64748b, 4.34:1 on the slate-100 surface). Defining the alias is the fix, not editing nine fallbacks:
      it resolves to --slate-500, which moved to 6.92:1 today. Confirmed by a browser crawl on 2026-11-13 that
@@ -32,7 +31,9 @@
      to slate-600's 6.92:1 rather than the 32 call sites; the name stays, because renaming it would touch every one
      of them to say the same thing. */
   --slate-500: #475569;
-  --slate-400: #94a3b8;
+  /* 23 of this token's 26 uses are text, and on this site's surfaces #94a3b8 measures 2.34:1. The value moves
+     until the text passes (5.07:1 on slate-100, 5.56:1 on white) and still steps visibly from --slate-500. */
+  --slate-400: #5f6978;
   --slate-300: #cbd5e1;
   --slate-200: #e2e8f0;
   --slate-100: #f1f5f9;
@@ -58,7 +59,6 @@ body {
 h1, h2, h3, h4, h5, h6 { font-weight: 600; line-height: 1.25; margin: 0; }
 p { margin: 0; }
 a { color: var(--indigo-text); text-decoration: none; }
-header a, nav a, footer a, .site-header a, .site-footer a, .hero a { color: var(--indigo-on-dark); }
 /* Colour alone is not a distinction: inside prose the link is underlined as well, because the two indigos
    and the body slate are close enough in luminance that a colour difference is not a perceivable cue for
    everyone (axe link-in-text-block, measured on /taxonomy 2026-11-13). */
@@ -2221,7 +2221,7 @@ fieldset legend {
 a.curation-target:hover { text-decoration: underline; }
 .curation-summary { margin: 0.25rem 0 0.35rem; color: var(--slate-600); font-size: 0.92rem;
   max-width: 70ch; }
-.curation-meta { margin: 0 0 0.5rem; font-size: 0.8rem; color: var(--slate-400); }
+.curation-meta { margin: 0 0 0.5rem; font-size: 0.8rem; color: var(--slate-500); }
 .curation-votes { display: flex; gap: 0.5rem; margin: 0; }
 #curation-more { margin: 1rem 0 2rem; }
 .curation-undo { margin-top: 0.4rem; }

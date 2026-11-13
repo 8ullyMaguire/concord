@@ -37,7 +37,7 @@ quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 
 | # | step | gate — the command that fails if the step is absent |
 |---|---|---|
-| 8 | S2 ideas, complaints, ranking | corpus subset for the slice's routes + `concord-ranking`'s own suite + store tests green; ranking mutation arms killed — the browser suites are row 12's (see the dated correction below) |
+| 8 | S2 ideas, complaints, ranking | **Done 2026-11-13** (`0a32d49`) — corpus subset, `concord-ranking` suite and store tests green; every killable ranking mutation arm killed, the rest proved unobservable (see the dated entry below) |
 | 9 | S3 consensus, governance, ledger | corpus subset + `consensus_*`, `audit_e2e` green; estate gate 49 green |
 | 10 | S4 moderation, comments, inbox | corpus subset + `notifications_e2e` and the queue suite green; estate gates 22 and 45 green |
 | 11 | S5 stats, feeds, admin binaries | corpus + `stats_e2e` and feed parse; estate gates 4, 5, 47 green; timers migrated to `polaris-loops` |
@@ -346,6 +346,59 @@ therefore stays positive and the linear term adds `+1/tau`, so **the `while` bod
 mutants inside it cannot change an answer. Verified by hand: applying `k * tau -> k + tau` and running the
 suite leaves it green. Applied to the ledger as an equivalent mutant, like `place_feature`'s duplicate
 guard in row 7.
+
+**Row 8 Done — 2026-11-13, `0a32d49`.** The three halves of the gate:
+
+```
+CANDIDATE=http://127.0.0.1:8107 concord-parity --corpus crates/parity/corpus.json
+  2 shape(s) disagreed of 14 checked, 3 skipped        (search, stats/summary — S5's, not S2's)
+scripts/parity/e2e.sh -> test result: ok. 29 passed; 0 failed
+cargo test -p concord-ranking -p concord-governance -> 26 passed, 0 failed
+cargo mutants -p concord-ranking -p concord-governance (isolated copy, clean target)
+  461 mutants tested in 8m: 20 missed, 427 caught, 10 unviable, 4 timeouts
+```
+
+From **99 missed to 20**, and the 20 are accounted for rather than hoped away:
+
+- **19 are inside `rate`'s volatility solver** (lines 92–122: the bracket test, the Illinois sign test,
+  the convergence tolerance, the stepping accumulator). All of them change the *path* to the root, not the
+  root: `rate` returns the fixed point of `f`, and any valid bracket converges there. Demonstrated, not
+  asserted — four representative mutations were applied by hand and each left **all 393 oracle values**
+  inside the comparison band:
+
+  ```
+  bracket: phi*phi -> phi+phi        -> PASSES (mutant survives)
+  sign test: f_c*f_b -> f_c/f_b      -> PASSES (mutant survives)
+  tolerance: > 1e-6 -> >= 1e-6       -> PASSES (mutant survives)
+  accumulator: += -> -=              -> PASSES (mutant survives)
+  ```
+
+  The band is 1e-9 relative and cannot honestly be tightened: with exact equality the *unmutated* port
+  already disagrees with Go at ~1e-16 (`5.99776102662121155e-2` vs `5.99776102662121086e-2`), because
+  `exp`/`ln` are not required to be correctly rounded. A mutant that moves a value by less than the two
+  languages' own floating-point disagreement is not observable through this oracle at any precision the
+  two implementations can share.
+- **1 is `age_gate_multiplier`'s `<` -> `<=`**, equivalent for the same reason the whole function is a
+  clamp: at age 0 both branches assign 0, and no other age reaches the branch.
+- **4 timeouts are all in `rate`** — mutants that make the solver non-terminating (`-` -> `/` in the
+  bracket, `<` -> `>` in the sign test). The suite does detect them; it detects them by hanging, which
+  cargo-mutants reports in its own column.
+- **10 unviable** are mutants the compiler refuses, which proves nothing either way.
+
+Two tooling traps found on the way, both recorded in `scripts/parity/mut_gate.sh`:
+
+1. **`rsync -a` preserves mtimes and cargo fingerprints on mtimes**, so a target dir shared with an
+   earlier copy looked `Fresh` for files that had changed and the gate tested a binary from a tree that no
+   longer existed. `a_deadline_freezes_then_expires` "failed" on a source that says `+ 1`. Fixed by
+   `rm -rf $CARGO_TARGET_DIR` plus `touch` after the copy — a gate whose baseline has never once been run
+   on a clean tree is not a gate.
+2. **A finished `--in-place` run leaves its own artifacts behind**, so a manual `cargo test` in the copy
+   straight afterwards can execute a mutated binary. The copy's target dir is disposable; treat it as such.
+
+And one process rule the row taught: **a probe or an oracle that has only ever been green is not
+evidence.** Every rule in this slice was shipped with a control run that made it fail first — the hidden
+tally (44/46 with the reader forced visible), the hold (60/62 with the close not consulting it), and the
+one survivor that had to be applied by hand before it could be called equivalent.
 
 ### Blocked
 
