@@ -52,9 +52,14 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/projects/{project_id}/capabilities", get(list_capabilities))
         .route("/api/v1/projects/{project_id}/field-reports", get(list_field_reports))
         .route("/api/v1/projects/{project_id}/complaints/{complaint}", get(get_complaint))
+        .route("/api/v1/projects/{project_id}/complaints/{complaint}/features", get(complaint_features))
         .route("/api/v1/projects/{slug}/documents/kinds", get(document_kinds))
         .route("/api/v1/projects/{slug}/features/{feature}/deps", get(feature_deps))
         .route("/api/v1/projects/{slug}/features/{feature}/evidence", get(feature_evidence))
+        // `{slug}` and not `{project_id}`: axum refuses two routes that differ only in a parameter NAME ("Insertion
+        // failed due to conflict with previously registered route"), and the sibling feature routes under this
+        // prefix already bind `{slug}`. The Go's shape is the same path — parameter names are not part of it.
+        .route("/api/v1/projects/{slug}/features/{feature}/complaints", get(feature_complaints))
         .route("/api/v1/projects/{slug}/features/{feature}/tags", get(feature_tags))
         .route("/api/v1/projects/{project_id}/lists", get(project_lists))
         .route("/api/v1/projects/{project_id}/lists/", get(project_lists))
@@ -2920,4 +2925,68 @@ async fn get_complaint(
         Some(found) if found.project_id == project.id => Ok(Json(serde_json::json!(found))),
         _ => Err(ApiError::not_found(format!("complaint {complaint}"))),
     }
+}
+
+/// `GET /api/v1/projects/{project_id}/complaints/{id}/features` — the work built to answer this complaint.
+///
+/// An empty array, never null: `null` breaks a client that expects a list, and "no work answers this" is the common
+/// case rather than the edge.
+async fn complaint_features(
+    State(state): State<AppState>,
+    Path((project_id, complaint)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = numeric_project(&state, &project_id, &headers).await?;
+    let id = complaint
+        .parse::<i64>()
+        .map_err(|_| ApiError::invalid_request("complaint id must be an integer"))?;
+    // The complaint must belong to the project in the path, or one project's complaint is served under another's.
+    let found = concord_db::complaints::complaint(&state.pool, id)
+        .await
+        .map_err(internal)?;
+    match found {
+        Some(found) if found.project_id == project.id => {}
+        _ => return Err(ApiError::not_found(format!("complaint {complaint}"))),
+    }
+    let rows = concord_db::features::complaint_features(&state.pool, id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
+}
+
+/// `GET /api/v1/projects/{project_id}/features/{id}/complaints` — what justifies this feature.
+async fn feature_complaints(
+    State(state): State<AppState>,
+    Path((project_id, feature)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = numeric_project(&state, &project_id, &headers).await?;
+    let feature = feature_for(&state, project.id, &feature).await?;
+    let rows = concord_db::complaints::feature_complaints(&state.pool, feature.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
+}
+
+/// A project by NUMERIC id, readable by the caller, refused with a 404 the caller cannot use to enumerate.
+///
+/// A non-numeric segment is a 404 and not a 400: `requireProjectID` maps a parse failure to `ErrNotFound`, and an
+/// unknown project must not answer differently from a malformed one.
+async fn numeric_project(
+    state: &AppState,
+    segment: &str,
+    headers: &HeaderMap,
+) -> Result<concord_db::projects::Project, ApiError> {
+    let Ok(id) = segment.parse::<i64>() else {
+        return Err(ApiError::not_found("no such project"));
+    };
+    let project = concord_db::projects::project_by_id(&state.pool, id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found("no such project"))?;
+    let user = bearer_user(state, headers).await?;
+    if !readable(state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    Ok(project)
 }

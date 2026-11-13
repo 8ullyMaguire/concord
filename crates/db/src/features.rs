@@ -140,3 +140,28 @@ pub async fn feature(pool: &PgPool, id: i64) -> Result<Option<Feature>, sqlx::Er
         .map(|row| feature_from_row(&row))
         .transpose()
 }
+
+/// The features linked to a complaint, highest rating first.
+///
+/// The mirror of [`crate::complaints::feature_complaints`], and the reason both exist as written SQL rather than one
+/// parameterised helper: they join on DIFFERENT COLUMNS (`fc.complaint_id` here, `fc.feature_id` there) and sort by
+/// different keys (`elo_r` here, `created_at` there). A single helper with a flag would make the two questions look
+/// like one, which is how a copy-paste produces a plausible wrong answer.
+///
+/// `elo_r desc, id asc`: the rating decides, and the id breaks ties so the list does not reorder between requests.
+///
+/// # Errors
+/// [`sqlx::Error`] when the read fails.
+pub async fn complaint_features(pool: &PgPool, complaint_id: i64) -> Result<Vec<Feature>, sqlx::Error> {
+    let sql = format!(
+        "select {FEATURE_COLUMNS} from feature_complaints fc join features f on f.id = fc.feature_id
+          where fc.complaint_id = $1 order by f.elo_r desc, f.id asc"
+    );
+    sqlx::query(&sql)
+        .bind(complaint_id)
+        .fetch_all(pool)
+        .await?
+        .iter()
+        .map(feature_from_row)
+        .collect()
+}

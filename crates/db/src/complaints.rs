@@ -109,3 +109,34 @@ pub async fn complaint(pool: &PgPool, id: i64) -> Result<Option<Complaint>, sqlx
         .map(|row| complaint_from_row(&row))
         .transpose()
 }
+
+/// The complaints linked to a feature, newest first.
+///
+/// The direction matters: `feature_complaints` has two columns and the two read routes answer different questions.
+/// This one asks "which complaints justify THIS feature" and joins on `fc.feature_id`; its mirror asks "which work
+/// answers this complaint" and joins on `fc.complaint_id`. A copy-paste that swaps them returns a plausible list —
+/// the feature's own complaints versus every feature touching the same complaint — and only an asymmetric fixture
+/// tells them apart.
+///
+/// An EMPTY slice, never nil: `nil` marshals to `null`, and a client that expects an array breaks on a feature
+/// nobody has complained about — which is the most common case, not the edge.
+///
+/// # Errors
+/// [`sqlx::Error`] when the read fails.
+pub async fn feature_complaints(pool: &PgPool, feature_id: i64) -> Result<Vec<Complaint>, sqlx::Error> {
+    // The aliased column list is written out rather than derived from COMPLAINT_COLUMNS: that constant contains
+    // `extract(epoch from …)` expressions, and a mechanical `c.` prefix produces `c.extract(…)`, which is not SQL.
+    let sql = "select c.id, c.project_id, c.author_id, c.title, c.body, c.severity, c.frequency,
+                      c.strategic_multiplier, c.status, c.merged_into,
+                      extract(epoch from c.created_at)::double precision,
+                      extract(epoch from c.updated_at)::double precision
+                 from feature_complaints fc join complaints c on c.id = fc.complaint_id
+                where fc.feature_id = $1 order by c.created_at desc, c.id asc";
+    sqlx::query(&sql)
+        .bind(feature_id)
+        .fetch_all(pool)
+        .await?
+        .iter()
+        .map(complaint_from_row)
+        .collect()
+}
