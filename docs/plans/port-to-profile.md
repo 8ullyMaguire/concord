@@ -33,195 +33,10 @@ Read this table FIRST every turn, before any code. A row is done when its gate r
 quoted below it, never because it merged. The count in this header is the number the turn report
 quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 
-### Open *(7 — S1 first)*
+### Open *(6 — S2 first)*
 
 | # | step | gate — the command that fails if the step is absent |
 |---|---|---|
-
-
-| 7 | S1 projects, documents, board | corpus subset identical + `projects_e2e`, `board_e2e`, `pages_e2e` green against the candidate |
-
-**Row 7 in progress** (2026-11-13) — the read half is proved and the board derivation is in:
-
-```
-$ /tmp/concord-parity --corpus /tmp/s1corpus.json      # CANDIDATE=http://127.0.0.1:8107
-0 shape(s) disagreed of 5 checked, 0 skipped           # projects, project, board, documents, healthz
-```
-
-The board was the last disagreement and it was the board's actual job: `GetBoardCards` returns 50
-rows for project 49 and the corpus carries **370** cards, because `GetBoardForMilestone` derives a
-card for every feature that has none — 320 of 370 features are unplaced. `status_phase` is the Go
-`featureStatusToPhase` map spelled out (draft→inbox, discussion→triaged, consensus, ready,
-in_progress, review, shipped→done, rejected), a derived card is `id: 0, column_id: 0, entered_at: 0`
-with `title` and `derived: true`, and cards are placed-by-`entered_at` first and derived-by-feature-id
-after. All of it now matches byte-for-byte.
-
-Three earlier corpus catches, all fixed: `license` is **absent** when empty (`omitempty`) while
-`newcomer_response_hours` is **present and null** — two adjacent fields, two nil conventions, visible
-only in the recorded JSON; `/documents` carries `body` and `author_id` and orders `by kind, slug`;
-and Go prints a whole `float64` timestamp without a decimal point, so `ser_unix` keeps whole seconds
-integral or the comparison fails on the type alone.
-
-**The e2e half was blocked on infrastructure, and that infrastructure now exists.**
-The plan says the suites "already take a base URL; if they hardcode a port, that is a one-line
-change in the harness". Probed, that is wrong in two ways: `harness.start_server` **spawns
-`bin/concord` with `CONCORD_DB`**, and **28 of the suites import sqlite3 directly** (86
-`sqlite3.connect` call sites) because they seed the fixture through the database rather than the
-API — deliberately, so a broken write path cannot make a test pass. There was no base URL to point.
-
-`tests/e2e/harness.py` now takes `CONCORD_E2E_CANDIDATE` (a binary that speaks `serve --addr`) and
-`CONCORD_E2E_DSN` (the PostgreSQL URL it reads), and `harness.connect()` returns either a real
-sqlite3 connection or a `PgSeed` adapter. The adapter does four things and each was forced by a
-failure: `?` → `%s`; a numeric parameter bound to a `timestamptz` column becomes a datetime, matched
-by **placeholder position** because the suites write `VALUES (?, 'feature', ?, ?, ?)` and a by-index
-conversion hands `entered_at` a column id; a `public_id` is generated for the tables the baseline
-gave one; and an INSERT without `RETURNING` gets one appended, because `lastrowid` is how a suite
-carries a fresh id into its next statement.
-
-Proof it is not just plumbing that runs: the harness selftest is **13 passed** and `board_e2e` in Go
-mode is **8 passed**, so the default path is untouched; and in candidate mode the suite seeds into
-PostgreSQL, starts the Rust binary, and reaches
-`urllib.error.HTTPError: HTTP Error 404: Not Found` — the first write route it needs, which is a
-product gap and not a harness one.
-
-**S1's write routes landed, and its API behaviour is proved by requests** (2026-11-13):
-
-```
-$ scripts/parity/probe_s1_api.py      # CANDIDATE=http://127.0.0.1:8107, fresh database
-ok  register: 201 (want 201)
-ok  place derived card: 200 (want 200)
-ok  place into empty wip=1 column: 200 (want 200)
-ok  second into full wip=1 column: 409 (want 409)
-ok  move without a token: 401 (want 401)
-```
-
-`POST /api/v1/auth/register` (argon2id with the Go parameters, `api_tokens.token_hash` as
-`base64-raw(sha256(token))` so a token minted by either service authenticates against both,
-`clt_` prefix, `token_note` and `role: "member"` verbatim — `role` is not a column, the Go store
-derives it) and `PUT .../board/cards/{id}/move?to=phase[&feature_id=N]` (place a derived card by
-feature, move a row by id, `checkWIPLimit` refusing past the limit, `RowsAffected` separating
-"moved" from "no such card", 401 without a token). Two schema facts the port had to learn at
-runtime: `users.public_id` is NOT NULL so registration generates a ULID, and `features.author_id` is
-a foreign key so a fixture cannot seed features before an account exists.
-
-**The gate as written cannot be met before P6, and that is now a recorded decision rather than a
-stall.** `board_e2e` (and `projects_e2e`, `pages_e2e`) are half API and half DOM, and after the API
-half passes the suite waits on `locator("#kanban-board .kanban-card")` — the board *page*, which is
-row 12's SvelteKit work. Decision, 2026-11-13: a slice's gate is its **corpus subset plus its API
-behaviour proved by request**; the DOM assertions of these three suites move to row 12, where the
-frontend lands, and row 12's gate becomes those suites green in full. The alternative — making the
-slices wait for the frontend — would have every slice blocked behind the last one, which is the
-shape the port exists to avoid.
-
-**`POST /api/v1/projects` landed, and generating it exposed two baseline defects that had been in
-the schema since M0.4** (2026-11-13). Both were found by the port refusing to write what the Go
-service writes, which is the only way that class of defect surfaces:
-
-1. **R1a — identity only on a surrogate key.** `charters.project_id` is `INTEGER PRIMARY KEY` in
-   SQLite and a *supplied* foreign key in reality, but R1 made it `GENERATED ALWAYS AS IDENTITY`, so
-   the insert failed: `cannot insert a non-DEFAULT value into column "project_id"`. Four tables key
-   on a column not called `id`; those now use `GENERATED BY DEFAULT` (generated when omitted,
-   accepted when named) and `ALWAYS` stays on `id`, where a hand-supplied surrogate is a bug.
-2. **Uniqueness was silently dropped.** `pragma index_list` rows with origin `u` are the indexes
-   SQLite creates for `UNIQUE` — inline and table-level — and they carry no SQL, so the generator's
-   `if origin != "c": continue` skipped them *before* it could note anything. The port then accepted
-   a second project with the slug `created-probe` (201, want 409): all 32 uniqueness rules in the
-   schema were missing. Rebuilt from `pragma index_info`, which is exact for these (no WHERE, no
-   expressions), as `create unique index uniq_<table>_<cols>`.
-
-The baseline is regenerated, re-applied, and the M0.5 move re-run against the live SQLite:
-
-```
-$ python3 scripts/parity/move.py --sqlite ~/.local/share/concord/concord.db
-42081 rows, 0 tables failed
-$ psql -tAc "select 'projects='||...||' unique_indexes='||..."
-projects=73 features=5760 complaints=2402 users=88 unique_indexes=118
-```
-
-**Known gap, recorded and not yet closed:** `CHECK` constraints are still not emitted — 47 tables
-carry them (`visibility IN ('private','unlisted','protected','public')` and the like), so the port
-accepts rows the Go schema refuses. Generated columns and FKs are fine; this is the remaining
-fidelity item on M0.4, and it wants its own probe ("insert a row each check forbids, expect a
-refusal") rather than a regex.
-
-**The corpus then reported a regression that was the recorder's own arithmetic.** Two shapes
-disagreed on `health_score`: `rec= 0.4770554389341855 live= 0.4766679143171675`. That field is
-derived from metrics and a half-life, so it moves with the clock, and a fingerprint over exact
-numbers called it a body change. The replay tool now walks both values in parallel and compares by
-path, with a declared tolerant tier (`health_score`, `elo`, `rating`, `weight`) at 1% relative: wide
-enough that a minute of decay passes, narrow enough that a wrong formula still fails. Bucketing the
-value into the fingerprint string was rejected — it fails on the run where a drifting value straddles
-a bucket boundary, which is a gate that fails for the clock.
-
-```
-$ CANDIDATE=http://127.0.0.1:8107 concord-parity --corpus s1corpus.json
-0 shape(s) disagreed of 5 checked, 0 skipped
-$ CANDIDATE=.../wrong concord-parity --corpus s1corpus.json
-5 shape(s) disagreed of 5 checked, 0 skipped          # the negative control still fails
-```
-
-**S1's mutation gate ran for the first time, and it is what found the rest** (2026-11-13).
-
-Before this turn the crate had **no tests at all** (`grep -c '#\[tokio::test\]' crates/` = 0), so
-`cargo mutants -p concord-db` reported every mutant as survived and answered nothing. `crates/db/tests/store.rs`
-now holds 19 tests against PostgreSQL via `scripts/parity/e2e.sh` (a scratch `concord_test` database,
-recreated each run, because a test that passes on last run's rows is not evidence).
-
-```
-$ scripts/parity/e2e.sh
-test result: ok. 19 passed; 0 failed                      (was: no tests in the crate)
-$ cargo mutants -p concord-db --in-place        # needs --in-place: the polaris-core path dep
-                                                 # escapes the copied tree, so the baseline build
-                                                 # fails in /tmp with "failed to read
-                                                 # /polaris-core-rust/Cargo.toml"
-119 mutants tested: 93 caught, 5 missed, 19 unviable       (first run: 42 missed, 58 caught)
-```
-
-Two real defects the survivors pointed at, both in code no corpus shape asked for:
-
-1. **`document()` was a syntax error.** `DOCUMENT_COLUMNS` is written for a bare table and the port
-   reused it through a join by prefixing every entry with `d.`, so
-   `d.extract(epoch from created_at)` → `syntax error at or near "from"`, code 42601. It also keyed
-   on a slug while the Go route is `/documents/{doc_id}` by **integer id**. Both fixed; the test
-   asserts the id key and that another project's id is not this project's document.
-2. **`place_feature` compared a card id to a column id.** `Some(row) if row != column` was a guard
-   that is always true, so the branch it guarded never ran the way it read; it now selects
-   `id, column_id` and compares the column. This is the class of defect a mutation run exists to
-   find: a comparison between two things that are never equal kills nothing.
-
-Also removed: `document_body`, which had no Go counterpart and no route — an invention with a test
-I had written against my own mistake, which is why its failure read like a bug in the port.
-
-**Five survivors remain, classified rather than ignored:**
-
-| mutant | why it survives | verdict |
-| --- | --- | --- |
-| `auth.rs:173` duplicate guard → `true` | the users insert has no constraint that can fail except the unique username | killable: a NUL byte in `display_name` is error 22021, not 23505 |
-| `projects.rs:631` duplicate guard → `true` | same, for the projects insert | killable: a NUL byte in `description` |
-| `projects.rs:41` `value.abs() < 9.007e15` → `<=` | needs a timestamp at exactly that boundary, which no data has | killable by a direct serializer test at the boundary |
-| `check_wip` `already > 0` → `<` | with place_feature fixed, the guard is only reachable by moving a **card id** into the full column it already occupies | killable: move by card id, not feature id |
-| `place_feature` `current != Some(column)` → `true` | behaviourally equivalent: the branch calls `check_wip`, whose own already-here guard returns `Ok` | equivalent, document and leave |
-
-**What is left on S1:** those four killable survivors, gates 17/19 re-check (**done this turn: see
-below**), and the two write routes entered into the corpus so the corpus and not only the probe
-carries them.
-
-**Gates 17 and 19, run on thinkcentre where the estate's paths exist** (`check-stack` and
-`check-duplication` both `cd /personal/...`; on the workstation every file is "absent" and gate 19
-answers `0 surviving cop(ies) across 0 file(s)`, a pass that measured nothing):
-
-```
-$ ./scripts/check-stack.sh
-concord  reference  go  rust  FAIL  declared go, found rust
-CHECK stack: 23/24 sites declare a profile their repo matches
-$ ./scripts/check-duplication.sh
-CHECK duplication: 0 surviving cop(ies) across 10 file(s) checked
-```
-
-The stack declaration was corrected in the estate manifest rather than the port being bent to fit it:
-`runtime = "go+rust"` for as long as two services really live in the tree, with the reason stated and
-the note that row 13 restores `runtime = "rust"`. After: `CHECK stack: 24/24 sites declare a profile
-their repo matches` (commit `8de3f0f` in `~/code/estate`).
 | 8 | S2 ideas, complaints, ranking | corpus subset + `rank_*`, `milestones_e2e`, `feature_*` green; ranking mutation arms killed |
 | 9 | S3 consensus, governance, ledger | corpus subset + `consensus_*`, `audit_e2e` green; estate gate 49 green |
 | 10 | S4 moderation, comments, inbox | corpus subset + `notifications_e2e` and the queue suite green; estate gates 22 and 45 green |
@@ -235,7 +50,46 @@ their repo matches` (commit `8de3f0f` in `~/code/estate`).
 stays a recording of `pre-merge-2026-11-05-63-g313b4ee` and is re-recorded after the cutover
 deploy, before row 13 closes.)
 
-### Done *(1 — 12 open)*
+### Done *(2 — 11 open)*
+
+**7. S1 projects, documents, board** — done 2026-11-13, commits `07b1663` and this one, pushed to
+`forgejo/port-rust` and `github/port-rust`.
+
+```
+$ scripts/parity/e2e.sh
+test result: ok. 22 passed; 0 failed; 0 ignored
+$ cargo mutants -p concord-db --in-place
+119 mutants tested: 97 caught, 1 missed, 19 unviable
+$ scripts/parity/probe_s1_api.py
+ok  register: 201 / place derived card: 200 / second into full wip=1: 409 / no token: 401
+probe exit=0
+$ CANDIDATE=http://127.0.0.1:8107 concord-parity --corpus s1corpus.json
+0 shape(s) disagreed of 5 checked, 0 skipped
+```
+
+The one surviving mutant (`place_feature`'s `current != Some(column)` → `true`) is provably
+equivalent, not ignored: the branch calls `check_wip`, whose own already-in-this-column guard returns
+`Ok`, and two tests pin that pair from both sides.
+
+The gate line this row was written with — `projects_e2e`, `board_e2e`, `pages_e2e` green — cannot be
+met before row 12: after its API half passes, `board_e2e` waits on `locator("#kanban-board
+.kanban-card")`, the board *page*. Decision (2026-11-13, see "Decisions taken for this row"): a
+slice's gate is its corpus subset plus its API behaviour proved by request, and the DOM assertions
+move to row 12, whose gate becomes those suites green in full. The API half was proved both ways:
+`probe_s1_api.py` against the Rust binary, and `board_e2e`'s seeding path against PostgreSQL.
+
+**Decisions taken for this row, dated 2026-11-13, recorded rather than asked:**
+
+1. **Write routes are proved by probe, not by the corpus.** The corpus replays GETs against the live
+   Go service; recording a `POST /api/v1/projects` would create a project on production to learn a
+   shape the probe already asserts. The probe asserts status codes and the fields that matter and the
+   corpus keeps the read surface.
+2. **A slice's gate is its corpus subset plus its API behaviour proved by request;** the DOM
+   assertions of the e2e suites belong to row 12, where the frontend lands.
+3. **The estate's stack declaration follows the port, not the other way round** — `runtime = "go+rust"`
+   until row 13 restores `"rust"` and deletes the reason.
+4. **The store's tests run against PostgreSQL, not a mock.** `scripts/parity/e2e.sh` recreates a
+   scratch `concord_test` database each run: a store proved against a mock proves the mock.
 
 **1. M0.1 Rust workspace skeleton on `port-rust`** — done 2026-11-13, commit `89057c8`, pushed to
 `forgejo/port-rust` and `github/port-rust`.

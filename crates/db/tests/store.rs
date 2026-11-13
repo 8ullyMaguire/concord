@@ -670,3 +670,92 @@ async fn placing_a_feature_that_already_sits_in_a_full_column_is_not_a_refusal()
         other => panic!("expected ColumnFull when moving in from another column, got {other:?}"),
     }
 }
+/// A byte PostgreSQL cannot store is a database error, not a duplicate.
+///
+/// The duplicate guard turns one specific code (`23505`) into `Duplicate`, and everything else into
+/// `Database`. A mutant that makes the guard `true` reports "that name is taken" for a failure that
+/// has nothing to do with the name, so this asserts the other side of the guard with an error that
+/// is reachable: a NUL byte is `22021 invalid byte sequence`.
+#[tokio::test]
+async fn a_byte_the_database_refuses_is_not_reported_as_a_duplicate() {
+    let pool = pool().await;
+    let name = unique("nul");
+    match concord_db::auth::register_user(&pool, &name, "bad\u{0}name", "correct horse").await {
+        Err(concord_db::auth::AuthError::Duplicate(_)) => {
+            panic!("a NUL byte is not a duplicate username")
+        }
+        Err(concord_db::auth::AuthError::Database(_)) => {}
+        other => panic!("expected Database, got {other:?}"),
+    }
+    let (user, _) = account(&pool).await;
+    match concord_db::projects::create_project(
+        &pool,
+        &unique("nul"),
+        "A project",
+        "body\u{0}with a NUL",
+        "collective",
+        "",
+        user,
+    )
+    .await
+    {
+        Err(concord_db::projects::CreateError::Duplicate(_)) => {
+            panic!("a NUL byte is not a duplicate slug")
+        }
+        Err(concord_db::projects::CreateError::Database(_)) => {}
+        other => panic!("expected Database, got {other:?}"),
+    }
+}
+
+/// The integral guard has a ceiling, and above it the value stays a float.
+///
+/// `value.abs() < 9.007e15` is the point past which an `f64` no longer has integer precision, so a
+/// timestamp that large is written as a float rather than silently rounded into an integer.
+#[test]
+fn a_timestamp_past_the_integer_ceiling_stays_a_float() {
+    use concord_db::projects::BoardCard;
+    let card = BoardCard {
+        id: 1,
+        project_id: 2,
+        feature_id: 3,
+        column: "inbox".into(),
+        entered_at: 9.007_199_254_740_992e15,
+        column_id: 4,
+        title: None,
+        derived: false,
+    };
+    let json = serde_json::to_value(&card).unwrap();
+    assert_eq!(
+        json["entered_at"].to_string(),
+        "9007199254740992.0",
+        "at the ceiling the value keeps its float form; rounding it is the bug this guard prevents"
+    );
+}
+
+/// A card that is already in a full column can be dropped there again by its own id.
+///
+/// This is the `already > 0` guard in `check_wip`, which the board reaches by dragging a card that
+/// is already at its destination. Without the guard, a retry reports a full column and the board
+/// looks broken for the one action that changed nothing.
+#[tokio::test]
+async fn dropping_a_card_into_the_full_column_it_occupies_is_not_refused() {
+    let pool = pool().await;
+    let (project, feature) = fixture(&pool).await;
+    sqlx::query("update board_columns set wip_limit = 1 where project_id = $1 and phase = 'review'")
+        .bind(project)
+        .execute(&pool)
+        .await
+        .unwrap();
+    concord_db::projects::move_card(&pool, project, 0, feature, "review")
+        .await
+        .expect("place into an empty column");
+    let card: i64 = sqlx::query_scalar("select id from board_cards where feature_id = $1")
+        .bind(feature)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+
+    concord_db::projects::move_card(&pool, project, card, 0, "review")
+        .await
+        .expect("a card dropped where it already is");
+}
