@@ -546,3 +546,153 @@ pub async fn project_tags(pool: &sqlx::PgPool, project_id: i64) -> Result<Vec<St
     .fetch_all(pool)
     .await
 }
+
+/// Apply tags that **already exist** in the instance vocabulary to a project (§4.3).
+///
+/// The refusal is the interesting part: a name the taxonomy has never seen is not created here — it answers with the
+/// route that can propose one. Applied silently, a typo becomes a permanent vocabulary entry that nobody ratified and
+/// every taxonomy-filtered search then has to carry; refused with the path forward, the caller learns the mechanism.
+/// Aliases count as existing names, so a merge can be applied by either side's name.
+///
+/// `or ignore` on the link row: applying a tag twice is not an error, and the audit row records the intent either way.
+///
+/// **No reindex call.** The Go store's `ReindexProject` writes an fts5 table; here `search_tsv` is a generated column of
+/// `projects` and the tag half of free-text search is an `EXISTS` over `project_tags`, so the index follows the row
+/// without a second write that could fall out of step with it.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn apply_project_tag(
+    pool: &PgPool,
+    project_id: i64,
+    name: &str,
+    applied_by: i64,
+) -> Result<Result<(), Applied>, sqlx::Error> {
+    let normalized = normalize_tag(name);
+    let (_, bare) = split_tag(&normalized);
+    let direct: Option<i64> = sqlx::query_scalar("select id from tags where lower(name) = lower($1) limit 1")
+        .bind(&bare)
+        .fetch_optional(pool)
+        .await?;
+    let tag_id = match direct {
+        Some(id) => Some(id),
+        None => {
+            // The alias table, so a merge can be applied by either side of it.
+            sqlx::query_scalar("select tag_id from tag_aliases where lower(alias) = lower($1) limit 1")
+                .bind(&normalized)
+                .fetch_optional(pool)
+                .await?
+        }
+    };
+    let Some(tag_id) = tag_id else {
+        return Ok(Err(Applied::UnknownName {
+            name: normalized,
+        }));
+    };
+    let who: Option<i64> = if applied_by > 0 { Some(applied_by) } else { None };
+    sqlx::query(
+        "insert into project_tags (project_id, tag_id, applied_by, created_at)
+         values ($1, $2, $3, now()) on conflict do nothing",
+    )
+    .bind(project_id)
+    .bind(tag_id)
+    .bind(who)
+    .execute(pool)
+    .await?;
+    Ok(Ok(()))
+}
+
+/// Why a tag could not be applied.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Applied {
+    /// No such name in the vocabulary, and here is the name that was looked for.
+    UnknownName {
+        /// The normalised name.
+        name: String,
+    },
+}
+
+/// How well-tagged a project is (§4.3's completeness meter and the under-tagged queue).
+///
+/// Five tags with at least two of them namespaced is "complete". The threshold is a judgement and it lives in one place
+/// so it can be argued with; every field is reported, including the two thresholds, so the page can explain the number
+/// rather than only display it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Completeness {
+    /// The project.
+    pub project_id: i64,
+    /// Tags applied.
+    pub tags: i64,
+    /// How many of them carry a namespace (`topic:kanban`).
+    pub namespaced: i64,
+    /// Suggested tags applied, which the meter counts separately because they came from the machine.
+    pub suggested_pending: i64,
+    /// Whether both thresholds are met.
+    pub complete: bool,
+    /// `0.6` for the tag count, `0.4` for the namespaces, pro-rated below the threshold.
+    pub score: f64,
+    /// Tags wanted.
+    pub want_tags: i64,
+    /// Namespaced tags wanted.
+    pub want_namespaced: i64,
+}
+
+/// Compute [`Completeness`] for one project.
+///
+/// A project with no tags is not merely untidy: it is invisible to every taxonomy-filtered search, which is why the spec
+/// treats completeness as a contribution rather than housekeeping.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn completeness(pool: &sqlx::PgPool, project_id: i64) -> Result<Completeness, sqlx::Error> {
+    const WANT_TAGS: i64 = 5;
+    const WANT_NAMESPACED: i64 = 2;
+    let total: i64 = sqlx::query_scalar("select count(*) from project_tags where project_id = $1")
+        .bind(project_id)
+        .fetch_one(pool)
+        .await?;
+    let namespaced: i64 = sqlx::query_scalar(
+        "select count(*) from project_tags pt join tags t on t.id = pt.tag_id
+          where pt.project_id = $1 and t.namespace is not null",
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await?;
+    let suggested: i64 = sqlx::query_scalar(
+        "select count(*) from project_tags pt join tags t on t.id = pt.tag_id
+          where pt.project_id = $1 and t.suggested",
+    )
+    .bind(project_id)
+    .fetch_one(pool)
+    .await?;
+
+    let mut score = 0.0;
+    if total >= WANT_TAGS {
+        score += 0.6;
+    } else if total > 0 {
+        #[allow(clippy::cast_precision_loss)]
+        {
+            // Pro-rated below the threshold: 1 of 5 tags is worth a fifth of the tag half, not nothing — a meter that
+            // only moves at the finish line teaches nobody where they are.
+            score += 0.6 * total as f64 / WANT_TAGS as f64;
+        }
+    }
+    if namespaced >= WANT_NAMESPACED {
+        score += 0.4;
+    } else if namespaced > 0 {
+        #[allow(clippy::cast_precision_loss)]
+        {
+            score += 0.4 * namespaced as f64 / WANT_NAMESPACED as f64;
+        }
+    }
+    Ok(Completeness {
+        project_id,
+        tags: total,
+        namespaced,
+        suggested_pending: suggested,
+        complete: total >= WANT_TAGS && namespaced >= WANT_NAMESPACED,
+        score,
+        want_tags: WANT_TAGS,
+        want_namespaced: WANT_NAMESPACED,
+    })
+}

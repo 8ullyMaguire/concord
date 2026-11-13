@@ -739,3 +739,101 @@ pub async fn member_role(
         .fetch_optional(pool)
         .await
 }
+
+/// Replace a project's language breakdown.
+///
+/// Two bounds, both refusals rather than clamping: each percentage must be `0..=100`, and the **sum** must not exceed
+/// 100.01 (the hundredth is float slack for `33.33 * 3`). A breakdown summing to 140 is not a display quirk — the
+/// discovery score uses these as shares, so a set that sums above 100 quietly overstates the project everywhere it is
+/// ranked.
+///
+/// Replace, not merge: the call says "this is the breakdown now", and a merge cannot remove a language.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn set_languages(
+    pool: &PgPool,
+    project_id: i64,
+    languages: &[(String, f64)],
+) -> Result<Result<(), Invalid>, sqlx::Error> {
+    let mut total = 0.0;
+    for (_, pct) in languages {
+        if *pct < 0.0 || *pct > 100.0 {
+            return Ok(Err(Invalid("pct must be within 0..100".to_string())));
+        }
+        total += pct;
+    }
+    if total > 100.01 {
+        return Ok(Err(Invalid(format!(
+            "language percentages sum to {total:.2}"
+        ))));
+    }
+    let mut tx = pool.begin().await?;
+    sqlx::query("delete from project_languages where project_id = $1")
+        .bind(project_id)
+        .execute(&mut *tx)
+        .await?;
+    for (language, pct) in languages {
+        sqlx::query("insert into project_languages (project_id, language, pct) values ($1, $2, $3)")
+            .bind(project_id)
+            .bind(language)
+            .bind(pct)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    Ok(Ok(()))
+}
+
+/// A refused write, as a message the caller can act on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Invalid(pub String);
+
+/// §6.2's intake mode: which side of the funnel a project opens.
+pub const INTAKE_MODES: [&str; 3] = ["complaint_first", "idea_first", "both"];
+
+/// Set the intake mode, writing an act — but **no act when nothing changes**.
+///
+/// The no-op matters: the settings panel saves the whole form, so a visit that changes nothing would otherwise write an
+/// audit row saying the mode moved from `both` to `both` on every save, and the history that records real decisions
+/// becomes unreadable.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn set_intake_mode(
+    pool: &PgPool,
+    project_id: i64,
+    actor_id: i64,
+    mode: &str,
+) -> Result<Result<(), Invalid>, sqlx::Error> {
+    if !INTAKE_MODES.contains(&mode) {
+        return Ok(Err(Invalid(format!(
+            "intake_mode must be one of {INTAKE_MODES:?}"
+        ))));
+    }
+    let previous: Option<String> = sqlx::query_scalar("select intake_mode from projects where id = $1")
+        .bind(project_id)
+        .fetch_optional(pool)
+        .await?;
+    let Some(previous) = previous else {
+        return Ok(Err(Invalid(format!("project {project_id} does not exist"))));
+    };
+    if previous == mode {
+        return Ok(Ok(()));
+    }
+    sqlx::query("update projects set intake_mode = $1, updated_at = now() where id = $2")
+        .bind(mode)
+        .bind(project_id)
+        .execute(pool)
+        .await?;
+    sqlx::query(
+        "insert into audit_log (project_id, actor_id, action, entity, entity_id, detail, created_at)
+         values ($1, $2, 'intake_mode', 'project', $1, $3, now())",
+    )
+    .bind(project_id)
+    .bind(actor_id)
+    .bind(format!("{previous} -> {mode}"))
+    .execute(pool)
+    .await?;
+    Ok(Ok(()))
+}
