@@ -272,6 +272,40 @@ Still open in row 9: the consensus **writes** (`POST /consensus`, `/{id}/positio
 `/{id}/close`, `/{id}/override`, `/{id}/outcome`, `/{id}/hold`, `PUT /objections/{id}/resolve`), the
 `consensus_*` and `audit_e2e` suites, and estate gate 49.
 
+**Row 9 (S3) — the writes landed; the row is still open on the browser suites** (2026-11-13, `699959f`).
+`scripts/parity/probe_s3_api.py`:
+
+```
+27/27 ok, exit 0
+negative control (tally forced always-visible): 24/27 ok
+  FAIL tally_visible is false: got True want False
+  FAIL an open call hides its counts / ...and its ratios
+```
+
+The control matters more than the green run: without it, "the tally is hidden" is a claim about a
+response nobody tried to break.
+
+What landed: `create_call` (phase gate, one-open-call gate, evidence gate), `cast_position`,
+`create_objection`, `resolve_objection`, `close_call`, and `crates/db/src/charter.rs` — the verdict now
+reads the project's **own** charter rather than the governance model's defaults, which is the difference
+between judging a call by the number the page publishes and judging it by the number the model ships.
+
+The rule the deployed instance lost, and the number that found it: **opening a call moves the feature to
+`consensus`**. 87 features sit at `status='consensus'` with zero `consensus_calls` rows, while a feature
+with a real call sat in `discussion` for the whole decision — the board's consensus column named a phase
+nothing was in. `consensus` is in the openable set for the same reason: refusing it made the only route
+that starts a call unreachable for every one of those 87.
+
+Four strictness findings, all sites where SQLite enforced nothing and PostgreSQL does:
+`members.joined_at` is `NOT NULL` with no default; a project delete must go children-first
+(positions/objections/holds/calls/features/complaints/columns/members); the e2e harness's seed-failure
+handler raised `UnboundLocalError` from inside the handler and buried the real error; and `pkill -f` on
+the candidate's command line matches the shell running it — `pgrep -x concord-cli` costs one line and
+saves the session.
+
+Still open in row 9: `POST /{id}/override`, `/{id}/outcome`, `/{id}/hold`, and the `consensus_*` plus
+`audit_e2e` browser suites, then estate gate 49.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
