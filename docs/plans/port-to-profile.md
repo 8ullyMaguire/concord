@@ -1078,6 +1078,35 @@ reading: `criteria.active` is a BIGINT (SQLite kept INTEGER affinity), so the se
 instead of decoding a bool; `criteria_profiles` has no `weights` column on this schema. Read the columns before
 writing the query, or the probe will read them for you.
 
+### Row 11 — part 14: capabilities, and a census that cannot be compared (2026-11-13, `3013034`)
+
+```
+gate (before): GET /projects/{id}/capabilities -> 404
+gate (after):
+  probe_s5_capabilities.py -> 12/12 ok
+  routes.py                -> go 216 / port 84   (134 remain)
+  cargo test -p concord-db --lib -> 25 passed
+  concord-parity           -> 0 shape(s) disagreed of 16 checked, 5 skipped
+```
+
+The panel is a join of two decisions. The whole catalogue is rendered (an unasserted capability IS the contribution
+queue); `asserted: false` means nobody said anything, never "no", and the counts partition the catalogue; **a
+dispute outranks a confirmation at the same quorum** — 2/2 is disputed, because reading it as confirmed lets
+agreement that arrived first outrank louder disagreement; a disputed claim keeps its ORIGINAL value, since
+substituting "no" rewrites "people disagree" as "this is false"; and the asserter's own confirmation does not
+count. Negative control (confirmation checked first, 11/12): `FAIL two confirmations and two disputes read as
+disputed: got 'confirmed' want 'disputed'`.
+
+**Three schema facts found by failing rather than by reading:** `capability_confirmations.confirmed` is a BIGINT
+(PostgreSQL refuses `AND` on it, and the message names the type, not the column); its timestamp column is `at`;
+and `capabilities` is an instance-wide catalogue, so the probe asserts `probe keys ⊆ catalogue` and
+`unknown = total - asserted` — a total of 3 would only pass on an empty instance, i.e. on a broken one.
+
+**Decision (dated, mine): `/api/v1/stats/summary` is `unstable` in the corpus, with the reason recorded.**
+It is a census over a corpus that is still growing: the live Go counts projects created after the snapshot and the
+port's copy cannot, so the COUNTS are not comparable before cutover. The SHAPE is compared, by probe_s5_stats.py.
+Declaring it unstable without the reason would be exactly the silence the parity tool exists to prevent.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
