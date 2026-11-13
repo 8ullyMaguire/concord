@@ -2319,6 +2319,55 @@ the weight range unchecked:
   order was wrong twice — `milestones` before `features`, then `request_answers`, which reaches `projects` only through
   `requests`. A gate that reads live rows needs a working broom.
 
+### Row 11 — part 46: B2b, work items, claims, dependencies, evidence (2026-11-13, `78706fa`)
+
+```
+gate (before): PUT .../features/{}/work-item, POST and DELETE .../claim, POST and DELETE .../deps,
+               POST and DELETE .../evidence -> 404
+gate (after):
+  probe_s5_workitems.py -> 44/44 ok
+  featurewrites 37/37, listwrites 41/41, criteriawrites 45/45, projsettings 28/28, milestonewrites 41/41,
+  complaintwrites 40/40, requestwrites 43/43, filing 31/31, requests 23/23, accept 15/15
+  routes.py -> go 216 / port 153   missing: 65 (55 json, 10 page)
+  concord-parity -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-db --lib -> 38 passed
+```
+
+`crates/db/src/feature_work.rs` (new): `work_item`, `claim`, `release_claim`, `set_work_item_label`,
+`add_dependency`, `remove_dependency`, `open_blockers`, `add_evidence`, `remove_evidence` (+ `Refused`).
+
+Rules asserted: **a claim never moves the feature**; only `ready`/`in_progress` is claimable; **one live claim**, a release
+recorded as a state (`released_at`) so "picked up and dropped twice" stays answerable; a cycle is refused **with the path**
+that would close it and only `shipped` clears a blocker; evidence is scoped **twice** — the feature and the cited row.
+
+**NEGATIVE CONTROLS.**
+
+```
+a claim also moves the feature:
+  FAIL the claim does NOT move the feature: got 'in_progress' want 'ready'                  43/44
+the cycle walk follows the edge backwards:
+  FAIL a cycle is refused: got 200 want 400
+  FAIL and the refusal names the path that would close it: got False want True
+  FAIL recording the same edge twice is not an error: got 400 want 200                      41/44
+evidence skips the cited row's project:
+  FAIL a document from another project is 404: got 201 want 404
+  FAIL two citations are attached: got 3 want 2
+  ... and two more                                                                          40/44
+```
+
+**Three things found by running it:**
+
+* the **GET half of `/deps` already existed**, and registering a second GET panicked the process at boot — *"Overlapping
+  method route. Handler for GET … already exists"*. The route inventory never listed it as missing, which is the check that
+  would have caught me before the panic did. POST and DELETE now hang off the existing GET, whose panel already carries
+  `open_blockers`;
+* `coalesce(f.difficulty, '')` is reported by PostgreSQL as the column **`coalesce`**, so `row.get("difficulty")` panicked
+  a tokio worker with `ColumnNotFound` and the caller saw a dropped connection instead of a status code. Every expression
+  in that `SELECT` is now aliased;
+* `field_reports` is **not** a document with a title: it is a migration report (`version`, `use_case`, `environment`,
+  `scale`, `duration`, `outcome`, `caveats`, `workaround`, `advice`), and only `outcome` has no default. The column list
+  is the record of what it actually is.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
