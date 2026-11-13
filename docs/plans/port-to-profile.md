@@ -2165,6 +2165,57 @@ needs `false`.
 GENERATED column and the tag half of free-text search is an `EXISTS` over `project_tags` — the index follows the row
 without a second write that could fall out of step (same reasoning already recorded for `create_project`).
 
+### Row 11 — part 43: B4b, criterion writes and the charter editor (2026-11-13, `678b77e`)
+
+```
+gate (before): POST /projects/{}/criteria, PUT /projects/{}/criteria/{id}/active,
+               POST /projects/{}/criteria/{id}/vote, POST /projects/{}/criteria-profiles,
+               PUT /projects/{}/charter -> 404
+gate (after):
+  probe_s5_criteriawrites.py -> 45/45 ok
+  projsettings 28/28, milestonewrites 41/41, complaintwrites 40/40, requestwrites 43/43, filing 31/31,
+  requests 23/23, accept 15/15
+  routes.py -> go 216 / port 137   missing: 81 (71 json, 10 page)
+  concord-parity -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-db --lib -> 38 passed
+```
+
+`crates/db/src/criteria_writes.rs` (new): `create`, `set_active`, `get`, `rating`, `cast_vote`, `save_profile`
+(+ `Refused`, `Weight`). The reads stay in `criteria.rs`; mixing them made that module's doc-comment a list of two
+unrelated jobs. `charter.rs`: `set_charter` (+ `Refused`).
+
+Rules asserted: a criterion is scoped to its project **twice** (the row lookup and a vote's ownership re-check, so ids
+cannot pool votes across projects); **one vote per (criterion, voter, pair)**; `skip`/`both`/`neither` are recorded,
+audited and move nothing; an absent direction is `higher_is_better` and a non-positive weight `1.0` **silently** while an
+explicit bad direction is refused; a profile is **replaced wholesale** on re-save and keeps its id; the charter's four
+bounds are refusals guarding switches that would otherwise silently disable a mechanism for the whole project.
+
+**NEGATIVE CONTROLS.**
+
+```
+cross-project feature check removed:
+  FAIL a feature from another project is refused: got 200 want 400
+  FAIL and nothing is recorded for it: got 1 want 0
+  FAIL and both ratings come back: ... got 2 want 1                            42/45
+theme_lifetime_days bound removed:
+  FAIL theme lifetime 0 is refused: got 200 want 400
+  FAIL theme lifetime past a century is refused: got 200 want 400
+  FAIL a refused edit changed nothing: got (0.9, 40000.0) want (0.9, 30)      42/45
+profile weights merged instead of replaced:
+  FAIL re-saving REPLACES the weights wholesale: got 1 want 0                  44/45
+```
+
+**One decision taken here rather than copied — 2026-11-13.** A **partial** charter body is filled from the *current*
+charter instead of being zeroed. The reference decodes the body straight into its `Charter`, so an omitted
+`solution_call_confidence` arrives as `0`, fails its own bound, and answers "must be between 0 and 1 exclusive" to a
+request that never mentioned the field. The settings panel posts the whole form, so no real client can tell; the
+alternative was to reproduce a 400 that misdescribes the request. Asserted in the probe (`a PARTIAL body is filled from
+the current charter, not zeroed`).
+
+**Found by running it:** the probe's own teardown compared **criterion** ids against `project_id`, so the delete matched
+nothing and the projects stayed behind a foreign key — the tear-down failed, not the product. Recorded because a probe
+that cannot clean up poisons every later run that shares the database.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
