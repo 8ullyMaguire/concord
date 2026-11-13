@@ -27,7 +27,18 @@ METHODS = ("Get", "Post", "Put", "Delete", "Patch", "Head", "Options", "Method")
 
 def go_routes():
     """Every (method, path) the Go server registers, with nested prefixes expanded."""
-    found = set()
+    return set(go_routes_with_handlers())
+
+
+def go_routes_with_handlers():
+    """Every (method, path) the Go server registers, mapped to the handler's name.
+
+    The handler name is what makes the missing list ACTIONABLE: the Go registers HTML page routes (`/projects/{slug}
+    /rank`, `/badge/{id}`, `/finder`) beside its JSON API, and the estate profile serves those pages from the
+    frontend. `go_routes` alone reported all 123 as "routes the port does not answer", which invites porting pages as
+    JSON — work that would then have to be deleted.
+    """
+    found = {}
     httpapi = os.path.join(ROOT, "internal", "httpapi")
     for name in sorted(os.listdir(httpapi)):
         if not name.endswith(".go") or name.endswith("_test.go"):
@@ -48,18 +59,64 @@ def go_routes():
                 stack.append((depth, route_prefix.group(1)))
                 depth_by_prefix[depth] = route_prefix.group(1)
             for method in METHODS:
-                match = re.search(rf"\br\.{method}\(\s*\"([^\"]+)\"", stripped)
-                if not match:
-                    continue
-                path = match.group(1)
+                match = re.search(
+                    rf"\br\.{method}\(\s*\"([^\"]+)\"\s*,\s*(?:s\.)?(\w+)", stripped
+                )
+                if match:
+                    path, handler = match.group(1), match.group(2)
+                else:
+                    # A registration whose handler is not a plain `s.name` (a closure, or a wrapped handler). The
+                    # route still exists and must still be counted — losing it would hide work — so it is recorded
+                    # with an empty handler and classified as JSON until somebody looks.
+                    plain = re.search(rf"\br\.{method}\(\s*\"([^\"]+)\"", stripped)
+                    if not plain:
+                        continue
+                    path, handler = plain.group(1), ""
                 prefix = "".join(part for _, part in stack)
                 full = prefix.rstrip("/") + "/" + path.lstrip("/")
-                found.add((method.upper(), normalise(full)))
+                # A LIST of handlers, because `normalise` strips `/api/v1` and so an API route and a page route of the
+                # same shape collide. Keeping both lets the classification say "JSON" when either answers JSON,
+                # which is the question that matters: is there API work here?
+                found.setdefault((method.upper(), normalise(full)), []).append(handler)
             depth += opened
             # Close blocks whose depth has gone past.
             while stack and depth <= stack[-1][0]:
                 stack.pop()
     return found
+
+
+def handler_body(name):
+    """The source of one `func (s *Server) <name>(` body, or "" when it cannot be found."""
+    httpapi = os.path.join(ROOT, "internal", "httpapi")
+    needle = f"func (s *Server) {name}("
+    for filename in sorted(os.listdir(httpapi)):
+        if not filename.endswith(".go") or filename.endswith("_test.go"):
+            continue
+        with open(os.path.join(httpapi, filename), encoding="utf-8") as handle:
+            source = handle.read()
+        start = source.find(needle)
+        if start < 0:
+            continue
+        end = source.find("\nfunc ", start + 1)
+        return source[start:end if end > 0 else len(source)]
+    return ""
+
+
+def answers_json(name):
+    """Whether a handler answers JSON.
+
+    A handler that calls writeJSON does. One that renders a template does not, and the estate profile serves that
+    page from the frontend instead — so it is NOT a port TODO. A handler whose body cannot be found is reported as
+    JSON, because guessing "page" would silently drop real API work from the list.
+    """
+    body = handler_body(name)
+    if not body:
+        return True
+    if "writeJSON" in body:
+        return True
+    return not (
+        "s.render(" in body or "executeTemplate" in body or "parseFiles" in body or "//go:embed" in body
+    )
 
 
 def rust_routes():
@@ -112,25 +169,37 @@ def normalise(path):
 
 
 def main():
-    go = go_routes()
+    handlers = go_routes_with_handlers()
+    go = set(handlers)
     rust = rust_routes()
     missing = sorted(go - rust)
     extra = sorted(rust - go)
-    print(f"go routes: {len(go)}   port routes: {len(rust)}")
+    # THE LIST IS SPLIT, because the two halves are different work: a JSON route is a port TODO, and a page route is
+    # the frontend's (row 12). Reporting them together invites porting pages as JSON, and then deleting them.
+    api_missing = [(m, path) for m, path in missing if any(answers_json(h) for h in handlers[(m, path)])]
+    page_missing = [(m, path) for m, path in missing if not any(answers_json(h) for h in handlers[(m, path)])]
+    print(
+        f"go routes: {len(go)}   port routes: {len(rust)}   "
+        f"missing: {len(missing)} ({len(api_missing)} json, {len(page_missing)} page)"
+    )
     if "--go-only" in sys.argv:
         for method, path in sorted(go):
             print(f"  {method:6} {path}")
         return 0
-    if missing:
-        print(f"\n{len(missing)} go route(s) the port does not answer:")
-        for method, path in missing:
+    if api_missing:
+        print(f"\n{len(api_missing)} JSON route(s) the port does not answer (the row's work):")
+        for method, path in api_missing:
+            print(f"  {method:6} {path}")
+    if page_missing:
+        print(f"\n{len(page_missing)} PAGE route(s) the Go renders and the frontend serves (row 12, not port work):")
+        for method, path in page_missing:
             print(f"  {method:6} {path}")
     if extra:
         print(f"\n{len(extra)} port route(s) the go tree does not have (extras are allowed; they are listed):")
         for method, path in extra:
             print(f"  {method:6} {path}")
-    if not missing:
-        print("\nevery go route is answered")
+    if not api_missing:
+        print("\nevery go JSON route is answered")
     return 1 if missing else 0
 
 
