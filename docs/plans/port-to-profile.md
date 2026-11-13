@@ -1708,6 +1708,48 @@ fixture had to create a second project to hold the second answer. Cleanup had to
 request and by project) and the tags before the projects, because a rival project answering another project's request
 holds references on both sides.
 
+### Row 11 — part 35: §17's accepted-answer badge (2026-11-13, `238ffe7`)
+
+```
+gate (before): PUT /requests/{id}/accept, DELETE /requests/{id}/accept -> 404 (two routes)
+gate (after):
+  probe_s5_accept.py    -> 15/15 ok
+  probe_s5_requests.py  -> 23/23 ok (no regression)
+  routes.py             -> go 216 / port 111   missing: 107 (97 json, 10 page)
+  concord-parity        -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-db --lib -> 38 passed
+```
+
+`accept` and `unaccept` return a `Refusal` enum (`NotAuthor` / `ForeignAnswer` / `NotActive`) rather than an `sqlx::Error`,
+because the three refusals are three statuses that mean three different things — 403 *not yours to decide*, 404 *no such
+answer on this request*, 400 *that answer cannot be accepted*. Flattening them is how a permission failure ends up
+reported as a missing row.
+
+**The order is the rule.** The author check runs **before** the answer is looked up, so a stranger naming an answer id
+that does not exist gets **403, not 404**. The other order tells people who may not accept anything which answer ids
+exist.
+
+**The badge does not override the ranking.** `accept` writes `accepted_answer_id` and `updated_at` and nothing else, so an
+accepted answer that lost its comparisons still sits where its rating puts it — proved by accepting the 1400 answer while
+the 1700 answer leads: order and every `elo_r` unchanged. **Unaccepting is not restricted by the answer's status**: an
+accepted answer that was later removed still leaves a badge pointing at it, and the author must be able to clear it
+(proved with `status='removed'`). No token is **401** (`store.ErrAuth`), not 403 — the missing actor and the wrong actor
+are different answers.
+
+**NEGATIVE CONTROL** (the author check moved after the answer lookup):
+
+```
+FAIL a stranger naming a nonexistent answer still gets 403, not 404: got 404 want 403
+14/15 ok
+```
+
+Exactly one assertion moves, which is the point: with a *valid* answer id both orders still end at 403, so the control
+proves precisely the leak the order exists to prevent.
+
+**Found by failing:** `request_answers` is `UNIQUE (request_id, project_id)`, so the live answer and the removed answer
+cannot share a project's slot — the fixture needs a third project. Second time this constraint shaped a fixture; it is
+now recorded on part 34 too.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
