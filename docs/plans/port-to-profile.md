@@ -538,6 +538,62 @@ still not exposed even though `list_solutions` now exists, because no ledger row
 surface during a port is what the invariants forbid. It is one route over a function that now works, and it
 belongs to whichever row first needs the page that reads it.
 
+**Correction, dated 2026-11-13 — the baseline was missing a VIEW, and the probe database could drift.**
+Found by row 10, not by reading the migrations:
+
+```
+$ curl -s -o /dev/null -w "%{http_code}" https://concord.polarisocial.xyz/api/v1/curation
+200
+$ sqlite3 ~/.local/share/concord/concord.db \
+    "select name from sqlite_master where name like '%curat%'"
+(nothing — curation_votes is a VIEW)
+# the Rust candidate: relation "curation_votes" does not exist
+```
+
+Migration `0035_curation_reviews.sql` creates `curation_votes` as a **VIEW** over `taxonomy_consents`,
+`strategic_weight_consents` and `act_reviews` — deliberately, because a table would be a second place to fall
+out of step with a ratification. `scripts/parity/ddl.py` read `type='table'` and stopped there, so the view
+never reached PostgreSQL and the queue's own query named a relation that did not exist.
+
+**R13: views are part of the schema.** Views are emitted after the tables and before the foreign keys, with
+the `CREATE VIEW … AS` prefix anchored rather than the first ` as ` in the text — splitting on that turned
+`select 'taxonomy' as kind` into the view's body and produced SQL that parses as far as the keyword and then
+means nothing. Bodies that use `IFNULL` or `GROUP_CONCAT` get a note instead of a guess.
+
+Two consequences recorded because they are the same family as R1 and R12 — *the schema is not what the
+baseline says*:
+
+1. `run_probe.sh` now **drops and rebuilds** `concord_e2e` from `crates/db/sql/0001_baseline.sql` on every
+   run. It used to create the database once, so anything added to the baseline afterwards was silently
+   absent from the database the probes tested against. That is exactly how the hour above was spent: the
+   file had the view, the database did not, and nothing said so.
+2. A probe that writes to a view is a probe that lies about the schema. The curation fixture now writes the
+   consent row the view projects.
+
+Baseline regenerated from the live SQLite on thinkcentre: 79 tables + 1 view, and `diff` against the
+previous file shows the view and nothing else.
+
+**Correction, dated 2026-11-13 — row 10's gate names two suites that cannot run against an API candidate.**
+Measured, not assumed:
+
+```
+$ bash /tmp/run_e2e_suite.sh notifications_e2e
+E  sqlite3.OperationalError: no such table: projects
+tests/e2e/notifications_e2e.py:71: OperationalError
+ERROR tests/e2e/notifications_e2e.py::test_the_header_shows_the_unread_count_before_any_script_runs
+
+$ bash /tmp/run_e2e_suite.sh curation_e2e          # "the queue suite"
+E  sqlite3.OperationalError: no such table: projects
+tests/e2e/curation_e2e.py:80: OperationalError
+ERROR tests/e2e/curation_e2e.py::test_the_queue_is_reachable_and_lists_the_act
+```
+
+Both seed through `sqlite3.connect`. This is the **sixth and seventh** suite to fail this way (row 8's
+`feature_e2e`/`milestones_e2e`/`rank_links_e2e`, row 9's `consensus_e2e`/`audit_e2e`), so the correction is
+no longer row-specific and is stated once here: **every browser suite in `tests/e2e/` whose fixture opens
+`sqlite3.connect` cannot run against a PostgreSQL candidate, and the port cannot fix that from the API side.**
+They move to row 12, which is the row that can convert them; row 10's gate now names the two probes.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
