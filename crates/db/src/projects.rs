@@ -373,3 +373,173 @@ pub async fn document_body(
     let body: String = row.try_get(0)?;
     Ok(Some(Value::String(body)))
 }
+
+/// Why a card could not be moved.
+#[derive(Debug)]
+pub enum MoveError {
+    /// The phase names no column of this project.
+    NoSuchColumn(String),
+    /// The card or the feature is not in this project.
+    NotFound(String),
+    /// The column's WIP limit is full.
+    ColumnFull(String),
+    /// Both a card id and a feature id were given, or neither was.
+    Invalid(String),
+    Database(sqlx::Error),
+}
+
+impl From<sqlx::Error> for MoveError {
+    fn from(error: sqlx::Error) -> Self {
+        MoveError::Database(error)
+    }
+}
+
+async fn column_id(pool: &PgPool, project_id: i64, phase: &str) -> Result<i64, MoveError> {
+    sqlx::query_scalar("select id from board_columns where project_id = $1 and phase = $2")
+        .bind(project_id)
+        .bind(phase)
+        .fetch_optional(pool)
+        .await?
+        .ok_or_else(|| MoveError::NoSuchColumn(format!("phase {phase:?}")))
+}
+
+/// `checkWIPLimit`: refuse a move into a column that is already at its limit.
+///
+/// A WIP limit that is only displayed is worse than none: it teaches people the board is policed
+/// and then lets the board grow. The count excludes the card being moved, so re-dropping a card on
+/// the column it already occupies is not a refusal — otherwise every retry of a successful move
+/// would report a full column.
+async fn check_wip(
+    pool: &PgPool,
+    column: i64,
+    card_id: i64,
+    project_id: i64,
+    phase: &str,
+) -> Result<(), MoveError> {
+    let limit: Option<i64> =
+        sqlx::query_scalar("select wip_limit from board_columns where id = $1 and project_id = $2")
+            .bind(column)
+            .bind(project_id)
+            .fetch_optional(pool)
+            .await?
+            .ok_or_else(|| MoveError::NoSuchColumn(format!("board column {column}")))?;
+    let Some(limit) = limit else {
+        return Ok(()); // no limit set
+    };
+    let already: i64 =
+        sqlx::query_scalar("select count(*) from board_cards where column_id = $1 and id = $2")
+            .bind(column)
+            .bind(card_id)
+            .fetch_one(pool)
+            .await?;
+    if already > 0 {
+        return Ok(());
+    }
+    let count: i64 = sqlx::query_scalar("select count(*) from board_cards where column_id = $1")
+        .bind(column)
+        .fetch_one(pool)
+        .await?;
+    if count >= limit {
+        return Err(MoveError::ColumnFull(format!(
+            "{phase:?} holds {count} of its {limit} permitted -- finish or move something out \
+             before adding another"
+        )));
+    }
+    Ok(())
+}
+
+/// Move a card by row id, or place a feature that has no row yet.
+///
+/// The two are one function because they are one endpoint: `card_id` identifies a `board_cards`
+/// row, `feature_id` identified a derived card, and naming both (or neither) is a caller error.
+///
+/// # Errors
+/// [`MoveError`], mapped by the caller onto the contract's codes.
+pub async fn move_card(
+    pool: &PgPool,
+    project_id: i64,
+    card_id: i64,
+    feature_id: i64,
+    to: &str,
+) -> Result<(), MoveError> {
+    match (card_id, feature_id) {
+        (c, f) if c > 0 && f > 0 => Err(MoveError::Invalid(
+            "name a card by id or by feature, not both".into(),
+        )),
+        (_, f) if f > 0 => place_feature(pool, project_id, f, to).await,
+        _ => move_row(pool, project_id, card_id, to).await,
+    }
+}
+
+async fn move_row(
+    pool: &PgPool,
+    project_id: i64,
+    card_id: i64,
+    to: &str,
+) -> Result<(), MoveError> {
+    if card_id <= 0 {
+        return Err(MoveError::Invalid("no card identified".into()));
+    }
+    let column = column_id(pool, project_id, to).await?;
+    check_wip(pool, column, card_id, project_id, to).await?;
+    // RowsAffected separates "moved" from "no such card": without it a bogus id is reported as a
+    // success, which is a lie the board cannot tell from a move.
+    let affected = sqlx::query(
+        "update board_cards set column_id = $1 where id = $2 and project_id = $3",
+    )
+    .bind(column)
+    .bind(card_id)
+    .bind(project_id)
+    .execute(pool)
+    .await?
+    .rows_affected();
+    if affected == 0 {
+        return Err(MoveError::NotFound(format!("board card {card_id}")));
+    }
+    Ok(())
+}
+
+async fn place_feature(
+    pool: &PgPool,
+    project_id: i64,
+    feature_id: i64,
+    to: &str,
+) -> Result<(), MoveError> {
+    let column = column_id(pool, project_id, to).await?;
+    // The feature must belong to this project, or a caller could place any feature on any board.
+    let owned: Option<i64> =
+        sqlx::query_scalar("select id from features where id = $1 and project_id = $2")
+            .bind(feature_id)
+            .bind(project_id)
+            .fetch_optional(pool)
+            .await?;
+    if owned.is_none() {
+        return Err(MoveError::NotFound(format!(
+            "feature {feature_id} in project {project_id}"
+        )));
+    }
+    // The limit applies here too: place_feature is the path taken by every feature with no row, so
+    // a limit checked only in move_row would be bypassed by exactly the cards nobody dragged.
+    let existing: Option<i64> =
+        sqlx::query_scalar("select id from board_cards where project_id = $1 and feature_id = $2")
+            .bind(project_id)
+            .bind(feature_id)
+            .fetch_optional(pool)
+            .await?;
+    match existing {
+        None => check_wip(pool, column, 0, project_id, to).await?,
+        Some(row) if row != column => check_wip(pool, column, row, project_id, to).await?,
+        _ => {}
+    }
+    sqlx::query(
+        "insert into board_cards (project_id, kind, feature_id, column_id, entered_at) \
+         values ($1, 'feature', $2, $3, now()) \
+         on conflict (project_id, feature_id) do update set column_id = excluded.column_id",
+    )
+    .bind(project_id)
+    .bind(feature_id)
+    .bind(column)
+    .execute(pool)
+    .await?;
+    Ok(())
+}

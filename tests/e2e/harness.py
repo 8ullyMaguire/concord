@@ -127,6 +127,20 @@ class PgSeed:
         tokens.append(current)
 
         types = self._column_types(table)
+        if not tokens or (len(tokens) == 1 and tokens[0].strip() == ""):
+            # An `INSERT ... SELECT`: there is no VALUES list to align parameters to, and the
+            # columns come from the select's own expressions. Numbers in the unix-second range are
+            # converted and nothing else is, which is the only rule available without parsing the
+            # select — and it is safe here because no fixture writes an elo, an id or a count in
+            # that range. Recorded rather than silent: a suite that needed something cleverer would
+            # fail loudly on the type, not quietly on a wrong value.
+            import datetime
+            return [
+                datetime.datetime.fromtimestamp(float(v), datetime.UTC)
+                if isinstance(v, (int, float)) and not isinstance(v, bool) and 1.6e9 <= v <= 2.2e9
+                else v
+                for v in params
+            ]
         out, next_param = [], 0
         for position, token in enumerate(tokens):
             # `?` or `%s`: `_convert` runs after the placeholder translation, so the tokens it
@@ -172,7 +186,12 @@ class PgSeed:
                                   + ", %s" + translated[values.end(1):])
             params = self._convert(table, columns, params,
                                    values.group(1) if values else "")
-        if translated.lstrip().lower().startswith("insert") and "returning" not in translated.lower():
+        # `INSERT ... SELECT` also gets a `RETURNING id`, which fails: the select's own columns are
+        # what RETURNING sees, and `INSERT INTO members (...) SELECT project_id, ... FROM members`
+        # has no `id` to return. Only the VALUES form carries a lastrowid anyway.
+        if (translated.lstrip().lower().startswith("insert")
+                and " returning " not in translated.lower()
+                and "values" in translated.lower()):
             translated = translated.rstrip().rstrip(";") + " RETURNING id"
             row = None
         cur.execute(translated, tuple(params))

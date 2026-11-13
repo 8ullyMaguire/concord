@@ -6,6 +6,7 @@
 
 use sqlx::postgres::{PgPool, PgPoolOptions};
 
+pub mod auth;
 pub mod projects;
 
 /// Build the pool the handlers share.

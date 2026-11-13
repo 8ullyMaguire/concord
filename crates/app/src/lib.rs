@@ -9,10 +9,12 @@
 //! service has no shell yet, and the rule outlives the frontend.
 
 use axum::{
-    extract::{Path, State},
-    routing::get,
+    extract::{Path, Query, State},
+    http::HeaderMap,
+    routing::{get, post, put},
     Json, Router,
 };
+use serde::Deserialize;
 use polaris_core::ApiError;
 use serde_json::{json, Value};
 use sqlx::PgPool;
@@ -33,6 +35,11 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/projects", get(list_projects))
         .route("/api/v1/projects/{slug}", get(get_project))
         .route("/api/v1/projects/{slug}/board", get(get_board))
+        .route("/api/v1/auth/register", post(register))
+        .route(
+            "/api/v1/projects/{slug}/board/cards/{card_id}/move",
+            put(move_card),
+        )
         .route("/api/v1/projects/{slug}/documents", get(list_documents))
         .route(
             "/api/v1/projects/{slug}/documents/{document}",
@@ -124,4 +131,101 @@ async fn not_found() -> ApiError {
 fn internal(error: impl std::fmt::Display) -> ApiError {
     tracing::error!(error = %error, "internal");
     ApiError::internal("internal error")
+}
+
+
+/// The token note the Go handler returns with a fresh token, verbatim: it tells the caller the one
+/// thing about the token that matters, and a paraphrase would be a different sentence in the same
+/// field.
+const TOKEN_NOTE: &str = "Store this token. It cannot be retrieved again; only its hash is kept.";
+
+#[derive(Debug, Deserialize)]
+struct RegisterRequest {
+    username: String,
+    #[serde(default)]
+    display_name: String,
+    password: String,
+}
+
+/// `POST /api/v1/auth/register` — an account and its first token.
+async fn register(
+    State(state): State<AppState>,
+    Json(body): Json<RegisterRequest>,
+) -> Result<(axum::http::StatusCode, Json<Value>), ApiError> {
+    use concord_db::auth::AuthError;
+    let display_name = if body.display_name.trim().is_empty() {
+        body.username.trim().to_string()
+    } else {
+        body.display_name.trim().to_string()
+    };
+    match concord_db::auth::register_user(&state.pool, &body.username, &display_name, &body.password)
+        .await
+    {
+        Ok((user, token)) => Ok((
+            axum::http::StatusCode::CREATED,
+            Json(json!({
+                "user": serde_json::to_value(user).map_err(internal)?,
+                "token": token,
+                "token_note": TOKEN_NOTE,
+            })),
+        )),
+        Err(AuthError::Invalid(message)) => Err(ApiError::invalid_request(message)),
+        Err(AuthError::Duplicate(message)) => Err(ApiError::conflict(format!("{message} exists"))),
+        Err(AuthError::Database(error)) => Err(internal(error)),
+    }
+}
+
+#[derive(Debug, Deserialize)]
+struct MoveQuery {
+    to: Option<String>,
+    feature_id: Option<i64>,
+}
+
+/// `PUT /api/v1/projects/{slug}/board/cards/{card_id}/move?to=phase[&feature_id=N]`.
+///
+/// A card is named either by its row id or by the feature it represents: a derived card has no row
+/// and no id, and placing it is what creates one.
+async fn move_card(
+    State(state): State<AppState>,
+    Path((slug, card_id)): Path<(String, i64)>,
+    Query(query): Query<MoveQuery>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    use concord_db::projects::MoveError;
+    let token = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    match concord_db::auth::user_for_token(&state.pool, token).await {
+        Ok(Some(_)) => {}
+        Ok(None) => return Err(ApiError::unauthenticated("authentication required")),
+        Err(error) => return Err(internal(match error {
+            concord_db::auth::AuthError::Database(e) => e.to_string(),
+            other => format!("{other:?}"),
+        })),
+    }
+    let to = query
+        .to
+        .ok_or_else(|| ApiError::invalid_request("to is required"))?;
+    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
+    match concord_db::projects::move_card(
+        &state.pool,
+        project.id,
+        card_id,
+        query.feature_id.unwrap_or(0),
+        &to,
+    )
+    .await
+    {
+        Ok(()) => Ok(Json(json!({"status": "moved"}))),
+        Err(MoveError::Invalid(message)) => Err(ApiError::invalid_request(message)),
+        Err(MoveError::NoSuchColumn(message)) => Err(ApiError::not_found(message)),
+        Err(MoveError::NotFound(message)) => Err(ApiError::not_found(message)),
+        Err(MoveError::ColumnFull(message)) => Err(ApiError::conflict(message)),
+        Err(MoveError::Database(error)) => Err(internal(error)),
+    }
 }

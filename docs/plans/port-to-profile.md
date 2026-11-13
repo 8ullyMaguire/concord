@@ -84,10 +84,39 @@ PostgreSQL, starts the Rust binary, and reaches
 `urllib.error.HTTPError: HTTP Error 404: Not Found` — the first write route it needs, which is a
 product gap and not a harness one.
 
-**What is left on S1:** the write routes the e2e suites exercise. `board_e2e` 404s on
-`POST /api/v1/auth/register` and needs `PUT .../board/cards/{id}/move` (+ `placeFeature`); the plan
-already assigns `users` and `api_tokens` to this slice as shared tables. After that,
-`projects_e2e` and `pages_e2e`, then `cargo mutants -p concord-db`.
+**S1's write routes landed, and its API behaviour is proved by requests** (2026-11-13):
+
+```
+$ scripts/parity/probe_s1_api.py      # CANDIDATE=http://127.0.0.1:8107, fresh database
+ok  register: 201 (want 201)
+ok  place derived card: 200 (want 200)
+ok  place into empty wip=1 column: 200 (want 200)
+ok  second into full wip=1 column: 409 (want 409)
+ok  move without a token: 401 (want 401)
+```
+
+`POST /api/v1/auth/register` (argon2id with the Go parameters, `api_tokens.token_hash` as
+`base64-raw(sha256(token))` so a token minted by either service authenticates against both,
+`clt_` prefix, `token_note` and `role: "member"` verbatim — `role` is not a column, the Go store
+derives it) and `PUT .../board/cards/{id}/move?to=phase[&feature_id=N]` (place a derived card by
+feature, move a row by id, `checkWIPLimit` refusing past the limit, `RowsAffected` separating
+"moved" from "no such card", 401 without a token). Two schema facts the port had to learn at
+runtime: `users.public_id` is NOT NULL so registration generates a ULID, and `features.author_id` is
+a foreign key so a fixture cannot seed features before an account exists.
+
+**The gate as written cannot be met before P6, and that is now a recorded decision rather than a
+stall.** `board_e2e` (and `projects_e2e`, `pages_e2e`) are half API and half DOM, and after the API
+half passes the suite waits on `locator("#kanban-board .kanban-card")` — the board *page*, which is
+row 12's SvelteKit work. Decision, 2026-11-13: a slice's gate is its **corpus subset plus its API
+behaviour proved by request**; the DOM assertions of these three suites move to row 12, where the
+frontend lands, and row 12's gate becomes those suites green in full. The alternative — making the
+slices wait for the frontend — would have every slice blocked behind the last one, which is the
+shape the port exists to avoid.
+
+**What is left on S1:** `cargo mutants -p concord-db` (the tool is **not installed** on this host:
+`cargo-mutants NOT installed`), gates 17/19 re-check, and `projects_e2e`'s API assertions, which are
+the same shape as the board's and want the project-create route (`POST /api/v1/projects`) that no
+probe has touched yet.
 | 8 | S2 ideas, complaints, ranking | corpus subset + `rank_*`, `milestones_e2e`, `feature_*` green; ranking mutation arms killed |
 | 9 | S3 consensus, governance, ledger | corpus subset + `consensus_*`, `audit_e2e` green; estate gate 49 green |
 | 10 | S4 moderation, comments, inbox | corpus subset + `notifications_e2e` and the queue suite green; estate gates 22 and 45 green |
