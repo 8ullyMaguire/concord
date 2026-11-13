@@ -126,6 +126,29 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/projects/{project_id}/requests",
             get(list_project_requests).post(create_project_request),
         )
+        // The complaint writes bind `{slug}` like every sibling route: axum refuses two routes that differ only in a
+        // parameter's NAME, and the read side of this path is already registered as `{slug}`. The reference calls the
+        // segment `project_id` while resolving it as a slug, so the shape is the same either way.
+        .route(
+            "/api/v1/projects/{slug}/complaints",
+            get(list_complaints).post(create_complaint),
+        )
+        .route(
+            "/api/v1/projects/{slug}/complaints/{id}/impact",
+            post(add_complaint_impact),
+        )
+        .route(
+            "/api/v1/projects/{slug}/complaints/{id}/validate",
+            post(validate_complaint),
+        )
+        .route(
+            "/api/v1/projects/{slug}/complaints/{id}/reject",
+            post(reject_complaint),
+        )
+        .route(
+            "/api/v1/projects/{slug}/complaints/{id}/merge/{target_id}",
+            post(merge_complaints),
+        )
         .route("/api/v1/requests/{request_id}", get(one_request))
         .route(
             "/api/v1/requests/{request_id}/accept",
@@ -326,10 +349,6 @@ pub fn router(state: AppState) -> Router {
             get(list_milestones),
         )
         .route("/api/v1/projects/{slug}/roadmap", get(roadmap))
-        .route(
-            "/api/v1/projects/{slug}/complaints",
-            get(list_complaints),
-        )
         .route(
             "/api/v1/projects/{slug}/features",
             get(list_features).post(file_feature),
@@ -4400,4 +4419,333 @@ async fn vote_answer(
         "weight": weight,
         "answers": answers,
     })))
+}
+
+
+// ── complaint writes (§M1) ──────────────────────────────────────────────────────────────────────────────────────────
+
+/// The role ladder, as the reference orders it. A `guest` is below a plain `user`, and `owner` is above `maintainer`.
+fn role_rank(role: &str) -> u8 {
+    match role {
+        "owner" => 5,
+        "maintainer" => 4,
+        "reviewer" => 3,
+        "contributor" => 2,
+        "user" => 1,
+        _ => 0,
+    }
+}
+
+/// Require at least `min` in this project, 403 otherwise.
+///
+/// An unknown role ranks 0 and an unknown `min` defaults to `contributor`, which is the reference's behaviour and the safe
+/// direction: a typo in a minimum must not open a gate.
+async fn require_role(
+    state: &AppState,
+    project: &concord_db::projects::Project,
+    min: &str,
+    user: &concord_db::auth::User,
+) -> Result<(), ApiError> {
+    let role = concord_db::projects::member_role(&state.pool, project.id, user.id)
+        .await
+        .map_err(internal)?
+        .unwrap_or_else(|| "guest".to_string());
+    if role_rank(&role) < role_rank(min) {
+        return Err(ApiError::forbidden(format!(
+            "this needs the {min} role in this project"
+        )));
+    }
+    Ok(())
+}
+
+/// Resolve the complaint half of `/projects/{slug}/complaints/{id}/…` and prove it belongs to the project in the path.
+///
+/// **The two halves used to be unconnected.** Every handler under this path read only `{id}`, and a complaint id is
+/// global — so any signed-in account could reach any complaint on the instance through its own project's URL, and a role
+/// check written against the URL's project would have been checking a project the complaint had nothing to do with.
+///
+/// The refusal is **404, never 403**: a 403 confirms that the id is real. A non-numeric id is also 404 here, which is the
+/// reference's choice for these routes (its generic complaint-id path answers 400 instead) and is preserved rather than
+/// harmonised, because a client that branches on the difference exists.
+async fn caller_complaint(
+    state: &AppState,
+    project: &concord_db::projects::Project,
+    raw_id: &str,
+) -> Result<concord_db::complaints::Complaint, ApiError> {
+    let Ok(id) = raw_id.parse::<i64>() else {
+        return Err(ApiError::not_found("no such complaint"));
+    };
+    let complaint = concord_db::complaints::complaint(&state.pool, id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found("no such complaint"))?;
+    if complaint.project_id != project.id {
+        return Err(ApiError::not_found("no such complaint"));
+    }
+    Ok(complaint)
+}
+
+/// Map a complaint refusal: a missing row is 404, and every "not applicable" verdict is 400 because the id was real.
+fn complaint_refusal(refusal: concord_db::complaints::Refused) -> ApiError {
+    match refusal {
+        concord_db::complaints::Refused::NotFound => ApiError::not_found("no such complaint"),
+        concord_db::complaints::Refused::Invalid(reason) => ApiError::invalid_request(reason),
+    }
+}
+
+/// `POST /projects/{slug}/complaints` — file a complaint.
+///
+/// Six rules, five of them things that were once wrong here:
+///
+/// 1. **authenticated.** This handler had no check while every sibling did, so a complaint could be filed anonymously and
+///    written with `author_id 0` — a claim about a project, and the main input to the ranking, attributed to nobody;
+/// 2. **the path and the body must agree** about the project. The route was later mounted under `/projects/{id}/…`, so
+///    the same project arrives twice; the path wins, because it is what the caller's standing was checked against, and a
+///    contradicting body id is refused rather than silently ignored;
+/// 3. **`strategic_multiplier` defaults to 1.0**, not 0. The form sends severity and frequency only, and pain is
+///    multiplied by this number: 0 makes the complaint contribute exactly nothing, with no indication why;
+/// 4. **§6.1's duplicate gate runs before the write**, instance-wide, and `confirm_duplicate` proceeds;
+/// 5. **indexing may fail without losing the complaint** — the audit says `embed_failed` and the filing stands;
+/// 6. **filing makes you a participant**: +5 reputation for `submit_complaint` and `contributor` membership, or-ignore so an
+///    owner who files is not demoted.
+async fn create_complaint(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Result<axum::response::Response, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("sign in to file a complaint"))?;
+    let project = readable_project_segment(&state, &slug, &headers).await?;
+    if let Some(named) = body.get("project_id").and_then(serde_json::Value::as_i64) {
+        if named > 0 && named != project.id {
+            return Err(ApiError::invalid_request(format!(
+                "project_id {named} does not match the project in the path"
+            )));
+        }
+    }
+    let title = body.get("title").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let text = body.get("body").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+    let severity = body.get("severity").and_then(serde_json::Value::as_i64).unwrap_or(1);
+    let frequency = body.get("frequency").and_then(serde_json::Value::as_f64).unwrap_or(1.0);
+    let multiplier = body
+        .get("strategic_multiplier")
+        .and_then(serde_json::Value::as_f64)
+        .filter(|value| *value > 0.0)
+        .unwrap_or(1.0);
+    let confirmed = body
+        .get("confirm_duplicate")
+        .and_then(serde_json::Value::as_bool)
+        .unwrap_or(false);
+
+    // Rule 4. The gate is the same one the request path uses; its scope is instance-wide for §6.1's "this was fixed in X".
+    let mut warned = 0usize;
+    let mut top = 0.0f64;
+    if let Ok(sims) = concord_db::embeddings::find_similar(
+        &state.pool,
+        state.embedder.as_ref(),
+        concord_db::embeddings::KIND_COMPLAINT,
+        &title,
+        0,
+        user.id,
+        Some(concord_db::embeddings::FIELD_TITLE),
+        5,
+    )
+    .await
+    {
+        warned = sims.len();
+        top = sims.first().map_or(0.0, |sim| sim.score);
+        let model = state.embedder.id();
+        if warned > 0 && !confirmed && concord_embed::bands::is_strong_duplicate_for(top, &model) {
+            let (strong, _, _) = concord_embed::bands::thresholds_for(&model);
+            return Ok((
+                StatusCode::CONFLICT,
+                Json(serde_json::json!({
+                    "error": "an almost identical complaint already exists",
+                    "similar": sims,
+                    "top_score": top,
+                    "threshold": strong,
+                    "resubmit_with": { "confirm_duplicate": true },
+                })),
+            )
+                .into_response());
+        }
+    }
+
+    let complaint = concord_db::complaints::create(
+        &state.pool,
+        project.id,
+        user.id,
+        &title,
+        &text,
+        severity,
+        frequency,
+        multiplier,
+    )
+    .await
+    .map_err(internal)?;
+
+    // Rule 5.
+    if let Err(error) = concord_db::embeddings::upsert_entity_text(
+        &state.pool,
+        state.embedder.as_ref(),
+        concord_db::embeddings::KIND_COMPLAINT,
+        complaint.id,
+        project.id,
+        &title,
+        &text,
+    )
+    .await
+    {
+        write_audit(&state, Some(project.id), user.id, "embed_failed", "complaint", complaint.id, &error.to_string())
+            .await?;
+    }
+    write_audit(&state, Some(project.id), user.id, "create_complaint", "complaint", complaint.id, &title).await?;
+    if warned > 0 {
+        // Recording that a filer was warned, and filed anyway, is what makes the threshold arguable with evidence rather
+        // than intuition.
+        write_audit(
+            &state,
+            Some(project.id),
+            user.id,
+            "duplicate_warning_shown",
+            "complaint",
+            complaint.id,
+            &format!("{warned} similar entries, top score {top:.3}"),
+        )
+        .await?;
+    }
+    // Rule 6.
+    concord_db::membership::add_reputation(&state.pool, project.id, user.id, "submit_complaint", 5.0)
+        .await
+        .map_err(internal)?;
+    concord_db::membership::join(&state.pool, project.id, user.id)
+        .await
+        .map_err(internal)?;
+    Ok((StatusCode::CREATED, Json(serde_json::json!(complaint))).into_response())
+}
+
+/// `POST /projects/{slug}/complaints/{id}/impact` — how much this hurts. `?severity=` defaults to 1.
+///
+/// The project half of the path is checked even though the reference's version reads only the id: this route is nested
+/// under the same path as the others, and leaving one handler reading half a URL is how the others were wrong.
+///
+/// **A signed-in caller is required**, which the reference does not enforce: it passes `getActorID(r)` straight into
+/// `complaint_impacts.user_id`, which is a foreign key — so an anonymous impact was a 500 there and is a 401 here. The
+/// row cannot exist without an attributable person, so 401 states the constraint the schema already holds.
+async fn add_complaint_impact(
+    State(state): State<AppState>,
+    Path((slug, id)): Path<(String, String)>,
+    Query(query): Query<SeverityQuery>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("sign in to record an impact"))?;
+    let project = readable_project_segment(&state, &slug, &headers).await?;
+    let complaint = caller_complaint(&state, &project, &id).await?;
+    let severity = query
+        .severity
+        .and_then(|value| value.parse::<i64>().ok())
+        .filter(|value| *value != 0)
+        .unwrap_or(1);
+    concord_db::complaints::add_impact(&state.pool, complaint.id, user.id, severity)
+        .await
+        .map_err(internal)?
+        .map_err(complaint_refusal)?;
+    Ok(Json(serde_json::json!({ "status": "impact recorded" })))
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct SeverityQuery {
+    severity: Option<String>,
+}
+
+/// `POST /projects/{slug}/complaints/{id}/validate` — §M1's first verdict. Requires **contributor**, not the §8.2
+/// eligible-collaborator rule: eligibility requires a qualifying contribution, and one of the qualifiers is a validated
+/// complaint that led to a shipped solution — so gating validation on eligibility would ask for a validation before
+/// allowing the first one. Joining grants `contributor`, so this is "a member of this project" and nothing narrower.
+async fn validate_complaint(
+    State(state): State<AppState>,
+    Path((slug, id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("sign in to validate a complaint"))?;
+    let project = readable_project_segment(&state, &slug, &headers).await?;
+    let complaint = caller_complaint(&state, &project, &id).await?;
+    require_role(&state, &project, "contributor", &user).await?;
+    concord_db::complaints::validate(&state.pool, complaint.id)
+        .await
+        .map_err(internal)?
+        .map_err(complaint_refusal)?;
+    write_audit(&state, Some(project.id), user.id, "validate_complaint", "complaint", complaint.id, "").await?;
+    Ok(Json(serde_json::json!({ "status": "validated" })))
+}
+
+/// `POST /projects/{slug}/complaints/{id}/reject` — the other verdict. §M1's Rejected state, which the reference could not
+/// reach at all: `RejectComplaint` existed since M1 with no caller, in production or in a test, so a spam complaint could
+/// only be ignored or validated. Same gate as validation, because it is the same act with the opposite verdict — and the
+/// same audit treatment, so the corpus can tell who decided what.
+async fn reject_complaint(
+    State(state): State<AppState>,
+    Path((slug, id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("sign in to reject a complaint"))?;
+    let project = readable_project_segment(&state, &slug, &headers).await?;
+    let complaint = caller_complaint(&state, &project, &id).await?;
+    require_role(&state, &project, "contributor", &user).await?;
+    concord_db::complaints::reject(&state.pool, complaint.id, user.id)
+        .await
+        .map_err(internal)?
+        .map_err(complaint_refusal)?;
+    write_audit(
+        &state,
+        Some(project.id),
+        user.id,
+        "reject_complaint",
+        "complaint",
+        complaint.id,
+        "rejected as spam: the author's reputation takes the M1 penalty",
+    )
+    .await?;
+    Ok(Json(serde_json::json!({ "status": "rejected" })))
+}
+
+/// `POST /projects/{slug}/complaints/{id}/merge/{target_id}` — fold one complaint into another.
+///
+/// **The destructive one, and the reference had no actor check at all**: an anonymous caller could merge any two
+/// complaints on the instance, and a merge is not reversible from the API, so the distinction between two separately
+/// reported problems was destroyable by a stranger.
+///
+/// Both halves of the path are checked, and in this order: the caller must hold **maintainer**, the source must exist
+/// **and belong to this project** (a complaint id from another project must not be reachable through this project's
+/// path), and the store refuses a target in a different project. The reference's handler reaches for the source id from a
+/// parameter named `source_id` while the router binds `id`, so the source was **always 0** and every merge answered 404
+/// — an endpoint that could never have worked, with no auth check on it, and nothing noticed because nothing called it.
+/// The audit row is written by the store with the real actor.
+async fn merge_complaints(
+    State(state): State<AppState>,
+    Path((slug, id, target_id)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("sign in to merge complaints"))?;
+    let project = readable_project_segment(&state, &slug, &headers).await?;
+    let source = caller_complaint(&state, &project, &id).await?;
+    require_role(&state, &project, "maintainer", &user).await?;
+    let Ok(target) = target_id.parse::<i64>() else {
+        return Err(ApiError::not_found("no such complaint"));
+    };
+    concord_db::complaints::merge(&state.pool, source.id, target, user.id)
+        .await
+        .map_err(internal)?
+        .map_err(complaint_refusal)?;
+    Ok(Json(serde_json::json!({ "status": "merged" })))
 }

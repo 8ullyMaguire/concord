@@ -140,3 +140,249 @@ pub async fn feature_complaints(pool: &PgPool, feature_id: i64) -> Result<Vec<Co
         .map(complaint_from_row)
         .collect()
 }
+
+/// A refusal from a complaint write, as a verdict rather than a database failure.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Refused {
+    /// No such complaint.
+    NotFound,
+    /// The request is well formed and the row exists, but this act does not apply to it — a non-open complaint, a merge
+    /// into itself, or a merge that would cross projects. 400 in every case: the id was real.
+    Invalid(String),
+}
+
+/// File a complaint.
+///
+/// `strategic_multiplier` is defaulted by the caller, not here: the reference defaults it in the handler, because the
+/// complaint form sends severity and frequency only, and a multiplier of 0 multiplies the pain score to exactly 0 — the
+/// complaint is stored, validated, linked to a feature, and contributes nothing, with no indication why.
+///
+/// The duplicate path is dead and ported as dead: the reference checks `isUniqueViolation` on this insert and answers
+/// `ErrDuplicate`, but `complaints` carries **no unique constraint** — only its primary key and `public_id`. So that
+/// branch cannot fire, and a duplicate complaint is caught by the embedder's §6.1 gate instead, before the insert.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn create(
+    pool: &PgPool,
+    project_id: i64,
+    author_id: i64,
+    title: &str,
+    body: &str,
+    severity: i64,
+    frequency: f64,
+    strategic_multiplier: f64,
+) -> Result<Complaint, sqlx::Error> {
+    let id: i64 = sqlx::query_scalar(
+        // `public_id` is NOT NULL with no default on every API-facing table, so the writer supplies one; every existing
+        // write path in this crate does the same. Omitting it fails as a 500 at insert time, which is how this was found.
+        "insert into complaints (project_id, author_id, title, body, severity, frequency,
+                                 strategic_multiplier, status, created_at, updated_at, public_id)
+         values ($1, $2, $3, $4, $5, $6, $7, 'open', now(), now(), $8) returning id",
+    )
+    .bind(project_id)
+    .bind(author_id)
+    .bind(title)
+    .bind(body)
+    .bind(severity)
+    .bind(frequency)
+    .bind(strategic_multiplier)
+    .bind(ulid::Ulid::new().to_string())
+    .fetch_one(pool)
+    .await?;
+    complaint(pool, id).await?.ok_or(sqlx::Error::RowNotFound)
+}
+
+/// Record that one person is affected, at a severity.
+///
+/// `or ignore`, not an increment: a person says how badly this hurts **once**, and clicking twice must not double their
+/// influence. The reference relies on the primary key for that, and the `updated_at` bump afterwards is what makes the
+/// panel show the complaint as recently alive.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn add_impact(
+    pool: &PgPool,
+    complaint_id: i64,
+    user_id: i64,
+    severity: i64,
+) -> Result<Result<(), Refused>, sqlx::Error> {
+    if complaint(pool, complaint_id).await?.is_none() {
+        return Ok(Err(Refused::NotFound));
+    }
+    sqlx::query(
+        "insert into complaint_impacts (complaint_id, user_id, severity, created_at)
+         values ($1, $2, $3, now()) on conflict do nothing",
+    )
+    .bind(complaint_id)
+    .bind(user_id)
+    .bind(severity)
+    .execute(pool)
+    .await?;
+    sqlx::query("update complaints set updated_at = now() where id = $1")
+        .bind(complaint_id)
+        .execute(pool)
+        .await?;
+    Ok(Ok(()))
+}
+
+/// §M1's verdict: a complaint is real. Only an `open` complaint can be validated, and the author gains reputation for
+/// having reported something true.
+///
+/// The reputation event is written **after** the status change and outside a transaction in the reference too — and that
+/// is a wart worth naming rather than quietly fixing: a crash between the two leaves a validated complaint that earned
+/// nothing. It is carried as-is because it is not a behaviour this row is asked to change, and it is visible here so the
+/// cutover checklist can decide.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn validate(pool: &PgPool, complaint_id: i64) -> Result<Result<Complaint, Refused>, sqlx::Error> {
+    let Some(current) = complaint(pool, complaint_id).await? else {
+        return Ok(Err(Refused::NotFound));
+    };
+    if current.status != "open" {
+        return Ok(Err(Refused::Invalid(
+            "only open complaints can be validated".to_string(),
+        )));
+    }
+    sqlx::query("update complaints set status = 'validated', updated_at = now() where id = $1")
+        .bind(complaint_id)
+        .execute(pool)
+        .await?;
+    sqlx::query(
+        "insert into reputation_events (project_id, user_id, kind, points, created_at)
+         values ($1, $2, 'complaint_validated', 1, now())",
+    )
+    .bind(current.project_id)
+    .bind(current.author_id)
+    .execute(pool)
+    .await?;
+    Ok(Ok(complaint(pool, complaint_id)
+        .await?
+        .ok_or(sqlx::Error::RowNotFound)?))
+}
+
+/// The other verdict: this was spam. Closes the complaint, takes the §M1 penalty from the author, and **tells them who
+/// decided** — which is why the actor is a parameter and not "the system".
+///
+/// One transaction for all three. Split into three statements, a failure in the middle leaves a rejected complaint whose
+/// author was never told, and nothing afterwards can tell that it happened. The notification is skipped when the author
+/// rejected their own complaint: notifying somebody of their own action is noise.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn reject(
+    pool: &PgPool,
+    complaint_id: i64,
+    actor_id: i64,
+) -> Result<Result<Complaint, Refused>, sqlx::Error> {
+    let Some(current) = complaint(pool, complaint_id).await? else {
+        return Ok(Err(Refused::NotFound));
+    };
+    if current.status != "open" {
+        return Ok(Err(Refused::Invalid(
+            "only open complaints can be rejected".to_string(),
+        )));
+    }
+    let mut tx = pool.begin().await?;
+    sqlx::query("update complaints set status = 'rejected', updated_at = now() where id = $1")
+        .bind(complaint_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(
+        "insert into reputation_events (project_id, user_id, kind, points, created_at)
+         values ($1, $2, 'complaint_rejected', -1, now())",
+    )
+    .bind(current.project_id)
+    .bind(current.author_id)
+    .execute(&mut *tx)
+    .await?;
+    if current.author_id != actor_id {
+        sqlx::query(
+            "insert into notifications (user_id, kind, project_id, subject_id, title, reason, actor_id, created_at)
+             values ($1, 'complaint_rejected', $2, $3, $4, $5, $6, now())",
+        )
+        .bind(current.author_id)
+        .bind(current.project_id)
+        .bind(complaint_id)
+        .bind(&current.title)
+        .bind("rejected as spam")
+        .bind(actor_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
+    Ok(Ok(complaint(pool, complaint_id)
+        .await?
+        .ok_or(sqlx::Error::RowNotFound)?))
+}
+
+/// Fold one complaint into another, in the same project.
+///
+/// Three refusals, and only the first is obvious:
+///
+/// * **same project only.** This check did not exist in the reference, and loading both rows is not a guard on either:
+///   a maintainer of one project could fold its complaint into another project's, and the source's impacts were then
+///   written against a foreign complaint — an `INSERT OR IGNORE` no later reader can tell from a legitimate impact;
+/// * **not into itself**, which would set `merged_into` to its own id and make every reader that follows the chain loop;
+/// * **the target must exist**, checked by loading it.
+///
+/// The impacts are copied `on conflict do nothing`: the same person may already have said they are affected by both, and
+/// after the merge that is one opinion, not two.
+///
+/// The audit row is written here rather than by the handler, with the **real actor** — the reference's store records the
+/// actor and the handler deliberately does not add a second row, because it used to record actor 0.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn merge(
+    pool: &PgPool,
+    source_id: i64,
+    target_id: i64,
+    actor_id: i64,
+) -> Result<Result<(), Refused>, sqlx::Error> {
+    let Some(source) = complaint(pool, source_id).await? else {
+        return Ok(Err(Refused::NotFound));
+    };
+    let Some(target) = complaint(pool, target_id).await? else {
+        return Ok(Err(Refused::NotFound));
+    };
+    if target.project_id != source.project_id {
+        return Ok(Err(Refused::Invalid(format!(
+            "complaint {source_id} belongs to project {} and complaint {target_id} to project {}; a merge cannot cross projects",
+            source.project_id, target.project_id
+        ))));
+    }
+    if source_id == target_id {
+        return Ok(Err(Refused::Invalid(format!(
+            "complaint {source_id} cannot be merged into itself"
+        ))));
+    }
+    let mut tx = pool.begin().await?;
+    sqlx::query("update complaints set merged_into = $1, updated_at = now() where id = $2")
+        .bind(target_id)
+        .bind(source_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(
+        "insert into complaint_impacts (complaint_id, user_id, severity, created_at)
+         select $1, user_id, severity, created_at from complaint_impacts where complaint_id = $2
+         on conflict do nothing",
+    )
+    .bind(target_id)
+    .bind(source_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "insert into audit_log (project_id, actor_id, action, entity, entity_id, detail, created_at)
+         values ($1, $2, 'merge_complaints', 'complaint', $3, $4, now())",
+    )
+    .bind(source.project_id)
+    .bind(actor_id)
+    .bind(source_id)
+    .bind(format!("merged into {target_id}"))
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    Ok(Ok(()))
+}
