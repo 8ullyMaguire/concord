@@ -1610,6 +1610,36 @@ FAIL another project's feature is 403 on this family: got 404 want 403
 A one-assertion control is weak evidence, and it is the right shape here: fourteen assertions, and this mutation can only
 move one of them — a fourteen-way break would have meant the mutation changed something else.
 
+### Row 11 — part 33: one solution, its rating, its claims (2026-11-13, `2cc7fb9`)
+
+```
+gate (before): GET /projects/{id}/features/{feature}/solutions/{solution} -> 404
+gate (after):
+  probe_s5_solution.py -> 19/19 ok
+  routes.py            -> go 216 / port 104   missing: 114 (104 json, 10 page)
+  cargo test -p concord-db --lib -> 36 passed
+```
+
+Rules carried: a solution **not yet in an arena** is still a solution (LEFT JOIN, rating zeros, `arena_id` 0 — an inner
+join would 404 a proposal that exists); coverage claims ordered by complaint id, an unchallenged claim's `contested_by` /
+`contested_at` / `contest_reason` **null**; `is_baseline` comes from the solution's **TYPE** (`do-nothing`), not from the
+arena entry's flag, so the two cannot disagree — deriving it is *why* the current service stopped scoring every
+`neither` as a draw; and a solution belonging to **another feature** of the same project is **404** while a feature from
+another project is **403**. Two sizes of "not yours" inside one route family, both reproduced.
+
+**NEGATIVE CONTROL** (`is_baseline` taken from the arena entry's flag — the column nothing populated):
+
+```
+FAIL a do-nothing proposal is the baseline by its type: got False want True
+18/19 ok
+```
+
+**Found by failing, twice:** sqlx implements `FromRow` for tuples up to sixteen elements and this projection is
+twenty-one, so the tuple form does not compile (rewritten to `Row` accessors); and `solution_coverage.contested` is an
+**INTEGER** column here, so `coalesce(contested, false)` dies with "COALESCE types bigint and boolean cannot be matched" —
+the same trap as `arena_entries.is_baseline` being a real `BOOLEAN`, in the opposite direction. A schema skimmed from the
+Go's scan targets gets both wrong.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
