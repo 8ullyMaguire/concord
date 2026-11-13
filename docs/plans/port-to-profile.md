@@ -1502,6 +1502,48 @@ identifies its competitor by `(entity_type, entity_id)`. Also fixed in the probe
 *after* a later call had reassigned the response, so two assertions compared the wrong arena's answer — a probe bug that
 would have made a green run meaningless.
 
+### Row 11 — part 30: arena verification, and a control that lied (2026-11-13, `9f3bfd2`)
+
+```
+gate (before): GET /projects/{id}/arenas/{arena}/verification -> 404
+gate (after):
+  probe_s5_verify.py  -> 20/20 ok
+  routes.py           -> go 216 / port 101   missing: 117 (107 json, 10 page)
+  cargo test -p concord-db --lib -> 36 passed
+  cargo test -p concord-ranking  -> 28 + 3 passed
+  concord-parity      -> 0 shape(s) disagreed of 16 checked, 5 skipped
+```
+
+§5.1's "anyone can verify a ranking" is now a route that **writes nothing**. `crates/ranking` gains
+`update_arena_rating` (`weight <= 0` unchanged; `weight < 1` interpolates the whole update, **including rd and sigma**),
+`games_for_weight` (a weight below 1 is still **one** game — truncating recorded a 0.4-weight voter as no game at all)
+and `repeated_game`. `crates/db/src/arena.rs` gains `replay()` and `verify()`: votes apply in `(created_at, id)` order
+because the update depends on the ratings the pair had when the vote was cast; `neither` in an arena with a baseline is
+**two losses to the baseline**, written as two numbered steps because when a side IS the baseline the Go rates it as a
+loss and then a win; and `agrees` is **exact float equality**, not a tolerance — a tolerance would hide the drift this
+route exists to find.
+
+**The strongest assertion:** after a vote the stored ratings disagree; write the *replayed* values back and the check
+must agree again. Self-consistency proved rather than asserted.
+
+**NEGATIVE CONTROL** (baseline branch removed — `neither` becomes a plain tie):
+
+```
+FAIL the baseline gains TWO games from one neither: got 0 want 2
+FAIL and rises above the prior: got False want True
+FAIL and both fall: got (False, False) want (True, True)
+17/20 ok
+```
+
+**And the first attempt at that control reported 20/20, which was a lie.** The mutation did not compile, the build error
+went into a stream I did not read, and `scp` deployed the **previous** binary — so the probe ran against correct code and
+passed. A control is evidence only once the build is known to have succeeded and the binary is known to have changed; the
+rerun checks the build output before deploying. **A green control on unfixed code is the exact failure mode this whole
+ledger is built to prevent, and it happened here through an unchecked exit status.**
+
+**Found by failing:** `arena_entries.is_baseline` is a real `BOOLEAN` in PostgreSQL, so `coalesce(is_baseline, 0) <> 0`
+fails with "COALESCE types boolean and integer cannot be matched" — the query answers 500 and the route dies.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
