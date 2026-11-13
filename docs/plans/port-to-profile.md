@@ -2005,6 +2005,63 @@ author check on tags removed:
 Also: an answer's `strategic_weight` is **0** in the Glicko call. §6.2's weight is a feature's maintainer-set importance
 and an answer has no such thing; borrowing one would move ratings by an unrelated project decision.
 
+### Row 11 — part 40: B3, the complaint writes (2026-11-13, `ac86d9c`)
+
+```
+gate (before): the five write routes under /projects/{}/complaints -> 404
+gate (after):
+  probe_s5_complaintwrites.py -> 40/40 ok
+  probe_s5_requestwrites.py 43/43, filing 31/31, requests 23/23, accept 15/15   (no regression)
+  routes.py  -> go 216 / port 122   missing: 96 (86 json, 10 page)
+  concord-parity -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-db --lib -> 38 passed
+```
+
+`crates/db/src/complaints.rs` gained `create`, `add_impact`, `validate`, `reject`, `merge` (+ `Refused`);
+`crates/db/src/membership.rs` holds `join` and `add_reputation` together, because *"taking part makes you a participant"*
+is one rule and a write path that remembers one and forgets the other produces a project whose contributors cannot
+validate anything.
+
+Nine rules asserted: filing is **authenticated** (it once wrote `author_id 0`); path and body must **agree** and the path
+wins; `strategic_multiplier` defaults to **1.0**, not 0; the §6.1 gate is instance-wide and `confirm_duplicate` proceeds;
+indexing may fail without losing the complaint (`embed_failed`); filing pays **+5** and grants `contributor` **or-ignore**;
+an impact is recorded **once per person** and `severity=0` falls back to 1; validate/reject are **contributor acts on open
+complaints**; rejecting **tells the author who decided** in the same transaction and never notifies somebody of their own
+action; merge is **maintainer** work, cannot cross projects, cannot target itself, and a source from another project is
+**404** through this path (not 403 — a 403 confirms the id is real).
+
+**NEGATIVE CONTROLS.**
+
+```
+merge's same-project check removed (if false):
+  FAIL a merge across projects is 400: got 200 want 400
+  FAIL the audit row names the real actor, once: got [(478,'merged into 2468'), (478,'merged into 2467')]   38/40
+a second impact overwrites instead of being ignored:
+  FAIL a second impact from the same person does not overwrite the first: got 5 want 3                       39/40
+validate without the contributor gate:
+  FAIL a non-member may not validate: got 200 want 403
+  FAIL a contributor-or-above may validate: got 400 want 200   (the stranger spent the open state)
+  FAIL and the answer says so: got None want 'validated'                                                   37/40
+```
+
+**Three things found by running it, not by reading:**
+
+* **`complaints.public_id` is NOT NULL with no default** — the insert answered 500 until the writer supplied a ULID. Every
+  other API-facing table (`users`, `projects`, `features`, `consensus_calls`, `milestones`, `project_documents`) is the
+  same; this is the first insert path into a *new* table since the baseline, so it is the first place the rule bit.
+  Recorded here so the next new table costs nobody a 500.
+* **`POST /projects/{slug}/complaints` was already registered for the GET** by S2, and adding `.post()` panicked at boot:
+  *"Overlapping method route. Handler for `GET /api/v1/projects/{slug}/complaints` already exists"*. A 404 was expected
+  and a **boot panic** arrived instead; the probe found it by failing to connect and the candidate's log named it. Route
+  registration must be read before a shape is extended, not after it panics.
+* **`require_role` must be evaluated after the complaint resolves.** With the gate first, a stranger's 403 is replaced by
+  a 404 (the id is not looked up yet) and the ordering the probe asserts — 403 *before* any state change — is lost.
+
+**Deliberate divergences, recorded:** an anonymous impact is **401** here (the reference passes `getActorID` = 0 into a
+foreign key and answers 500 — the row cannot exist without an attributable person, so 401 states what the schema already
+holds); and a non-numeric id on the reject/validate path is **404**, kept as the reference has it for *this* path even
+though its generic complaint path answers 400.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
