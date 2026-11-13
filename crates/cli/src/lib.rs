@@ -19,6 +19,8 @@
 //! * **a non-zero exit on failure**, so systemd records it rather than a journal quietly holding a traceback
 //!   from a process that reported success.
 
+pub mod forge;
+
 use std::net::SocketAddr;
 
 /// Arguments for one command: `--flag` booleans and `--key value` pairs.
@@ -230,6 +232,10 @@ async fn proposalsweep(pool: &sqlx::PgPool, args: &Args) -> anyhow::Result<()> {
 async fn healthsync(pool: &sqlx::PgPool, args: &Args) -> anyhow::Result<()> {
     use concord_db::metrics::{self, Measurement};
 
+    if args.flags.contains("fetch") || args.value("fetch").is_some() {
+        return healthsync_fetch(pool, args).await;
+    }
+
     if let Some(list) = args.value("newcomer") {
         for pair in list.split_whitespace() {
             let (slug, rest) = pair
@@ -324,4 +330,158 @@ fn integer(entry: &serde_json::Value, key: &str) -> Option<i64> {
 
 fn float(entry: &serde_json::Value, key: &str) -> Option<f64> {
     entry.get(key).and_then(serde_json::Value::as_f64)
+}
+
+/// `healthsync --fetch` — ask each project's forge for its numbers, then write them.
+///
+/// The four outcomes are separate on purpose, because they mean different things to an operator:
+///
+/// * **synced** — the numbers are written;
+/// * **deferred** — the forge asked for a pause. Not a failure: the data is unchanged and the next pass reads
+///   it. Counting it as failed made the Go timer exit 1 every hour on a shared IP, which trains an operator to
+///   ignore the unit — and the unit has to stay loud for the failures that ARE bugs;
+/// * **failed** — a corrupt `repo_url`, a moved repository (404), or a broken answer. Exit 1, because these are
+///   the ones somebody has to look at;
+/// * **skipped** — no measurement reached the health score: the project is not a repository's problem.
+///
+/// The newcomer figure is read from `forge_events` BEFORE the write, so a database error skips a project rather
+/// than leaving half a measurement landed — the same rule as a failed fetch writing nothing.
+async fn healthsync_fetch(pool: &sqlx::PgPool, args: &Args) -> anyhow::Result<()> {
+    use concord_db::metrics::{self, Measurement};
+    use concord_ranking::health::{newcomer_response, ForgeEvent};
+
+    let fetcher = crate::forge::Fetcher::from_env()
+        .map_err(|error| anyhow::anyhow!("{error:?}"))?;
+    let dry_run = args.flags.contains("dry-run");
+    let only = args.value("only").map(|text| text.split(',').map(str::to_string).collect::<Vec<_>>());
+    let (mut synced, mut deferred, mut failed, mut skipped) = (0_usize, 0_usize, 0_usize, 0_usize);
+    for row in metrics::repos(pool).await? {
+        if let Some(only) = &only {
+            if !only.iter().any(|slug| slug == &row.slug) {
+                continue;
+            }
+        }
+        let repo = match crate::forge::parse_repo_url(&row.repo_url) {
+            Ok(repo) => repo,
+            Err(refusal) => {
+                // The column is written through this same normalisation, so this is a corrupt row rather than a
+                // user error: report it and do not guess a repository.
+                println!("FAILED {}: stored repo_url does not parse: {}", row.slug, refusal.0);
+                failed += 1;
+                continue;
+            }
+        };
+        let snapshot = match fetcher.snapshot(&repo).await {
+            Ok(snapshot) => snapshot,
+            Err(crate::forge::FetchError::RateLimited(detail)) => {
+                println!("DEFERRED {}: {detail}", row.slug);
+                deferred += 1;
+                continue;
+            }
+            Err(crate::forge::FetchError::Gone(detail))
+            | Err(crate::forge::FetchError::Failed(detail)) => {
+                println!("FAILED {}: {detail}", row.slug);
+                failed += 1;
+                continue;
+            }
+        };
+
+        // No answered pull request is NOT a reason to skip the project: recency, breadth and cadence were
+        // measured, and they are three quarters of the score. The responsiveness term is passed as unknown so
+        // the score excludes it and renormalises, rather than writing a zero that reads as "reviewed instantly".
+        let (review_hours, verdict) = if snapshot.review_sample == 0 {
+            (
+                concord_db::metrics::UNKNOWN_REVIEW_HOURS,
+                format!(
+                    "review latency unknown ({} pull request(s) sampled, none answered)",
+                    snapshot.prs
+                ),
+            )
+        } else {
+            (
+                snapshot.median_review_hours,
+                format!(
+                    "review latency {:.1}h over {} answered pull request(s)",
+                    snapshot.median_review_hours, snapshot.review_sample
+                ),
+            )
+        };
+
+        let events = metrics::forge_events(pool, &repo.full).await?;
+        let stream: Vec<ForgeEvent<'_>> = events
+            .iter()
+            .map(|event| ForgeEvent {
+                repo: &repo.full,
+                kind: &event.kind,
+                number: event.number,
+                actor: &event.actor,
+                at: event.at,
+            })
+            .collect();
+        let newcomer = newcomer_response(&stream);
+
+        let now = chrono::Utc::now().timestamp() as f64;
+        let measurement = Measurement {
+            slug: row.slug.clone(),
+            measured: true,
+            stars: snapshot.stars,
+            forks: snapshot.forks,
+            open_issues: snapshot.open_issues,
+            commit_count: snapshot.commits,
+            contributors: snapshot.contributors,
+            last_commit_age_days: if snapshot.pushed_at > 0.0 {
+                ((now - snapshot.pushed_at) / 86400.0).max(0.0)
+            } else {
+                concord_db::metrics::UNKNOWN_AGE
+            },
+            median_review_hours: review_hours,
+            releases_90d: snapshot.releases_90d,
+            license: snapshot.license.clone(),
+        };
+        if dry_run {
+            println!(
+                "dry-run {}: stars={} forks={} issues={} commits={} contributors={} releases90={} {} \
+                 newcomer={}",
+                row.slug,
+                snapshot.stars,
+                snapshot.forks,
+                snapshot.open_issues,
+                snapshot.commits,
+                snapshot.contributors,
+                snapshot.releases_90d,
+                verdict,
+                match newcomer {
+                    Some((hours, sample)) => format!("{hours:.1}h over {sample}"),
+                    None => "none".to_string(),
+                }
+            );
+            continue;
+        }
+        match metrics::sync(pool, &measurement).await? {
+            Ok(written) => {
+                metrics::write_newcomer(pool, &row.slug, newcomer).await?;
+                synced += 1;
+                println!(
+                    "synced {}: health {:.6} ({verdict}){}",
+                    row.slug,
+                    written.health_score,
+                    if written.responsiveness_known { "" } else { ", responsiveness excluded" }
+                );
+            }
+            Err(concord_db::metrics::Skipped::Unmeasured) => {
+                println!("skipped {}: nothing measured; nothing written", row.slug);
+                skipped += 1;
+            }
+            Err(concord_db::metrics::Skipped::UnknownProject) => {
+                println!("FAILED {}: the project vanished between the read and the write", row.slug);
+                failed += 1;
+            }
+        }
+    }
+    println!("healthsync: synced {synced}, deferred {deferred}, skipped {skipped}, failed {failed}");
+    if failed > 0 {
+        // Deferred alone is NOT a failure: the unit has to stay loud only for the ones somebody must fix.
+        anyhow::bail!("{failed} project(s) failed");
+    }
+    Ok(())
 }

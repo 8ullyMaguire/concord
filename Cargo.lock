@@ -254,6 +254,7 @@ dependencies = [
  "concord-app",
  "concord-db",
  "concord-ranking",
+ "reqwest",
  "serde_json",
  "sqlx",
  "tokio",

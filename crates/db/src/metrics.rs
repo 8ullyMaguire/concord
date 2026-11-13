@@ -193,6 +193,68 @@ pub async fn stored(pool: &PgPool, slug: &str) -> Result<Option<Stored>, sqlx::E
     }))
 }
 
+/// One project that names a repository, as the sync needs it.
+#[derive(Debug, Clone)]
+pub struct RepoRow {
+    /// The slug.
+    pub slug: String,
+    /// The stated URL, exactly as stored.
+    pub repo_url: String,
+    /// The forge it belongs to, as `repo_host` stores it.
+    pub repo_host: String,
+}
+
+/// Every project that states a repository, so the fetch does not have to guess one from a slug: the column is
+/// STATED in this catalogue, and a project without one is not fetched.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn repos(pool: &PgPool) -> Result<Vec<RepoRow>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (String, String, String)>(
+        "select slug, repo_url, repo_host from projects
+          where repo_url is not null and repo_url <> ''
+          order by slug",
+    )
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(slug, repo_url, repo_host)| RepoRow { slug, repo_url, repo_host })
+        .collect())
+}
+
+/// One row of `forge_events`, in the shape the newcomer rule reads.
+#[derive(Debug, Clone)]
+pub struct EventRow {
+    /// `push`, `pr_opened`, `pr_closed`, `pr_review`, `pr_comment`.
+    pub kind: String,
+    /// The pull request's number.
+    pub number: i64,
+    /// Who did it.
+    pub actor: String,
+    /// Unix seconds.
+    pub at: f64,
+}
+
+/// The local event log for one repository — the source of the newcomer figure, which is a reading of THIS
+/// DATABASE and not of the forge.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn forge_events(pool: &PgPool, full: &str) -> Result<Vec<EventRow>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (String, i64, String, f64)>(
+        "select kind, coalesce(number, 0), actor, extract(epoch from at)::double precision
+           from forge_events where repo_full = $1 order by at",
+    )
+    .bind(full)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|(kind, number, actor, at)| EventRow { kind, number, actor, at })
+        .collect())
+}
+
 /// What is stored, with the unknown values as `None`.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Stored {
