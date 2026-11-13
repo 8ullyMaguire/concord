@@ -852,6 +852,36 @@ which reads exactly like a port defect and is not one. **Probes now clean up at 
 and the leftovers were removed (73 projects, 0 probe tags, 0 proposals, parity back to 0 disagreed). Any new
 probe written for this port must do the same.
 
+### Row 11 — part 7: the strategic weight vote (2026-11-13, `50a7891`)
+
+```
+gate (before): POST /api/v1/curation/strategy/{id}/vote -> 400 "not ported yet"
+gate (after):
+  probe_s5_strategy.py 17/17   probe_s5_taxonomy.py 18/18   probe_s5_stats.py 16/16
+  probe_s5_timers.py   30/30   probe_s5_feeds.py    60/60   probe_s4_comments.py 41/41
+  concord-parity       0 shape(s) disagreed of 17 checked, 4 skipped
+```
+
+`crates/db/src/strategy.rs`: consents come from §8.2's eligible population (role AND a qualifying
+contribution, the same set the arena's distinct-voter condition uses), the proposer cannot consent to their own
+proposal, and ratification applies the weight **only if** the feature still carries `weight_before` — otherwise
+the proposal is marked `stale` and nothing is written over a newer decision.
+
+Negative control (both guards off, 6/17): `FAIL the proposer cannot consent: got 409 want 403` and `FAIL the
+proposal is stale: got 'ratified' want 'stale'` — one click from the proposer ratifies and rewrites the weight,
+which is the outcome these two guards exist to prevent.
+
+**A test that encoded the old gap had to change, and that is a finding rather than housekeeping.**
+`probe_s4_comments` asserted *"an unported kind says so instead of recording a consent … and names the missing
+eligible set"*. Taxonomy is now ported, so the route answers 404 "no such proposal" for a missing id. The
+assertion now protects what the rule actually says: a missing proposal is a 404 and not a recorded consent, an
+unknown kind is a 400 naming it. 41/41.
+
+**Theme proposals are still not ported** (`strategic_theme_proposals`: `applyTheme` upserts `strategic_themes`
+with an expiry from `charter.theme_lifetime_days`, and a zero lifetime is refused rather than written born
+expired). `kind=strategy` reaches weight proposals only; the theme table has no route. Named here so the next
+reader does not mistake the coverage for complete.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
