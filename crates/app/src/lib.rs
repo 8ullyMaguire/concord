@@ -59,6 +59,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/projects/{project_id}/lists/{list}/entries", get(get_list_entries))
         .route("/api/v1/projects/{project_id}/tallies", get(feature_tallies))
         .route("/api/v1/projects/{slug}/documents/kinds", get(document_kinds))
+        .route("/api/v1/projects/{slug}/documents/search", get(search_documents))
         .route("/api/v1/projects/{slug}/features/{feature}/deps", get(feature_deps))
         .route("/api/v1/projects/{slug}/features/{feature}/evidence", get(feature_evidence))
         // `{slug}` and not `{project_id}`: axum refuses two routes that differ only in a parameter NAME ("Insertion
@@ -3103,4 +3104,36 @@ async fn feature_tallies(
         .await
         .map_err(internal)?;
     Ok(Json(serde_json::json!(tallies)))
+}
+
+/// `GET /api/v1/projects/{slug}/documents/search?q=&limit=` — full text over a project's documents.
+///
+/// A missing `q` is **400**, while an empty-after-trim `q` is an empty result: "you did not ask" and "you asked for
+/// nothing" are different requests, and collapsing them makes a broken client look like a quiet one.
+async fn search_documents(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = project_for(&state, &slug).await?;
+    let user = bearer_user(&state, &headers).await?;
+    if !readable(&state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    let Some(query) = params.get("q") else {
+        return Err(ApiError::invalid_request("q is required"));
+    };
+    let limit = params
+        .get("limit")
+        .and_then(|text| text.parse::<i64>().ok())
+        .unwrap_or(0);
+    let found = concord_db::panels::search_documents(&state.pool, project.id, query, limit)
+        .await
+        .map_err(internal)?;
+    match found {
+        Ok(rows) => Ok(Json(serde_json::json!(rows))),
+        // A malformed search expression is the caller's mistake, not the server's.
+        Err(message) => Err(ApiError::invalid_request(message)),
+    }
 }
