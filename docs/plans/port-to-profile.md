@@ -1050,6 +1050,34 @@ different method or path.
 its probe is green; it is finished when the missing count drops by the routes it claims and nothing else moves.
 The count is 139 and the ledger will not say otherwise.
 
+### Row 11 — part 13: the project page's panels (2026-11-13, `42bce61`)
+
+```
+gate (before): GET /projects/{id}/criteria, /criteria-profiles, /projects/{slug}/languages, /projects/{id}/lists
+               -> 404, all four
+gate (after):
+  probe_s5_criteria.py -> 18/18 ok
+  routes.py            -> go 216 / port 83   (135 remain, exit 1)
+  cargo test -p concord-db --lib -> 23 passed
+  concord-parity       -> 0 shape(s) disagreed of 17 checked, 4 skipped
+```
+
+Four routes and four orderings, because the ordering IS the answer here: criteria `active DESC, slug` (a retired
+criterion is listed after the live ones, not dropped), profiles by slug, languages `pct DESC, language ASC` (so
+equal shares do not swap between requests), lists with the project's own first and `project_id: null` for the
+instance-wide ones — a SCOPE (§16), not a zero.
+
+Negative control (criteria by slug alone, 17/18): `FAIL active first, then slug: got ['aaa-retired', 'zzz-live']
+want ['zzz-live', 'aaa-retired']`.
+
+`readable_project()` centralises the visibility rule for these four: **404, never 403**, because a 403 tells an
+anonymous caller which ids exist.
+
+**Two schema facts the baseline decided, not the code** — both discovered as probe failures rather than by
+reading: `criteria.active` is a BIGINT (SQLite kept INTEGER affinity), so the select compares (`active <> 0`)
+instead of decoding a bool; `criteria_profiles` has no `weights` column on this schema. Read the columns before
+writing the query, or the probe will read them for you.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
