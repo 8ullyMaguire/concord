@@ -1233,6 +1233,27 @@ is the common case. One axum fact learned here: two routes differing only in a *
 insertion, so the new route binds `{slug}` like its siblings although the Go names it `{project_id}` — parameter
 names are not part of a shape.
 
+### Row 11 — part 21: one milestone with its planned work (2026-11-13, `c4917f3`)
+
+```
+gate (before): GET /projects/{project_id}/milestones/{id} -> 404
+gate (after):
+  probe_s5_milestone.py -> 13/13 ok
+  routes.py             -> go 216 / port 93   (125 remain)
+  cargo test -p concord-db --lib -> 30 passed
+  concord-parity        -> 0 shape(s) disagreed of 16 checked, 5 skipped
+```
+
+The project predicate lives in the QUERY, not in a comparison after the read; the feature order is the milestone's
+PLAN (`milestone_position, id`) and the fixture inserts features in reverse plan order so ordering by id differs; and
+`shipped` is shipped **with a shipment event**, the gap reported as `unshipped` — the probe asserts `(3, 0, 1)` before
+the event and `(1, 0)` after inserting one, which pins the rule rather than the arithmetic. Negative control
+(predicate removed, 12/13): `FAIL another project's milestone is 404: got 200 want 404`.
+
+Two schema facts found by failing: `milestones.target_date` is a **TIMESTAMPTZ** in this baseline (the Go stored a REAL
+unix stamp) and must be converted in SQL, and `at_risk` is derived in two places that must agree — the getter reuses
+the list's exact predicate rather than restating it.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
