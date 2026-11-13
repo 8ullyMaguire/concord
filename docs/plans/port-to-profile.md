@@ -1169,6 +1169,26 @@ Negative control (blocks joined on `blocker_id`, 8/10): `FAIL and it blocks exac
 want [5816]`. Note what it did NOT break — `blocked_by` still read correctly — so a suite that only checked the
 blocked feature's panel would have passed.
 
+### Row 11 — part 18: a feature's evidence (2026-11-13, `d9c1ab6`)
+
+```
+gate (before): GET /projects/{slug}/features/{feature}/evidence -> 404
+gate (after):
+  probe_s5_evidence.py -> 7/7 ok
+  routes.py            -> go 216 / port 89   (129 remain)
+  cargo test -p concord-db --lib -> 30 passed
+  concord-parity       -> 0 shape(s) disagreed of 16 checked, 5 skipped
+```
+
+Evidence is a historical claim, so a deleted target leaves the LINK with an empty title; an inner join makes the
+evidence vanish and the panel reads "nobody linked anything" — a different and wrong claim. `kind` decides which
+table names the ref, and the probe's fixture has a document, a report, and a document deleted between the link and
+the read. Negative control (inner join, 3/7): `FAIL all three links are listed, including the one whose document is
+gone`. The control also caught a probe defect: the first version raised `KeyError` and printed NO result block, so a
+broken build looked like a broken probe — rows are now indexed with `.get` so a missing row is a failed ASSERTION.
+Three schema facts found by failing: `project_documents.slug` and `.author_id` are NOT NULL, and `field_reports` has
+a FK from `projects` (teardown order).
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
