@@ -12,6 +12,7 @@ pub mod audit;
 pub mod call_outcome;
 pub mod charter;
 pub mod complaints;
+pub mod comments;
 pub mod consensus;
 pub mod consensus_writes;
 pub mod curation;
