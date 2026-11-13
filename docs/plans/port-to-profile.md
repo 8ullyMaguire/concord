@@ -40,7 +40,7 @@ quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 | 8 | S2 ideas, complaints, ranking | **Done 2026-11-13** (`0a32d49`) — corpus subset, `concord-ranking` suite and store tests green; every killable ranking mutation arm killed, the rest proved unobservable (see the dated entry below) |
 | 9 | S3 consensus, governance, ledger | **Done 2026-11-13** (`a2ace5d`) — corpus subset green, `probe_s3_api.py` 94/94, estate gate 49 green; `consensus_e2e`/`audit_e2e` moved to row 12 by the dated correction |
 | 9b | S3 arena and solutions | **Done 2026-11-13** (`345b132`) — `probe_s3b_arena.py` 20/20 (was 5/20), the negative control at 19/20, corpus still 2 disagreed of 14, ranking oracle green with 10 arena rows |
-| 10 | S4 moderation, comments, inbox | gates 22 and 45 green (measured 2026-11-13: `CHECK inbox` exit 0, `CHECK authz` 10/10) **and** the four surfaces' probes green — done — plus adoption of `polaris-comments` then `polaris-authz`, which is what gates 19 and 45 actually ask for. Probes: 26/26, 27/27, 31/31, 39/39 |
+| 10 | S4 moderation, comments, inbox | **Done 2026-11-13** (`b969b26`): four probes 26/26, 27/27, 40/40, 39/39; `e2e.sh` 29 passed; gates 22 and 45 green (`CHECK inbox` exit 0, `CHECK authz` 10/10); `polaris-comments` and `polaris-authz` adopted |
 | 11 | S5 stats, feeds, admin binaries | corpus + `stats_e2e` and feed parse; estate gates 4, 5, 47 green; timers migrated to `polaris-loops` |
 | 12 | P6 the frontend on SvelteKit + `@polaris/ui` | every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
 | 13 | P7 cutover | `concord.polarisocial.xyz/api/v1/version` served by the Rust binary, and estate gate 17 green for `concord` with NO `reason` |
@@ -633,6 +633,66 @@ retires `/api/v1/notifications`. Rejected alternative: keep the hand-written pai
 in the manifest, because gate 45 does not care that it works — it fails on the check existing beside the
 crate, and a second implementation of a permission ladder is how one surface ends up granting what another
 denies.
+
+### Row 10 — Done 2026-11-13
+
+The four surfaces answer, and two of them are the estate's code rather than mine.
+
+```
+$ bash /tmp/run_probe.sh probe_s4_inbox.py        -> 26/26 ok
+$ bash /tmp/run_probe.sh probe_s4_curation.py     -> 27/27 ok
+$ bash /tmp/run_probe.sh probe_s4_comments.py     -> 40/40 ok
+$ bash /tmp/run_probe.sh probe_s4_moderation.py   -> 39/39 ok
+$ bash scripts/parity/e2e.sh                      -> test result: ok. 29 passed; 0 failed
+$ cargo test -p concord-db --lib                  -> test result: ok. 13 passed; 0 failed
+$ cargo mutants / probes' negative controls        -> see each part's commit message
+```
+
+Each part was proved by a control that reproduced the defect it guards against, not by the green run:
+
+| part | gate | control |
+|---|---|---|
+| inbox (`e0b31f0`) | 26/26 | owner check dropped → 23/26, "marking somebody else's is a 404: got 200" |
+| queue (`be68505`) | 27/27 | two-part cursor → 24/27, the same row 41 times and never terminating |
+| threads (`9e8f49c`) | 31/31 | thread-ownership guard removed → 26/31, a comment on project B's feature filed under project A (201) |
+| moderation (`130a332`) | 39/39 | reason checked after the write → 30/39, "a refused act left the entry alone: got 0", status 'rejected' |
+| adoption (`b969b26`) | 40/40 + 39/39 | the probes are the control: the crate must not lose one of the behaviours the Go service has |
+
+**Adopted, not written.** `polaris-comments` owns `check_body`, `place`, `order`, `after_delete`,
+`replies_lost`; `polaris-authz` owns the permission decision (one capability `moderation.act`, grants for
+reviewer/maintainer/owner at `Scope::Curated`, and the trust floor as `Requirement::TrustAtLeast` on the
+`everyone` role, so two doors are one call). The hand-written ladder and the hand-written body/order/tombstone
+rules are deleted, because gate 45 fails a site for keeping its own check beside the crate and gate 19 for the
+duplication.
+
+`POLICY` declares unbounded depth with `Overflow::Refuse` (the table has no depth column — suki's shape) and
+`body.max = usize::MAX` (the product has never had a ceiling; inventing one is a new product rule, and this row
+is a port). The crate decides *whether*; the product keeps saying *what it says today*, so adopting a rule
+cannot silently rewrite the text a person reads.
+
+**Decisions taken in this row, dated 2026-11-13:**
+
+1. **`taxonomy` and `strategy` votes are refused, not half-implemented.** Their ratification needs the eligible
+   set (`eligibleTaggers`, the collaborators a weight proposal is put to). A consent recorded without it lets
+   anyone ratify a proposal that was never put to them — the exact defect the Go store's own comment records
+   ("anyone with an account could ratify a tag proposal for a project they had no relationship with"). The
+   route answers a 400 that names the missing set. **Gap, tracked on row 11**, which is the slice that can
+   port the eligibility queries.
+2. **The 401 shape is declared divergent, not fixed.** The deployed Go build answers `{"error": "authentication
+   required"}` — a bare string — while its own 404s use `polaris-core`'s envelope. The port has one envelope
+   (ADR 0011). `concord-parity` now prints `DECLARED /api/v1/notifications: … (removed by row 13)`, so the
+   divergence is named in every run instead of hiding the next real difference in silence.
+3. **No thread path in the corpus.** The deployed build is 87 commits behind the tree and answers
+   `{"error":{"code":"not_found","message":"No such API route."}}` for
+   `/api/v1/projects/49/threads/feature/5755`, so recording it would freeze a deploy artefact. The route's
+   shape comes from `internal/httpapi/server.go`; the port's evidence for it is `probe_s4_comments.py`.
+4. **Route shapes follow the Go table, not my router.** Threads hang off the numeric `{project_id}` and the
+   queue is `/api/v1/curation/` with `POST /{kind}/{id}/vote` below it. `project_by_id` sits beside
+   `project_for` rather than one function accepting either, because a route that quietly took both would hide
+   a client calling the wrong one.
+
+**Corpus after this row:** 20 shapes recorded; `2 shape(s) disagreed of 14 checked, 5 skipped` — both
+survivors are row 11's (`/api/v1/search`, `/api/v1/stats/summary`).
 
 ### Blocked
 
