@@ -109,7 +109,10 @@ pub async fn run() -> anyhow::Result<()> {
 
     match args.command.as_str() {
         "serve" => {
-            let state = concord_app::AppState { pool };
+            let state = concord_app::AppState {
+                pool,
+                embedder: concord_app::embedder_from_env(),
+            };
             let listener = tokio::net::TcpListener::bind(&addr).await?;
             tracing::info!(addr = %addr, "serving");
             axum::serve(

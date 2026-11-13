@@ -70,6 +70,36 @@ pub struct Answer {
     pub updated_at: f64,
 }
 
+/// File a request, scoped to a project or — with `project_id == 0` — to the instance.
+///
+/// The instance-wide case stores **NULL**, not 0: the column is the only place that distinction exists, and every reader
+/// (the board, the duplicate panel, the filing page) tests for NULL.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn create(
+    pool: &PgPool,
+    project_id: i64,
+    author_id: i64,
+    title: &str,
+    body: &str,
+) -> Result<Request, sqlx::Error> {
+    let project: Option<i64> = if project_id > 0 { Some(project_id) } else { None };
+    let id: i64 = sqlx::query_scalar(
+        "insert into requests (project_id, author_id, title, body, status, created_at, updated_at)
+         values ($1, $2, $3, $4, 'open', now(), now()) returning id",
+    )
+    .bind(project)
+    .bind(author_id)
+    .bind(title)
+    .bind(body)
+    .fetch_one(pool)
+    .await?;
+    get(pool, id)
+        .await?
+        .ok_or(sqlx::Error::RowNotFound)
+}
+
 /// A project's requests, newest first.
 ///
 /// The tiebreak is written down because PostgreSQL has no stable order inside a tie and SQLite does: `created_at` is
