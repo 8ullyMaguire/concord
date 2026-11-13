@@ -33,13 +33,12 @@ Read this table FIRST every turn, before any code. A row is done when its gate r
 quoted below it, never because it merged. The count in this header is the number the turn report
 quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 
-### Open *(9 — M0.5 first)*
+### Open *(8 — M0.6 first)*
 
 | # | step | gate — the command that fails if the step is absent |
 |---|---|---|
 
 
-| 5 | M0.5 data mover loads and counts agree | `select count(*)` prints `73 | 5760 | 2402 | 88` |
 | 6 | M0.6 replay tool passes against the CURRENT Go service | `CANDIDATE=https://concord.polarisocial.xyz cargo run -p parity` prints `0 shape(s) disagreed` |
 | 7 | S1 projects, documents, board | corpus subset identical + `projects_e2e`, `board_e2e`, `pages_e2e` green against the candidate |
 | 8 | S2 ideas, complaints, ranking | corpus subset + `rank_*`, `milestones_e2e`, `feature_*` green; ranking mutation arms killed |
@@ -201,6 +200,52 @@ which are not columns of `projects` — the fts row was assembled by the writer,
 `search_tsv` covers `name` and `description` only and the slice that serves search must decide what
 replaces the rest. And `api_tokens`, `admin_ledger`, `act_reviews` came through as ordinary tables,
 so the port's schema is 79 relations and not the 83 the plan assumed.
+
+**5. M0.5 data mover loads and counts agree** — done 2026-11-13, commit with this edit
+(`scripts/parity/move.py`; `crates/db/sql/0001_baseline.sql` regenerated).
+
+```
+$ python3 scripts/parity/move.py
+42071 rows, 0 tables failed
+$ psql -c 'select (select count(*) from projects) p, (select count(*) from features) f,
+           (select count(*) from complaints) c, (select count(*) from users) u'
+73 5760 2402 88          # the gate's four numbers
+```
+
+Before the change the same counts were `0 0 0 0` and the move failed on 31 tables. Re-run for
+idempotency: `42071 rows, 0 tables failed` again, same four counts.
+
+Fidelity, spot-checked rather than assumed: `features.id=1` carries
+`created_at 2026-09-29 07:56:31+00` and a 26-character `public_id`; the newest feature is
+`2026-11-12 19:26:17+00` with a 1,726-byte body; **0 rows** have a timestamp outside
+2020..now (which is what a numeric-as-timestamp mistranslation would produce); `members.is_moderator`
+counts `t|3, f|78`; `audit_log` moved 9,313 rows with `detail` non-null on all 9,313, matching the
+source exactly.
+
+Three things the plan's sketch would have got wrong, all found by running it:
+
+- **`column_default is null` as the column filter drops every timestamp.** `created_at` has
+  `DEFAULT now()` in the baseline, so filtering defaulted columns away would carry the rows without
+  their dates and the corpus would compare a database that had forgotten when everything happened.
+  The filter here is `is_generated = 'NEVER'` intersected with the source's own columns.
+- **The table order cannot be typed out.** It is derived from PostgreSQL's own `pg_constraint`
+  foreign keys (depth-first), so the first migration that adds a table does not silently produce a
+  load that inserts a child before its parent.
+- **`public_id` is deterministic, not random.** A ULID-shaped 26-character value derived from
+  `sha256(table:id)`: deterministic so a re-run produces the same ids and the corpus stays
+  comparable across rebuilds, ULID-shaped so the column matches what the slices will generate.
+
+`psycopg2` 2.9.13 rather than the plan's `psycopg` (v3): v3 is not installed on this host, and the
+difference is a driver import, not a design.
+
+**Row 4's artifact changed after row 4 closed, and that is recorded rather than quietly rewritten.**
+The move failed with
+`duplicate key value violates unique constraint "idx_arena_entries_one_baseline"` because the
+generator rebuilt each index from `pragma index_info`, which returns neither the `WHERE` clause of a
+partial index nor the columns of an expression index. `WHERE is_baseline = 1` had become a full
+unique index, refusing rows the source accepts. `ddl.py` now translates the index DDL from
+`sqlite_master` itself — predicate kept, `ifnull` mapped to `coalesce`, and `col = 1` on a boolean
+column mapped to the column, because PostgreSQL has no `boolean = integer`.
 
 
 ## M0 — the ground (no product code)

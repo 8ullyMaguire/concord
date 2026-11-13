@@ -22,7 +22,7 @@ create table admin_ledger (
     project_id bigint,
     created_at timestamptz NOT NULL DEFAULT now()
 );
-create index idx_admin_ledger_created on admin_ledger (created_at);
+create index idx_admin_ledger_created on admin_ledger (created_at DESC);
 
 create table api_tokens (
     token_hash text PRIMARY KEY,
@@ -45,7 +45,7 @@ create table arena_entries (
     updated_at timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (arena_id, entity_type, entity_id)
 );
-create unique index idx_arena_entries_one_baseline on arena_entries (arena_id);
+create unique index idx_arena_entries_one_baseline on arena_entries (arena_id) where is_baseline;
 create index idx_arena_entries_entity on arena_entries (entity_type, entity_id);
 
 create table arenas (
@@ -57,10 +57,10 @@ create table arenas (
     use_case text,
     created_at timestamptz NOT NULL DEFAULT now()
 );
-create unique index idx_arenas_alternatives on arenas (project_id, use_case);
-create unique index idx_arenas_use_case on arenas (project_id, use_case);
-create unique index idx_arenas_solution on arenas (feature_id);
-create unique index idx_arenas_feature_priority on arenas (project_id);
+create unique index idx_arenas_alternatives on arenas (project_id, use_case) where type = 'alternatives' AND use_case IS NOT NULL;
+create unique index idx_arenas_use_case on arenas (project_id, use_case) where type = 'use-case' AND use_case IS NOT NULL;
+create unique index idx_arenas_solution on arenas (feature_id) where type = 'solution';
+create unique index idx_arenas_feature_priority on arenas (project_id) where type = 'feature-priority';
 
 create table audit_log (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -73,7 +73,7 @@ create table audit_log (
     created_at timestamptz NOT NULL DEFAULT now(),
     undoes bigint
 );
-create index idx_audit_keyset on audit_log (project_id, created_at, id);
+create index idx_audit_keyset on audit_log (project_id, created_at DESC, id DESC);
 create index idx_audit_actor_created on audit_log (actor_id, created_at);
 create index idx_audit on audit_log (project_id, created_at);
 
@@ -414,8 +414,8 @@ create table field_reports (
     removal_reason text DEFAULT '' NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now()
 );
-create index idx_field_reports_live on field_reports (project_id);
-create index idx_field_reports_project on field_reports (project_id, created_at);
+create index idx_field_reports_live on field_reports (project_id) where removed = 0;
+create index idx_field_reports_project on field_reports (project_id, created_at DESC);
 
 create table forge_events (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -564,7 +564,7 @@ create table notifications (
     read_at timestamptz
 );
 create index notifications_unread on notifications (user_id, read_at);
-create index notifications_inbox on notifications (user_id, created_at);
+create index notifications_inbox on notifications (user_id, created_at DESC);
 
 create table objections (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -642,8 +642,7 @@ create table project_documents (
     public_id text NOT NULL UNIQUE,
     search_tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce(title, '') || ' ' || coalesce(body, ''))) STORED
 );
-create index idx_project_documents_project on project_documents (project_id, kind, updated_at);
-create index project_documents_search_tsv_gin on project_documents using gin (search_tsv);
+create index idx_project_documents_project on project_documents (project_id, kind, updated_at DESC);
 
 create table project_invites (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -719,7 +718,6 @@ create table projects (
     search_tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce(name, '') || ' ' || coalesce(description, ''))) STORED
 );
 create index idx_projects_visibility on projects (visibility);
-create index projects_search_tsv_gin on projects using gin (search_tsv);
 
 create table reputation_events (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -834,7 +832,7 @@ create table strategic_theme_proposals (
     created_at timestamptz NOT NULL DEFAULT now(),
     decided_at timestamptz
 );
-create unique index idx_theme_one_pending on strategic_theme_proposals (project_id, theme_tag, theme_namespace);
+create unique index idx_theme_one_pending on strategic_theme_proposals (project_id, theme_tag, theme_namespace) where status = 'pending';
 
 create table strategic_themes (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -869,7 +867,7 @@ create table strategic_weight_proposals (
     decided_at timestamptz
 );
 create index idx_stratweight_project_status on strategic_weight_proposals (project_id, status);
-create unique index idx_stratweight_one_pending on strategic_weight_proposals (feature_id);
+create unique index idx_stratweight_one_pending on strategic_weight_proposals (feature_id) where status = 'pending';
 
 create table tag_aliases (
     alias_id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -910,6 +908,7 @@ create table taxonomy_proposals (
     decided_at timestamptz
 );
 create index idx_taxonomy_project_status on taxonomy_proposals (project_id, status);
+create unique index idx_taxonomy_one_pending on taxonomy_proposals (coalesce(project_id, 0), action, target_tag, value) where status = 'pending';
 
 create table trust_config (
     id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
@@ -947,7 +946,7 @@ create table work_item_claims (
     released_at timestamptz,
     PRIMARY KEY (feature_id, user_id)
 );
-create unique index work_item_claims_active on work_item_claims (feature_id);
+create unique index work_item_claims_active on work_item_claims (feature_id) where released_at IS NULL;
 
 -- Foreign keys last, so table order in this file cannot matter.
 alter table act_reviews add constraint fk_act_reviews_user_id foreign key (user_id) references users(id);

@@ -16,6 +16,7 @@ The generated file is what `psql -f` applies; the generator is re-run when the s
 diff between generations is the thing a reviewer reads.
 """
 import argparse
+import re
 import sqlite3
 import sys
 
@@ -101,6 +102,48 @@ def fts_sources(cur) -> dict[str, list[str]]:
         # link the table has to its source.
         sources.setdefault(content or name[:-len("_fts")], []).extend(cols)
     return sources
+
+
+def _is_boolean(cur, table: str, col) -> bool:
+    _cid, name, decl, _nn, _dflt, pk = col
+    if pk or "INT" not in (decl or "").upper():
+        return False
+    lo, hi, distinct = data_probe(cur, table, name)
+    return (lo is not None and hi is not None and lo >= 0 and hi <= 1
+            and (distinct or 0) <= 2 and bool(set(name.lower().split("_")) & BOOLEAN_TOKENS))
+
+
+INDEX_SQL = re.compile(r"^\s*create\s+(unique\s+)?index\s+(\S+)\s+on\s+(\S+)\s*\((.*)\)"
+                       r"(\s*where\s+.*)?$", re.IGNORECASE | re.DOTALL)
+
+
+def translate_index(sql: str, bool_columns: set[str], notes: list[str]) -> str:
+    """SQLite index DDL -> PostgreSQL, keeping the partial predicate and the expressions.
+
+    Two textual fixes and no more: `ifnull(` is `coalesce(`, and a comparison against a column that
+    became boolean (`is_baseline = 1`) becomes the column itself, because PostgreSQL has no
+    boolean = integer.
+    """
+    match = INDEX_SQL.match(sql.strip().rstrip(";"))
+    if not match:
+        notes.append(f"index DDL not understood, omitted: {sql.strip()[:80]!r}")
+        return "-- omitted: " + sql.strip().replace("\n", " ")
+    unique, name, table, columns, where = match.groups()
+    columns = columns.replace("\n", " ").strip()
+    columns = re.sub(r"ifnull\s*\(", "coalesce(", columns, flags=re.IGNORECASE)
+    pred = (where or "").replace("\n", " ").strip()
+    # The regex captures the WHERE keyword with the predicate; prepending " where " without
+    # stripping it produced "... arena_id) where WHERE is_baseline = true".
+    pred = re.sub(r"^where\s+", "", pred, flags=re.IGNORECASE)
+    pred = re.sub(r"ifnull\s*\(", "coalesce(", pred, flags=re.IGNORECASE)
+    for column in bool_columns:
+        pred = re.sub(rf"\b{re.escape(column)}\s*=\s*1\b", column, pred)
+        pred = re.sub(rf"\b{re.escape(column)}\s*=\s*0\b", f"not {column}", pred)
+    kind = "create unique index" if unique else "create index"
+    body = f"{kind} {pg_ident(name)} on {pg_ident(table)} ({columns})"
+    if pred:
+        body += f" where {pred}"
+    return body + ";"
 
 
 def table_names(cur) -> list[str]:
@@ -269,7 +312,6 @@ def generate(db_path: str) -> tuple[str, list[str]]:
         out.append(",\n".join(lines))
         out.append(");")
 
-        # Indexes: skip the ones SQLite created for constraints (origin 'u'/'pk' are covered).
         # Foreign keys cannot be inline: alphabetical order puts a child before its parent, and
         # PostgreSQL (correctly) refuses a reference to a table that does not exist yet. They are
         # collected here and added by ALTER TABLE after every table exists.
@@ -280,25 +322,27 @@ def generate(db_path: str) -> tuple[str, list[str]]:
                              f"baseline (FTS shadow or dropped) — FK omitted")
                 continue
             fk_sql.append(
-                f"alter table {pg_ident(table)} add constraint {pg_ident('fk_' + table + '_' + from_col)} "
+                f"alter table {pg_ident(table)} add constraint "
+                f"{pg_ident('fk_' + table + '_' + from_col)} "
                 f"foreign key ({pg_ident(from_col)}) references {pg_ident(ref_table)}"
                 f"({pg_ident(to_col or 'id')});")
+
+        # Indexes: read from sqlite_master, not assembled from pragma index_info. A partial index
+        # carries a WHERE clause that pragma does not return, and an expression index returns NULL
+        # column names — the first turned `WHERE is_baseline = 1` into a full unique index, which
+        # then refused rows the source accepts (duplicate key on idx_arena_entries_one_baseline).
+        bool_columns = {c[1] for c in cols if _is_boolean(cur, table, c)}
         for idx in cur.execute(f"pragma index_list({pg_ident_sqlite(table)})").fetchall():
             _seq, idx_name, unique, origin, _partial = idx
             if origin != "c":
                 continue
-            idx_cols = [r[2] for r in cur.execute(
-                f"pragma index_info({pg_ident_sqlite(idx_name)})").fetchall()]
-            if not idx_cols or any(c is None for c in idx_cols):
+            sql_row = cur.execute("select sql from sqlite_master where type='index' and name=?",
+                                  (idx_name,)).fetchone()
+            if not sql_row or not sql_row[0]:
+                notes.append(f"{idx_name}: no SQL in sqlite_master — index omitted, check it")
                 continue
-            kind = "create unique index" if unique else "create index"
-            out.append(f"{kind} {pg_ident(idx_name)} on {pg_ident(table)} ("
-                       + ", ".join(pg_ident(c) for c in idx_cols) + ");")
-        if indexed:
-            out.append(f"create index {pg_ident(table + '_search_tsv_gin')} on {pg_ident(table)} "
-                       f"using gin (search_tsv);")
-            notes.append(f"{table}: generated search_tsv over {indexed} + GIN, replacing the fts5 "
-                         f"table and its triggers")
+            out.append(translate_index(sql_row[0], bool_columns, notes))
+
         out.append("")
 
     out.append("-- Foreign keys last, so table order in this file cannot matter.")
