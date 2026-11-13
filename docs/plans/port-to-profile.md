@@ -39,7 +39,7 @@ quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 |---|---|---|
 | 8 | S2 ideas, complaints, ranking | **Done 2026-11-13** (`0a32d49`) — corpus subset, `concord-ranking` suite and store tests green; every killable ranking mutation arm killed, the rest proved unobservable (see the dated entry below) |
 | 9 | S3 consensus, governance, ledger | **Done 2026-11-13** (`a2ace5d`) — corpus subset green, `probe_s3_api.py` 94/94, estate gate 49 green; `consensus_e2e`/`audit_e2e` moved to row 12 by the dated correction |
-| 9b | S3 arena and solutions | the routes §6.4's scores live behind — `/solution-call` readiness and open, `/{call}/fallback`, the solutions list — with a probe that fails before them; this row exists because row 9's gate could not name them (see the dated entry) and three routes would otherwise 404 on a port called done |
+| 9b | S3 arena and solutions | **Done 2026-11-13** (`345b132`) — `probe_s3b_arena.py` 20/20 (was 5/20), the negative control at 19/20, corpus still 2 disagreed of 14, ranking oracle green with 10 arena rows |
 | 10 | S4 moderation, comments, inbox | corpus subset + `notifications_e2e` and the queue suite green; estate gates 22 and 45 green |
 | 11 | S5 stats, feeds, admin binaries | corpus + `stats_e2e` and feed parse; estate gates 4, 5, 47 green; timers migrated to `polaris-loops` |
 | 12 | P6 the frontend on SvelteKit + `@polaris/ui` | every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
@@ -493,6 +493,50 @@ Two things this row leaves open, both named rather than buried:
 2. **Gate 49 will need editing at cutover.** One of its eight arms reads "concord's trigger refuses the same
    rows the crate refuses (conformance, not adoption — concord is Go)". That sentence stops being true the
    moment row 13 serves the Rust binary, and the gate does not fail when a comment goes stale.
+
+**Row 9b Done — 2026-11-13, `345b132`.** The gate:
+
+```
+bash /tmp/run_probe.sh probe_s3b_arena.py   -> 20/20 ok, exit 0            (was 5/20)
+negative control, the fallback filter removed -> 19/20 ok
+  FAIL the call's own solution is excluded: got 1 want 0  ([29, 30, 31])
+bash /tmp/run_probe.sh probe_s3_api.py      -> 94/94 ok, exit 0            (no regression)
+CANDIDATE=http://127.0.0.1:8108 concord-parity -> 2 shape(s) disagreed of 14 checked, 3 skipped
+cargo test -p concord-ranking               -> golden suite green, 10 new arena rows
+```
+
+`crates/db/src/arena.rs` carries every number the three routes need: the leaderboard ordered on `r - 2*RD`
+(so an entry with no games cannot outrank a well-attested one on the strength of not having lost yet), the
+charter's coverage weight with §6.4's default, distinct voters, stability hours, coverage computed from the
+feature's real pain through the project's one definition of it, the claims, the ranking with the baseline
+sorted last, and §8.2's eligible collaborators as role AND activity — the conjunction, because counting
+roles alone makes an inactive maintainer eligible and counting activity alone makes an active guest eligible.
+
+`crates/ranking` gained `conservative` and `win_probability`, **and the oracle grew with them**: ten arena
+rows added to `golden_ranking.go`, regenerated from the Go functions still serving production, replayed at
+1e-9. Row 8's lesson, applied without being told: a number this port invented is a number it can be wrong
+about in the same direction and agree with itself about. The golden table is now 166 rows.
+
+Four defects that only running found:
+
+1. `arena_entries.is_baseline` and `solution_coverage.contested` are **real booleans** in the generated
+   baseline (the generator promotes 0/1 columns whose names say boolean), so decoding them as `i64` was a
+   500 on the first readiness read.
+2. The eligibility window compared a `timestamptz` to a `double precision` — `operator does not exist:
+   timestamp with time zone >= double precision`. The Go store compares numbers because SQLite stores
+   numbers; PostgreSQL needs `extract(epoch from ...)`. The same class as R1 and R12, a fourth time.
+3. `pairwise_votes.voter_id REFERENCES users`, which SQLite never enforced (`PRAGMA foreign_keys=OFF`), so
+   the fixture's synthetic voter ids were refused. The constraint doing its job; the fixture was wrong.
+4. The probe's delete list has now been wrong **five times**, every time on the second run and never the
+   first, because the first run creates exactly the rows the second run cannot delete. It walks the FK graph
+   now, deepest first, with every child table named — `pairwise_votes`, `arena_entries`, `arenas`,
+   `positions`, `consensus_calls`, `solution_coverage`, `solutions`, `feature_complaints`, `features`,
+   `complaints`, `members`.
+
+One thing the row leaves deliberately undone: the `solutions` list route (`GET /{feature}/solutions`) is
+still not exposed even though `list_solutions` now exists, because no ledger row names it and adding product
+surface during a port is what the invariants forbid. It is one route over a function that now works, and it
+belongs to whichever row first needs the page that reads it.
 
 ### Blocked
 
