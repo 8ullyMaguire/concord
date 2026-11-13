@@ -968,6 +968,13 @@ create table work_item_claims (
 );
 create unique index work_item_claims_active on work_item_claims (feature_id) where released_at IS NULL;
 
+-- Views. Part of the schema: a view the store queries is not a convenience.
+create view curation_votes as SELECT 'taxonomy' AS kind, proposal_id AS ref_id, user_id FROM taxonomy_consents
+    UNION ALL
+    SELECT 'strategy', proposal_id, user_id FROM strategic_weight_consents
+    UNION ALL
+    SELECT 'act', audit_id, user_id FROM act_reviews;
+
 -- Foreign keys last, so table order in this file cannot matter.
 alter table act_reviews add constraint fk_act_reviews_user_id foreign key (user_id) references users(id);
 alter table act_reviews add constraint fk_act_reviews_audit_id foreign key (audit_id) references audit_log(id);

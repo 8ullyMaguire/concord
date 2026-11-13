@@ -392,6 +392,37 @@ def generate(db_path: str) -> tuple[str, list[str]]:
 
         out.append("")
 
+    # R13: VIEWS ARE PART OF THE SCHEMA.
+    #
+    # The first version of this generator read `type='table'` and nothing else, so `curation_votes` -- which
+    # migration 0035 creates as a VIEW over the three consent tables, deliberately (a table would be a second
+    # place to fall out of step with a ratification) -- never reached PostgreSQL. The queue's own query then
+    # referenced a relation that did not exist, which is how row 10 found it: not by reading the migrations,
+    # but by running the route.
+    #
+    # Views are emitted after the tables and before the foreign keys, because a view may name any table.
+    views = cur.execute(
+        "select name, sql from sqlite_master where type='view' order by name").fetchall()
+    if views:
+        out.append("-- Views. Part of the schema: a view the store queries is not a convenience.")
+        for name, view_sql in views:
+            if not view_sql:
+                notes.append(f"view {name}: no SQL in sqlite_master — view omitted, check it")
+                continue
+            body = view_sql.strip().rstrip(";")
+            # The `AS` that separates CREATE VIEW from its SELECT -- NOT the first ` as ` in the text.
+            # `select 'taxonomy' as kind` has one too, and splitting there produced `create view
+            # curation_votes as kind, proposal_id AS ref_id, ...`, which PostgreSQL accepts as far as the
+            # parser and then refuses as nonsense. Anchored on the CREATE VIEW prefix instead.
+            match = re.match(r"(?is)^\s*create\s+(?:temp\w*\s+)?view\s+(?:if\s+not\s+exists\s+)?"
+                             r"(?:\S+)\s+as\s+", body)
+            if not match:
+                notes.append(f"view {name}: no CREATE VIEW ... AS in its SQL — view omitted, check it")
+                continue
+            select = body[match.end():]
+            out.append(f"create view {pg_ident(name)} as {translate_select(select, notes)};")
+        out.append("")
+
     out.append("-- Foreign keys last, so table order in this file cannot matter.")
     out.extend(fk_sql)
     out.append("")
@@ -399,6 +430,22 @@ def generate(db_path: str) -> tuple[str, list[str]]:
     con.close()
     return "\n".join(out) + "\n", notes
 
+
+
+def translate_select(select: str, notes: list[str]) -> str:
+    """Make a view's SELECT portable.
+
+    Deliberately narrow: it handles what the schema's views actually contain and REFUSES (via a note) rather
+    than guessing. A view whose body needs a real translation is a view this generator cannot be trusted
+    with, and a note is better than a baseline that silently differs from the one the product runs.
+    """
+    out = select
+    # SQLite accepts `true`/`false` as integers; PostgreSQL has real booleans and would refuse `= 1`.
+    if re.search(r"\bIFNULL\s*\(", out, re.IGNORECASE):
+        notes.append("view body uses IFNULL — retained; PostgreSQL spells it COALESCE, check it")
+    if re.search(r"\bGROUP_CONCAT\s*\(", out, re.IGNORECASE):
+        notes.append("view body uses GROUP_CONCAT — PostgreSQL spells it string_agg, check it")
+    return out
 
 def main() -> int:
     ap = argparse.ArgumentParser()

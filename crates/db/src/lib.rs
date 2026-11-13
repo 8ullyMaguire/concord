@@ -14,6 +14,7 @@ pub mod charter;
 pub mod complaints;
 pub mod consensus;
 pub mod consensus_writes;
+pub mod curation;
 pub mod feature_writes;
 pub mod features;
 pub mod holds;
