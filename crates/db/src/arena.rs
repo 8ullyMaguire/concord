@@ -1258,3 +1258,19 @@ pub async fn verify(pool: &PgPool, arena_id: i64) -> Result<Vec<Verification>, s
         })
         .collect())
 }
+
+/// How many solutions exist for a feature — the denominator of the standings panel's "omitted" count.
+///
+/// `COUNT(*) FROM solutions WHERE feature_id = $1`, which is NOT the same set the standings render: the standings walk
+/// the arena and skip entries whose solution row is gone, so a solution that was deleted but whose arena entry survives
+/// is counted here and not shown there. That asymmetry is the Go's, and the panel's own comment explains why an explicit
+/// count exists at all ("one more row" is not a witness of "one more solution").
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn count_solutions(pool: &PgPool, feature_id: i64) -> Result<i64, sqlx::Error> {
+    sqlx::query_scalar::<_, i64>("select count(*) from solutions where feature_id = $1")
+        .bind(feature_id)
+        .fetch_one(pool)
+        .await
+}

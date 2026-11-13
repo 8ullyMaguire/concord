@@ -73,6 +73,10 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/projects/{project_id}/arenas/{arena_id}/verification",
             get(arena_verification),
         )
+        .route(
+            "/api/v1/projects/{project_id}/solutions",
+            get(project_solutions),
+        )
         .route("/api/v1/projects/{slug}/features/{feature}/deps", get(feature_deps))
         .route("/api/v1/projects/{slug}/features/{feature}/evidence", get(feature_evidence))
         // `{slug}` and not `{project_id}`: axum refuses two routes that differ only in a parameter NAME ("Insertion
@@ -3453,5 +3457,67 @@ async fn arena_verification(
         "agrees": divergent == 0,
         "divergent": divergent,
         "entries": entries,
+    })))
+}
+
+/// How many solutions ONE feature's standings render.
+///
+/// Per feature, not per project: truncating a project's whole list would hide some features entirely, and truncating
+/// within a feature hides that feature's runner-ups, which is the thing standings exist to show.
+const STANDINGS_PER_FEATURE: i64 = 5;
+
+/// `GET /projects/{id}/solutions` — the project page's solution standings, grouped per feature.
+///
+/// Two rules that are load-bearing and easy to "improve" into bugs:
+///
+/// * standings are **grouped per feature, never merged**. A solution's score is computed against the arena entries
+///   competing with it, so a project-wide "best solution" ranks numbers that were never comparable — and a merged list
+///   would let one feature's do-nothing baseline outrank another feature's real proposal;
+/// * features with **no** solutions are included with an empty array and counted in `features_without`. "One feature has
+///   proposals and four do not" is the useful sentence; a panel that omits the four reads as if one were the project.
+async fn project_solutions(
+    State(state): State<AppState>,
+    Path(project_id): Path<i64>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = readable_project(&state, project_id, &headers).await?;
+    // Status "" is every status: a shipped feature whose proposals were all withdrawn is still part of the roadmap, and
+    // a standings panel that hides closed work is a panel that erases it.
+    let features = concord_db::features::list_features(&state.pool, project.id, "")
+        .await
+        .map_err(internal)?;
+    let mut rows = Vec::with_capacity(features.len());
+    let mut with_solutions = 0;
+    let mut without = 0;
+    for feature in &features {
+        let scores = concord_db::arena::list_solutions(&state.pool, feature.id, STANDINGS_PER_FEATURE)
+            .await
+            .map_err(internal)?;
+        // The omitted count comes from an explicit COUNT, not from asking for limit+1 rows: the standings walk the
+        // arena and skip entries whose solution row is gone, so "one more row" is not a witness of "one more solution".
+        let total = concord_db::arena::count_solutions(&state.pool, feature.id)
+            .await
+            .map_err(internal)?;
+        let shown = i64::try_from(scores.len()).unwrap_or(0);
+        if shown == 0 {
+            without += 1;
+        } else {
+            with_solutions += 1;
+        }
+        rows.push(serde_json::json!({
+            "feature_id": feature.id,
+            "feature_title": feature.title,
+            // Never null: a feature nobody has proposed for is a normal state, and an empty array is the honest answer
+            // where a 404 reads as breakage.
+            "solutions": scores,
+            "shown": shown,
+            "omitted": total.saturating_sub(shown),
+        }));
+    }
+    Ok(Json(serde_json::json!({
+        "project_id": project.id,
+        "features": rows,
+        "features_with_solutions": with_solutions,
+        "features_without": without,
     })))
 }
