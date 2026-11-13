@@ -50,6 +50,7 @@ pub fn router(state: AppState) -> Router {
         // own name and a handler reading a numeric id would get the slug — the Go comment records the same bug
         // chi had ("requireProjectID reads project_id, gets "", and every call 404s with project \"\"").
         .route("/api/v1/projects/{project_id}/capabilities", get(list_capabilities))
+        .route("/api/v1/projects/{project_id}/field-reports", get(list_field_reports))
         .route("/api/v1/projects/{project_id}/lists", get(project_lists))
         .route("/api/v1/projects/{project_id}/lists/", get(project_lists))
         .route("/api/v1/projects", get(list_projects))
@@ -2784,6 +2785,19 @@ async fn list_capabilities(
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let project = readable_project(&state, project_id, &headers).await?;
     let panel = concord_db::capabilities::panel(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(panel)))
+}
+
+/// `GET /api/v1/projects/{id}/field-reports` — §4.7's "worked for 83% of reporters on arm64".
+async fn list_field_reports(
+    State(state): State<AppState>,
+    Path(project_id): Path<i64>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = readable_project(&state, project_id, &headers).await?;
+    let panel = concord_db::field_reports::panel(&state.pool, project.id)
         .await
         .map_err(internal)?;
     Ok(Json(serde_json::json!(panel)))

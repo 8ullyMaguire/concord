@@ -26,6 +26,7 @@ pub mod proposals;
 pub mod snapshot;
 pub mod search;
 pub mod capabilities;
+pub mod field_reports;
 pub mod criteria;
 pub mod members;
 pub mod metrics;
