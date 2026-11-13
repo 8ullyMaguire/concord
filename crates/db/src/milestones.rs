@@ -307,3 +307,419 @@ pub async fn milestone(
         && matches!(milestone.status.as_str(), "planned" | "active");
     Ok(Some(milestone))
 }
+
+/// A refusal from a milestone write.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Refused {
+    /// No such milestone in this project. Another project's milestone is **not found**, never forbidden: a distinct
+    /// status for "exists but not yours" is an existence oracle.
+    NotFound,
+    /// Malformed or not applicable: no title, an unknown status, a close with open features and no successor, a
+    /// feature that is not in this milestone, a milestone succeeding itself.
+    Invalid(String),
+    /// Already `done` or `cancelled` and being closed again.
+    Conflict(String),
+    /// A title already used in this project.
+    Duplicate(String),
+}
+
+/// The four statuses. `done` and `cancelled` are only reachable through [`close`], because that is the only path that
+/// decides what happens to the features still open under it.
+pub const STATUSES: [&str; 4] = ["planned", "active", "done", "cancelled"];
+
+/// Create a milestone, `planned` and dated or not.
+///
+/// `target_date` is unix seconds or nothing: an undated milestone has made no promise, which is why it sorts last
+/// everywhere.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn create(
+    pool: &PgPool,
+    project_id: i64,
+    title: &str,
+    body: &str,
+    target_date: Option<f64>,
+) -> Result<Result<Milestone, Refused>, sqlx::Error> {
+    if title.is_empty() {
+        return Ok(Err(Refused::Invalid("title is required".to_string())));
+    }
+    // `public_id` is NOT NULL with no default on this table too — see the note in `complaints::create`.
+    let inserted = sqlx::query_scalar::<_, i64>(
+        "insert into milestones (project_id, title, body, target_date, status, created_at, public_id)
+         values ($1, $2, $3, case when $4::double precision is null then null else to_timestamp($4) end,
+                 'planned', now(), $5) returning id",
+    )
+    .bind(project_id)
+    .bind(title)
+    .bind(body)
+    .bind(target_date)
+    .bind(ulid::Ulid::new().to_string())
+    .fetch_one(pool)
+    .await;
+    let id = match inserted {
+        Ok(id) => id,
+        Err(sqlx::Error::Database(database)) if database.is_unique_violation() => {
+            return Ok(Err(Refused::Duplicate(format!(
+                "a milestone called {title:?} already exists in this project"
+            ))));
+        }
+        Err(error) => return Err(error),
+    };
+    Ok(Ok(milestone(pool, project_id, id)
+        .await?
+        .ok_or(sqlx::Error::RowNotFound)?))
+}
+
+/// Edit a milestone's title, body and date. Status is not editable here: it moves through [`set_status`] and [`close`],
+/// each of which writes an act.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn update(
+    pool: &PgPool,
+    project_id: i64,
+    id: i64,
+    title: &str,
+    body: &str,
+    target_date: Option<f64>,
+) -> Result<Result<Milestone, Refused>, sqlx::Error> {
+    if title.is_empty() {
+        return Ok(Err(Refused::Invalid("title is required".to_string())));
+    }
+    let updated = sqlx::query(
+        "update milestones set title = $1, body = $2,
+                target_date = case when $3::double precision is null then null else to_timestamp($3) end
+          where id = $4 and project_id = $5",
+    )
+    .bind(title)
+    .bind(body)
+    .bind(target_date)
+    .bind(id)
+    .bind(project_id)
+    .execute(pool)
+    .await;
+    match updated {
+        Ok(result) if result.rows_affected() == 0 => {
+            return Ok(Err(Refused::NotFound));
+        }
+        Ok(_) => {}
+        Err(sqlx::Error::Database(database)) if database.is_unique_violation() => {
+            return Ok(Err(Refused::Duplicate(format!(
+                "a milestone called {title:?} already exists in this project"
+            ))));
+        }
+        Err(error) => return Err(error),
+    }
+    Ok(Ok(milestone(pool, project_id, id)
+        .await?
+        .ok_or(sqlx::Error::RowNotFound)?))
+}
+
+/// Move a milestone between `planned` and `active`, writing the act.
+///
+/// A **no-op when the status already matches**, and no audit row in that case: recording "active -> active" as an act
+/// makes the log noisy and the history unreadable.
+///
+/// Any of the four statuses is accepted here, `done` and `cancelled` included, which is what the reference does — the
+/// `close` route is the only path that *reconciles* the features, but the status route can still set the word. That is a
+/// wart: it lets a client mark a milestone done with open features under it, which `close` exists to prevent. Carried
+/// as-is and recorded here rather than silently tightened, because a page that uses this route would start failing.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn set_status(
+    pool: &PgPool,
+    project_id: i64,
+    id: i64,
+    actor_id: i64,
+    status: &str,
+) -> Result<Result<Milestone, Refused>, sqlx::Error> {
+    if !STATUSES.contains(&status) {
+        return Ok(Err(Refused::Invalid(format!(
+            "unknown milestone status {status:?}"
+        ))));
+    }
+    let Some(current) = milestone(pool, project_id, id).await? else {
+        return Ok(Err(Refused::NotFound));
+    };
+    if current.status == status {
+        return Ok(Ok(current));
+    }
+    sqlx::query("update milestones set status = $1 where id = $2 and project_id = $3")
+        .bind(status)
+        .bind(id)
+        .bind(project_id)
+        .execute(pool)
+        .await?;
+    insert_audit(
+        pool,
+        project_id,
+        actor_id,
+        "milestone.status",
+        "milestone",
+        id,
+        &format!("{} -> {status}", current.status),
+    )
+    .await?;
+    Ok(Ok(milestone(pool, project_id, id)
+        .await?
+        .ok_or(sqlx::Error::RowNotFound)?))
+}
+
+/// Close a milestone, deciding what happens to the features still open under it (spec §4.4).
+///
+/// `done` with open features is a lie and a blocked close is a trap, so the two are reconciled explicitly:
+///
+/// * **a successor moves them** — one audit act per moved feature, so "why did this feature move" is answerable from the
+///   log afterwards;
+/// * **a cancellation moves none** — the features stay where they are, which is what "we are not doing this" means for
+///   work already grouped under it;
+/// * **`done` with open features and no successor is refused** with the count, because the alternative is a milestone
+///   that says done while three of its features are not.
+///
+/// Returns the milestone and how many features moved.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn close(
+    pool: &PgPool,
+    project_id: i64,
+    id: i64,
+    actor_id: i64,
+    successor: Option<i64>,
+    cancel: bool,
+) -> Result<Result<(Milestone, i64), Refused>, sqlx::Error> {
+    let Some(current) = milestone(pool, project_id, id).await? else {
+        return Ok(Err(Refused::NotFound));
+    };
+    if current.status == "done" || current.status == "cancelled" {
+        return Ok(Err(Refused::Conflict(format!(
+            "milestone {id} is already {}",
+            current.status
+        ))));
+    }
+    if let Some(successor_id) = successor {
+        if successor_id == id {
+            return Ok(Err(Refused::Invalid(
+                "a milestone cannot succeed itself".to_string(),
+            )));
+        }
+        if milestone(pool, project_id, successor_id).await?.is_none() {
+            return Ok(Err(Refused::NotFound));
+        }
+    } else if !cancel && current.open > 0 {
+        return Ok(Err(Refused::Invalid(format!(
+            "{} feature(s) are still open; name a successor milestone or cancel instead",
+            current.open
+        ))));
+    }
+
+    let mut tx = pool.begin().await?;
+    let mut moved_ids: Vec<i64> = Vec::new();
+    if let Some(successor_id) = successor {
+        moved_ids = sqlx::query_scalar(
+            "select id from features where milestone_id = $1 and status not in ('shipped','rejected')",
+        )
+        .bind(id)
+        .fetch_all(&mut *tx)
+        .await?;
+        for feature in &moved_ids {
+            sqlx::query("update features set milestone_id = $1 where id = $2")
+                .bind(successor_id)
+                .bind(feature)
+                .execute(&mut *tx)
+                .await?;
+        }
+    }
+
+    let status = if cancel { "cancelled" } else { "done" };
+    sqlx::query("update milestones set status = $1 where id = $2")
+        .bind(status)
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+    let mut detail = format!("{} -> {status}", current.status);
+    if let Some(successor_id) = successor {
+        detail.push_str(&format!(
+            "; {} feature(s) moved to milestone {successor_id}",
+            moved_ids.len()
+        ));
+    }
+    // One statement for the milestone, then one per moved feature, all in the same transaction: a feature that moved with
+    // no record is the exact gap this rule exists to prevent.
+    audit_in(
+        &mut tx,
+        project_id,
+        actor_id,
+        "milestone.status",
+        "milestone",
+        id,
+        &detail,
+    )
+    .await?;
+    if let Some(successor_id) = successor {
+        for feature in &moved_ids {
+            audit_in(
+                &mut tx,
+                project_id,
+                actor_id,
+                "feature.milestone",
+                "feature",
+                *feature,
+                &format!("milestone {id} -> {successor_id} (closed)"),
+            )
+            .await?;
+        }
+    }
+    tx.commit().await?;
+    let moved = i64::try_from(moved_ids.len()).unwrap_or(i64::MAX);
+    Ok(Ok((
+        milestone(pool, project_id, id)
+            .await?
+            .ok_or(sqlx::Error::RowNotFound)?,
+        moved,
+    )))
+}
+
+/// Append a batch of features to a milestone (§6).
+///
+/// Positions **continue after the current tail**, so a batch lands after what is already there rather than interleaving.
+/// Every feature must belong to this project, or the batch is refused: a feature id from another project would otherwise
+/// be pulled into this milestone, which is a cross-project write dressed as a bulk assign.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn assign_features(
+    pool: &PgPool,
+    project_id: i64,
+    milestone_id: i64,
+    feature_ids: &[i64],
+) -> Result<Result<i64, Refused>, sqlx::Error> {
+    if milestone(pool, project_id, milestone_id).await?.is_none() {
+        return Ok(Err(Refused::NotFound));
+    }
+    if feature_ids.is_empty() {
+        return Ok(Err(Refused::Invalid("no features named".to_string())));
+    }
+    let mut tx = pool.begin().await?;
+    let mut tail: i64 = sqlx::query_scalar(
+        "select coalesce(max(milestone_position), 0) from features where milestone_id = $1",
+    )
+    .bind(milestone_id)
+    .fetch_one(&mut *tx)
+    .await?;
+    let mut done = 0i64;
+    for feature in feature_ids {
+        let owner: Option<i64> = sqlx::query_scalar("select project_id from features where id = $1")
+            .bind(feature)
+            .fetch_optional(&mut *tx)
+            .await?;
+        if owner != Some(project_id) {
+            return Ok(Err(Refused::NotFound));
+        }
+        tail += 1;
+        sqlx::query(
+            "update features set milestone_id = $1, milestone_position = $2, updated_at = now() where id = $3",
+        )
+        .bind(milestone_id)
+        .bind(tail)
+        .bind(feature)
+        .execute(&mut *tx)
+        .await?;
+        done += 1;
+    }
+    tx.commit().await?;
+    Ok(Ok(done))
+}
+
+/// Write an explicit order for a milestone's features, one-based from the array.
+///
+/// A feature named that is **not in this milestone** is refused rather than silently skipped: the caller believed it was
+/// reordering the whole set, and a quiet skip leaves two features sharing a position.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn reorder(
+    pool: &PgPool,
+    project_id: i64,
+    milestone_id: i64,
+    feature_ids: &[i64],
+) -> Result<Result<(), Refused>, sqlx::Error> {
+    if milestone(pool, project_id, milestone_id).await?.is_none() {
+        return Ok(Err(Refused::NotFound));
+    }
+    let mut tx = pool.begin().await?;
+    for (index, feature) in feature_ids.iter().enumerate() {
+        let current: Option<Option<i64>> =
+            sqlx::query_scalar("select milestone_id from features where id = $1 and project_id = $2")
+                .bind(feature)
+                .bind(project_id)
+                .fetch_optional(&mut *tx)
+                .await?;
+        match current {
+            None => return Ok(Err(Refused::NotFound)),
+            Some(found) if found != Some(milestone_id) => {
+                return Ok(Err(Refused::Invalid(format!(
+                    "feature {feature} is not in this milestone"
+                ))));
+            }
+            Some(_) => {}
+        }
+        sqlx::query("update features set milestone_position = $1 where id = $2")
+            .bind(i64::try_from(index + 1).unwrap_or(i64::MAX))
+            .bind(feature)
+            .execute(&mut *tx)
+            .await?;
+    }
+    tx.commit().await?;
+    Ok(Ok(()))
+}
+
+async fn insert_audit(
+    pool: &PgPool,
+    project_id: i64,
+    actor_id: i64,
+    action: &str,
+    entity: &str,
+    entity_id: i64,
+    detail: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "insert into audit_log (project_id, actor_id, action, entity, entity_id, detail, created_at)
+         values ($1, $2, $3, $4, $5, $6, now())",
+    )
+    .bind(project_id)
+    .bind(actor_id)
+    .bind(action)
+    .bind(entity)
+    .bind(entity_id)
+    .bind(detail)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
+async fn audit_in(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    project_id: i64,
+    actor_id: i64,
+    action: &str,
+    entity: &str,
+    entity_id: i64,
+    detail: &str,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "insert into audit_log (project_id, actor_id, action, entity, entity_id, detail, created_at)
+         values ($1, $2, $3, $4, $5, $6, now())",
+    )
+    .bind(project_id)
+    .bind(actor_id)
+    .bind(action)
+    .bind(entity)
+    .bind(entity_id)
+    .bind(detail)
+    .execute(&mut **tx)
+    .await?;
+    Ok(())
+}
