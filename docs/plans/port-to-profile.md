@@ -1276,6 +1276,30 @@ The visibility decision belongs to the **list's** project, not the one in the UR
 precisely the case an `int64 project_id` made unreachable, because the scan failed and the detail route blamed the
 database. A non-numeric list id is 400 (the caller's mistake); an id nobody created is 404.
 
+### Row 11 — part 23: the missing list is two lists (2026-11-13, `3f073e7`)
+
+```
+gate (before): go routes: 216   port routes: 95
+               123 go route(s) the port does not answer
+gate (after):  go routes: 216   port routes: 95   missing: 123 (113 json, 10 page)
+               113 JSON route(s) the port does not answer (the row's work)
+               10 PAGE route(s) the Go renders and the frontend serves (row 12)
+```
+
+The Go registers **HTML page routes beside its JSON API** (`/projects/{slug}/rank`, `/ranking`, `/settings`,
+`/finder`, `/login`, `/register`, `/contribute`, `/taxonomy`, `/`). The estate profile serves those from the frontend,
+so porting them as JSON is work created to be deleted — and leaving them in one bucket made the row's own state list
+wrong by ten. `routes.py` now maps each registration to its handler and asks whether the handler calls `writeJSON` or
+`s.render(`; an unfindable handler counts as **JSON**, because guessing "page" would silently drop real API work.
+
+Two facts the classification forced out: `normalise()` strips `/api/v1`, so an API route and a page route of the SAME
+shape collide — registrations are now a LIST per shape and a shape is JSON when any handler answers JSON; and the
+handler-name regex first dropped closure registrations, taking the go count 216 → **215**. A count going DOWN is never
+an improvement in this tool, so it now falls back to recording the route with an empty handler.
+
+**Decision (dated, mine): the row's gate is the JSON count.** 113 is the number to drive to zero; the 10 page routes
+belong to row 12 and are listed separately so neither is hidden behind the other.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
