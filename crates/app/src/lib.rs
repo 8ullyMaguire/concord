@@ -60,6 +60,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/projects/{project_id}/tallies", get(feature_tallies))
         .route("/api/v1/projects/{slug}/documents/kinds", get(document_kinds))
         .route("/api/v1/projects/{slug}/documents/search", get(search_documents))
+        .route("/api/v1/projects/{project_id}/rank/composite", post(composite_rank))
         .route("/api/v1/projects/{slug}/features/{feature}/deps", get(feature_deps))
         .route("/api/v1/projects/{slug}/features/{feature}/evidence", get(feature_evidence))
         // `{slug}` and not `{project_id}`: axum refuses two routes that differ only in a parameter NAME ("Insertion
@@ -3136,4 +3137,108 @@ async fn search_documents(
         // A malformed search expression is the caller's mistake, not the server's.
         Err(message) => Err(ApiError::invalid_request(message)),
     }
+}
+
+/// The body of `rank/composite`. Every field is optional: an absent body is "rank with every criterion's default".
+#[derive(Debug, Default, serde::Deserialize)]
+struct CompositeRequest {
+    #[serde(default)]
+    weights: std::collections::BTreeMap<String, f64>,
+    #[serde(default)]
+    profile: String,
+    #[serde(default)]
+    include_inactive: bool,
+    #[serde(default)]
+    require_min_rd: bool,
+    #[serde(default)]
+    limit: i64,
+}
+
+/// `POST /api/v1/projects/{id}/rank/composite` — rank features across criteria, with the explanation attached.
+///
+/// The body is optional and an empty one is meaningful ("rank with every criterion's default"). Naming ANY weight
+/// makes that list the whole query: an unnamed active criterion is excluded, not defaulted — the difference this
+/// route's probe is built around.
+async fn composite_rank(
+    State(state): State<AppState>,
+    Path(project_id): Path<i64>,
+    headers: HeaderMap,
+    body: Option<Json<CompositeRequest>>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = readable_project(&state, project_id, &headers).await?;
+    let request = body.map(|Json(inner)| inner).unwrap_or_default();
+
+    let mut weights: Vec<concord_ranking::composite::Weight> = Vec::new();
+    if !request.weights.is_empty() {
+        for (key, value) in &request.weights {
+            // A non-numeric key is the caller's mistake, and the key is echoed so the mistake is actionable.
+            let Ok(criterion_id) = key.parse::<i64>() else {
+                return Err(ApiError::invalid_request(format!(
+                    "weights keys must be criterion ids: {key}"
+                )));
+            };
+            weights.push(concord_ranking::composite::Weight {
+                criterion_id,
+                weight: *value,
+            });
+        }
+    } else if !request.profile.is_empty() {
+        match concord_db::criteria::profile_weights(&state.pool, project.id, &request.profile)
+            .await
+            .map_err(internal)?
+        {
+            Some(saved) => weights = saved,
+            // A profile that does not exist is a 404: an empty weight list would silently answer a typo with the
+            // default ranking, which is a plausible wrong answer.
+            None => return Err(ApiError::not_found(format!("profile {}", request.profile))),
+        }
+    }
+
+    let criteria = concord_db::criteria::list(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    if criteria.is_empty() {
+        return Ok(Json(serde_json::json!({ "results": [], "count": 0 })));
+    }
+    let ratings = concord_db::criteria::criterion_ratings(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    let mapped: Vec<concord_ranking::composite::Criterion> = criteria
+        .iter()
+        .map(|criterion| concord_ranking::composite::Criterion {
+            id: criterion.id,
+            slug: criterion.slug.clone(),
+            name: criterion.name.clone(),
+            direction: if criterion.direction == "lower_is_better" {
+                concord_ranking::composite::Direction::Lower
+            } else {
+                concord_ranking::composite::Direction::Higher
+            },
+            default_weight: criterion.default_weight,
+            active: criterion.active,
+        })
+        .collect();
+    let mut results = concord_ranking::composite::composite(
+        &mapped,
+        &ratings,
+        &weights,
+        concord_ranking::composite::Options {
+            include_inactive: request.include_inactive,
+            require_min_rd: request.require_min_rd,
+        },
+    );
+    if request.limit > 0 && i64::try_from(results.len()).unwrap_or(0) > request.limit {
+        results.truncate(usize::try_from(request.limit).unwrap_or(usize::MAX));
+    }
+    // Confidence rides beside the rank so a client can tell a settled ordering from a provisional one without
+    // re-deriving it from the contributions.
+    let out: Vec<concord_ranking::composite::Ranked> = results
+        .into_iter()
+        .map(|result| concord_ranking::composite::Ranked {
+            confidence: concord_ranking::composite::total_confidence(&result.contributions),
+            result,
+        })
+        .collect();
+    let count = out.len();
+    Ok(Json(serde_json::json!({ "results": out, "count": count })))
 }

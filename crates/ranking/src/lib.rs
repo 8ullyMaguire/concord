@@ -14,6 +14,7 @@
 //!   collapsed RD from 350 to 290, and priority is scored on `r - 2·RD`, so a brand-new account moved
 //!   the number that ranks by 119 points while looking like it had done nothing.
 
+pub mod composite;
 pub mod health;
 
 use std::f64::consts::PI;

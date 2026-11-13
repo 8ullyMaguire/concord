@@ -6,3 +6,4 @@ description = "Concord's priority mathematics: Glicko-2, pain and priority score
 publish = false
 
 [dependencies]
+serde.workspace = true

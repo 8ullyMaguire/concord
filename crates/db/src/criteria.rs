@@ -301,3 +301,77 @@ pub async fn entries(pool: &PgPool, list_id: i64) -> Result<Vec<Entry>, sqlx::Er
         )
         .collect())
 }
+
+/// Every criterion rating of a project, grouped by criterion — the input `composite` needs.
+///
+/// Read in ONE query rather than per criterion: N+1 reads over a grid that is only ever read whole, and the
+/// transaction-free pool makes N round trips visible in the response time.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn criterion_ratings(
+    pool: &PgPool,
+    project_id: i64,
+) -> Result<std::collections::BTreeMap<i64, Vec<concord_ranking::composite::Rating>>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (i64, i64, f64, f64, i64)>(
+        "select cr.criterion_id, cr.feature_id, cr.r, cr.rd, cr.games
+           from criterion_ratings cr join criteria c on c.id = cr.criterion_id
+          where c.project_id = $1
+          order by cr.criterion_id, cr.feature_id",
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+    let mut grouped: std::collections::BTreeMap<i64, Vec<concord_ranking::composite::Rating>> =
+        std::collections::BTreeMap::new();
+    for (criterion_id, feature_id, r, rd, games) in rows {
+        grouped
+            .entry(criterion_id)
+            .or_default()
+            .push(concord_ranking::composite::Rating {
+                feature_id,
+                r,
+                rd,
+                games,
+            });
+    }
+    Ok(grouped)
+}
+
+/// A saved profile's weights, by criteria id.
+///
+/// A profile that does not exist is an error and not an empty weight list: an empty list means "rank with every
+/// default", which is a DIFFERENT query and would answer a typo with a plausible ranking.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn profile_weights(
+    pool: &PgPool,
+    project_id: i64,
+    slug: &str,
+) -> Result<Option<Vec<concord_ranking::composite::Weight>>, sqlx::Error> {
+    let exists = sqlx::query_scalar::<_, i64>(
+        "select count(*) from criteria_profiles where project_id = $1 and slug = $2",
+    )
+    .bind(project_id)
+    .bind(slug)
+    .fetch_one(pool)
+    .await?;
+    if exists == 0 {
+        return Ok(None);
+    }
+    let rows = sqlx::query_as::<_, (i64, f64)>(
+        "select w.criterion_id, w.weight
+           from criteria_profile_weights w join criteria_profiles p on p.id = w.profile_id
+          where p.project_id = $1 and p.slug = $2",
+    )
+    .bind(project_id)
+    .bind(slug)
+    .fetch_all(pool)
+    .await?;
+    Ok(Some(
+        rows.into_iter()
+            .map(|(criterion_id, weight)| concord_ranking::composite::Weight { criterion_id, weight })
+            .collect(),
+    ))
+}

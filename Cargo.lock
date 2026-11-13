@@ -236,6 +236,7 @@ dependencies = [
  "chrono",
  "concord-db",
  "concord-governance",
+ "concord-ranking",
  "polaris-core",
  "serde",
  "serde_json",
@@ -303,6 +304,9 @@ dependencies = [
 [[package]]
 name = "concord-ranking"
 version = "0.0.0"
+dependencies = [
+ "serde",
+]
 
 [[package]]
 name = "const-oid"
