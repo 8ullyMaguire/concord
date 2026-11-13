@@ -2411,6 +2411,56 @@ an early call needs no reason:
 **Two rules the fixture had to learn:** a call must be *about* something — the store refuses a feature with no linked
 complaint — and `complaints.public_id` has no default, so an inserted complaint needs one.
 
+### Row 11 — part 48: B2c, filing a solution (2026-11-13, `2194e16`)
+
+```
+gate (before): POST /projects/{}/features/{}/solutions -> 404
+gate (after):
+  probe_s5_solutionwrites.py -> 24/24 ok
+  solutioncall 24/24, workitems 44/44, featurewrites 37/37, listwrites 41/41, criteriawrites 45/45,
+  projsettings 28/28, milestonewrites 41/41, complaintwrites 40/40, requestwrites 43/43, filing 31/31,
+  requests 23/23, accept 15/15
+  routes.py -> go 216 / port 156   missing: 62 (52 json, 10 page)
+  concord-parity -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-db --lib -> 38 passed
+```
+
+`crates/db/src/solution_writes.rs` (new): `file_solution` + `NewSolution` + `Refused`, with `ensure_solution_arena`,
+`inherit_parent_rating`, `set_baseline`.
+
+**Filing one solution is three writes that have to agree** — the solution, the arena that ranks it, and its slot in that
+arena — and the difference between all three and some of them is invisible from every read the product has, so most of the
+assertions are about the other two writes.
+
+Rules: the feature's author cannot author its solutions (§5.2); `integrate-external` needs a catalog link; a
+**complementary** solution is refused (stackable, so the rival arena would ask the engine to compare "do A, then B"
+against "C"); the first `do-nothing` becomes the permanent baseline and a second **demotes** the first (its votes are
+history) rather than deleting it; a fork inherits the parent's rating with **doubled, unclamped** RD.
+
+**Negative controls.**
+
+```
+the feature's author may author its solutions:
+  FAIL the feature's author may not author its solutions: got 201 want 403
+  FAIL no refusal left an arena behind: got 1 want 0                                     22/24
+the previous baseline is not demoted:
+  FAIL a second do-nothing DEMOTES the first rather than adding one: got [107] want [None]  23/24
+```
+
+**Four things found by running it:**
+
+* this schema's timestamps are **`timestamptz`, not the Go's float epoch** — binding an `f64` gave *"column created_at is
+  of type timestamp with time zone but expression is of type double precision"*. The port's convention is `now()` on write
+  and `extract(epoch …)` on read;
+* **`arena_entries` has a composite primary key and no surrogate `id`**, so `parent_entry_id` has nothing to point at. The
+  fork relation lives on `solutions.parent_solution_id`, which is a real foreign key — and the probe was asserting a column
+  that cannot be populated until the schema corrected it;
+* a fork of a solution outside the feature hit the FK as a **500**; the parent is now checked before the insert, so it is a
+  400 for a mistake the caller can fix in one field;
+* I removed a placeholder from the inherit `UPDATE` with a scripted patch and **left its `.bind(parent_id)` behind**, so the
+  fork updated the *parent's* row and then its own. The ratings looked plausible at a glance; only the RD gave it away.
+  Read the bind list after every patched SQL statement.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
