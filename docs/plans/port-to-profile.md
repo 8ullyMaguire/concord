@@ -1254,6 +1254,28 @@ Two schema facts found by failing: `milestones.target_date` is a **TIMESTAMPTZ**
 unix stamp) and must be converted in SQL, and `at_risk` is derived in two places that must agree — the getter reuses
 the list's exact predicate rather than restating it.
 
+### Row 11 — part 22: a list and its ranked entries (2026-11-13, `37fe698`)
+
+```
+gate (before): GET /projects/{project_id}/lists/{id}          -> 404
+               GET /projects/{project_id}/lists/{id}/entries  -> 404
+gate (after):
+  probe_s5_lists.py -> 16/16 ok
+  routes.py         -> go 216 / port 95   (123 remain)
+  cargo test -p concord-db --lib -> 30 passed
+  concord-parity    -> 0 shape(s) disagreed of 16 checked, 5 skipped
+```
+
+§16's "entries are **ranked**, not just listed": the fixture's ratings are in neither insertion nor alphabetical order
+and the removed entry holds the highest rating, so title order, id order and rating-without-the-visibility-filter each
+yield a different plausible list. Negative control (ordered by title, 13/16): `FAIL ranked by rating, not by title or
+id: got [484, 485, 486] want [485, 486, 484]`.
+
+The visibility decision belongs to the **list's** project, not the one in the URL: a list owned by a private project is
+404 through a public project's URL, and an **instance-wide** list (`project_id` NULL) is readable everywhere by §16 —
+precisely the case an `int64 project_id` made unreachable, because the scan failed and the detail route blamed the
+database. A non-numeric list id is 400 (the caller's mistake); an id nobody created is 404.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
