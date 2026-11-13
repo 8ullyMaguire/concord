@@ -40,6 +40,39 @@ quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 
 
 | 7 | S1 projects, documents, board | corpus subset identical + `projects_e2e`, `board_e2e`, `pages_e2e` green against the candidate |
+
+**Row 7 in progress** (2026-11-13) — the service runs, and four of the five S1 shapes it owns are
+already byte-identical to the corpus:
+
+```
+$ CONCORD_DB_URL=... /tmp/concord-cli check
+73 project(s)
+$ /tmp/concord-parity --corpus /tmp/s1corpus.json    # CANDIDATE=http://127.0.0.1:8107
+/api/v1/projects/concord/documents: ok ([12:{author_id:number:int,body:string:# Known issues...
+1 shape(s) disagreed of 5 checked, 0 skipped        # the board, and only the board
+```
+
+Landed: `crates/db` (pool + `projects.rs` porting `projectColumns` and the document query),
+`crates/app` (router, `polaris_core::ApiError` rather than the plan's fifth copy of the envelope),
+`crates/cli` (`serve`, `check`). Routes answering: `/healthz`, `/api/v1/healthz`,
+`/api/v1/version`, `/api/v1/projects`, `/api/v1/projects/{slug}`, `.../board`, `.../documents`,
+`.../documents/{document}`, and the 404 envelope for anything else.
+
+What the corpus caught that reading the Go code had not, all three now fixed:
+
+- `license` is **absent** when empty (`omitempty`) while `newcomer_response_hours` is **present and
+  null** — two adjacent fields, two different nil conventions, visible only in the recorded JSON.
+- `/documents` carries `body` and `author_id` and is ordered `by kind, slug`: my first version
+  omitted both fields and ordered by id, so the first document was `readme`/id 7 instead of
+  `adr`/known-issues.
+- Timestamps are `float64` unix seconds in Go and `encoding/json` prints a whole value without a
+  decimal point, so an `f64` in Rust prints `1790681280.0` and the structural comparison fails on
+  the *type*. `ser_unix` keeps whole seconds integral.
+
+**What is left on S1:** the board. `GetBoardCards` returns 50 rows for project 49, but the corpus
+body carries **370** cards: `GetBoardForMilestone` derives a card for every feature that has none
+(`placed` is computed from the unfiltered cards, board.go:92-102), and 320 of 370 features are
+unplaced. That derivation is the board, not a detail of it, and it is not written yet.
 | 8 | S2 ideas, complaints, ranking | corpus subset + `rank_*`, `milestones_e2e`, `feature_*` green; ranking mutation arms killed |
 | 9 | S3 consensus, governance, ledger | corpus subset + `consensus_*`, `audit_e2e` green; estate gate 49 green |
 | 10 | S4 moderation, comments, inbox | corpus subset + `notifications_e2e` and the queue suite green; estate gates 22 and 45 green |
