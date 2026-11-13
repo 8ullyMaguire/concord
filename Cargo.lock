@@ -274,6 +274,10 @@ name = "concord-domain"
 version = "0.0.0"
 
 [[package]]
+name = "concord-governance"
+version = "0.0.0"
+
+[[package]]
 name = "concord-parity"
 version = "0.0.0"
 dependencies = [

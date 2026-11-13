@@ -1,0 +1,8 @@
+[package]
+name = "concord-governance"
+version.workspace = true
+edition.workspace = true
+description = "Concord's collective-decision rules: charters, quorum, consensus evaluation (spec §4-§6)"
+publish = false
+
+[dependencies]

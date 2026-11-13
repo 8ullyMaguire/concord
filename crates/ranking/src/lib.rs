@@ -422,8 +422,14 @@ mod tests {
         let (r, rd, _) = rate(1500.0, MAX_RD, 0.06, &[], 0.5);
         assert_eq!(rd, MAX_RD, "an idle period at the cap must stay at the cap");
         assert_eq!(r, 1500.0, "an idle period must not move the rating");
+        // Exactly, not "greater than": the growth is `SCALE * sqrt((rd/SCALE)^2 + sigma^2)`, and the
+        // only assertion here used to be `> 100`, which `SCALE / phi_star` (300.2) and
+        // `SCALE + phi_star` (174.3, then clamped to the cap) both satisfy. Two mutants lived in
+        // this line until these two numbers were written down.
         let (_, grown, _) = rate(1500.0, 100.0, 0.06, &[], 0.5);
-        assert!(grown > 100.0, "RD' = {grown:.2} should grow on an idle period");
+        assert!((grown - 100.541734352122).abs() < 1e-9, "RD' = {grown:.12}, want 100.541734352122");
+        let (_, grown, _) = rate(1500.0, 50.0, 0.02, &[], 0.5);
+        assert!((grown - 50.120566134220).abs() < 1e-9, "RD' = {grown:.12}, want 50.120566134220");
     }
 
     #[test]
