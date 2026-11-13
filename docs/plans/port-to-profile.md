@@ -214,6 +214,25 @@ fixture that writes a sentinel must write `NULL`, and any Rust route that create
 same `NULLIF`. This is the one place where the port is *stricter* than the service it replaces, which
 is the right direction, and it only bites writes.
 
+**Process note, dated 2026-11-13 — `cargo mutants --in-place` mutates the work tree you are
+committing from.** The gate has to run `--in-place` (a `polaris-core` path dependency escapes
+cargo-mutants' copied tree and the baseline fails in `/tmp`), and that means the tree carries a
+mutated source file for the whole run. Commit `32e8d6d` was staged while a run was live and captured
+`crates/ranking/src/lib.rs` with one flipped comparison in it:
+
+```
+-        while f(big_a - k * tau) < 0.0 {
++        while f(big_a - k * tau) > /* ~ changed by cargo-mutants ~ */ 0.0 {
+```
+
+Fixed in `b3e826b`, and the gap that let it live is closed by a test rather than by care: the bracket
+search only runs on one branch, and every assertion around it was either the published example
+rounded to two decimals or a monotonicity check. `the_full_precision_reference_values` asserts four
+`rate()` calls to 1e-9 against an independent Python transliteration, which this mutation cannot
+survive. Rules from here: the tree is clean before a run starts, nothing is edited while it runs,
+`git status` is checked after, and a killed run is followed by `git checkout -- ` on every mutated
+path — `git checkout` restores from HEAD, so it cannot fix a mutation that a commit already captured.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
