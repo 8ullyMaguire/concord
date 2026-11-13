@@ -37,6 +37,7 @@ pub mod stats;
 pub mod themes;
 pub mod strategy;
 pub mod tallies;
+pub mod voteweight;
 pub mod taxonomy;
 pub mod override_window;
 pub mod priorities;
