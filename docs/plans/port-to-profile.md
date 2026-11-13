@@ -1148,6 +1148,27 @@ id is a 404 rather than a list of somebody else's tags. Both are also refused fo
 Three schema facts found by failing: `features` has no `description` column, `features.author_id` is NOT NULL (a
 fixture needs a real user, not a literal), and the e2e harness appends `public_id` on its own.
 
+### Row 11 — part 17: the dependency panel (2026-11-13, `6738877`)
+
+```
+gate (before): GET /projects/{slug}/features/{feature}/deps -> 404
+gate (after):
+  probe_s5_deps.py -> 10/10 ok
+  routes.py        -> go 216 / port 88   (130 remain)
+  cargo test -p concord-db --lib -> 30 passed
+  concord-parity   -> 0 shape(s) disagreed of 16 checked, 5 skipped
+```
+
+Three lists over one table where the schema makes the confusion easy: `blocked_by` joins
+`f.id = dep.blocker_id where dep.blocked_id = $1` and `blocks` is the mirror image. A copy-paste leaving both on
+`blocked_id` is plausible on a feature nobody blocks, so the fixture is **asymmetric**: A blocked by B (in
+progress) and C (shipped). `open_blockers` is a STATUS PREDICATE (`<> 'shipped'`), not a row property — a client
+deriving it ships the status vocabulary and, at the next terminal status, claims work is blocked by finished work.
+
+Negative control (blocks joined on `blocker_id`, 8/10): `FAIL and it blocks exactly the one feature: got [5817]
+want [5816]`. Note what it did NOT break — `blocked_by` still read correctly — so a suite that only checked the
+blocked feature's panel would have passed.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
