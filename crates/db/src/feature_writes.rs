@@ -27,6 +27,9 @@ pub enum WriteError {
     /// call, for instance. Distinct from `Invalid` because the client can act on it: the thing they want
     /// already exists.
     Conflict(String),
+    /// `ErrPerm`: the caller is authenticated and the rule refuses them -- reviewing your own act, for one.
+    /// Distinct from `Invalid` because the request is well formed and the answer is "not you", not "not that".
+    Forbidden(String),
     Database(sqlx::Error),
 }
 

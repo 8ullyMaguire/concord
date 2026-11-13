@@ -15,6 +15,11 @@ ulid.workspace = true
 [dependencies]
 concord-governance = { path = "../governance" }
 concord-ranking = { path = "../ranking" }
+# The estate owns the thread rules and the permission decision (ADR 0011; the plan's own S4 `Adopt:` line).
+# `crates/db/src/comments.rs` used to carry a body check, an order, and a tombstone of its own; gate 19 fails a
+# site for that, and gate 45 for the role ladder in `moderation.rs`.
+polaris-comments = { path = "../../../../polaris-comments" }
+polaris-authz = { path = "../../../../polaris-authz" }
 anyhow.workspace = true
 argon2 = "0.5"
 base64 = "0.22"

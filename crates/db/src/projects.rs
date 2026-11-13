@@ -88,6 +88,22 @@ pub async fn project_by_slug(pool: &PgPool, slug: &str) -> Result<Option<Project
     row.as_ref().map(project_from_row).transpose()
 }
 
+/// One project by its numeric id.
+///
+/// The Go router mounts some collections on the slug and some on the id (`threads`, `priorities`, `tallies`,
+/// `members`), so both readers exist here rather than one that quietly accepts either.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn project_by_id(pool: &PgPool, id: i64) -> Result<Option<Project>, sqlx::Error> {
+    let sql = format!(
+        "select {PROJECT_COLUMNS} from projects p \
+         left join project_metrics m on m.project_id = p.id where p.id = $1"
+    );
+    let row = sqlx::query(&sql).bind(id).fetch_optional(pool).await?;
+    row.as_ref().map(project_from_row).transpose()
+}
+
 /// Every project, in the order the Go handler lists them.
 ///
 /// # Errors

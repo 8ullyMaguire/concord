@@ -249,12 +249,21 @@ async fn main() -> anyhow::Result<()> {
     let mut bad = 0usize;
     let mut checked = 0usize;
     let mut skipped = 0usize;
+    let mut declared: Vec<(String, &'static str, &'static str)> = Vec::new();
     for (shape_key, rec) in &corpus {
         if shape_key == "__meta" {
             continue;
         }
         if rec.get("unstable").is_some() || rec.get("expected_change").is_some() {
             skipped += 1;
+            continue;
+        }
+        // DECLARED DIVERGENCES. A difference the port has decided to keep must be named here, with the reason
+        // and the row that removes it -- the tool must never quietly ignore one, or the next real difference
+        // hides inside the silence.
+        if let Some((reason, owner)) = declared_divergence(shape_key) {
+            declared.push((shape_key.clone(), reason, owner));
+            checked += 1;
             continue;
         }
         // The recorded path, not the shape: an id-shaped segment replayed as 0 asks the candidate
@@ -312,6 +321,9 @@ async fn main() -> anyhow::Result<()> {
             bad += 1;
         }
     }
+    for (shape, reason, owner) in &declared {
+        println!("DECLARED {shape}: {reason} (removed by {owner})");
+    }
     println!("{bad} shape(s) disagreed of {checked} checked, {skipped} skipped");
     std::process::exit(if bad == 0 { 0 } else { 1 });
 }
@@ -322,4 +334,23 @@ fn truncate(value: &str) -> String {
         return value.to_string();
     }
     format!("{}…", &value[..LIMIT])
+}
+
+/// Differences the port has decided to keep, with the reason and the row that removes them.
+///
+/// `None` means "compare it"; a difference belongs here only when keeping it is a decision rather than a
+/// remainder.
+fn declared_divergence(shape_key: &str) -> Option<(&'static str, &'static str)> {
+    match shape_key {
+        // The deployed Go build answers an unauthenticated request with `{"error": "authentication required"}`
+        // -- a bare string -- while its own 404s and every route the estate added use `polaris-core`'s
+        // `{"error": {"code", "message"}}`. The port cannot have two envelopes: ADR 0011 says one, and a client
+        // that switches on the shape of `error` would break on the other. The port keeps the envelope; the Go
+        // build keeps its string until it is switched off.
+        "/api/v1/notifications" => Some((
+            "the Go build's 401 is a bare string; the port answers the estate's error envelope",
+            "row 13 (cutover: the Go build stops answering)",
+        )),
+        _ => None,
+    }
 }

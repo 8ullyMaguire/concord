@@ -97,8 +97,10 @@ def main():
     con.commit()
     con.close()
 
-    alpha = f"/api/v1/projects/{slugs['alpha']}/threads"
-    beta = f"/api/v1/projects/{slugs['beta']}/threads"
+    # The Go table mounts threads on the NUMERIC project id, not the slug; a client calling the Go URL must not
+    # get a 404 here, so the probe calls the same shape the page does.
+    alpha = f"/api/v1/projects/{projects['alpha']}/threads"
+    beta = f"/api/v1/projects/{projects['beta']}/threads"
     results = []
 
     # 1. Posting a comment.
@@ -204,7 +206,57 @@ def main():
     con.close()
     results.append(("it is a tombstone, not a hole", tomb[0] if tomb else None, True, tomb))
 
+    # 7. The curation vote: reviewing an act is reviewer work, and an actor cannot review their own act.
     con = harness.connect("unused")
+    act_by_other = con.execute(
+        "INSERT INTO audit_log (project_id, actor_id, action, entity, entity_id, detail, created_at)"
+        " VALUES (?,?,?,?,?,?,?) RETURNING id",
+        (projects["alpha"], other_id, "arena.remove", "feature", feature, '{"reason":"spam"}', now),
+    ).lastrowid
+    act_by_author = con.execute(
+        "INSERT INTO audit_log (project_id, actor_id, action, entity, entity_id, detail, created_at)"
+        " VALUES (?,?,?,?,?,?,?) RETURNING id",
+        (projects["alpha"], author_id, "arena.remove", "feature", feature, '{"reason":"spam"}', now),
+    ).lastrowid
+    plain_act = con.execute(
+        "INSERT INTO audit_log (project_id, actor_id, action, entity, entity_id, detail, created_at)"
+        " VALUES (?,?,?,?,?,?,?) RETURNING id",
+        (projects["alpha"], other_id, "project.update", "project", projects["alpha"], "{}", now),
+    ).lastrowid
+    con.commit()
+    con.close()
+
+    status, body = call("POST", f"/api/v1/curation/act/{act_by_other}/vote", {"vote": "yes"},
+                        token=author_token)
+    results.append(("a maintainer may endorse an act", status, 200, message(body)))
+    results.append(("the vote is counted", (body or {}).get("yes") if isinstance(body, dict) else None,
+                    1, body))
+    status, body = call("POST", f"/api/v1/curation/act/{act_by_other}/vote", {"vote": "no"},
+                        token=author_token)
+    results.append(("changing your mind replaces the vote",
+                    ((body or {}).get("yes"), (body or {}).get("no")) if isinstance(body, dict) else None,
+                    (0, 1), body))
+    status, body = call("POST", f"/api/v1/curation/act/{act_by_author}/vote", {"vote": "yes"},
+                        token=author_token)
+    results.append(("an actor cannot review their own act", status, 403, message(body)))
+    status, body = call("POST", f"/api/v1/curation/act/{act_by_other}/vote", {"vote": "yes"},
+                        token=voter_token)
+    results.append(("a voter who is not a reviewer cannot review", status, 403, message(body)))
+    status, body = call("POST", f"/api/v1/curation/act/{plain_act}/vote", {"vote": "yes"},
+                        token=author_token)
+    results.append(("an ordinary edit is not reviewable", status, 400, message(body)))
+    status, body = call("POST", f"/api/v1/curation/act/{act_by_other}/vote", {"vote": "maybe"},
+                        token=author_token)
+    results.append(("a vote that is neither is refused", status, 400, message(body)))
+    status, body = call("POST", f"/api/v1/curation/taxonomy/1/vote", {"vote": "yes"},
+                        token=author_token)
+    results.append(("an unported kind says so instead of recording a consent", status, 400, message(body)))
+    results.append(("and names the missing eligible set",
+                    1 if "eligible set" in message(body) else 0, 1, message(body)))
+
+    con = harness.connect("unused")
+    con.execute("delete from act_reviews where audit_id in (select id from audit_log where project_id = ?)",
+                (projects["alpha"],))
     con.execute("delete from comment_votes where comment_id in (select id from comments"
                 " where project_id = ?)", (projects["alpha"],))
     con.execute("delete from comments where project_id in (?, ?)",

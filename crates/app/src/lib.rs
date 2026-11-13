@@ -66,16 +66,22 @@ pub fn router(state: AppState) -> Router {
             get(get_charter),
         )
         .route("/api/v1/curation", get(list_curation))
+        // The Go mount is `/api/v1/curation` with the page at `GET /` and votes below it; both spellings of
+        // the queue path answer here, because a client that appends a slash must not get a 404.
+        .route("/api/v1/curation/", get(list_curation))
+        .route("/api/v1/curation/{kind}/{id}/vote", post(curation_vote))
         .route(
-            "/api/v1/projects/{slug}/threads/{thread_kind}/{thread_id}",
+            // The Go route is `{project_id}` -- a number, not a slug. A client posting to the Go URL must not
+            // get a 404 from this one, and the page has the id to hand.
+            "/api/v1/projects/{project_id}/threads/{thread_kind}/{thread_id}",
             get(thread_comments).post(post_comment),
         )
         .route(
-            "/api/v1/projects/{slug}/threads/{thread_kind}/{thread_id}/{id}",
+            "/api/v1/projects/{project_id}/threads/{thread_kind}/{thread_id}/{id}",
             axum::routing::delete(delete_comment),
         )
         .route(
-            "/api/v1/projects/{slug}/threads/{thread_kind}/{thread_id}/{id}/vote",
+            "/api/v1/projects/{project_id}/threads/{thread_kind}/{thread_id}/{id}/vote",
             post(vote_comment),
         )
         .route(
@@ -586,6 +592,7 @@ fn write_error(error: concord_db::feature_writes::WriteError) -> ApiError {
         WriteError::NotFound(message) => ApiError::not_found(message),
         // 409, not 400: the client's request is well-formed and the thing they want already exists.
         WriteError::Conflict(message) => ApiError::conflict(message),
+        WriteError::Forbidden(message) => ApiError::forbidden(message),
         WriteError::Database(error) => internal(error),
     }
 }
@@ -971,6 +978,21 @@ async fn project_for(
         .await
         .map_err(internal)?
         .ok_or_else(|| ApiError::not_found(format!("project {slug}")))
+}
+
+/// The project named by a numeric id, as the Go table's `{project_id}` routes expect.
+///
+/// A separate function from `project_for` on purpose: the Go router mounts some collections on the slug and
+/// others on the id, and a route that quietly accepted either would hide a client calling the wrong one.
+async fn project_by_id(
+    state: &AppState,
+    raw: &str,
+) -> Result<concord_db::projects::Project, ApiError> {
+    let id = parse_id(raw, "project id")?;
+    concord_db::projects::project_by_id(&state.pool, id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {id}")))
 }
 
 /// Parse a path id, naming the segment that was wrong.
@@ -1725,9 +1747,9 @@ async fn list_curation(
 /// thread kind" are different answers, and an empty list for the second hides a client bug.
 async fn thread_comments(
     State(state): State<AppState>,
-    Path((slug, kind, thread_id)): Path<(String, String, String)>,
+    Path((project_id, kind, thread_id)): Path<(String, String, String)>,
 ) -> Result<Json<Value>, ApiError> {
-    let project = project_for(&state, &slug).await?;
+    let project = project_by_id(&state, &project_id).await?;
     let thread_id = parse_id(&thread_id, "thread id")?;
     if !concord_db::comments::THREAD_KINDS.contains(&kind.as_str()) {
         return Err(ApiError::invalid_request(format!(
@@ -1753,14 +1775,14 @@ struct CommentRequest {
 /// `POST /api/v1/projects/{slug}/threads/{kind}/{id}` — post a comment.
 async fn post_comment(
     State(state): State<AppState>,
-    Path((slug, kind, thread_id)): Path<(String, String, String)>,
+    Path((project_id, kind, thread_id)): Path<(String, String, String)>,
     headers: HeaderMap,
     Json(body): Json<CommentRequest>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     let user = bearer_user(&state, &headers)
         .await?
         .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
-    let project = project_for(&state, &slug).await?;
+    let project = project_by_id(&state, &project_id).await?;
     let thread_id = parse_id(&thread_id, "thread id")?;
     let comment = concord_db::comments::create(
         &state.pool,
@@ -1783,13 +1805,13 @@ async fn post_comment(
 /// `DELETE /api/v1/projects/{slug}/threads/{kind}/{id}/{comment}` — soft delete, author or maintainer.
 async fn delete_comment(
     State(state): State<AppState>,
-    Path((slug, _kind, _thread_id, id)): Path<(String, String, String, String)>,
+    Path((project_id, _kind, _thread_id, id)): Path<(String, String, String, String)>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
     let user = bearer_user(&state, &headers)
         .await?
         .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
-    let project = project_for(&state, &slug).await?;
+    let project = project_by_id(&state, &project_id).await?;
     let comment_id = parse_id(&id, "comment id")?;
     concord_db::comments::delete(&state.pool, project.id, comment_id, user.id)
         .await
@@ -1806,14 +1828,14 @@ struct CommentVoteRequest {
 /// `POST .../{comment}/vote` — one vote per person, and the score is recomputed from the rows.
 async fn vote_comment(
     State(state): State<AppState>,
-    Path((slug, _kind, _thread_id, id)): Path<(String, String, String, String)>,
+    Path((project_id, _kind, _thread_id, id)): Path<(String, String, String, String)>,
     headers: HeaderMap,
     Json(body): Json<CommentVoteRequest>,
 ) -> Result<Json<Value>, ApiError> {
     let user = bearer_user(&state, &headers)
         .await?
         .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
-    let project = project_for(&state, &slug).await?;
+    let project = project_by_id(&state, &project_id).await?;
     let comment_id = parse_id(&id, "comment id")?;
     let score = concord_db::comments::vote(&state.pool, project.id, comment_id, user.id, body.value)
         .await
@@ -1978,4 +2000,73 @@ async fn arena_restore(
     .await
     .map_err(write_error)?;
     Ok(Json(serde_json::json!({ "act": act })))
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct CurationVoteRequest {
+    #[serde(default)]
+    vote: Option<String>,
+    #[serde(default)]
+    rationale: Option<String>,
+}
+
+/// `POST /api/v1/curation/{kind}/{id}/vote` — endorse or contest a moderation act in the queue.
+///
+/// `taxonomy` and `strategy` are refused with 501 rather than implemented halfway. Their ratification needs the
+/// *eligible set* — `eligibleTaggers`, the collaborators a weight proposal is put to — and a consent recorded
+/// without that check is the defect the Go store's own comment records: "anyone with an account could ratify a
+/// tag proposal for a project they had no relationship with, and since guest identities exist, a nameless one
+/// could." That set is a slice of its own, named in the ledger; a version of this route that skipped it would
+/// pass a probe and reopen the hole.
+async fn curation_vote(
+    State(state): State<AppState>,
+    Path((kind, id)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(body): Json<CurationVoteRequest>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    let ref_id = parse_id(&id, "id")?;
+    let raw = body.vote.as_deref().unwrap_or("");
+    let rationale = body.rationale.as_deref().unwrap_or("");
+    match kind.as_str() {
+        "act" => {
+            let vote = match raw.trim().to_ascii_lowercase().as_str() {
+                "yes" | "consent" | "endorse" | "1" => 1,
+                "no" | "contest" | "-1" => -1,
+                _ => {
+                    return Err(ApiError::invalid_request("vote must be yes or no"));
+                }
+            };
+            // Reviewing an act is reviewer work: it writes a judgement about somebody else's decision, so it
+            // takes the standing that decision took.
+            let (_, project_id, _) = concord_db::curation::act_target(&state.pool, ref_id)
+                .await
+                .map_err(write_error)?;
+            permit_moderation(&state, project_id, user.id).await?;
+            let (yes, no) = concord_db::curation::review_act(
+                &state.pool,
+                ref_id,
+                user.id,
+                vote,
+                rationale,
+            )
+            .await
+            .map_err(write_error)?;
+            Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({ "recorded": true, "decided": true, "yes": yes, "no": no })),
+            ))
+        }
+        // No 501 in the envelope's fourteen codes, and inventing one would break every client's mapping; the
+        // honest answer is a 400 that says which slice is missing and why it cannot be faked.
+        "taxonomy" | "strategy" => Err(ApiError::invalid_request(format!(
+            "curation kind {kind:?} is not ported yet: its ratification needs the eligible set, and recording \
+             a consent without that check would let anyone ratify a proposal that was never put to them"
+        ))),
+        other => Err(ApiError::invalid_request(format!(
+            "unknown curation kind {other:?}"
+        ))),
+    }
 }

@@ -19,6 +19,8 @@
 use serde::Serialize;
 use sqlx::PgPool;
 
+use crate::feature_writes::WriteError;
+
 /// The most a caller may ask for.
 pub const MAX_LIMIT: i64 = 100;
 
@@ -52,8 +54,10 @@ pub struct Item {
     /// `pending`, `ratified`, `rejected`, `withdrawn`, `applied` or `undone`.
     pub state: String,
     /// When it entered the queue.
+    #[serde(serialize_with = "crate::projects::ser_unix")]
     pub opened_at: f64,
     /// When it was decided, 0 while open.
+    #[serde(serialize_with = "crate::projects::ser_unix")]
     pub decided_at: f64,
     /// Consents or approve reviews.
     pub yes: i64,
@@ -328,4 +332,95 @@ fn decode_cursor(raw: &str) -> Result<Cursor, sqlx::Error> {
         return Err(sqlx::Error::Decode("this cursor is not a position in the queue".into()));
     }
     Ok(Cursor { at, kind: parts[1].to_string(), id })
+}
+
+/// The act vocabulary the curation queue may review: the moderation acts, in one list.
+///
+/// ONE list, in one place: the queue's whitelist, the audit viewer's `kind=moderation` filter and the undo
+/// control all have to agree about what a moderation act is, and a second copy drifts the first time an act is
+/// added.
+pub const MODERATION_ACTIONS: [&str; 4] = [
+    "arena.remove",
+    "arena.restore",
+    "feature.reject",
+    "feature.unreject",
+];
+
+/// Who took an act, and in which project — the row a review needs before it can be recorded.
+pub async fn act_target(
+    pool: &PgPool,
+    audit_id: i64,
+) -> Result<(String, i64, i64), WriteError> {
+    let row: Option<(String, Option<i64>, Option<i64>)> = sqlx::query_as(
+        "select action, project_id, actor_id from audit_log where id = $1",
+    )
+    .bind(audit_id)
+    .fetch_optional(pool)
+    .await?;
+    match row {
+        None => Err(WriteError::NotFound(format!("act {audit_id}"))),
+        Some((action, project, actor)) => Ok((
+            action,
+            project.unwrap_or_default(),
+            actor.unwrap_or_default(),
+        )),
+    }
+}
+
+/// Endorse (1) or contest (-1) one moderation act.
+///
+/// Three rules, and each one is about who is judging whom:
+///
+/// * **only a moderation act can be reviewed** — the queue exists to check the acts that remove standing, and
+///   an ordinary edit reviewed as if it were a sanction is a category error;
+/// * **an actor cannot review their own act** — the whole point of a review queue;
+/// * **changing your mind replaces your row** rather than adding another, because the question the queue asks is
+///   "does this act stand", not "how many times did you click".
+///
+/// # Errors
+/// [`WriteError::Invalid`] for a vote that is not ±1 or an action that is not a moderation act;
+/// [`WriteError::Forbidden`] for self-review; [`WriteError::NotFound`] for a missing act.
+pub async fn review_act(
+    pool: &PgPool,
+    audit_id: i64,
+    user_id: i64,
+    vote: i64,
+    rationale: &str,
+) -> Result<(i64, i64), WriteError> {
+    if vote != 1 && vote != -1 {
+        return Err(WriteError::Invalid(
+            "a review is endorse (1) or contest (-1)".into(),
+        ));
+    }
+    let (action, _project, actor) = act_target(pool, audit_id).await?;
+    if !MODERATION_ACTIONS.contains(&action.as_str()) {
+        return Err(WriteError::Invalid(format!(
+            "{action:?} is not a moderation act"
+        )));
+    }
+    if actor == user_id {
+        return Err(WriteError::Forbidden(
+            "an actor cannot review their own act".into(),
+        ));
+    }
+    sqlx::query(
+        "insert into act_reviews (audit_id, user_id, vote, rationale, at) values ($1, $2, $3, $4, now()) \
+         on conflict (audit_id, user_id) do update set vote = excluded.vote, \
+             rationale = excluded.rationale, at = excluded.at",
+    )
+    .bind(audit_id)
+    .bind(user_id)
+    .bind(vote)
+    .bind(rationale.trim())
+    .execute(pool)
+    .await?;
+    let (yes, no): (i64, i64) = sqlx::query_as(
+        "select coalesce(sum(case when vote = 1 then 1 else 0 end), 0), \
+                coalesce(sum(case when vote = -1 then 1 else 0 end), 0) \
+           from act_reviews where audit_id = $1",
+    )
+    .bind(audit_id)
+    .fetch_one(pool)
+    .await?;
+    Ok((yes, no))
 }

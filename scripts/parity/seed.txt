@@ -30,3 +30,15 @@
 # /api/v1/projects/concord/stats
 # /api/v1/projects/concord/arenas
 # /api/v1/projects/concord/consensus/feed.xml
+
+# S4: the inbox and the queue. `/api/v1/notifications` answers 401 anonymously and that IS the shape (an
+# unauthenticated inbox is not an empty one); the queue read is public.
+#
+# A THREAD PATH IS DELIBERATELY ABSENT. The deployed build is 87 commits behind the tree being ported and
+# answers `{"error":{"code":"not_found","message":"No such API route."}}` for
+# /api/v1/projects/49/threads/feature/5755, so recording it would freeze a deploy artefact into the corpus --
+# which is the rule at the top of this file. The route's shape comes from the repo's own router
+# (internal/httpapi/server.go: `{project_id}/threads/{thread_kind}/{thread_id}`), and the port's evidence for it
+# is probe_s4_comments.py, not a recording.
+/api/v1/notifications
+/api/v1/curation

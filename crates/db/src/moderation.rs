@@ -19,28 +19,46 @@ use serde::Serialize;
 use serde_json::json;
 use sqlx::PgPool;
 
+use polaris_authz::{Capability, Grant, Policy, Requirement, Scope, Subject, Verdict};
+
 use crate::comments::Comment;
 use crate::feature_writes::WriteError;
 
-/// The roles this estate knows, weakest first. `reviewer` is the floor for a moderation act.
-pub const ROLES: [(&str, i32); 6] = [
-    ("guest", 0),
-    ("user", 1),
-    ("contributor", 2),
-    ("reviewer", 3),
-    ("maintainer", 4),
-    ("owner", 5),
-];
+/// The capability a moderation act needs: `resource.action`, parsed rather than typed as a string, because two
+/// spellings of one permission is how a check ends up agreeing with itself and nothing else.
+pub fn moderation_capability() -> Capability {
+    Capability::parse("moderation.act").expect("moderation.act is a valid capability")
+}
 
-/// Is `role` at least `min`?
+/// The roles that may moderate a project's content, as grants.
 ///
-/// An unknown role is never enough: a typo in a members row must not read as a grant.
-pub fn role_at_least(role: &str, min: &str) -> bool {
-    let rank = |name: &str| ROLES.iter().find(|(n, _)| *n == name).map(|(_, r)| *r);
-    match (rank(role), rank(min)) {
-        (Some(rank), Some(needed)) => rank >= needed,
-        _ => false,
+/// This replaces a hand-written ladder (`guest < user < contributor < reviewer < maintainer < owner`) that used to
+/// live here. Gate 45 fails a site for keeping its own permission check beside `polaris-authz`, and the ladder had
+/// exactly the defect the crate removes: a bool answer with no reason, no expiry, and no way to say *why*.
+///
+/// Two doors, as the product has them: an instance-wide trust level (`CONCORD_MOD_TRUST_MIN`, default 1) or a
+/// project role of `reviewer` and up. The trust door is a `Requirement` on the `everyone` role rather than a
+/// separate branch, so the crate answers both with one call.
+pub fn moderation_policy(trust_min: u8) -> Policy {
+    let capability = moderation_capability();
+    let mut policy = Policy {
+        capabilities: [capability.clone()].into_iter().collect(),
+        grants: Vec::new(),
+        overrides: Vec::new(),
+    };
+    // Anyone the trust floor admits: the product's first door.
+    policy.grants.push(
+        Grant::role("everyone", capability.clone(), Scope::Curated)
+            .requiring(Requirement::TrustAtLeast(trust_min)),
+    );
+    // And the project roles: `reviewer` is the floor, and `maintainer`/`owner` are above it. `Scope::Curated` is
+    // what a moderation act reaches -- the project's own content, not the whole instance.
+    for role in ["reviewer", "maintainer", "owner"] {
+        policy
+            .grants
+            .push(Grant::role(role, capability.clone(), Scope::Curated));
     }
+    policy
 }
 
 /// The act, as the HTTP layer returns it.
@@ -72,20 +90,56 @@ pub async fn may_moderate(
     actor_id: i64,
     trust_min: i32,
 ) -> Result<bool, sqlx::Error> {
+    Ok(moderation_verdict(pool, project_id, actor_id, trust_min)
+        .await?
+        .is_allowed())
+}
+
+/// The same question, answered with the crate's `Verdict` instead of a bool, so a refusal can say why.
+///
+/// The product still shows its own sentence for a denial (the page names the role it wanted, which the crate
+/// cannot know); the verdict is what decides, and `Verdict::reason()` is available for the log.
+pub async fn moderation_verdict(
+    pool: &PgPool,
+    project_id: i64,
+    actor_id: i64,
+    trust_min: i32,
+) -> Result<Verdict, sqlx::Error> {
     let trust: Option<i64> = sqlx::query_scalar("select trust_level from users where id = $1")
         .bind(actor_id)
         .fetch_optional(pool)
         .await?;
-    if trust.unwrap_or(0) as i32 >= trust_min {
-        return Ok(true);
-    }
+    // The subject is built from Concord's own rows: its role in THIS project, and its instance trust level. The
+    // crate never reads a session or a token, which is why this is a query and not a header.
     let role: Option<String> =
         sqlx::query_scalar("select role from members where project_id = $1 and user_id = $2")
             .bind(project_id)
             .bind(actor_id)
             .fetch_optional(pool)
             .await?;
-    Ok(role.as_deref().is_some_and(|role| role_at_least(role, "reviewer")))
+    let mut subject = Subject::new(actor_id.to_string(), trust.unwrap_or(0).clamp(0, 255) as u8);
+    if let Some(role) = role {
+        // An unknown role is not added: a typo in a members row must not read as a grant, and the crate denies a
+        // role it has no grant for anyway.
+        subject.roles.push(role);
+    }
+    let policy = moderation_policy(trust_min.clamp(0, 255) as u8);
+    Ok(polaris_authz::authorize(
+        &policy,
+        &subject,
+        moderation_capability(),
+        Scope::Curated,
+        now_unix(),
+    ))
+}
+
+/// Unix seconds, from the system clock. Named so every expiry check in this module reads the same clock, and so a
+/// test can see it is the only one.
+pub fn now_unix() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs() as i64)
+        .unwrap_or(0)
 }
 
 /// Every arena this feature is entered in, in id order.
@@ -431,13 +485,63 @@ pub fn is_moderation_action(action: &str) -> bool {
 mod tests {
     use super::*;
 
+    fn subject_with(roles: &[&str], trust: u8) -> Subject {
+        let mut subject = Subject::new("7", trust);
+        for role in roles {
+            subject.roles.push((*role).to_string());
+        }
+        subject
+    }
+
+    fn verdict(roles: &[&str], trust: u8, trust_min: u8) -> Verdict {
+        polaris_authz::authorize(
+            &moderation_policy(trust_min),
+            &subject_with(roles, trust),
+            moderation_capability(),
+            Scope::Curated,
+            now_unix(),
+        )
+    }
+
     #[test]
-    fn the_role_ladder_refuses_an_unknown_role() {
-        assert!(role_at_least("maintainer", "reviewer"));
-        assert!(role_at_least("reviewer", "reviewer"));
-        assert!(!role_at_least("contributor", "reviewer"));
-        // A typo in a members row must not read as a grant.
-        assert!(!role_at_least("maintaner", "reviewer"));
+    fn a_reviewer_may_moderate_and_a_contributor_may_not() {
+        assert!(verdict(&["reviewer"], 0, 1).is_allowed());
+        assert!(verdict(&["maintainer"], 0, 1).is_allowed());
+        assert!(!verdict(&["contributor"], 0, 1).is_allowed());
+        assert!(!verdict(&[], 0, 1).is_allowed());
+    }
+
+    #[test]
+    fn the_trust_door_is_the_crates_requirement_not_a_second_branch() {
+        // Trust at the floor, no role: allowed. Below it: denied, and the denial names the unmet requirement.
+        assert!(verdict(&[], 1, 1).is_allowed());
+        let below = verdict(&[], 0, 1);
+        assert!(!below.is_allowed());
+        assert!(below.reason().contains("trust"), "{}", below.reason());
+    }
+
+    #[test]
+    fn an_unknown_role_is_not_a_grant() {
+        assert!(!verdict(&["maintaner"], 0, 1).is_allowed());
+        assert!(!verdict(&["admin"], 0, 1).is_allowed());
+    }
+
+    #[test]
+    fn the_capability_is_not_declared_until_the_policy_declares_it() {
+        let empty = Policy {
+            capabilities: [].into_iter().collect(),
+            grants: vec![Grant::role("owner", moderation_capability(), Scope::Site)],
+            overrides: Vec::new(),
+        };
+        let refused = polaris_authz::authorize(
+            &empty,
+            &subject_with(&["owner"], 9),
+            moderation_capability(),
+            Scope::Curated,
+            now_unix(),
+        );
+        assert!(!refused.is_allowed());
+        assert!(refused.reason().contains("not declared"), "{}", refused.reason());
     }
 
     #[test]

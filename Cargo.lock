@@ -262,6 +262,8 @@ dependencies = [
  "base64 0.22.1",
  "concord-governance",
  "concord-ranking",
+ "polaris-authz",
+ "polaris-comments",
  "rand 0.8.8",
  "serde",
  "serde_json",
@@ -1203,6 +1205,18 @@ name = "plain"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4596b6d070b27117e987119b4dac604f3c58cfb0b191112e24771b2faeac1a6"
+
+[[package]]
+name = "polaris-authz"
+version = "0.2.0"
+dependencies = [
+ "serde",
+ "serde_json",
+]
+
+[[package]]
+name = "polaris-comments"
+version = "0.2.0"
 
 [[package]]
 name = "polaris-core"
