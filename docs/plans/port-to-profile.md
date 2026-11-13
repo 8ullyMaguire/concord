@@ -2265,6 +2265,60 @@ member who proposed neither entry, which is the only honest way to test a succes
 both patterns: the list's slug does not prefix-match the project's, so cleaning by project and by slug separately left
 list rows behind a foreign key.
 
+### Row 11 — part 45: B2a, feature tags, feature milestone, strategic weight (2026-11-13, `7885345`)
+
+```
+gate (before): POST /projects/{}/features/{}/tags, POST .../tags/remove,
+               PUT .../features/{}/milestone, PUT .../features/{}/strategic-weight -> 404
+gate (after):
+  probe_s5_featurewrites.py -> 37/37 ok
+  listwrites 41/41, criteriawrites 45/45, projsettings 28/28, milestonewrites 41/41, complaintwrites 40/40,
+  requestwrites 43/43, filing 31/31, requests 23/23, accept 15/15
+  routes.py -> go 216 / port 146   missing: 72 (62 json, 10 page)
+  concord-parity -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-db --lib -> 38 passed
+```
+
+`taxonomy.rs`: `add_feature_tag`, `remove_feature_tag` (+ `Applied::UnknownFeature`). `milestones.rs`:
+`set_feature_milestone`. `strategy.rs`: `Refused::Invalid`, so a bad weight is a **400** instead of a 409.
+
+`/features/{}/claim`, `/work-item`, `/deps`, `/evidence`, `/solutions*`, `/consensus` and `/vote` are still open — this is
+B2's first slice, not B2.
+
+Rules asserted: an unknown tag is refused with the proposing route; the feature id is scope-checked twice; removing an
+unattached tag is a **no-op**; a weight change needs a **rationale** and is a **proposal** (a second pending one is 409, a
+proposer's own consent is 403); the milestone response counts **open blockers**, read from `feature_deps`' **blocker**
+side and only for blockers that are not `shipped`.
+
+**NEGATIVE CONTROLS.**
+
+```
+blocker count read from the wrong side:
+  FAIL and the response counts OPEN blockers only: got 0 want 1                          36/37
+an unknown tag silently skipped:
+  FAIL an unknown tag is 400: got 200 want 400                                           36/37
+the weight range unchecked:
+  FAIL a weight outside the range is 400: got 201 want 400
+  ... and seven downstream (the 9.0 proposal is pending, so the real one is a 409)       29/37
+```
+
+**Four findings, all in instruments or wiring rather than in a formula:**
+
+* the strategy store was **already wired**, but only at the port's own path (`POST /strategy/weight-proposals` with
+  `feature_id` in the body). The reference — and the pages built against it — use `PUT /features/{id}/strategic-weight`.
+  Both are now served from one store. *"Wired somewhere" is not "wired where the caller looks"* — the reason the route
+  inventory is a gate at all;
+* the strategy routes take a **numeric** project id; a slug there is a 400. Recorded rather than changed under the port's
+  feet, and the probe says so at the call site;
+* a bad weight came back as **409**, because the store folded "your number is wrong" and "the database failed" into one
+  variant and the HTTP mapping called it a conflict. `Refused::Invalid` now maps to 400 — a caller who typed `9.0` must
+  not be told someone else got there first;
+* the parity gate disagreed by **one shape and it was my own fixture litter**: 24 half-torn probe projects from crashed
+  runs were still in the database and `/api/v1/curation` counts live rows. `scripts/parity/clear_probe_litter.py` now
+  removes them by computing the deletion order from the FK graph (*hops from `projects`, descending*). A hand-written
+  order was wrong twice — `milestones` before `features`, then `request_answers`, which reaches `projects` only through
+  `requests`. A gate that reads live rows needs a working broom.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
