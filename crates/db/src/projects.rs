@@ -37,7 +37,7 @@ pub struct Project {
 /// without a decimal point. `serde_json` prints `1758000000.0`, which is the same number and a
 /// different JSON — the replay tool compares numbers by *type*, so the difference is a failure.
 /// This keeps whole seconds integral and fractional seconds fractional.
-fn ser_unix<S: serde::Serializer>(value: &f64, serializer: S) -> Result<S::Ok, S::Error> {
+pub(crate) fn ser_unix<S: serde::Serializer>(value: &f64, serializer: S) -> Result<S::Ok, S::Error> {
     let number = if value.fract() == 0.0 && value.abs() < 9.007_199_254_740_992e15 {
         Number::from(*value as i64)
     } else {

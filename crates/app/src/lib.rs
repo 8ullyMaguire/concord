@@ -38,6 +38,23 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/auth/register", post(register))
         .route("/api/v1/projects", post(create_project))
         .route(
+            "/api/v1/projects/{slug}/milestones",
+            get(list_milestones),
+        )
+        .route("/api/v1/projects/{slug}/roadmap", get(roadmap))
+        .route(
+            "/api/v1/projects/{slug}/complaints",
+            get(list_complaints),
+        )
+        .route(
+            "/api/v1/projects/{slug}/features",
+            get(list_features),
+        )
+        .route(
+            "/api/v1/projects/{slug}/features/{feature}",
+            get(get_feature),
+        )
+        .route(
             "/api/v1/projects/{slug}/board/cards/{card_id}/move",
             put(move_card),
         )
@@ -307,4 +324,125 @@ async fn bearer_user(
             concord_db::auth::AuthError::Database(e) => internal(e),
             other => internal(format!("{other:?}")),
         })
+}
+
+
+#[derive(Debug, Deserialize)]
+struct FeatureQuery {
+    status: Option<String>,
+}
+
+/// `GET /api/v1/projects/{slug}/features[?status=]` — the project's features, newest first.
+async fn list_features(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Query(query): Query<FeatureQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
+    let features = concord_db::features::list_features(
+        &state.pool,
+        project.id,
+        query.status.as_deref().unwrap_or(""),
+    )
+    .await
+    .map_err(internal)?;
+    Ok(Json(serde_json::to_value(features).map_err(internal)?))
+}
+
+/// `GET /api/v1/projects/{slug}/features/{id}` — one feature, but only under its own project.
+///
+/// Two refusals, both load-bearing and both in the Go handler: the id must parse (a non-integer is a
+/// 400, not a 404), and the feature's `project_id` must be this project's. Without the second, a
+/// caller reads any project's work by counting ids while the list endpoint answers 404.
+async fn get_feature(
+    State(state): State<AppState>,
+    Path((slug, feature_id)): Path<(String, String)>,
+) -> Result<Json<Value>, ApiError> {
+    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
+    let Ok(id) = feature_id.parse::<i64>() else {
+        return Err(ApiError::invalid_request("feature id must be an integer"));
+    };
+    let found = concord_db::features::feature(&state.pool, id)
+        .await
+        .map_err(internal)?
+        .filter(|feature| feature.project_id == project.id);
+    match found {
+        Some(feature) => Ok(Json(serde_json::to_value(feature).map_err(internal)?)),
+        None => Err(ApiError::not_found(format!("feature {id}"))),
+    }
+}
+
+
+/// `GET /api/v1/projects/{slug}/complaints[?status=]` — the project's complaints, newest first.
+async fn list_complaints(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    Query(query): Query<FeatureQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
+    let complaints = concord_db::complaints::list_complaints(
+        &state.pool,
+        project.id,
+        query.status.as_deref().unwrap_or(""),
+    )
+    .await
+    .map_err(internal)?;
+    Ok(Json(serde_json::to_value(complaints).map_err(internal)?))
+}
+
+
+/// `GET /api/v1/projects/{slug}/milestones` — the milestones, with counts computed on read.
+async fn list_milestones(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
+    let milestones = concord_db::milestones::list_milestones(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::to_value(milestones).map_err(internal)?))
+}
+
+/// `GET /api/v1/projects/{slug}/roadmap` — the milestones, their totals, and how late each one is.
+///
+/// One object rather than three answers: the totals are the sum of the rows beside them, and a
+/// client that had to add them up itself would be writing the rule down a second time.
+async fn roadmap(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
+    let milestones = concord_db::milestones::list_milestones(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    let (mut total, mut open, mut shipped) = (0i64, 0i64, 0i64);
+    for milestone in &milestones {
+        total += milestone.total;
+        open += milestone.open;
+        shipped += milestone.shipped;
+    }
+    let slippage = concord_db::milestones::roadmap_slippage(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(json!({
+        "slug": project.slug,
+        "milestones": serde_json::to_value(milestones).map_err(internal)?,
+        "totals": {"total": total, "open": open, "shipped": shipped},
+        "slippage": serde_json::to_value(slippage).map_err(internal)?,
+    })))
 }

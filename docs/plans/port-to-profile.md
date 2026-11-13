@@ -76,6 +76,44 @@ moved to the volatile tier (compared by type, so a string where a number belongs
 reason in `crates/parity/src/main.rs`: the port reads the column and has no formula here to get wrong,
 so a number comparison measures the sweep's clock, not the port.
 
+**Row 8 (S2) — progress** (2026-11-13): four of its five owned shapes now match, and the remaining
+five disagreements are all other slices'.
+
+```
+$ CANDIDATE=http://127.0.0.1:8107 concord-parity --corpus crates/parity/corpus.json
+/api/v1/projects/concord/audit: status 404 != 200        # S3
+/api/v1/projects/concord/consensus: status 404 != 200    # S3
+/api/v1/search?q=arena: status 404 != 200                # S5
+/api/v1/stats: status 404 != 200                         # S5
+/api/v1/stats/summary: status 404 != 200                 # S5
+5 shape(s) disagreed of 16 checked, 0 skipped            (from 10)
+```
+
+`/features`, `/features/:id`, `/complaints`, `/milestones` and `/roadmap` are byte-identical to the
+recorded Go bodies. Four findings came out of it, three of them schema or ordering, one a serializer:
+
+1. **`features.impact_ratio` was missing from the baseline.** It is a `GENERATED ALWAYS AS (…) VIRTUAL`
+   column in SQLite, and `pragma table_info` does not list generated columns at all — only
+   `table_xinfo` does, and without the expression. The port's first `/features` answered
+   `column "impact_ratio" does not exist`. New generator rule **R12**: generated columns are read out
+   of the CREATE TABLE text and carried across as `STORED` (PostgreSQL accepts the CASE arithmetic as
+   written). One table has one (`features`); 2,766 rows carry a value.
+2. **`order by created_at desc` is not enough to reproduce the list.** 16 pairs of features in the
+   live data share a `created_at` to the second, and the recorded bodies show the smaller id first in
+   **16 of 16** ties — SQLite returns rowid order inside a tie, PostgreSQL has no such order. The
+   query now says `order by created_at desc, id asc`. Complaints have no tie in the current data, so
+   the same clause there is recorded as an inference, not a measurement.
+3. **Go prints a whole `float64` without a decimal point.** `elo_r: 350` came back as `350.0` from
+   serde_json, and `elo_rd`, `elo_vol`, `strategic_weight`, `impact_ratio`, `frequency`,
+   `strategic_multiplier` all carry the same rule. They use the same serializer the timestamps do.
+4. **`impact`/`effort_score` are `bigint` in the baseline**, because R1 keeps SQLite `INTEGER`
+   non-key columns wide; decoding them as `i32` fails at runtime with "mismatched types", not at
+   build time. They are `i64` now, with the reason at the field.
+
+Still open in S2: the ranking (`priorities`, arenas, Glicko2), `CreateFeature`/`UpdateFeatureStatus`
+with the evidence gate and dependency refusal (`docs/REMAINING.md` §44/§46), `crates/ranking`, and the
+`rank_*`/`milestones_e2e`/`feature_*` suites.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus

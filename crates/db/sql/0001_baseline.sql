@@ -385,7 +385,8 @@ create table features (
     origin text DEFAULT 'api' NOT NULL,
     milestone_id bigint,
     milestone_position bigint DEFAULT 0 NOT NULL,
-    public_id text NOT NULL UNIQUE
+    public_id text NOT NULL UNIQUE,
+    impact_ratio double precision GENERATED ALWAYS AS (CASE WHEN effort_score IS NULL OR effort_score = 0 THEN NULL ELSE CAST(impact AS REAL) / effort_score END) STORED
 );
 create index features_milestone on features (milestone_id, milestone_position);
 create index idx_features on features (project_id, status);

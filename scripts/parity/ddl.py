@@ -1,3 +1,4 @@
+import re
 #!/usr/bin/env python3
 """Generate the PostgreSQL baseline DDL from the LIVE SQLite schema (row 4, M0.4).
 
@@ -299,6 +300,27 @@ def generate(db_path: str) -> tuple[str, list[str]]:
             lines.append("    PRIMARY KEY (" + ", ".join(pg_ident(c) for c in pk_cols) + ")")  # R8
         if table in API_TABLES:
             lines.append('    public_id text NOT NULL UNIQUE')                                  # R11
+        # R12: generated columns. `pragma table_info` does not list them at all — only
+        # `table_xinfo` does, and without the expression — so `features.impact_ratio` was missing
+        # from the baseline entirely and the port's first `/features` answered
+        # `column "impact_ratio" does not exist`. The expression is read out of the CREATE TABLE
+        # text, which is the only place SQLite keeps it, and carried across as a STORED generated
+        # column: computing it at the SQL level is the whole point (a stored ratio drifts from the
+        # scores that produced it), and PostgreSQL accepts the arithmetic as written.
+        table_sql = (cur.execute("select sql from sqlite_master where type='table' and name=?",
+                                 (table,)).fetchone() or [""])[0] or ""
+        for generated in re.finditer(
+                r"([A-Za-z_][A-Za-z0-9_]*)\s+([A-Za-z ]+?)\s+GENERATED\s+ALWAYS\s+AS\s*\((.+?)\)"
+                r"\s+(VIRTUAL|STORED)",
+                table_sql, re.IGNORECASE | re.DOTALL):
+            name = generated.group(1)
+            declared = generated.group(2).strip().upper()
+            expression = " ".join(generated.group(3).split())
+            kind = "double precision" if declared in ("REAL", "FLOAT", "DOUBLE") else (
+                "bigint" if "INT" in declared else "text")
+            lines.append(f"    {pg_ident(name)} {kind} GENERATED ALWAYS AS ({expression}) STORED")
+            notes.append(f"{table}.{name}: generated column carried across as STORED "
+                         f"({kind}); table_info does not list it")
         real_columns = {c[1] for c in cols}
         indexed = [c for c in fts_cols.get(table, []) if c in real_columns]
         missing = [c for c in fts_cols.get(table, []) if c not in real_columns]
