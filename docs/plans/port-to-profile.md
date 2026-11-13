@@ -1208,6 +1208,31 @@ segment (404, as the Go's `requireProjectID` maps a parse failure to `ErrNotFoun
 token (404). The probe caught the third: `FAIL an unknown project is 404: got 400 want 404`, because the handler used
 the slug helper on a numeric segment.
 
+### Row 11 — part 20: the complaint ↔ feature link (2026-11-13, `f0ca066`)
+
+```
+gate (before): GET /projects/{id}/features/{feature}/complaints -> 404
+               GET /projects/{id}/complaints/{id}/features      -> 404
+gate (after):
+  probe_s5_links.py -> 13/13 ok
+  routes.py         -> go 216 / port 92   (126 remain)
+  cargo test -p concord-db --lib -> 30 passed
+  concord-parity    -> 0 shape(s) disagreed of 16 checked, 5 skipped
+```
+
+Two routes over one link table, joining on **different columns** and sorting by different keys — `fc.feature_id` with
+`created_at desc`, `fc.complaint_id` with `elo_r desc, id`. The fixture is asymmetric (feature X shares complaint A
+with feature Y) because a swapped join still returns a plausible list.
+
+Negative control (10/13) and the failure worth reading: `FAIL a complaint with no features answers an empty array:
+got [{'id': 2423, 'title': 'Project maintainer office hours…'}] want []` — the swapped join returned **another
+project's feature** under a complaint with no links at all. That is exactly the class of answer that looks like data.
+
+Both routes answer an **empty array, never null**: `null` breaks a client expecting a list, and "nothing links here"
+is the common case. One axum fact learned here: two routes differing only in a **parameter name** are refused at
+insertion, so the new route binds `{slug}` like its siblings although the Go names it `{project_id}` — parameter
+names are not part of a shape.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
