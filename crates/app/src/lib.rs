@@ -250,6 +250,13 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/projects/{slug}/features/{feature}/evidence",
             post(add_feature_evidence).delete(remove_feature_evidence),
         )
+        // §6.5's call, at the REFERENCE's path as well as the port's `/solution-call`: a caller written against the Go
+        // service asks for `/consensus`, and answering 404 to a path that means the same thing is a migration papercut
+        // that costs a client author an afternoon. Two paths, one pair of handlers.
+        .route(
+            "/api/v1/projects/{slug}/features/{feature}/consensus",
+            get(solution_call_readiness).post(open_solution_call),
+        )
         .route(
             "/api/v1/projects/{slug}/features/{feature}/strategic-weight",
             put(propose_strategic_weight),
@@ -1791,6 +1798,15 @@ async fn solution_call_readiness(
 struct SolutionCallRequest {
     #[serde(default)]
     solution_id: i64,
+    /// §6.5's discretionary marker, as the reference sends it.
+    #[serde(default)]
+    early: bool,
+    /// The stated reason, as the reference sends it. Required when `early` is true and refused when it is blank — an
+    /// early call with no reason is an override that looks like a decision.
+    #[serde(default)]
+    reason: String,
+    /// The port's own older spelling of the same two fields, kept because a client that has been calling
+    /// `/solution-call` since before this alias existed should not have to change its body to keep working.
     #[serde(default)]
     early_reason: String,
 }
@@ -1817,60 +1833,54 @@ async fn open_solution_call(
     let feature = feature_for(&state, project.id, &feature).await?;
     let body = body.map(|Json(body)| body).unwrap_or_default();
 
-    let readiness = concord_db::arena::readiness(&state.pool, feature.id)
-        .await
-        .map_err(internal)?;
-    if readiness.leader_id == 0 {
-        return Err(ApiError::invalid_request(
-            "no solution leads this feature's arena, so there is nothing to call".to_string(),
-        ));
-    }
-    // A caller naming a different solution is asking the store to open a call the arena says is premature.
-    if body.solution_id != 0 && body.solution_id != readiness.leader_id {
-        return Err(ApiError::invalid_request(format!(
-            "solution {} is not the leader ({} leads this arena)",
-            body.solution_id, readiness.leader_id
-        )));
-    }
-    let early = body.early_reason.trim().to_string();
-    if !early.is_empty() {
-        let role: String = sqlx::query_scalar(
-            "select coalesce((select role from members where project_id = $1 and user_id = $2), 'guest')",
-        )
-        .bind(project.id)
-        .bind(user.id)
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(internal)?
-        .unwrap_or_else(|| "guest".to_string());
-        if !matches!(role.as_str(), "contributor" | "reviewer" | "maintainer" | "owner") {
-            return Err(ApiError::forbidden(format!(
-                "opening a call early is a collaborator's discretion; you are {role}"
+    // §6.5's conditions are checked by the STORE, next to the write, in the same function the readiness page reads. They
+    // used to be re-derived here, which is two answers to "may this be called?" — and the second one is the one that goes
+    // stale the first time a threshold is tuned.
+    // `early: true` is the reference's marker and takes its own `reason`, which the store refuses when blank. The port's
+    // older `{early_reason}` means the same thing, so a client written against `/solution-call` keeps working.
+    let (early, reason) = if body.early {
+        (true, body.reason.trim().to_string())
+    } else if !body.early_reason.trim().is_empty() {
+        (true, body.early_reason.trim().to_string())
+    } else {
+        (false, String::new())
+    };
+    // A caller naming a specific solution is asking for a call the arena may not have led with; that is a request-shape
+    // complaint about an id the caller supplied, so it belongs here rather than among the conditions.
+    if body.solution_id != 0 {
+        let readiness = concord_db::arena::readiness(&state.pool, feature.id)
+            .await
+            .map_err(internal)?;
+        if readiness.leader_id == 0 {
+            return Err(ApiError::invalid_request(
+                "no solution leads this feature's arena, so there is nothing to call".to_string(),
+            ));
+        }
+        if body.solution_id != readiness.leader_id {
+            return Err(ApiError::invalid_request(format!(
+                "solution {} is not the leader ({} leads this arena)",
+                body.solution_id, readiness.leader_id
             )));
         }
-    } else if !readiness.ready {
-        let failed = readiness
-            .conditions
-            .iter()
-            .find(|condition| !condition.met)
-            .map(|condition| format!("{} ({})", condition.name, condition.detail))
-            .unwrap_or_else(|| "unknown".to_string());
-        return Err(ApiError::invalid_request(format!(
-            "§6.5's conditions are not met: {failed}"
-        )));
     }
-
-    let opened = concord_db::consensus_writes::open_solution_call(
-        &state.pool,
-        project.id,
-        feature.id,
-        user.id,
-        readiness.leader_id,
-        if early.is_empty() { None } else { Some(early.as_str()) },
-        readiness.leader_title.as_str(),
-    )
-    .await
-    .map_err(write_error)?;
+    let opened = if !early {
+        concord_db::consensus_writes::open_solution_call_on_merit(&state.pool, project.id, feature.id, user.id)
+            .await
+            .map_err(write_error)?
+    } else {
+        // §6.5's discretionary path is a COLLABORATOR's discretion: a guest cannot open a call early. Checked here because
+        // the merit path's own conditions are the gate for opening at all, and a role is not one of them.
+        require_role(&state, &project, "contributor", &user).await?;
+        concord_db::consensus_writes::open_solution_call_early(
+            &state.pool,
+            project.id,
+            feature.id,
+            user.id,
+            &reason,
+        )
+        .await
+        .map_err(write_error)?
+    };
     Ok((
         StatusCode::CREATED,
         Json(serde_json::to_value(opened).map_err(internal)?),

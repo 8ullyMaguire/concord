@@ -424,3 +424,98 @@ pub async fn open_solution_call(
         .await?
         .ok_or_else(|| WriteError::NotFound(format!("consensus call {}", call.id)))
 }
+
+/// Open a call **on merit**: the arena must already have (a) a solution leading the feature's arena and (b) every §6.5
+/// condition met.
+///
+/// The gate lives here rather than in the handler because it is the same gate the page shows: the readiness report and
+/// the refusal to open are two readings of one function, and a handler that re-derived the conditions is a second answer
+/// to "may this be called?" that drifts the first time a threshold is tuned.
+///
+/// # Errors
+/// [`WriteError::Conflict`] when the arena has no leader or a condition is unmet, with the unmet condition's own sentence
+/// so the caller learns which one; [`WriteError::NotFound`] when the feature is not in the project.
+pub async fn open_solution_call_on_merit(
+    pool: &PgPool,
+    project_id: i64,
+    feature_id: i64,
+    opened_by: i64,
+) -> Result<Call, WriteError> {
+    let readiness = crate::arena::readiness(pool, feature_id)
+        .await
+        .map_err(WriteError::Database)?;
+    if readiness.leader_id == 0 {
+        return Err(WriteError::Conflict(
+            "no solution leads this feature's arena".to_string(),
+        ));
+    }
+    if !readiness.ready {
+        return Err(WriteError::Conflict(unmet_condition(&readiness)));
+    }
+    open_solution_call(
+        pool,
+        project_id,
+        feature_id,
+        opened_by,
+        readiness.leader_id,
+        None,
+        &readiness.leader_title,
+    )
+    .await
+}
+
+/// §6.5's discretionary path: "a collaborator may open a call earlier with a stated reason. Early calls are flagged as
+/// such."
+///
+/// **Flagged, not hidden.** The record says the conditions were not met, so the decision does not read as one the arena
+/// endorsed. The reason is required (a call opened early with no reason is an override that looks like a decision), and
+/// the leader must still exist — an early call is early, not about nothing.
+///
+/// # Errors
+/// [`WriteError::Invalid`] when the reason is blank; [`WriteError::Conflict`] when there is no leader.
+pub async fn open_solution_call_early(
+    pool: &PgPool,
+    project_id: i64,
+    feature_id: i64,
+    opened_by: i64,
+    reason: &str,
+) -> Result<Call, WriteError> {
+    if reason.trim().is_empty() {
+        return Err(WriteError::Invalid(
+            "§6.5 requires a stated reason for opening a call before its conditions are met".to_string(),
+        ));
+    }
+    let readiness = crate::arena::readiness(pool, feature_id)
+        .await
+        .map_err(WriteError::Database)?;
+    if readiness.leader_id == 0 {
+        return Err(WriteError::Conflict(
+            "no solution leads this feature's arena".to_string(),
+        ));
+    }
+    open_solution_call(
+        pool,
+        project_id,
+        feature_id,
+        opened_by,
+        readiness.leader_id,
+        Some(reason.trim()),
+        &readiness.leader_title,
+    )
+    .await
+}
+
+/// The unmet conditions, as one sentence a reader can act on.
+fn unmet_condition(readiness: &crate::arena::CallReadiness) -> String {
+    let unmet: Vec<&str> = readiness
+        .conditions
+        .iter()
+        .filter(|condition| !condition.met)
+        .map(|condition| condition.detail.as_str())
+        .collect();
+    if unmet.is_empty() {
+        "the call conditions are not met".to_string()
+    } else {
+        unmet.join("; ")
+    }
+}
