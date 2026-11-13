@@ -25,6 +25,7 @@ import json
 import os
 import sys
 import time
+import uuid
 import urllib.error
 import urllib.request
 
@@ -72,11 +73,26 @@ def main():
 
     con = harness.connect("unused")
     slug = "arena-probe"
+    # Children first, in dependency order, and EVERY child table named. This list has been wrong four
+    # times across the probes -- each time on the second run, never the first, because the first run creates
+    # the rows the second run cannot delete. The rule that stops it recurring: a probe that owns a project
+    # deletes it by walking the FK graph, not by naming the tables it happens to remember.
     for drop in (
+        # the arena graph, deepest first
+        "delete from pairwise_votes where arena_id in (select id from arenas"
+        " where project_id in (select id from projects where slug = ?))",
+        "delete from arena_entries where arena_id in (select id from arenas"
+        " where project_id in (select id from projects where slug = ?))",
+        "delete from arenas where project_id in (select id from projects where slug = ?)",
         "delete from positions where call_id in (select id from consensus_calls"
         " where project_id in (select id from projects where slug = ?))",
         "delete from consensus_calls where project_id in (select id from projects where slug = ?)",
+        "delete from solution_coverage where solution_id in (select id from solutions"
+        " where feature_id in (select id from features"
+        " where project_id in (select id from projects where slug = ?)))",
         "delete from solutions where feature_id in (select id from features"
+        " where project_id in (select id from projects where slug = ?))",
+        "delete from feature_complaints where feature_id in (select id from features"
         " where project_id in (select id from projects where slug = ?))",
         "delete from features where project_id in (select id from projects where slug = ?)",
         "delete from complaints where project_id in (select id from projects where slug = ?)",
@@ -103,16 +119,67 @@ def main():
         " VALUES (?,?,?,?,?,?,?) RETURNING id",
         (project, author, "a contested idea", "", "discussion", time.time(), time.time()),
     ).lastrowid
-    leader = con.execute(
-        "INSERT INTO solutions (feature_id, author_id, title, body, type) VALUES (?,?,?,?,?)"
-        " RETURNING id",
-        (contested, author, "the leader", "", "internal"),
+    # Filing a solution is what CREATES the arena (§6.3), so a fixture that inserts `solutions` rows and
+    # stops there has no arena to be ready in -- which is exactly how the first version of this probe
+    # failed: readiness reported "no solution has been filed" for a feature with two.
+    # §6.2: a feature must trace to at least one validated complaint before it can be called. The fixture
+    # links one, and it also gives coverage a non-zero denominator -- with no pain the coverage score is
+    # undefined, and a ranking of undefined scores proves nothing.
+    complaint = con.execute(
+        "INSERT INTO complaints (project_id, author_id, title, body, severity, frequency, status,"
+        " created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?) RETURNING id",
+        (project, author, "the pain this feature exists for", "", 3, 2, "validated",
+         time.time() - 86400, time.time() - 86400),
     ).lastrowid
-    runner_up = con.execute(
-        "INSERT INTO solutions (feature_id, author_id, title, body, type) VALUES (?,?,?,?,?)"
-        " RETURNING id",
-        (contested, author, "the runner-up", "", "internal"),
+    con.execute("INSERT INTO feature_complaints (feature_id, complaint_id) VALUES (?,?)",
+                (contested, complaint))
+
+    arena = con.execute(
+        "INSERT INTO arenas (type, project_id, feature_id, question, created_at)"
+        " VALUES ('solution', ?, ?, 'Which approach should we build?', ?) RETURNING id",
+        (project, contested, time.time()),
     ).lastrowid
+
+    def file_solution(title, kind, is_baseline):
+        sid = con.execute(
+            "INSERT INTO solutions (feature_id, author_id, title, body, type) VALUES (?,?,?,?,?)"
+            " RETURNING id",
+            (contested, author, title, "", kind),
+        ).lastrowid
+        # A leader that has actually won looks like this: a high rating with a small deviation, and an
+        # entry old enough to be stable. All-equal entries give a 0.5 chance of beating the baseline, which
+        # never reaches the 0.8 bar -- so a fixture of identical rows cannot exercise the ready path.
+        rating = 1800.0 if title == "the leader" else (1520.0 if title == "the runner-up" else 1450.0)
+        deviation = 30.0 if title == "the leader" else (60.0 if title == "the runner-up" else 80.0)
+        age_hours = 100.0 if title == "the leader" else 10.0
+        con.execute(
+            "INSERT INTO arena_entries (arena_id, entity_type, entity_id, r, rd, sigma, games,"
+            " is_baseline, updated_at) VALUES (?,?,?,?,?,?,?,?,?)",
+            (arena, "solution", sid, rating, deviation, 0.06, 12 if not is_baseline else 3,
+             is_baseline, time.time() - age_hours * 3600),
+        )
+        return sid
+
+    leader = file_solution("the leader", "internal", 0)
+    runner_up = file_solution("the runner-up", "internal", 0)
+    baseline_solution = file_solution("do nothing", "do-nothing", 1)
+    con.commit()
+
+    # Three distinct voters on the leader: §6.5's second condition, and the charter's default bar.
+    # Real user rows, because `pairwise_votes.voter_id` REFERENCES users and PostgreSQL enforces it (SQLite
+    # never did): an id nobody owns is refused, which is the constraint doing its job.
+    voters = []
+    for index in range(3):
+        voters.append(con.execute(
+            "INSERT INTO users (username, display_name, created_at) VALUES (?,?,?) RETURNING id",
+            (f"arena-voter-{index}-{uuid.uuid4().hex[:6]}", f"Voter {index}", time.time()),
+        ).lastrowid)
+    for voter in voters:
+        con.execute(
+            "INSERT INTO pairwise_votes (arena_id, project_id, entity_type, a, b, voter_id, outcome,"
+            " created_at) VALUES (?,?,?,?,?,?,?,?)",
+            (arena, project, "solution", leader, baseline_solution, voter, "a", time.time()),
+        )
     con.commit()
     con.close()
 

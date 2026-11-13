@@ -13,7 +13,7 @@
 
 use concord_ranking::{
     age_gate_multiplier, apply_pairwise_vote, decay_points, pain_score, priority_score, rate,
-    role_multiplier, vote_weight, Game, Outcome, Rated,
+    conservative, role_multiplier, vote_weight, win_probability, Game, Outcome, Rated,
 };
 
 fn rows() -> Vec<Vec<String>> {
@@ -199,6 +199,19 @@ fn every_go_number_survives_the_port() {
                 checked += 1;
                 let label = format!("priority_score({r}, {rd}, {pain}, {weight}, {lam}, {mu})");
                 if !same(&label, priority_score(r, rd, pain, weight, lam, mu), number(row, 7)) {
+                    failures.push(label);
+                }
+            }
+            "arena" => {
+                let (r1, rd1, r2, rd2) = (number(row, 1), number(row, 2), number(row, 3), number(row, 4));
+                checked += 1;
+                let label = format!("conservative({r1}, {rd1})");
+                if !same(&label, conservative(r1, rd1), number(row, 5)) {
+                    failures.push(label);
+                }
+                checked += 1;
+                let label = format!("win_probability({r1}, {rd1}, {r2}, {rd2})");
+                if !same(&label, win_probability(r1, rd1, r2, rd2), number(row, 6)) {
                     failures.push(label);
                 }
             }

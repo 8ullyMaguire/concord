@@ -197,7 +197,6 @@ pub struct Rated {
 /// throwaway accounts shrink the uncertainty on chosen features, and priority is scored on
 /// `r - 2·RD`, so collapsing RD is itself a way to move a feature up the board without shifting its
 /// rating.
-#[must_use]
 pub fn apply_pairwise_vote(
     a: Rated,
     b: Rated,
@@ -507,4 +506,26 @@ mod tests {
         // The theme weight is the μ term and nothing else.
         assert!((priority_score(1500.0, 350.0, 0.0, 2.0, 1.0, 1.5) - 800.0 - 3.0).abs() < 1e-12);
     }
+}
+
+/// §5.1's displayed score, `r - 2*RD`.
+///
+/// Not a display detail: it is what the leaderboard orders on, so an entry with no games (RD 350) cannot
+/// outrank a well-attested one on the strength of not having lost yet.
+#[must_use]
+pub fn conservative(r: f64, rd: f64) -> f64 {
+    r - 2.0 * rd
+}
+
+/// §5.1's expected score, `E(r1, r2, RD1, RD2)` — "A is better with 87% confidence".
+///
+/// Glickman eq. 2.1 with a twist the Go file records: `E` uses the *rating* player's own deviation, not
+/// the opponent's, so `rd2` does not enter the formula. It is in the signature because every caller has it
+/// and dropping it would make the arguments asymmetric — but pretending it mattered would make a
+/// high-RD leader look harder to beat than it is.
+#[must_use]
+pub fn win_probability(r1: f64, rd1: f64, r2: f64, _rd2: f64) -> f64 {
+    let mu1 = (r1 - 1500.0) / SCALE;
+    let mu2 = (r2 - 1500.0) / SCALE;
+    1.0 / (1.0 + (-g(rd1 / SCALE) * (mu1 - mu2)).exp())
 }

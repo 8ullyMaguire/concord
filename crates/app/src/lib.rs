@@ -10,7 +10,7 @@
 
 use axum::{
     extract::{Path, Query, State},
-    http::HeaderMap,
+    http::{HeaderMap, StatusCode},
     routing::{get, post, put},
     Json, Router,
 };
@@ -64,6 +64,14 @@ pub fn router(state: AppState) -> Router {
         .route(
             "/api/v1/projects/{project_id}/charter",
             get(get_charter),
+        )
+        .route(
+            "/api/v1/projects/{slug}/features/{feature}/solution-call",
+            get(solution_call_readiness).post(open_solution_call),
+        )
+        .route(
+            "/api/v1/projects/{slug}/consensus/{call}/fallback",
+            get(call_fallback),
         )
         .route(
             "/api/v1/projects/{slug}/consensus/{call}/outcome",
@@ -1413,4 +1421,152 @@ async fn record_call_outcome(
     .await
     .map_err(write_error)?;
     Ok(Json(recorded))
+}
+
+/// A feature id in this project, or a 404 naming the feature.
+///
+/// The scope check matters: an id that exists in another project is not this project's business, and a
+/// route that answered it would leak one project's board to another's reader.
+async fn feature_for(
+    state: &AppState,
+    project_id: i64,
+    feature: &str,
+) -> Result<concord_db::features::Feature, ApiError> {
+    let id = feature
+        .parse::<i64>()
+        .map_err(|_| ApiError::invalid_request("feature id must be an integer"))?;
+    concord_db::features::feature(&state.pool, id)
+        .await
+        .map_err(internal)?
+        .filter(|found| found.project_id == project_id)
+        .ok_or_else(|| ApiError::not_found(format!("feature {feature}")))
+}
+
+/// `GET /api/v1/projects/{slug}/features/{feature}/solution-call` — §6.5's three conditions.
+///
+/// A feature nobody has proposed a solution to is one unmet condition, not a 404: "no solutions yet" and
+/// "no such feature" must not look the same to a caller.
+async fn solution_call_readiness(
+    State(state): State<AppState>,
+    Path((slug, feature)): Path<(String, String)>,
+) -> Result<Json<Value>, ApiError> {
+    let project = project_for(&state, &slug).await?;
+    let feature = feature_for(&state, project.id, &feature).await?;
+    let readiness = concord_db::arena::readiness(&state.pool, feature.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::to_value(readiness).map_err(internal)?))
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct SolutionCallRequest {
+    #[serde(default)]
+    solution_id: i64,
+    #[serde(default)]
+    early_reason: String,
+}
+
+/// `POST /api/v1/projects/{slug}/features/{feature}/solution-call` — open §6.5's call on the leader.
+///
+/// The call opens on the LEADING solution, as the Go store does, and refuses unless the three conditions
+/// hold — naming the first one that failed. Opening it and letting it fail later spends a consensus window
+/// on a decision the arena already says is premature.
+///
+/// §6.5's discretionary path: a collaborator may open a call early with a stated reason. Early calls are
+/// flagged, not hidden: the record has to say the conditions were not met, or the decision reads as one the
+/// arena endorsed when it did not.
+async fn open_solution_call(
+    State(state): State<AppState>,
+    Path((slug, feature)): Path<(String, String)>,
+    headers: HeaderMap,
+    body: Option<Json<SolutionCallRequest>>,
+) -> Result<(StatusCode, Json<Value>), ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    let project = project_for(&state, &slug).await?;
+    let feature = feature_for(&state, project.id, &feature).await?;
+    let body = body.map(|Json(body)| body).unwrap_or_default();
+
+    let readiness = concord_db::arena::readiness(&state.pool, feature.id)
+        .await
+        .map_err(internal)?;
+    if readiness.leader_id == 0 {
+        return Err(ApiError::invalid_request(
+            "no solution leads this feature's arena, so there is nothing to call".to_string(),
+        ));
+    }
+    // A caller naming a different solution is asking the store to open a call the arena says is premature.
+    if body.solution_id != 0 && body.solution_id != readiness.leader_id {
+        return Err(ApiError::invalid_request(format!(
+            "solution {} is not the leader ({} leads this arena)",
+            body.solution_id, readiness.leader_id
+        )));
+    }
+    let early = body.early_reason.trim().to_string();
+    if !early.is_empty() {
+        let role: String = sqlx::query_scalar(
+            "select coalesce((select role from members where project_id = $1 and user_id = $2), 'guest')",
+        )
+        .bind(project.id)
+        .bind(user.id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(internal)?
+        .unwrap_or_else(|| "guest".to_string());
+        if !matches!(role.as_str(), "contributor" | "reviewer" | "maintainer" | "owner") {
+            return Err(ApiError::forbidden(format!(
+                "opening a call early is a collaborator's discretion; you are {role}"
+            )));
+        }
+    } else if !readiness.ready {
+        let failed = readiness
+            .conditions
+            .iter()
+            .find(|condition| !condition.met)
+            .map(|condition| format!("{} ({})", condition.name, condition.detail))
+            .unwrap_or_else(|| "unknown".to_string());
+        return Err(ApiError::invalid_request(format!(
+            "§6.5's conditions are not met: {failed}"
+        )));
+    }
+
+    let opened = concord_db::consensus_writes::open_solution_call(
+        &state.pool,
+        project.id,
+        feature.id,
+        user.id,
+        readiness.leader_id,
+        if early.is_empty() { None } else { Some(early.as_str()) },
+        readiness.leader_title.as_str(),
+    )
+    .await
+    .map_err(write_error)?;
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::to_value(opened).map_err(internal)?),
+    ))
+}
+
+/// `GET /api/v1/projects/{slug}/consensus/{call}/fallback` — §6.5's chain, the call's own solution absent.
+async fn call_fallback(
+    State(state): State<AppState>,
+    Path((slug, call)): Path<(String, String)>,
+) -> Result<Json<Value>, ApiError> {
+    let project = project_for(&state, &slug).await?;
+    let call_id = parse_id(&call, "call id")?;
+    let found = concord_db::consensus::call(&state.pool, call_id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("consensus call {call_id}")))?;
+    if found.project_id != project.id {
+        return Err(ApiError::not_found(format!("consensus call {call_id}")));
+    }
+    let chain = concord_db::arena::fallback(&state.pool, call_id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!({
+        "call_id": call_id,
+        "fallback": chain,
+    })))
 }

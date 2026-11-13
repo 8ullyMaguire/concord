@@ -7,7 +7,7 @@
 //! so a progress bar computed from `status` measures whoever ran the import.
 
 use serde::Serialize;
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 
 use crate::projects::ser_unix;
 
@@ -87,7 +87,6 @@ const COUNTS_SQL: &str = "select count(*), \
 /// # Errors
 /// [`sqlx::Error`] when a read fails.
 pub async fn list_milestones(pool: &PgPool, project_id: i64) -> Result<Vec<Milestone>, sqlx::Error> {
-    use sqlx::Row;
     let rows = sqlx::query(
         "select id, project_id, title, body, target_date, status, \
                 extract(epoch from created_at)::double precision \
@@ -146,7 +145,6 @@ pub async fn roadmap_slippage(
     pool: &PgPool,
     project_id: i64,
 ) -> Result<Vec<MilestoneSlippage>, sqlx::Error> {
-    use sqlx::Row;
     let milestones = list_milestones(pool, project_id).await?;
     let now = chrono_now_unix();
     let mut out = Vec::with_capacity(milestones.len());

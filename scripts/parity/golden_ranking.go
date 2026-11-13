@@ -205,4 +205,23 @@ func main() {
 		sA, sB := outcome.ScorePair()
 		row("outcome", string(outcome), outcome.AppliesRatingChange(), sA, sB)
 	}
+
+	// 6. §5.1's two arena functions: the displayed conservative score and the expected score a call's
+	// readiness condition compares against the charter's confidence bar.
+	for _, pair := range [][4]float64{
+		{1500, 350, 1500, 350},
+		{1500, 350, 1500, 350.0001},
+		{1600, 100, 1500, 350},
+		{1700, 50, 1500, 350},
+		{1500, 350, 1700, 50},
+		{1800, 20, 1200, 400},
+		{1550, 80, 1540, 90},
+		{1500, 350, 1900, 30},
+		{2100, 15, 1500, 350},
+		{1499, 351, 1501, 349},
+	} {
+		row("arena", pair[0], pair[1], pair[2], pair[3],
+			ranking.Conservative(pair[0], pair[1]),
+			ranking.WinProbability(pair[0], pair[1], pair[2], pair[3]))
+	}
 }

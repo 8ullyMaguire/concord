@@ -364,3 +364,63 @@ pub async fn close_call(
         "result": verdict.as_str(),
     }))
 }
+
+/// §6.5's call on a feature's leading solution.
+///
+/// Reuses [`create_call`] rather than re-implementing its validation, so a rule cannot be enforced on one
+/// path and forgotten on the other. Three things are added after it succeeds:
+///
+/// * the call is attached to the solution it is about;
+/// * `opened_early` is set with the stated reason when the caller exercised §6.5's discretion — flagged,
+///   not hidden, so the record says the conditions were not met;
+/// * the solution moves to `consensus`, because §6.6 puts it in the decision phase and the board would
+///   otherwise show it still in solutioning while a call about it runs.
+pub async fn open_solution_call(
+    pool: &PgPool,
+    project_id: i64,
+    feature_id: i64,
+    opened_by: i64,
+    solution_id: i64,
+    early_reason: Option<&str>,
+    leader_title: &str,
+) -> Result<Call, WriteError> {
+    let feature_title: Option<String> =
+        sqlx::query_scalar("select title from features where id = $1 and project_id = $2")
+            .bind(feature_id)
+            .bind(project_id)
+            .fetch_optional(pool)
+            .await?;
+    let Some(feature_title) = feature_title else {
+        return Err(WriteError::NotFound(format!("feature {feature_id}")));
+    };
+    // §6.5 names the call after the solution it is about; without that the agenda reads as a call on the
+    // feature, which is what the feature page already says.
+    let title = if leader_title.is_empty() {
+        feature_title.clone()
+    } else {
+        format!("{feature_title}: {leader_title}")
+    };
+    let question = format!("Adopt {leader_title}?");
+
+    let call = create_call(pool, project_id, feature_id, opened_by, &title, &question).await?;
+
+    let mut tx = pool.begin().await?;
+    sqlx::query(
+        "update consensus_calls set solution_id = $1, opened_early = $2, early_reason = $3 where id = $4",
+    )
+    .bind(solution_id)
+    .bind(i64::from(early_reason.is_some()))
+    .bind(early_reason)
+    .bind(call.id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query("update solutions set status = 'consensus', updated_at = now() where id = $1")
+        .bind(solution_id)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await?;
+
+    crate::consensus::call(pool, call.id)
+        .await?
+        .ok_or_else(|| WriteError::NotFound(format!("consensus call {}", call.id)))
+}

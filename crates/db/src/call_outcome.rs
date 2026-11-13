@@ -17,7 +17,7 @@
 //!   no-op that leaves the board where it started while claiming progress.
 
 use serde_json::Value;
-use sqlx::PgPool;
+use sqlx::{PgPool, Row};
 
 use crate::feature_writes::{add_audit, WriteError};
 
@@ -274,7 +274,6 @@ async fn write_decision_record(
     amended_solution: i64,
     author_id: i64,
 ) -> Result<(), WriteError> {
-    use sqlx::Row;
     let positions = crate::consensus::positions(pool, call_id).await?;
     let objections = crate::consensus::objections(pool, call_id).await?;
     let feature_title: String = sqlx::query_scalar("select title from features where id = $1")
@@ -337,8 +336,7 @@ async fn write_decision_record(
         body.push_str("records the solutions and the state each was left in.\n\n");
         body.push_str("| # | Solution | Status | Note |\n|---|---|---|---|\n");
         for (index, row) in ranking.iter().enumerate() {
-            use sqlx::Row;
-            let id: i64 = row.try_get(0)?;
+                    let id: i64 = row.try_get(0)?;
             let title: String = row.try_get(1)?;
             let status: String = row.try_get(2)?;
             let note = if id == solution_id {
