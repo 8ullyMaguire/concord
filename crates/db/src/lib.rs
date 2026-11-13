@@ -25,6 +25,7 @@ pub mod notifications;
 pub mod proposals;
 pub mod snapshot;
 pub mod search;
+pub mod members;
 pub mod metrics;
 pub mod stats;
 pub mod themes;

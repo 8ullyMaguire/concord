@@ -528,3 +528,21 @@ async fn apply(pool: &PgPool, proposal: &Proposal) -> Result<(), sqlx::Error> {
     }
     Ok(())
 }
+
+/// A project's tags, alphabetically — the Go's `ProjectTags`.
+///
+/// The caller resolves the project FIRST: `project_tags` returns only names, so without the project read this
+/// route answers 200 with an empty list for a private project, which confirms the slug exists. That is the leak
+/// the Go handler's comment records, and the fix belongs at the handler (it has the visibility rule), not here.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn project_tags(pool: &sqlx::PgPool, project_id: i64) -> Result<Vec<String>, sqlx::Error> {
+    sqlx::query_scalar(
+        "select t.name from project_tags pt join tags t on t.id = pt.tag_id
+          where pt.project_id = $1 order by t.name",
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await
+}

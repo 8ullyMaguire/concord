@@ -34,6 +34,10 @@ pub fn router(state: AppState) -> Router {
         .route("/healthz", get(healthz))
         .route("/api/v1/healthz", get(healthz))
         .route("/api/v1/version", get(version))
+        // Every page needs to know who it is looking at, and the Go's `/auth/me` is what tells it.
+        .route("/api/v1/auth/me", get(auth_me))
+        .route("/api/v1/projects/{slug}/tags", get(project_tags))
+        .route("/api/v1/projects/{project_id}/members", get(list_members))
         .route("/api/v1/projects", get(list_projects))
         .route("/api/v1/projects/{slug}", get(get_project))
         .route("/api/v1/projects/{slug}/board", get(get_board))
@@ -2596,4 +2600,91 @@ fn theme_refusal(refusal: concord_db::themes::Refused) -> ApiError {
         }
         Refused::Failed(detail) => ApiError::conflict(format!("the change could not be applied: {detail}")),
     }
+}
+
+/// May this caller read this project? The Go's `CanAccessProject`, rule for rule:
+///
+/// * `public` and `unlisted` are readable by anyone, including an anonymous caller;
+/// * `private` and `protected` are readable by a member, and by nobody else — an anonymous caller is refused
+///   before the membership query rather than after it;
+/// * an unknown visibility FAILS CLOSED. Migration 0009's CHECK makes it unreachable from the database, but
+///   fail-open is the wrong direction for an access check, and the store is reachable from tests.
+async fn readable(
+    state: &AppState,
+    project: &concord_db::projects::Project,
+    user: Option<&concord_db::auth::User>,
+) -> Result<bool, ApiError> {
+    match project.visibility.as_str() {
+        "public" | "unlisted" => Ok(true),
+        "private" | "protected" => {
+            let Some(user) = user else {
+                return Ok(false);
+            };
+            let count: i64 = sqlx::query_scalar(
+                "select count(*) from members where project_id = $1 and user_id = $2",
+            )
+            .bind(project.id)
+            .bind(user.id)
+            .fetch_one(&state.pool)
+            .await
+            .map_err(internal)?;
+            Ok(count > 0)
+        }
+        _ => Ok(false),
+    }
+}
+
+/// `GET /api/v1/auth/me` — the caller, by id: the token carries only an id, so the name is looked up here.
+async fn auth_me(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    // The Go answers `role: "member"` for every caller — it is not this project's role, it is "you are signed
+    // in". Kept identical rather than improved: a client that switches on it exists.
+    Ok(Json(serde_json::json!({
+        "id": user.id,
+        "username": user.username,
+        "display_name": user.display_name,
+        "created_at": user.created_at,
+        "role": "member",
+    })))
+}
+
+/// `GET /api/v1/projects/{slug}/tags` — the project's tag names.
+async fn project_tags(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = project_for(&state, &slug).await?;
+    // Resolve and check the project FIRST: an empty list for a project the caller may not read is a 200 that
+    // confirms the slug exists, which is the leak this rule exists to close.
+    let user = bearer_user(&state, &headers).await?;
+    if !readable(&state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    let tags = concord_db::taxonomy::project_tags(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(tags)))
+}
+
+/// `GET /api/v1/projects/{id}/members` — most privileged first.
+async fn list_members(
+    State(state): State<AppState>,
+    Path(project_id): Path<i64>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = project_by_id(&state, &project_id.to_string()).await?;
+    let user = bearer_user(&state, &headers).await?;
+    if !readable(&state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    let members = concord_db::members::list(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(members)))
 }
