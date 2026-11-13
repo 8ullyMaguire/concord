@@ -57,6 +57,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/projects/{project_id}/lists/{list}", get(get_list))
         .route("/api/v1/projects/{project_id}/lists/{list}/", get(get_list))
         .route("/api/v1/projects/{project_id}/lists/{list}/entries", get(get_list_entries))
+        .route("/api/v1/projects/{project_id}/tallies", get(feature_tallies))
         .route("/api/v1/projects/{slug}/documents/kinds", get(document_kinds))
         .route("/api/v1/projects/{slug}/features/{feature}/deps", get(feature_deps))
         .route("/api/v1/projects/{slug}/features/{feature}/evidence", get(feature_evidence))
@@ -3085,4 +3086,21 @@ async fn get_list_entries(
         .await
         .map_err(internal)?;
     Ok(Json(serde_json::json!(rows)))
+}
+
+/// `GET /api/v1/projects/{id}/tallies` — the arena panel's per-feature counts.
+///
+/// Answers `null` and not `[]` for a project with no features, because the Go's nil slice marshals that way and a
+/// deployed frontend is already reading it. The rest of the port's list routes answer `[]`; this one reproduces the
+/// service, and the difference is recorded rather than tidied.
+async fn feature_tallies(
+    State(state): State<AppState>,
+    Path(project_id): Path<i64>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = readable_project(&state, project_id, &headers).await?;
+    let tallies = concord_db::tallies::tallies(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(tallies)))
 }
