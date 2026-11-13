@@ -12,9 +12,10 @@
      /taxonomy by a browser crawl on 2026-11-13 — so links, stat values and icons take --indigo-text, which is
      #4f46e5 at 5.74:1. One value could not satisfy both, which is what the crawl was saying on two pages in a row. */
   --indigo-text: #4f46e5;
-  /* Measured, not assumed: this site has no dark surface. The header is rgba(255,255,255,.95) and the footer,
-     breadcrumb and body are slate-100. An earlier attempt at a light-indigo-for-dark-chrome existed for two
-     commits and was wrong on its own premise — the brand link it painted scored 4.46:1 on the white header. */
+  /* One band on this site is dark: section.hero, slate-900. Everything else — header, nav, footer, breadcrumb,
+     body — is white or slate-100, so a link colour for 'dark chrome' was wrong precisely where I first put it
+     (the brand link scored 4.46:1 on the white header). It is right inside the hero, and scoped there. */
+  --indigo-on-dark: #a5b4fc;
   /* `--muted` is asked for by 22 rules and was never defined, so each of them took its own literal fallback
      (#64748b, 4.34:1 on the slate-100 surface). Defining the alias is the fix, not editing nine fallbacks:
      it resolves to --slate-500, which moved to 6.92:1 today. Confirmed by a browser crawl on 2026-11-13 that
@@ -63,6 +64,22 @@ a { color: var(--indigo-text); text-decoration: none; }
    and the body slate are close enough in luminance that a colour difference is not a perceivable cue for
    everyone (axe link-in-text-block, measured on /taxonomy 2026-11-13). */
 p a, li a, .md a, .prose a { text-decoration: underline; text-underline-offset: 0.15em; }
+/* The one dark band. Its text steps up to slate-200/300 and its links to --indigo-on-dark; buttons keep their
+   own colours, which is what an earlier unscoped `.hero a` broke (it repainted the hero's call to action). */
+/* Two bands on this page are slate-900: .hero and .flip-section. Naming them as a pair instead of one at a time
+   is what the second measurement cost. */
+/* Two bands on this page are slate-900: .hero and .flip-section. Rather than list their descendants one by one
+   (and lose to a later `.flip-section em` rule, which is what happened), the muted steps are redefined INSIDE the
+   band: every rule that asks for a muted grey on a dark surface gets one that is legible on it. */
+.hero, .flip-section {
+  color: var(--slate-200);
+  --slate-400: var(--slate-300);
+  --slate-500: var(--slate-300);
+  --muted: var(--slate-300);
+}
+.hero a:not(.btn):not(.btn-hero):not(.btn-primary):not(.btn-ghost),
+.flip-section a:not(.btn):not(.btn-hero):not(.btn-primary):not(.btn-ghost) { color: var(--indigo-on-dark); }
+
 code, pre { font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace; }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }

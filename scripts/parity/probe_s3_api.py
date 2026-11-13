@@ -78,6 +78,7 @@ def main():
     # did, so a bare `delete from projects` leaves consensus_calls/positions/objections/features pointing
     # at a row that is gone and the whole probe fails before it asserts anything.
     for drop in (
+        "delete from project_documents where project_id in (select id from projects where slug = ?)",
         "delete from override_positions where window_id in (select id from override_windows"
         " where call_id in (select id from consensus_calls"
         " where project_id in (select id from projects where slug = ?)))",
@@ -90,6 +91,10 @@ def main():
         "delete from emergency_holds where call_id in (select id from consensus_calls"
         " where project_id in (select id from projects where slug = ?))",
         "delete from consensus_calls where project_id in (select id from projects where slug = ?)",
+        # AFTER the calls: consensus_calls.solution_id references solutions, so deleting the solutions
+        # first fails on the very rows the next line exists to remove.
+        "delete from solutions where feature_id in (select id from features"
+        " where project_id in (select id from projects where slug = ?))",
         "delete from feature_complaints where feature_id in (select id from features"
         " where project_id in (select id from projects where slug = ?))",
         "delete from features where project_id in (select id from projects where slug = ?)",
@@ -140,6 +145,17 @@ def main():
     for target in (with_evidence, second):
         con.execute("INSERT INTO feature_complaints (feature_id, complaint_id) VALUES (?,?)",
                     (target, complaint))
+    # §6.5's outcomes only apply to a call about a solution, so the feature needs one.
+    solution = con.execute(
+        "INSERT INTO solutions (feature_id, author_id, title, body, type) VALUES (?,?,?,?,?)"
+        " RETURNING id",
+        (with_evidence, author, "the obvious solution", "", "internal"),
+    ).lastrowid
+    runner_up = con.execute(
+        "INSERT INTO solutions (feature_id, author_id, title, body, type) VALUES (?,?,?,?,?)"
+        " RETURNING id",
+        (with_evidence, author, "the runner-up", "", "internal"),
+    ).lastrowid
 
     # A call that has already closed BLOCKED, with a standing objection: the only state §6.6's override
     # window opens on. Seeded rather than driven through close, because reaching `blocked` needs quorum
@@ -161,6 +177,19 @@ def main():
     # A call that closed for some OTHER reason. Without it, "a window opens only on a blocked call" is
     # asserted against call #1, which DOES close blocked -- the objection above guarantees it -- and a
     # 201 there is correct behaviour that the assertion would call a failure.
+    # Two calls that are ABOUT a solution and already closed by §6.8, which is the state the decision
+    # record has to be writable in -- the guard is "already decided", not "already closed".
+    def solution_call(question, result):
+        return con.execute(
+            "INSERT INTO consensus_calls (project_id, feature_id, solution_id, opened_by, opens_at,"
+            " closes_at, status, result, question, public_id, closed_at)"
+            " VALUES (?,?,?,?,?,?,?,?,?,?,?) RETURNING id",
+            (project, with_evidence, solution, author, time.time() - 3600, time.time() - 60,
+             "closed", result, question, f"probe{uuid.uuid4().hex[:20]}", time.time() - 60),
+        ).lastrowid
+
+    decided_call = solution_call("adopt the obvious solution?", "accepted")
+    sentback_call = solution_call("adopt it now?", "rejected")
     rejected_call = con.execute(
         "INSERT INTO consensus_calls (project_id, feature_id, opened_by, opens_at, closes_at, status,"
         " result, question, public_id, closed_at)"
@@ -401,6 +430,66 @@ def main():
     results.append(("a slug in the numeric segment is a parse error", status, 400, message(body)))
     status, body = call("GET", "/api/v1/projects/999999/charter")
     results.append(("a charter for a project that does not exist", status, 404, message(body)))
+
+    # 14. §6.5's five outcomes and the decision record they write.
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{decided_call}/outcome",
+                        {"outcome": "accepted"})
+    results.append(("outcome without a token", status, 401, message(body)))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{decided_call}/outcome",
+                        {"outcome": "accepted"}, token=member_token)
+    results.append(("outcome as a contributor", status, 403, message(body)))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{decided_call}/outcome",
+                        {"outcome": "approved"}, token=token)
+    results.append(("an invented outcome", status, 400, message(body)))
+    results.append(("the refusal lists the outcomes", 1 if "sent-back" in message(body) else 0, 1,
+                    message(body)))
+    # NOT process_call: that one carries the emergency hold placed above, and the hold guard fires before
+    # the solution guard -- correctly, since a suspended call resolves nothing however the request is
+    # shaped. rejected_call has no solution and no hold.
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{rejected_call}/outcome",
+                        {"outcome": "accepted"}, token=token)
+    results.append(("an outcome on a call with no solution", status, 400, message(body)))
+    results.append(("the refusal says why", 1 if "solution" in message(body) else 0, 1,
+                    message(body)))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{decided_call}/outcome",
+                        {"outcome": "fall-back"}, token=token)
+    results.append(("fall-back naming nothing", status, 400, message(body)))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{decided_call}/outcome",
+                        {"outcome": "fall-back", "fallback_to": solution}, token=token)
+    results.append(("fall-back to the solution the call was about", status, 400, message(body)))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{decided_call}/outcome",
+                        {"outcome": "accepted-with-amendments"}, token=token)
+    results.append(("amendments with no text", status, 400, message(body)))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{decided_call}/outcome",
+                        {"outcome": "accepted", "summary": "the obvious solution covers it"}, token=token)
+    recorded = body if isinstance(body, dict) else {}
+    results.append(("record the outcome", status, 200, message(body)))
+    results.append(("the call carries its outcome", recorded.get("outcome"), "accepted",
+                    recorded.get("outcome")))
+    results.append(("the call is closed by the decision", recorded.get("status"), "closed",
+                    recorded.get("status")))
+    status, body = call("GET", f"/api/v1/projects/{slug}/features/{with_evidence}")
+    results.append(("the feature is ready", (body or {}).get("status"), "ready",
+                    (body or {}).get("status")))
+    # The decision record is a project document of kind 'adr', not a new table.
+    con4 = harness.connect("unused")
+    adr = con4.execute(
+        "select title, body from project_documents where project_id = ? and kind = 'adr'"
+        " order by id desc limit 1", (project,)).fetchone()
+    con4.close()
+    results.append(("a decision record was written", 1 if adr else 0, 1, adr[0] if adr else None))
+    results.append(("it names the outcome", 1 if adr and "accepted" in adr[1] else 0, 1,
+                    (adr[1][:60] if adr else None)))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{decided_call}/outcome",
+                        {"outcome": "rejected"}, token=token)
+    results.append(("a second outcome is a conflict", status, 409, message(body)))
+    # "sent back" is not a rejection: the call decided not to decide.
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{sentback_call}/outcome",
+                        {"outcome": "sent-back"}, token=token)
+    results.append(("send a call back", status, 200, message(body)))
+    status, body = call("GET", f"/api/v1/projects/{slug}/features/{with_evidence}")
+    results.append(("sent back returns the feature to discussion", (body or {}).get("status"),
+                    "discussion", (body or {}).get("status")))
 
     failed = 0
     for label, got, want, detail in results:
