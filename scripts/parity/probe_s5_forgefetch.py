@@ -31,7 +31,9 @@ sys.path.insert(0, os.path.join(ROOT, "tests", "e2e"))
 
 BIN = os.environ.get("CONCORD_BIN", "/tmp/concord-cli")
 SLUG = "probe-forge-1"
+FORGEJO_SLUG = "probe-forge-2"
 FULL = "owner/repo"
+FORGEJO_FULL = "team/mirror"
 
 # The fake forge's mode, switched between phases. `ok`, `limited`, `gone`.
 MODE = {"value": "ok"}
@@ -66,6 +68,26 @@ class Handler(http.server.BaseHTTPRequestHandler):
             return
         if MODE["value"] == "gone":
             self._send(404, {"message": "Not Found"})
+            return
+        if path.startswith("/api/v1/repos/"):
+            fbase = "/api/v1/repos/" + FORGEJO_FULL
+            if path == fbase:
+                self._send(200, {"stars_count": 11, "forks_count": 2, "open_issues_count": 1,
+                                 "updated_at": iso(5 * 86400)})
+            elif path == fbase + "/commits?limit=50":
+                self._send(200, [{"author": {"login": name}} for name in ("x", "y", "z", "x")])
+            elif path == fbase + "/commits?limit=1":
+                self._send(200, [{"sha": "abc"}], {"X-Total-Count": "88"})
+            elif path == fbase + "/releases?limit=50":
+                self._send(200, [{"published_at": iso(3 * 86400)}, {"published_at": iso(500 * 86400)}])
+            elif path == fbase + "/pulls?state=all&limit=3":
+                self._send(200, [{"number": 7, "created_at": iso(10 * 3600), "user": {"login": "author"}}])
+            elif path == fbase + "/pulls/7/reviews":
+                self._send(200, [{"submitted_at": iso(7 * 3600), "user": {"login": "reviewer"}}])
+            elif path == fbase + "/issues/7/comments":
+                self._send(200, [])
+            else:
+                self._send(404, {"message": f"no forgejo route {path}"})
             return
         base = f"/repos/{FULL}"
         if path == base:
@@ -119,7 +141,9 @@ def main():
     con.execute("delete from project_metrics where project_id in "
                 "(select id from projects where slug = ?)", (SLUG,))
     con.execute("delete from forge_events where repo_full = ?", (FULL,))
-    con.execute("delete from projects where slug = ?", (SLUG,))
+    con.execute("delete from project_metrics where project_id in "
+                "(select id from projects where slug = ?)", (FORGEJO_SLUG,))
+    con.execute("delete from projects where slug in (?, ?)", (SLUG, FORGEJO_SLUG))
     now = time.time()
     project = con.execute(
         "INSERT INTO projects (slug, name, description, governance_model, visibility, intake_mode,"
@@ -207,7 +231,34 @@ def main():
     check("and is called FAILED", "FAILED" in output, True)
     check("and writes nothing either", stored(), before)
 
+    # 4. The Forgejo branch, which part 9 named as unasserted: same rules, different JSON keys, and the commit
+    #    total from X-Total-Count instead of the Link header.
     MODE["value"] = "ok"
+    forgejo_project = con.execute(
+        "INSERT INTO projects (slug, name, description, governance_model, visibility, intake_mode,"
+        " repo_url, repo_host, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id",
+        (FORGEJO_SLUG, "Forgejo probe", "", "collective", "public", "both",
+         f"https://git.polarisocial.xyz/{FORGEJO_FULL}", "forgejo", now, now),
+    ).lastrowid
+    con.commit()
+    code, output = run("healthsync", "--fetch", "--only", FORGEJO_SLUG)
+    forgejo_row = con.execute(
+        "select health_score, commit_count, contributors, releases_90d, stars, median_review_hours"
+        " from project_metrics where project_id = ?", (forgejo_project,)
+    ).fetchone()
+    check("the forgejo fetch exits 0", code, 0)
+    check("a forgejo project is synced", "synced 1" in output, True)
+    check("the forgejo row exists", forgejo_row is not None, True)
+    check("forgejo stars", forgejo_row[4], 11)
+    check("forgejo commits come from X-Total-Count", forgejo_row[1], 88)
+    check("forgejo contributors are distinct logins on one page", forgejo_row[2], 3)
+    check("forgejo releases in the last 90 days", forgejo_row[3], 1)
+    # Opened 10h ago, reviewed 7h ago: 3 hours to the first response.
+    check("forgejo review latency", forgejo_row[5], 3.0)
+
+    con.execute("delete from project_metrics where project_id = ?", (forgejo_project,))
+    con.execute("delete from projects where id = ?", (forgejo_project,))
+    con.commit()
     con.execute("delete from project_metrics where project_id = ?", (project,))
     con.execute("delete from forge_events where repo_full = ?", (FULL,))
     con.execute("delete from projects where id = ?", (project,))
