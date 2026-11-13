@@ -12,6 +12,7 @@
 /api/v1/projects/concord/board
 /api/v1/projects/concord/milestones
 /api/v1/projects/concord/roadmap
+/api/v1/projects/concord/priorities
 /api/v1/projects/concord/audit
 /api/v1/projects/concord/consensus
 /api/v1/stats

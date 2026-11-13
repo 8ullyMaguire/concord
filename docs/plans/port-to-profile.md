@@ -37,11 +37,11 @@ quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 
 | # | step | gate — the command that fails if the step is absent |
 |---|---|---|
-| 8 | S2 ideas, complaints, ranking | corpus subset + `rank_*`, `milestones_e2e`, `feature_*` green; ranking mutation arms killed |
+| 8 | S2 ideas, complaints, ranking | corpus subset for the slice's routes + `concord-ranking`'s own suite + store tests green; ranking mutation arms killed — the browser suites are row 12's (see the dated correction below) |
 | 9 | S3 consensus, governance, ledger | corpus subset + `consensus_*`, `audit_e2e` green; estate gate 49 green |
 | 10 | S4 moderation, comments, inbox | corpus subset + `notifications_e2e` and the queue suite green; estate gates 22 and 45 green |
 | 11 | S5 stats, feeds, admin binaries | corpus + `stats_e2e` and feed parse; estate gates 4, 5, 47 green; timers migrated to `polaris-loops` |
-| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | every page its slice owns renders from the API with the server-rendered head, in a browser |
+| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`** |
 | 13 | P7 cutover | `concord.polarisocial.xyz/api/v1/version` served by the Rust binary, and estate gate 17 green for `concord` with NO `reason` |
 
 **Row 8 (S2) — the failing probe, pasted before any code** (2026-11-13):
@@ -175,6 +175,44 @@ Decisions taken here, written down because the Go store leaves them implicit:
 Also fixed in the harness by these tests: `PgSeed` appended `RETURNING id` to every INSERT, which fails
 on a join table (`feature_deps` is keyed by its pair), and its VALUES span was matched as a suffix, so
 an INSERT that already ended in `RETURNING id` got a placeholder and no argument.
+
+**Correction, dated 2026-11-13 — row 8's gate named the wrong surface.** The gate said
+"`rank_*`, `milestones_e2e`, `feature_*` green", and those three suites are browser suites: their
+first assertion navigates to `/projects/{slug}` or `/projects/{slug}/roadmap` and waits for a CSS
+class in the Go-rendered HTML. Measured before changing anything:
+
+```
+$ bash /tmp/run_e2e_suite.sh milestones_e2e
+>       expect(column).to_be_visible(timeout=15000)
+E       AssertionError: Locator expected to be visible
+E         - Expect ".roadmap-column" first
+E       Aria snapshot:
+E         - text: "{\"error\":{\"code\":\"not_found\",\"message\":\"no such route\"}}"
+```
+
+That 404 is `/projects/concord/roadmap` — the HTML page, which no slice before row 12 serves. The
+suites cannot pass against an API candidate, so listing them in row 8's gate made row 8 uncloseable
+until the frontend existed, while telling nobody why. They move to row 12's gate, which is the row
+that can make them pass; row 8's gate now names the API-level evidence it can actually produce.
+`feature_e2e`: 0 API calls and page navigations to `/projects/...`; `rank_links_e2e`: registers one
+account over HTTP and then asserts on `.rank-card` links; `milestones_e2e`: one API call, six page
+navigations.
+
+Also found by running them, and recorded because it is a port-wide risk rather than a suite's:
+
+```
+E  seed statement failed: insert or update on table "arenas" violates foreign key constraint
+E  "fk_arenas_feature_id"
+E  DETAIL:  Key (feature_id)=(0) is not present in table "features".
+```
+
+SQLite opened these databases with `PRAGMA foreign_keys=OFF` (the default), so a fixture could write a
+sentinel `0` into `arenas.feature_id` and nothing complained; PostgreSQL enforces the constraint the
+Go schema always declared. The **application** is unaffected — `internal/store/arenas.go` writes
+`NULLIF(?, 0)`, and the moved data has 73 arenas with `feature_id IS NULL`, none with 0 — but every
+fixture that writes a sentinel must write `NULL`, and any Rust route that creates an arena owes the
+same `NULLIF`. This is the one place where the port is *stricter* than the service it replaces, which
+is the right direction, and it only bites writes.
 
 ### Blocked
 

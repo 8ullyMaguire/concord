@@ -1,0 +1,8 @@
+[package]
+name = "concord-ranking"
+version.workspace = true
+edition.workspace = true
+description = "Concord's priority mathematics: Glicko-2, pain and priority scores (spec §6)"
+publish = false
+
+[dependencies]

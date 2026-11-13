@@ -84,7 +84,7 @@ def _account(db, username, role, trust):
     do with the page -- so the tokens are kept in TOKENS instead.
     """
     token, uid = _register(username)
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     try:
         pid = con.execute("SELECT id FROM projects WHERE slug = ?", (SLUG,)).fetchone()[0]
         con.execute(
@@ -102,7 +102,7 @@ def seed(db):
     """A project with two ranked ideas and three readers: owner, reviewer, contributor."""
     now = 1790000000
     owner_token, owner_uid = _register(OWNER)
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     try:
         pid = con.execute(
             "INSERT INTO projects (slug, name, description, governance_model, license,"

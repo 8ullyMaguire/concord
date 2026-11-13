@@ -86,7 +86,7 @@ def seed(db):
     """
     now = 1790000000
     token, uid = _register(OWNER)
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     try:
         pid = con.execute(
             "INSERT INTO projects (slug, name, description, governance_model, license,"

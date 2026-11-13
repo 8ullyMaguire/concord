@@ -53,7 +53,7 @@ _ips = itertools.count(1)
 
 def seed(db):
     """One public project with three features in three rating states, one private."""
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     cur = con.cursor()
     now = time.time()
 
@@ -212,7 +212,7 @@ def open_complaint(pg, cid, slug=SLUG):
 
 def feature_ids(db):
     """Map title -> id, so the tests never hardcode a sequence number."""
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     rows = dict(con.execute(
         "SELECT f.title, f.id FROM features f JOIN projects p ON p.id = f.project_id"
         " WHERE p.slug = ?", (SLUG,)).fetchall())
@@ -229,7 +229,7 @@ def complaint_ids(db):
     here -- `SELECT title, id FROM features f JOIN projects p ...` is valid SQL and
     fails at runtime with "ambiguous column name: id".
     """
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     rows = dict(con.execute(
         "SELECT c.title, c.id FROM complaints c JOIN projects p ON p.id = c.project_id"
         " WHERE p.slug = ?", (SLUG,)).fetchall())
@@ -415,7 +415,7 @@ def test_a_bogus_feature_id_says_so_instead_of_spinning(server, page):
 
 
 def complaint_ids(db):
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     rows = dict(con.execute(
         "SELECT c.title, c.id FROM complaints c JOIN projects p ON p.id = c.project_id"
         " WHERE p.slug = ?", (SLUG,)).fetchall())
@@ -561,7 +561,7 @@ def _mint_token(db, username):
     # GET answer {"error":"authentication required"} instead of acting as the reader, which
     # reads as a broken page rather than as a malformed token.
     raw = "clt_feattags-" + username
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     uid = con.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()[0]
     digest = hashlib.sha256(raw.encode()).digest()
     con.execute(
@@ -580,7 +580,7 @@ def _ensure_member(db, slug, username, role="contributor"):
     this file has to add one; the tags fixture below does it inline and this is the same row for
     the complaint-link test.
     """
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     pid = con.execute("SELECT id FROM projects WHERE slug=?", (slug,)).fetchone()[0]
     uid = con.execute("SELECT id FROM users WHERE username=?", (username,)).fetchone()[0]
     if con.execute("SELECT 1 FROM members WHERE project_id=? AND user_id=?",
@@ -598,7 +598,7 @@ def _seed_tags(db, feature_id, tag="security-hardening", other="keyboard-only"):
     tag that does not exist, and inventing taxonomy through a metadata field is the rule
     §4.3 records.
     """
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     now = time.time()
     ids = {}
     for name in (tag, other):
@@ -641,7 +641,7 @@ def test_the_tags_panel_shows_adds_and_removes_the_steering_tags(browser, server
     pg.errors = []
     pg.on("pageerror", lambda e: pg.errors.append(str(e)))
 
-    con = sqlite3.connect(server["db"])
+    con = harness.connect(server["db"])
     feature_id = con.execute(
         "SELECT id FROM features WHERE project_id=(SELECT id FROM projects WHERE slug=?)"
         " ORDER BY id LIMIT 1", (SLUG,)).fetchone()[0]
@@ -703,7 +703,7 @@ def test_the_extra_complaint_link_attaches_a_validated_complaint(browser, server
     pg.errors = []
     pg.on("pageerror", lambda e: pg.errors.append(str(e)))
 
-    fid = sqlite3.connect(server["db"]).execute(
+    fid = harness.connect(server["db"]).execute(
         "SELECT f.id FROM features f JOIN projects p ON p.id=f.project_id"
         " WHERE p.slug=? AND f.title=?", (SLUG, "Export must be lossless")).fetchone()[0]
     open_feature(pg, fid)

@@ -38,7 +38,15 @@ const VOLATILE_KEYS: &[&str] = &[
 /// clock. `health_score` is computed from metrics and a half-life, so two readings a minute apart
 /// differ in the fourth decimal — a fingerprint over exact numbers reported that as a body change,
 /// and a recorder that called it a regression would have hidden the next real one behind it.
-const TOLERANT_KEYS: &[&str] = &["elo", "rating", "weight"];
+const TOLERANT_KEYS: &[&str] = &[
+    "elo", "rating", "weight",
+    // §6.1/§6.2 scores. Pain decays from `created_at` by half-life and priority is a function of
+    // pain, so two requests a few seconds apart differ in the seventh significant figure — measured
+    // on `/priorities`: the largest relative difference between the live service and the port over
+    // 370 rows was 0.000006%, all of it clock. A tolerance that cannot be told apart from the clock
+    // is the only honest comparison for these two; `elo_r`/`elo_rd`/`strategic_weight` stay exact.
+    "pain_score", "priority_score",
+];
 
 /// How far a tolerant value may move and still be the same reading: 1% relative. Wide enough for
 /// any half-life in the charter to move a score across a minute, narrow enough that a wrong formula
@@ -112,6 +120,30 @@ fn shape(value: &Value, path: &str, out: &mut String) {
 /// A fingerprint string can only say "these differ"; the path says where, and the tolerance has to
 /// be applied to the values themselves — bucketing them into the string would fail on the run where
 /// a drifting value happens to straddle a bucket boundary, which is a gate that fails for the clock.
+/// Shapes whose top-level array is ordered by a value that moves with the clock.
+///
+/// `/priorities` is sorted by `priority_score`, which is a function of pain, which decays from
+/// `created_at` by half-life: two requests seconds apart produce scores that differ in the seventh
+/// significant figure and therefore permute every block of rows whose scores are equal. Measured on
+/// this instance: 975 positional inversions against the live body, and **every one** of them is a
+/// pair whose live `priority_score` is bit-identical. Comparing such a list positionally tests the
+/// clock, not the port, so it is compared as a set keyed by `id` — the membership and every field of
+/// every row are still compared exactly.
+const SCORE_ORDERED: &[&str] = &["/api/v1/projects/concord/priorities"];
+
+fn keyed_by_id(value: &Value) -> Value {
+    let Value::Array(items) = value else {
+        return value.clone();
+    };
+    let mut items = items.clone();
+    items.sort_by(|a, b| {
+        let left = a.get("id").and_then(Value::as_i64).unwrap_or(0);
+        let right = b.get("id").and_then(Value::as_i64).unwrap_or(0);
+        left.cmp(&right)
+    });
+    Value::Array(items)
+}
+
 fn differences(want: &Value, got: &Value, path: &str, out: &mut Vec<String>) {
     match (want, got) {
         (Value::Object(a), Value::Object(b)) => {
@@ -125,6 +157,20 @@ fn differences(want: &Value, got: &Value, path: &str, out: &mut Vec<String>) {
                 if !a.contains_key(key) {
                     out.push(format!("{path}.{key}: unexpected"));
                 }
+            }
+        }
+        (Value::Array(a), Value::Array(b)) if SCORE_ORDERED.iter().any(|shape| shape == &path) => {
+            // Sorted in this arm and compared positionally from here, *not* by recursing with the
+            // same path: re-entering would match this arm again and recurse until the stack dies.
+            let (Value::Array(a), Value::Array(b)) = (keyed_by_id(want), keyed_by_id(got)) else {
+                unreachable!("keyed_by_id returns the array it was given")
+            };
+            if a.len() != b.len() {
+                out.push(format!("{path}: {} items, want {}", b.len(), a.len()));
+                return;
+            }
+            for (index, (one, two)) in a.iter().zip(&b).enumerate() {
+                differences(one, two, &format!("{path}[{index}]"), out);
             }
         }
         (Value::Array(a), Value::Array(b)) => {
@@ -244,7 +290,9 @@ async fn main() -> anyhow::Result<()> {
         );
         let mut diffs = Vec::new();
         match (want_value, got_value) {
-            (Ok(want_json), Ok(got_json)) => differences(&want_json, &got_json, "", &mut diffs),
+            // The root path is the request path, so a diff says which shape and where in it, and so
+            // that a path-scoped rule (`SCORE_ORDERED`) can recognise the shape it is looking at.
+            (Ok(want_json), Ok(got_json)) => differences(&want_json, &got_json, &path, &mut diffs),
             // Not JSON: there is no structure to compare, so the bytes are the whole answer.
             _ => {
                 if recorded.trim() != body.trim() {

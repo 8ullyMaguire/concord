@@ -11,6 +11,7 @@ pub mod complaints;
 pub mod feature_writes;
 pub mod features;
 pub mod milestones;
+pub mod priorities;
 pub mod projects;
 
 /// Build the pool the handlers share.

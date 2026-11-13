@@ -38,6 +38,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/auth/register", post(register))
         .route("/api/v1/projects", post(create_project))
         .route(
+            "/api/v1/projects/{slug}/priorities",
+            get(list_priorities),
+        )
+        .route(
             "/api/v1/projects/{slug}/milestones",
             get(list_milestones),
         )
@@ -674,4 +678,23 @@ async fn unlink_complaint(
         "feature_id": id,
         "complaints": serde_json::to_value(complaints).map_err(internal)?,
     })))
+}
+
+/// `GET /api/v1/projects/{slug}/priorities` — the §6.2 ranking, ordered by its own score.
+///
+/// Deliberately public. This is the output of a process the public is invited to take part in;
+/// requiring a token to read the result while anyone may read the proposals would make the site a
+/// black box. The private act is casting a vote, not reading the ranking it produces.
+async fn list_priorities(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
+    let priorities = concord_db::priorities::feature_priorities(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::to_value(priorities).map_err(internal)?))
 }

@@ -63,6 +63,34 @@ def connect(path):
     return PgSeed(SEED_DSN)
 
 
+def placeholder_sql(sql):
+    """`?` -> `%s`, but only where a `?` is a parameter.
+
+    A fixture wrote a literal question mark into a string — `'Which idea should we build next?'` —
+    and a plain `str.replace` turned it into `%s`, so PostgreSQL saw a placeholder with no argument
+    and the suite failed with "tuple index out of range" naming a statement nobody had changed. Quoted
+    spans (single quotes, with `''` as an escaped quote) are copied through untouched.
+    """
+    out = []
+    quoted = False
+    index = 0
+    while index < len(sql):
+        char = sql[index]
+        if char == "'":
+            out.append(char)
+            if quoted and index + 1 < len(sql) and sql[index + 1] == "'":
+                out.append("'")
+                index += 2
+                continue
+            quoted = not quoted
+        elif char == "?" and not quoted:
+            out.append("%s")
+        else:
+            out.append(char)
+        index += 1
+    return "".join(out)
+
+
 class PgSeed:
     """The slice of the sqlite3 API the suites use, over psycopg2.
 
@@ -162,7 +190,7 @@ class PgSeed:
         import re
         import uuid
         cur = self._con.cursor()
-        translated = sql.replace("?", "%s")
+        translated = placeholder_sql(sql)
         params = list(params or ())
         match = re.match(r"\s*insert\s+into\s+([\w\"]+)\s*\(([^)]*)\)", translated,
                          re.IGNORECASE)
@@ -174,15 +202,32 @@ class PgSeed:
             # matched nothing — which dropped the extra placeholder and failed with "not all
             # arguments converted".
             def values_expression(sql):
+                """The span of the VALUES list, by paren matching rather than by looking for the last
+                `)`.
+
+                A suite's INSERT can contain a subquery — `VALUES (?, (SELECT id FROM tags WHERE
+                name = ?))` — and the last `)` before RETURNING then closes the subquery, so an extra
+                placeholder inserted there landed inside it and failed with "tuple index out of
+                range". Counted depth is the only way to find the tuple that VALUES actually opens.
+                """
                 lowered = sql.lower()
                 at = lowered.find("values")
                 if at == -1:
                     return None, (None, None)
                 open_at = sql.index("(", at)
-                limit = lowered.find("returning")
-                close_at = sql.rfind(")", open_at, limit if limit != -1 else len(sql))
+                depth = 0
+                close_at = -1
+                for index in range(open_at, len(sql)):
+                    char = sql[index]
+                    if char == "(":
+                        depth += 1
+                    elif char == ")":
+                        depth -= 1
+                        if depth == 0:
+                            close_at = index
+                            break
                 if close_at == -1:
-                    close_at = sql.rfind(")")
+                    return None, (None, None)
                 return sql[open_at + 1:close_at], (open_at, close_at)
 
             expression, span = values_expression(translated)
@@ -213,7 +258,13 @@ class PgSeed:
                 and "id" in self._column_types(table_name)):
             translated = translated.rstrip().rstrip(";") + " RETURNING id"
             row = None
-        cur.execute(translated, tuple(params))
+        try:
+            cur.execute(translated, tuple(params))
+        except Exception as error:  # noqa: BLE001 — the point is to name the statement
+            raise AssertionError(
+                f"seed statement failed: {error}\n  sql: {translated}\n"
+                f"  columns: {columns}\n  params: {list(params)!r}"
+            ) from error
         if translated.rstrip().upper().endswith("RETURNING ID"):
             row = cur.fetchone()
             self.lastrowid = row[0] if row else None
@@ -222,12 +273,12 @@ class PgSeed:
 
     def executemany(self, sql, rows):
         cur = self._con.cursor()
-        cur.executemany(sql.replace("?", "%s"), rows)
+        cur.executemany(placeholder_sql(sql), rows)
         return self
 
     def executescript(self, script):
         cur = self._con.cursor()
-        cur.execute(script.replace("?", "%s"))
+        cur.execute(placeholder_sql(script))
         return self
 
     def fetchone(self):

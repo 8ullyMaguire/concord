@@ -971,3 +971,98 @@ async fn filing_obeys_the_projects_intake_mode_and_the_validated_rule() {
         other => panic!("expected Invalid for a bad effort, got {other:?}"),
     }
 }
+
+/// The ranking reads the charter, the pain of the complaints it is linked to, and the themes its tags
+/// match — and the theme half is the input that had no caller and no writer before this pass.
+#[tokio::test]
+async fn priorities_sum_pain_and_theme_weight_and_order_by_the_score() {
+    use sqlx::Row;
+    let pool = pool().await;
+    let (user, project, complaint, _, _) = writable(&pool).await;
+    // Two features: one with a validated complaint and a theme-weighted tag, one bare.
+    let tagged: i64 = sqlx::query_scalar(
+        "insert into tags (project_id, name, namespace) values ($1, 'security', 'topic') returning id")
+        .bind(project)
+        .fetch_one(&pool)
+        .await
+        .expect("tag");
+    let plain = concord_db::feature_writes::create_feature(
+        &pool, project, user, "plain", "", "", None, None, &[],
+    )
+    .await
+    .expect("plain");
+    let weighed = concord_db::feature_writes::create_feature(
+        &pool, project, user, "weighed", "", "", None, None, &[complaint],
+    )
+    .await
+    .expect("weighed");
+    sqlx::query("insert into feature_tags (feature_id, tag_id) values ($1, $2)")
+        .bind(weighed.id)
+        .bind(tagged)
+        .execute(&pool)
+        .await
+        .expect("feature_tags");
+    sqlx::query(
+        "insert into strategic_themes (project_id, tag, namespace, weight, rationale, set_by, \
+                                       created_at, expires_at) \
+         values ($1, 'security', 'topic', 2.0, 'hardening', $2, now(), now() + interval '30 days')",
+    )
+    .bind(project)
+    .bind(user)
+    .execute(&pool)
+    .await
+    .expect("theme");
+
+    let ranked = concord_db::priorities::feature_priorities(&pool, project)
+        .await
+        .expect("priorities");
+    let first = ranked.first().expect("at least one");
+    assert_eq!(first.id, weighed.id, "the complaint-and-theme feature must rank first");
+    assert!(
+        (first.theme_weight - 2.0).abs() < 1e-12,
+        "theme_weight = {}, want 2.0",
+        first.theme_weight
+    );
+    assert!(first.pain_score > 0.0, "a validated complaint must carry pain");
+    let bare = ranked.iter().find(|row| row.id == plain.id).expect("plain row");
+    assert_eq!(bare.theme_weight, 0.0);
+    assert_eq!(bare.pain_score, 0.0, "no complaint means no pain, not a default");
+    assert!(
+        first.priority_score > bare.priority_score,
+        "the score that orders the list must say so: {} vs {}",
+        first.priority_score,
+        bare.priority_score
+    );
+    // An expired theme is not live: the Go query filters `expires_at > now`, and a theme that kept
+    // steering the ranking after it expired would make the roadmap's promises permanent.
+    sqlx::query("update strategic_themes set expires_at = now() - interval '1 day' where project_id = $1")
+        .bind(project)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let after = concord_db::priorities::feature_priorities(&pool, project)
+        .await
+        .expect("priorities again");
+    let weighed_after = after.iter().find(|row| row.id == weighed.id).expect("row");
+    assert_eq!(weighed_after.theme_weight, 0.0, "an expired theme must stop counting");
+
+    // And the weights come from the charter, not from a constant: a project with mu = 0 ignores the
+    // weight term entirely.
+    sqlx::query("update charters set mu = 0 where project_id = $1")
+        .bind(project)
+        .execute(&pool)
+        .await
+        .unwrap();
+    let zeroed = concord_db::priorities::feature_priorities(&pool, project)
+        .await
+        .expect("priorities with mu = 0");
+    let row = zeroed.iter().find(|row| row.id == weighed.id).unwrap();
+    let expected = row.elo_r - 2.0 * row.elo_rd + 20.0 * (1.0 + row.pain_score).ln();
+    assert!(
+        (row.priority_score - expected).abs() < 1e-9,
+        "with mu = 0 the weight term must vanish: {} vs {}",
+        row.priority_score,
+        expected
+    );
+    let _ = sqlx::query("select 1").fetch_one(&pool).await.unwrap().get::<i32, _>(0);
+}

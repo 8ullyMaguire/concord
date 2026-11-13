@@ -259,6 +259,7 @@ dependencies = [
  "anyhow",
  "argon2",
  "base64 0.22.1",
+ "concord-ranking",
  "rand 0.8.8",
  "serde",
  "serde_json",
@@ -281,6 +282,10 @@ dependencies = [
  "serde_json",
  "tokio",
 ]
+
+[[package]]
+name = "concord-ranking"
+version = "0.0.0"
 
 [[package]]
 name = "const-oid"
