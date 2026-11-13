@@ -65,6 +65,7 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/projects/{project_id}/charter",
             get(get_charter),
         )
+        .route("/api/v1/search", get(search))
         .route("/api/v1/stats", get(stats))
         .route("/api/v1/stats/summary", get(stats_summary))
         .route("/api/v1/curation", get(list_curation))
@@ -2091,4 +2092,78 @@ async fn stats_summary(State(state): State<AppState>) -> Result<Json<Value>, Api
         .await
         .map_err(internal)?;
     Ok(Json(serde_json::to_value(census).map_err(internal)?))
+}
+
+/// `GET /api/v1/search` — §15's discovery endpoint.
+///
+/// A malformed `min_lang_pct`, `min_health`, `model` or `sort` is a 400 that names the range, not a silently
+/// ignored parameter: a filter a reader set and the server dropped returns hits they cannot explain.
+async fn search(
+    State(state): State<AppState>,
+    Query(params): Query<SearchParams>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let filters = concord_db::search::SearchFilters {
+        tags: params.tag,
+        languages: params.language,
+        min_lang_pct: params.min_lang_pct.unwrap_or(0.0),
+        min_health: params.min_health.unwrap_or(0.0),
+        model: params.model.unwrap_or_default(),
+        license: params.license.unwrap_or_default(),
+    };
+    if !(0.0..=100.0).contains(&filters.min_lang_pct) {
+        return Err(ApiError::invalid_request(
+            "min_lang_pct must be a number in [0,100]",
+        ));
+    }
+    if !(0.0..=1.0).contains(&filters.min_health) {
+        return Err(ApiError::invalid_request(
+            "min_health must be a number in [0,1]",
+        ));
+    }
+    if !filters.model.is_empty() && filters.model != "collective" && filters.model != "maintainer_led" {
+        return Err(ApiError::invalid_request(
+            "model must be collective or maintainer_led",
+        ));
+    }
+    let sort = params.sort.unwrap_or_default().to_ascii_lowercase();
+    if !matches!(sort.as_str(), "" | "relevance" | "updated" | "health" | "newest") {
+        return Err(ApiError::invalid_request(
+            "sort must be relevance, updated, health, or newest",
+        ));
+    }
+    let actor = bearer_user(&state, &headers).await?;
+    let actor_id = actor.map_or(0, |user| user.id);
+    let result = concord_db::search::search(
+        &state.pool,
+        params.q.as_deref().unwrap_or(""),
+        &filters,
+        &sort,
+        actor_id,
+    )
+    .await
+    .map_err(internal)?;
+    Ok(Json(serde_json::to_value(result).map_err(internal)?))
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct SearchParams {
+    #[serde(default)]
+    q: Option<String>,
+    /// Repeatable: every tag must match.
+    #[serde(default)]
+    tag: Option<Vec<String>>,
+    /// Repeatable: every language must match.
+    #[serde(default)]
+    language: Option<Vec<String>>,
+    #[serde(default)]
+    min_lang_pct: Option<f64>,
+    #[serde(default)]
+    min_health: Option<f64>,
+    #[serde(default)]
+    model: Option<String>,
+    #[serde(default)]
+    license: Option<String>,
+    #[serde(default)]
+    sort: Option<String>,
 }

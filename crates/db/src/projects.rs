@@ -46,13 +46,13 @@ pub(crate) fn ser_unix<S: serde::Serializer>(value: &f64, serializer: S) -> Resu
     number.serialize(serializer)
 }
 
-const PROJECT_COLUMNS: &str = "p.id, p.slug, p.name, coalesce(p.description, ''), \
+pub(crate) const PROJECT_COLUMNS: &str = "p.id, p.slug, p.name, coalesce(p.description, ''), \
     p.governance_model, coalesce(p.license, ''), coalesce(p.visibility, 'public'), \
     p.intake_mode, extract(epoch from p.created_at)::double precision, \
     extract(epoch from p.updated_at)::double precision, m.health_score, \
     m.newcomer_response_hours, coalesce(m.newcomer_sample, 0)";
 
-fn project_from_row(row: &sqlx::postgres::PgRow) -> Result<Project, sqlx::Error> {
+pub(crate) fn project_from_row(row: &sqlx::postgres::PgRow) -> Result<Project, sqlx::Error> {
     use sqlx::Row;
     let license: String = row.try_get(5)?;
     Ok(Project {

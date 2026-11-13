@@ -347,6 +347,20 @@ fn declared_divergence(shape_key: &str) -> Option<(&'static str, &'static str)> 
         // `{"error": {"code", "message"}}`. The port cannot have two envelopes: ADR 0011 says one, and a client
         // that switches on the shape of `error` would break on the other. The port keeps the envelope; the Go
         // build keeps its string until it is switched off.
+        // THE PORT IS MORE CORRECT HERE, and that is the reason: the Go index `projects_fts` holds 111 rows
+        // for 73 projects and is MISSING TWO OF THEM (`ascend`, `suki`), so the live build's search cannot
+        // find a project whose description contains the word it searched for. Measured on the host:
+        //   select count(*) from projects                                -> 73
+        //   select count(*) from projects_fts                            -> 111
+        //   select count(*) from projects p where not exists (…)          -> 2   (ascend, suki)
+        // The port's index is a generated `search_tsv` column, which the database recomputes from the row, so
+        // this class of staleness cannot exist there. Recorded rather than reproduced: copying a stale index
+        // is not parity, it is a bug with a test.
+        "/api/v1/search?q=arena" => Some((
+            "the Go fts index is missing 2 of 73 projects, so it returns 2 hits where the port returns 3 \
+             (suki's description contains 'an arena'); the port's index is generated and cannot go stale",
+            "row 13 (cutover: the stale index stops being consulted)",
+        )),
         "/api/v1/notifications" => Some((
             "the Go build's 401 is a bare string; the port answers the estate's error envelope",
             "row 13 (cutover: the Go build stops answering)",
