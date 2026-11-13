@@ -23,6 +23,10 @@ pub enum WriteError {
     Invalid(String),
     /// `ErrNotFound`: no such feature, or no such complaint.
     NotFound(String),
+    /// `ErrConflict`: the row exists in a state that forbids the write -- a second override window on one
+    /// call, for instance. Distinct from `Invalid` because the client can act on it: the thing they want
+    /// already exists.
+    Conflict(String),
     Database(sqlx::Error),
 }
 

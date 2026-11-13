@@ -78,6 +78,11 @@ def main():
     # did, so a bare `delete from projects` leaves consensus_calls/positions/objections/features pointing
     # at a row that is gone and the whole probe fails before it asserts anything.
     for drop in (
+        "delete from override_positions where window_id in (select id from override_windows"
+        " where call_id in (select id from consensus_calls"
+        " where project_id in (select id from projects where slug = ?)))",
+        "delete from override_windows where call_id in (select id from consensus_calls"
+        " where project_id in (select id from projects where slug = ?))",
         "delete from positions where call_id in (select id from consensus_calls"
         " where project_id in (select id from projects where slug = ?))",
         "delete from objections where call_id in (select id from consensus_calls"
@@ -131,6 +136,34 @@ def main():
     for target in (with_evidence, second):
         con.execute("INSERT INTO feature_complaints (feature_id, complaint_id) VALUES (?,?)",
                     (target, complaint))
+
+    # A call that has already closed BLOCKED, with a standing objection: the only state §6.6's override
+    # window opens on. Seeded rather than driven through close, because reaching `blocked` needs quorum
+    # plus an open objection and this probe is about the window, not about the close.
+    import uuid
+    blocked_call = con.execute(
+        "INSERT INTO consensus_calls (project_id, feature_id, opened_by, opens_at, closes_at, status,"
+        " result, question, public_id, closed_at)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id",
+        (project, None, author, time.time() - 3600, time.time() - 60, "closed", "blocked",
+         "a blocked call", f"probe{uuid.uuid4().hex[:20]}", time.time() - 60),
+    ).lastrowid
+    con.execute(
+        "INSERT INTO objections (call_id, user_id, principle, violation, remedy, status, created_at)"
+        " VALUES (?,?,?,?,?,?,?)",
+        (blocked_call, member, "the audit ledger", "it rewrote a row", "append instead", "open",
+         time.time() - 3000),
+    )
+    # A call that closed for some OTHER reason. Without it, "a window opens only on a blocked call" is
+    # asserted against call #1, which DOES close blocked -- the objection above guarantees it -- and a
+    # 201 there is correct behaviour that the assertion would call a failure.
+    rejected_call = con.execute(
+        "INSERT INTO consensus_calls (project_id, feature_id, opened_by, opens_at, closes_at, status,"
+        " result, question, public_id, closed_at)"
+        " VALUES (?,?,?,?,?,?,?,?,?,?) RETURNING id",
+        (project, None, author, time.time() - 3600, time.time() - 60, "closed", "rejected",
+         "a rejected call", f"probe{uuid.uuid4().hex[:20]}", time.time() - 60),
+    ).lastrowid
     con.commit()
     con.close()
 
@@ -232,6 +265,70 @@ def main():
                     (body or {}).get("feature_id")))
     results.append(("...and its feature_id is 0", (body or {}).get("feature_id"), 0,
                     (body or {}).get("feature_id")))
+
+    # 11. §6.6's override window: the three refusals, one window, the hidden tally, and the written note.
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{blocked_call}/override")
+    results.append(("override without a token", status, 401, message(body)))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{blocked_call}/override",
+                        None, token=member_token)
+    results.append(("override as a contributor", status, 403, message(body)))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{rejected_call}/override",
+                        None, token=token)
+    results.append(("override on a call that closed rejected", status, 400, message(body)))
+    results.append(("the refusal names the result", 1 if "rejected" in message(body) else 0, 1,
+                    message(body)))
+    # A blocked call with no standing objection has no block left to override.
+    con2 = harness.connect("unused")
+    con2.execute("update objections set status = 'withdrawn' where call_id = ?", (blocked_call,))
+    con2.commit()
+    con2.close()
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{blocked_call}/override",
+                        None, token=token)
+    results.append(("a blocked call whose objection was withdrawn", status, 400, message(body)))
+    results.append(("the refusal names the missing objection",
+                    1 if "objection" in message(body) else 0, 1, message(body)))
+    con3 = harness.connect("unused")
+    con3.execute("update objections set status = 'open' where call_id = ?", (blocked_call,))
+    con3.commit()
+    con3.close()
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{blocked_call}/override",
+                        None, token=token)
+    window = body if isinstance(body, dict) else {}
+    results.append(("open the override window", status, 201, window))
+    results.append(("an open window hides its counts", window.get("consent"), None,
+                    window.get("consent")))
+    results.append(("the quorum bar is visible", 1 if window.get("quorum_needed") is not None else 0,
+                    1, window.get("quorum_needed")))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{blocked_call}/override",
+                        None, token=token)
+    results.append(("a second window is a conflict", status, 409, message(body)))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{blocked_call}/override/position",
+                        {"position": "maybe"}, token=token)
+    results.append(("an invented stance in the window", status, 400, message(body)))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{blocked_call}/override/position",
+                        {"position": "consent", "reason": "the remedy answers it"}, token=token)
+    results.append(("cast a stance in the window", status, 200, body))
+    status, body = call("GET", f"/api/v1/projects/{slug}/consensus/{blocked_call}/override",
+                        token=token)
+    results.append(("the window shows my own stance", (body or {}).get("my_position"), "consent",
+                    (body or {}).get("my_position")))
+    results.append(("...and still hides the counts", (body or {}).get("consent"), None,
+                    (body or {}).get("consent")))
+    # An override needs the objector's remedy answered in writing; the verdict is what makes it required.
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{blocked_call}/override/close",
+                        {"note": "   "}, token=token)
+    results.append(("an override with no written answer", status, 400, message(body)))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{blocked_call}/override/close",
+                        {"note": "the remedy is applied in the next release"}, token=token)
+    closed_window = body if isinstance(body, dict) else {}
+    results.append(("close the window", status, 200, closed_window.get("result")))
+    results.append(("the window records its verdict", closed_window.get("result"), "overridden",
+                    closed_window.get("result")))
+    results.append(("a closed window shows its counts", closed_window.get("consent"), 1,
+                    closed_window.get("consent")))
+    status, body = call("GET", f"/api/v1/projects/{slug}/consensus/{blocked_call}")
+    results.append(("the override accepts the call", (body or {}).get("call", {}).get("result"),
+                    "accepted_overridden", (body or {}).get("call", {}).get("result")))
 
     failed = 0
     for label, got, want, detail in results:

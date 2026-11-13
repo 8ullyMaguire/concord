@@ -62,6 +62,18 @@ pub fn router(state: AppState) -> Router {
             post(close_consensus),
         )
         .route(
+            "/api/v1/projects/{slug}/consensus/{call}/override",
+            get(get_override_window).post(open_override_window),
+        )
+        .route(
+            "/api/v1/projects/{slug}/consensus/{call}/override/position",
+            post(cast_override_position),
+        )
+        .route(
+            "/api/v1/projects/{slug}/consensus/{call}/override/close",
+            post(close_override_window),
+        )
+        .route(
             "/api/v1/projects/{slug}/consensus/objections/{objection}/resolve",
             put(resolve_consensus_objection),
         )
@@ -519,6 +531,8 @@ fn write_error(error: concord_db::feature_writes::WriteError) -> ApiError {
     match error {
         WriteError::Invalid(message) => ApiError::invalid_request(message),
         WriteError::NotFound(message) => ApiError::not_found(message),
+        // 409, not 400: the client's request is well-formed and the thing they want already exists.
+        WriteError::Conflict(message) => ApiError::conflict(message),
         WriteError::Database(error) => internal(error),
     }
 }
@@ -1114,4 +1128,115 @@ async fn resolve_consensus_objection(
     .await
     .map_err(write_error)?;
     Ok(Json(json!({"id": objection_id, "status": body.status})))
+}
+
+/// `GET /api/v1/projects/{slug}/consensus/{call_id}/override` — the window, with §6.6's tally rule.
+///
+/// An open window's counts are null and the caller sees only their own stance; a closed window is the
+/// record. The stripping lives in the reader (`override_window::fill_tally`) so no handler can publish a
+/// live tally by forgetting to.
+async fn get_override_window(
+    State(state): State<AppState>,
+    Path((slug, call)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let project = project_for(&state, &slug).await?;
+    let call_id = parse_id(&call, "call id")?;
+    let viewer = bearer_user(&state, &headers)
+        .await?
+        .map(|user| user.id)
+        .unwrap_or(0);
+    let window = concord_db::override_window::get(&state.pool, call_id, viewer)
+        .await
+        .map_err(write_error)?;
+    // The call is checked after the read on purpose: a window belonging to another project must 404, and
+    // resolving the call first would answer 200 for a call id that is not in this project.
+    let owner = concord_db::consensus::call(&state.pool, call_id)
+        .await
+        .map_err(internal)?
+        .filter(|found| found.project_id == project.id)
+        .ok_or_else(|| ApiError::not_found(format!("consensus call {call_id}")))?;
+    let _ = owner;
+    Ok(Json(serde_json::to_value(window).map_err(internal)?))
+}
+
+/// `POST /api/v1/projects/{slug}/consensus/{call_id}/override` — open §6.6's second window.
+async fn open_override_window(
+    State(state): State<AppState>,
+    Path((slug, call)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<(axum::http::StatusCode, Json<Value>), ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    let project = project_for(&state, &slug).await?;
+    require_maintainer(&state.pool, project.id, user.id).await?;
+    let call_id = parse_id(&call, "call id")?;
+    let window = concord_db::override_window::open(&state.pool, project.id, call_id, user.id)
+        .await
+        .map_err(write_error)?;
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(serde_json::to_value(window).map_err(internal)?),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+struct OverridePositionRequest {
+    position: String,
+    #[serde(default)]
+    reason: String,
+}
+
+/// `POST /api/v1/projects/{slug}/consensus/{call_id}/override/position` — a stance in the second window.
+async fn cast_override_position(
+    State(state): State<AppState>,
+    Path((slug, call)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(body): Json<OverridePositionRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    let _project = project_for(&state, &slug).await?;
+    let call_id = parse_id(&call, "call id")?;
+    concord_db::override_window::cast_position(
+        &state.pool,
+        call_id,
+        user.id,
+        &body.position,
+        &body.reason,
+    )
+    .await
+    .map_err(write_error)?;
+    Ok(Json(json!({"status": "ok", "position": body.position})))
+}
+
+#[derive(Debug, Deserialize)]
+struct OverrideCloseRequest {
+    #[serde(default)]
+    note: String,
+}
+
+/// `POST /api/v1/projects/{slug}/consensus/{call_id}/override/close` — fix the window's verdict.
+///
+/// The note is required exactly when the verdict is an override — §6.6's "the objector's remedy answered
+/// in writing" — so it is accepted and validated in the store, not demanded by the route.
+async fn close_override_window(
+    State(state): State<AppState>,
+    Path((slug, call)): Path<(String, String)>,
+    headers: HeaderMap,
+    body: Option<Json<OverrideCloseRequest>>,
+) -> Result<Json<Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    let project = project_for(&state, &slug).await?;
+    require_maintainer(&state.pool, project.id, user.id).await?;
+    let call_id = parse_id(&call, "call id")?;
+    let note = body.map(|Json(body)| body.note).unwrap_or_default();
+    let window = concord_db::override_window::close(&state.pool, project.id, call_id, &note)
+        .await
+        .map_err(write_error)?;
+    Ok(Json(serde_json::to_value(window).map_err(internal)?))
 }
