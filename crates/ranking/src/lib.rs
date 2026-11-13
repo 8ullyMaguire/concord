@@ -630,3 +630,81 @@ mod arena_update_tests {
         assert_eq!(repeated_game(1500.0, 350.0, 1.0, 2.0).len(), 2);
     }
 }
+
+/// §6.4's expertise multiplier bounds.
+///
+/// The floor is **1.0, never a penalty**: a design is not worth less because nobody who knows the topic judged it, and a
+/// sub-1.0 multiplier is a popularity penalty wearing expertise's clothes. The ceiling is **2.0**: above that a domain
+/// expert outvotes the rest of a project combined, which is plutocracy with a technical justification, and §8.3's whole
+/// point is that weight is capped to prevent exactly that.
+pub const MIN_EXPERTISE_MULTIPLIER: f64 = 1.0;
+/// The ceiling: a domain expert is worth at most twice a stranger on a design that names their domain.
+pub const MAX_EXPERTISE_MULTIPLIER: f64 = 2.0;
+/// The tag-reputation at which the multiplier reaches 1.5× — halfway between no weight and the cap.
+///
+/// Log-saturating rather than linear, so going from nothing to a track record matters and the difference between 30 and 300
+/// tagged contributions does not. The three anchors are therefore exact: 1.0× at zero, 1.5× at 30, 2.0× at 90.
+pub const EXPERTISE_HALF_SATURATING: f64 = 30.0;
+
+/// §6.4/§8.3's multiplier for judging one solution, given the voter's reputation **within the solution's tags**.
+///
+/// `tags_required` is how many distinct tags the solution declares: a solution that asks for no particular expertise is
+/// judged by everyone at 1.0×, because an author who declared no tags has not asked for expert weighting and inventing it
+/// from the title would be reading meaning into text nobody tagged.
+#[must_use]
+pub fn expertise_multiplier(tag_reputation: f64, tags_required: usize) -> f64 {
+    if tags_required == 0 {
+        return 1.0;
+    }
+    let reputation = tag_reputation.max(0.0);
+    // Normalised by log1p(3) so the three documented anchors hold exactly.
+    let base = (reputation / EXPERTISE_HALF_SATURATING).ln_1p() / 3.0_f64.ln_1p();
+    (1.0 + (MAX_EXPERTISE_MULTIPLIER - 1.0) * base).clamp(MIN_EXPERTISE_MULTIPLIER, MAX_EXPERTISE_MULTIPLIER)
+}
+
+/// A solution's comma-separated `expertise_tags`, normalised: lowercased, trimmed, de-duplicated, empties dropped.
+///
+/// Lowercased because the per-tag reputation map is keyed by normalised names, so `Rust` would miss a `rust` key and score a
+/// voter zero in their own speciality. De-duplicated because `rust,rust` is one tag written twice, and counting it twice
+/// would make the multiplier depend on formatting.
+#[must_use]
+pub fn parse_expertise_tags(raw: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for part in raw.split(',') {
+        let tag = part.trim().to_lowercase();
+        if tag.is_empty() || out.iter().any(|seen| seen == &tag) {
+            continue;
+        }
+        out.push(tag);
+    }
+    out
+}
+
+/// The voter's best reputation among the tags being judged, and how many distinct tags there are to judge by.
+#[must_use]
+pub fn best_tag_reputation(per_tag: &std::collections::HashMap<String, f64>, tags: &[String]) -> (f64, usize) {
+    let mut best = 0.0_f64;
+    for tag in tags {
+        if let Some(points) = per_tag.get(tag) {
+            if *points > best {
+                best = *points;
+            }
+        }
+    }
+    (best, tags.len())
+}
+
+/// A pairwise outcome as **A's** game score.
+///
+/// `both` and `neither` are both 0.5 here, and that is not the same claim: `both` is "these two are equally good", and
+/// `neither` with a baseline present is scored as two losses against the baseline instead (see the store). Reaching this
+/// function with `neither` and no baseline means the arena has nothing to do nothing *better* than, and a draw is the only
+/// honest reading.
+#[must_use]
+pub fn outcome_score(outcome: &str) -> f64 {
+    match outcome {
+        "a" => 1.0,
+        "b" => 0.0,
+        _ => 0.5,
+    }
+}
