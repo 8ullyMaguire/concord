@@ -2368,6 +2368,49 @@ evidence skips the cited row's project:
   `scale`, `duration`, `outcome`, `caveats`, `workaround`, `advice`), and only `outcome` has no default. The column list
   is the record of what it actually is.
 
+### Row 11 — part 47: B2c, §6.5's feature-scoped call (2026-11-13, `7a59f5e`)
+
+```
+gate (before): GET and POST /projects/{}/features/{}/consensus -> 404
+gate (after):
+  probe_s5_solutioncall.py -> 24/24 ok
+  workitems 44/44, featurewrites 37/37, listwrites 41/41, criteriawrites 45/45, projsettings 28/28,
+  milestonewrites 41/41, complaintwrites 40/40, requestwrites 43/43, filing 31/31, requests 23/23, accept 15/15
+  routes.py -> go 216 / port 155   missing: 63 (53 json, 10 page)
+  concord-parity -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-db --lib -> 38 passed
+```
+
+`consensus_writes`: `open_solution_call_on_merit`, `open_solution_call_early`, `unmet_condition`. The reference path now
+aliases the handler pair the port already had, and **the readiness gate moved out of the handler into the store, beside the
+write** — the handler was re-deriving the conditions the readiness page already computes, which is two answers to "may this
+be called?" and the second one goes stale the first time a threshold is tuned.
+
+The body accepts **both** shapes: the reference sends `{early, reason}`, the port has accepted `{solution_id,
+early_reason}` since before the alias. `early: true` with a blank reason is a 400, never a silent merit open.
+
+**Decision (dated, my call):** the merit path is **not** role-gated. The reference's `handleOpenSolutionCall` resolves the
+actor and lets the conditions decide, and only the *early* path asks whether the actor is a collaborator. A non-member
+therefore gets 409 not-callable, not 403 — asserting 403 would have been asserting a rule the reference does not have.
+
+**Two boot panics, both mine.** Registering a second GET on a path that already had one (`Overlapping method route`) — the
+same class of mistake as part 46, repeated an hour later — then applying the same scripted insert **twice in one session**
+and reproducing the panic identically. The insert is now idempotent and the check is `git diff` before `cargo build`.
+
+**Negative controls.**
+
+```
+merit ignores the unmet conditions:
+  FAIL so opening on merit is still refused: got 400 want 409                                   23/24
+  (400, because the next gate to fire is the linked-complaint rule)
+an early call needs no reason:
+  FAIL an early call with no reason is 400: got 201 want 400
+  FAIL a collaborator may open one early: got 400 want 201  ... and three more                   19/24
+```
+
+**Two rules the fixture had to learn:** a call must be *about* something — the store refuses a feature with no linked
+complaint — and `complaints.public_id` has no default, so an inserted complaint needs one.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
