@@ -13,12 +13,15 @@ build and all three are docs: the walks, the handoff, and the V6 spec+plan. `for
 R16/R17/R18 intake modes, milestones, roadmap and dependencies; the complaint detach; the
 notification inbox; the healthsync per-host credential fix; and the consensus phase repair.
 
-**The next thing to build is V6, and it is ready to start**: milestone-level consensus, spec'd
-at `docs/specs/milestone-consensus-spec.md` and planned step by step at
-`docs/plans/milestone-consensus.md` (migration 0040 onward). Two questions in that spec are
-yours, not the implementer's — who may open a milestone call, and whose quorum it needs.
+**The next thing is a PORT, and it starts at M0**: Concord moves onto the estate profile —
+Rust/Axum, PostgreSQL, SvelteKit, `polaris-id`, the family's crates — as a strangler in five
+slices. Spec `docs/specs/port-to-profile-spec.md`, plan `docs/plans/port-to-profile.md`, decision
+record `~/code/estate/docs/adr/0011-concord-joins-the-profile.md`. All twelve decisions were
+confirmed by the owner on 2026-11-13. **V6 (milestone consensus) deliberately waits** and is
+built as the first feature on the new engine — unless the port slips past six weeks, in which
+case it ships in Go first.
 
-Built and deployed this day: **R16/R17/R18** — per-project intake modes, milestones, the
+(Historical, 2026-11-12.) Built and deployed that day: **R16/R17/R18** — per-project intake modes, milestones, the
 roadmap and feature dependencies (`REMAINING` §43, live walk in §43.5) — the
 **complaint detach** that closes the one idea `§43.2` had recorded as half-shipped
 (`REMAINING` §44, live walk in §44.1), the **notification inbox** (`§45`), and the repair of the

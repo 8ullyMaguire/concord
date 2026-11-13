@@ -293,8 +293,13 @@ count) and "agents are excluded" (`users` has no agent flag).
 
 ### Where the next milestone should go
 
-**Updated 2026-11-12, end of day.** The one product idea with no code is **V6, milestone-level
-consensus**, and it is now spec'd AND planned rather than merely named:
+**Updated 2026-11-13.** The next milestone is not a feature: it is the **port onto the estate
+profile** — Rust/Axum, PostgreSQL, SvelteKit, `polaris-id`, the family's crates, as a strangler in
+five slices. Spec `docs/specs/port-to-profile-spec.md`, plan `docs/plans/port-to-profile.md`,
+decision record `~/code/estate/docs/adr/0011-concord-joins-the-profile.md`. V6 waits for it and is
+built as the first feature on the new engine.
+
+**Updated 2026-11-12.** The one product idea with no code is **V6, milestone-level consensus**, and it is now spec'd AND planned rather than merely named:
 `docs/specs/milestone-consensus-spec.md` (problem, non-goals, the three readiness conditions, the
 outcome→status table) and `docs/plans/milestone-consensus.md` (migration `0040`, store
 signatures, routes, the test per rule, the mutation arms, the live walk). It is the next thing to
