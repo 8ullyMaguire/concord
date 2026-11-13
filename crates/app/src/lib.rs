@@ -65,6 +65,10 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/projects/{project_id}/arenas/{arena_id}/votes",
             get(arena_votes),
         )
+        .route(
+            "/api/v1/projects/{project_id}/arenas/{arena_id}/next-pair",
+            get(arena_next_pair),
+        )
         .route("/api/v1/projects/{slug}/features/{feature}/deps", get(feature_deps))
         .route("/api/v1/projects/{slug}/features/{feature}/evidence", get(feature_evidence))
         // `{slug}` and not `{project_id}`: axum refuses two routes that differ only in a parameter NAME ("Insertion
@@ -3286,5 +3290,121 @@ async fn arena_votes(
         "arena_id": arena_id,
         "votes": votes,
         "count": count,
+    })))
+}
+
+/// One competitor as a pair shows it: its label, its rating, and the chance it wins THIS comparison.
+#[derive(Debug, serde::Serialize)]
+struct PairSide {
+    entity_type: String,
+    entity_id: i64,
+    label: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    slug: String,
+    r: f64,
+    rd: f64,
+    conservative: f64,
+    games: i64,
+    is_baseline: bool,
+    /// The win probability against the OTHER side, computed from the ratings BEFORE the vote — after it, the figure
+    /// would be the thing being tested.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    win_probability: Option<f64>,
+}
+
+/// `GET /projects/{id}/arenas/{arena}/next-pair` — "which comparison should I judge next?".
+///
+/// A signed-out reader has judged nothing, so the answer is the arena's most informative pair. A voter gets a pair they
+/// have not already judged, skips included, because a skip means "I don't understand this" and not a verdict.
+async fn arena_next_pair(
+    State(state): State<AppState>,
+    Path((project_id, arena_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = project_by_id(&state, &project_id).await?;
+    let user = bearer_user(&state, &headers).await?;
+    if !readable(&state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    let arena_id = match arena_id.parse::<i64>() {
+        Ok(id) if id > 0 => id,
+        _ => return Err(ApiError::invalid_request("invalid arena id")),
+    };
+    let arena = concord_db::arena::find(&state.pool, arena_id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found("no such arena"))?;
+    if arena.project_id != project.id {
+        return Err(ApiError::not_found("no such arena"));
+    }
+    let voter = user.as_ref().map(|who| who.id).unwrap_or(0);
+    let pair = concord_db::arena::next_pair(&state.pool, arena_id, voter)
+        .await
+        .map_err(internal)?;
+    let (a, b) = match pair {
+        Ok(pair) => pair,
+        // A data problem the project can fix is 400; a voter who has judged everything is 404, because the resource
+        // they asked for does not exist for them.
+        Err(concord_db::arena::NoPair::TooFewEntries) => {
+            return Err(ApiError::invalid_request(
+                "an arena needs at least two entries to compare",
+            ))
+        }
+        Err(concord_db::arena::NoPair::AllJudged) => {
+            return Err(ApiError::not_found("this voter has judged every pair"))
+        }
+    };
+    let a_win = concord_ranking::win_probability(a.r, a.rd, b.r, b.rd);
+    let b_win = concord_ranking::win_probability(b.r, b.rd, a.r, a.rd);
+    let mut sides = Vec::with_capacity(2);
+    for (entry, win) in [(&a, a_win), (&b, b_win)] {
+        let (label, slug, baseline) =
+            concord_db::arena::label_of(&state.pool, &arena.entity_type, entry.entity_id)
+                .await
+                .map_err(internal)?;
+        sides.push(PairSide {
+            entity_type: arena.entity_type.clone(),
+            entity_id: entry.entity_id,
+            label,
+            slug,
+            r: entry.r,
+            rd: entry.rd,
+            conservative: entry.conservative(),
+            games: entry.games,
+            is_baseline: entry.is_baseline || baseline,
+            win_probability: Some(win),
+        });
+    }
+    let b_side = sides.pop().unwrap_or(PairSide {
+        entity_type: arena.entity_type.clone(),
+        entity_id: 0,
+        label: String::new(),
+        slug: String::new(),
+        r: 0.0,
+        rd: 0.0,
+        conservative: 0.0,
+        games: 0,
+        is_baseline: false,
+        win_probability: None,
+    });
+    let a_side = sides.pop().unwrap_or(PairSide {
+        entity_type: arena.entity_type.clone(),
+        entity_id: 0,
+        label: String::new(),
+        slug: String::new(),
+        r: 0.0,
+        rd: 0.0,
+        conservative: 0.0,
+        games: 0,
+        is_baseline: false,
+        win_probability: None,
+    });
+    Ok(Json(serde_json::json!({
+        "arena_id": arena.id,
+        "type": arena.entity_type,
+        "question": arena.question,
+        "use_case": arena.use_case,
+        "a": a_side,
+        "b": b_side,
     })))
 }

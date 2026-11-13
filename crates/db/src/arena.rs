@@ -747,7 +747,7 @@ pub async fn list_votes(pool: &PgPool, arena_id: i64, limit: i64) -> Result<Vec<
             if labels.contains_key(&key) {
                 continue;
             }
-            let found = lookup_label(pool, entity_type, entity_id).await?;
+            let found = label_of(pool, entity_type, entity_id).await?;
             labels.insert(key, found);
         }
     }
@@ -791,7 +791,7 @@ pub async fn list_votes(pool: &PgPool, arena_id: i64, limit: i64) -> Result<Vec<
 ///
 /// A missing entity answers `("", "", false)` rather than an error: the ranking still contains it and dropping the row
 /// would make the leaderboard disagree with its own vote log.
-async fn lookup_label(
+pub async fn label_of(
     pool: &PgPool,
     entity_type: &str,
     entity_id: i64,
@@ -846,6 +846,8 @@ pub struct Arena {
     pub entity_type: String,
     /// The question the voter is asked.
     pub question: String,
+    /// What the arena is FOR — `call`, `triage`, and so on — which the pair response echoes back.
+    pub use_case: String,
 }
 
 /// One arena by id.
@@ -853,16 +855,161 @@ pub struct Arena {
 /// # Errors
 /// `sqlx::Error`.
 pub async fn find(pool: &PgPool, arena_id: i64) -> Result<Option<Arena>, sqlx::Error> {
-    let row = sqlx::query_as::<_, (i64, i64, String, String)>(
-        "select id, project_id, type, coalesce(question, '') from arenas where id = $1",
+    let row = sqlx::query_as::<_, (i64, i64, String, String, String)>(
+        "select id, project_id, type, coalesce(question, ''), coalesce(use_case, '') from arenas where id = $1",
     )
     .bind(arena_id)
     .fetch_optional(pool)
     .await?;
-    Ok(row.map(|(id, project_id, entity_type, question)| Arena {
+    Ok(row.map(|(id, project_id, entity_type, question, use_case)| Arena {
         id,
         project_id,
         entity_type,
         question,
+        use_case,
     }))
+}
+
+/// Why no pair could be proposed. The two are different answers to the caller: one is a data problem the project can
+/// fix, the other is a voter who is done.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum NoPair {
+    /// Fewer than two competitors: nothing to compare.
+    TooFewEntries,
+    /// This voter has judged (or skipped past) every pair.
+    AllJudged,
+}
+
+/// The active-learning cost of asking about a pair. LOWER is the better pair to ask about.
+///
+/// Three terms, and the sign of the middle one was a bug the Go's own tests caught: §5.1 asks about the comparisons the
+/// arena knows LEAST, so uncertainty is a DISCOUNT (subtracted), not a bonus. With `350 - mean(RD)` as a bonus, two
+/// thoroughly-tested entries looked more informative than two untouched ones and the arena kept re-asking answered
+/// questions while new entries sat at their prior.
+#[must_use]
+pub fn pair_selection_cost(a: &Entry, b: &Entry) -> f64 {
+    let distance = (a.r - b.r).abs();
+    let uncertainty = (a.rd + b.rd) / 2.0;
+    let mut cost = distance - uncertainty * 0.5;
+    // "Beats doing nothing" is the question every solution has to answer before it is compared with rivals (§6.3/§6.5).
+    if a.is_baseline || b.is_baseline {
+        cost -= 150.0;
+    }
+    cost
+}
+
+/// An order-independent identity for a pair, so `(a,b)` and `(b,a)` are the same judgement.
+fn pair_key(a: i64, b: i64) -> (i64, i64) {
+    if a <= b {
+        (a, b)
+    } else {
+        (b, a)
+    }
+}
+
+/// The pairs this voter has already settled in this arena.
+///
+/// A SKIP is not a judgement: the voter did not understand the pair, so re-asking later is correct and the slot stays
+/// open. Read in one query rather than one per candidate pair.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn judged_pairs(
+    pool: &PgPool,
+    arena_id: i64,
+    voter_id: i64,
+) -> Result<std::collections::HashSet<(i64, i64)>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (i64, i64, String)>(
+        "select a, b, outcome from pairwise_votes where arena_id = $1 and voter_id = $2",
+    )
+    .bind(arena_id)
+    .bind(voter_id)
+    .fetch_all(pool)
+    .await?;
+    let mut out = std::collections::HashSet::new();
+    for (a, b, outcome) in rows {
+        if outcome == "skip" {
+            continue;
+        }
+        out.insert(pair_key(a, b));
+    }
+    Ok(out)
+}
+
+/// Which comparison this voter should judge next.
+///
+/// The arena is read first so a bad id fails as "no such arena" rather than as "needs two entries", which would send a
+/// caller looking for a data problem they do not have.
+///
+/// # Errors
+/// `sqlx::Error`, or `NoPair` when there is nothing to ask.
+pub async fn next_pair(
+    pool: &PgPool,
+    arena_id: i64,
+    voter_id: i64,
+) -> Result<Result<(Entry, Entry), NoPair>, sqlx::Error> {
+    if find(pool, arena_id).await?.is_none() {
+        return Ok(Err(NoPair::TooFewEntries));
+    }
+    let entries = leaderboard(pool, arena_id, 200).await?;
+    if entries.len() < 2 {
+        return Ok(Err(NoPair::TooFewEntries));
+    }
+    let judged = judged_pairs(pool, arena_id, voter_id).await?;
+    let mut best = f64::MAX;
+    let mut chosen: Option<(usize, usize)> = None;
+    for i in 0..entries.len() {
+        for j in (i + 1)..entries.len() {
+            if judged.contains(&pair_key(entries[i].entity_id, entries[j].entity_id)) {
+                continue;
+            }
+            let cost = pair_selection_cost(&entries[i], &entries[j]);
+            if cost < best {
+                best = cost;
+                chosen = Some((i, j));
+            }
+        }
+    }
+    match chosen {
+        Some((i, j)) => Ok(Ok((entries[i].clone(), entries[j].clone()))),
+        None => Ok(Err(NoPair::AllJudged)),
+    }
+}
+
+#[cfg(test)]
+mod pair_tests {
+    use super::*;
+
+    fn entry(id: i64, r: f64, rd: f64, baseline: bool) -> Entry {
+        Entry {
+            entity_id: id,
+            r,
+            rd,
+            sigma: 0.06,
+            games: 0,
+            is_baseline: baseline,
+            updated_at: 0.0,
+        }
+    }
+
+    #[test]
+    fn an_untouched_pair_is_cheaper_to_ask_about_than_a_well_measured_one() {
+        // The sign this exists to protect: uncertainty is a DISCOUNT. If it were a bonus, the pair of measured entries
+        // would look more informative and the arena would re-ask what it already knows.
+        let measured = pair_selection_cost(&entry(1, 1600.0, 80.0, false), &entry(2, 1620.0, 80.0, false));
+        let untouched = pair_selection_cost(&entry(1, 1600.0, 350.0, false), &entry(2, 1620.0, 350.0, false));
+        assert!(untouched < measured, "untouched {untouched} should be below measured {measured}");
+    }
+
+    #[test]
+    fn a_pair_including_the_baseline_is_discounted_by_150() {
+        let without = pair_selection_cost(&entry(1, 1500.0, 100.0, false), &entry(2, 1500.0, 100.0, false));
+        let with = pair_selection_cost(&entry(1, 1500.0, 100.0, true), &entry(2, 1500.0, 100.0, false));
+        assert!((without - with - 150.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_pair_identity_does_not_depend_on_which_side_it_came_from() {
+        assert_eq!(pair_key(3, 7), pair_key(7, 3));
+    }
 }
