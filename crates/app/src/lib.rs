@@ -51,6 +51,7 @@ pub fn router(state: AppState) -> Router {
         // chi had ("requireProjectID reads project_id, gets "", and every call 404s with project \"\"").
         .route("/api/v1/projects/{project_id}/capabilities", get(list_capabilities))
         .route("/api/v1/projects/{project_id}/field-reports", get(list_field_reports))
+        .route("/api/v1/projects/{project_id}/complaints/{complaint}", get(get_complaint))
         .route("/api/v1/projects/{slug}/documents/kinds", get(document_kinds))
         .route("/api/v1/projects/{slug}/features/{feature}/deps", get(feature_deps))
         .route("/api/v1/projects/{slug}/features/{feature}/evidence", get(feature_evidence))
@@ -2879,4 +2880,44 @@ async fn feature_evidence(
         .await
         .map_err(internal)?;
     Ok(Json(serde_json::json!(rows)))
+}
+
+/// `GET /api/v1/projects/{project_id}/complaints/{id}` — one complaint, bound to the project in the path.
+///
+/// THE URL HAS TWO HALVES AND THEY MUST TIE. A complaint id is global, so a handler that reads only `{id}` makes
+/// the project half decoration: any caller could reach any complaint on the instance through their own project's
+/// URL, and a role check written against the URL's project would be checking a project the complaint has nothing to
+/// do with. A mismatch is a 404, not a 403 — a 403 confirms the id is real.
+///
+/// A non-numeric id is INVALID, not 404: parsing it as 0 asks the store about a row that does not exist, which is a
+/// 404 for the wrong reason.
+async fn get_complaint(
+    State(state): State<AppState>,
+    Path((project_id, complaint)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    // A non-numeric project segment is a 404 and not a 400: the Go's `requireProjectID` maps a parse failure to
+    // ErrNotFound, and an unknown project must not answer differently from a malformed one — both are "no such
+    // project" to a caller who cannot see the catalogue.
+    let Ok(project_numeric) = project_id.parse::<i64>() else {
+        return Err(ApiError::not_found("no such project"));
+    };
+    let project = concord_db::projects::project_by_id(&state.pool, project_numeric)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found("no such project"))?;
+    let user = bearer_user(&state, &headers).await?;
+    if !readable(&state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    let id = complaint
+        .parse::<i64>()
+        .map_err(|_| ApiError::invalid_request("complaint id must be an integer"))?;
+    let found = concord_db::complaints::complaint(&state.pool, id)
+        .await
+        .map_err(internal)?;
+    match found {
+        Some(found) if found.project_id == project.id => Ok(Json(serde_json::json!(found))),
+        _ => Err(ApiError::not_found(format!("complaint {complaint}"))),
+    }
 }
