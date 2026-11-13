@@ -1355,6 +1355,42 @@ corpus comparison can say whether that matters. That is an **open question for r
 A control that passes on unfixed code is not evidence — but a control that passes because the premise was wrong is
 still information, and recording it is cheaper than rediscovering it at cutover.
 
+### Row 11 — part 26 (scoping, no route landed): `rank/composite` measured end to end (2026-11-13)
+
+This part landed **no route**. It read `rank/composite` end to end because it is the largest single route left, and
+stopping to record what it consists of is cheaper than implementing half of it twice.
+
+Measured shape, from `internal/httpapi/criteria_api.go:175`, `internal/store/criteria_store.go:423` and
+`internal/ranking/criteria.go:98-360`:
+
+* **POST**, body optional. Empty body = "rank with every criterion's default weight".
+* `weights` keys must parse as criterion ids — a non-numeric key is **400** with the key echoed.
+* `profile` (when no weights) loads a saved profile via `GetCriteriaProfileWeights`.
+* `include_inactive` and `require_min_rd` are passed through. `include_inactive` off means an inactive criterion is
+  excluded, because deactivating is how a project retires a dimension. `require_min_rd` keeps a criterion only if at
+  least one rating in it has been **played** (`Games > 0` or `RD < InitialRD - 1e-9`) — an all-initial criterion
+  contributes an arbitrary 0.5 to every feature and dilutes the result with no vote behind it.
+* **Weights are the whole query when any are named**: an unnamed ACTIVE criterion is EXCLUDED, not defaulted. The old
+  behaviour (unnamed criteria join at their default) made "rank by design only" blend efficiency in at equal weight.
+* `normaliseWeights` drops negative weights, sums, and normalises; when the total is `<= 1e-9` every weight becomes
+  0 (so nothing contributes rather than everything blowing up).
+* per-criterion ratings are min–max normalised: **one rating → 0.5** (not 1.0 — a single data point is not a top
+  score), equal values → 0.5, and `lower_is_better` reverses the scale.
+* `Result.Rank` is 1-based after a sort by `Score desc, FeatureID asc` with a `1e-9` tolerance, so a tie is
+  deterministic and a "rank 3" claim is reproducible.
+* `confidence = TotalConfidence(contributions)`: weight-weighted mean of the contributions' `RD`, falling back to the
+  plain mean when the weights sum to zero, and `InitialRD` when there are no contributions at all.
+* empty (`results == null`) becomes `[]` before serialising, and `count` is the length after `limit` is applied.
+
+**Not yet read (and not guessed):** `criteria.go:120-143` — the direction branch inside `normalised` and the tail of
+`normaliseWeights`. Those two blocks are the only unknown, and the golden test cannot be written without them.
+
+**Next action, exactly:** read those 24 lines; add `crates/ranking/src/composite.rs` with `Composite`,
+`normalise_weights`, `normalised`, `total_confidence`; extend `crates/ranking/tests/golden.rs` with a Go-emitted oracle
+over a 3-criterion × 5-feature grid crossing `lower_is_better`, a single-rating criterion, and equal ratings; then the
+route and a probe whose negative control is "unnamed criteria join at their default" — the behaviour the Go
+deliberately removed.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
