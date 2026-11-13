@@ -53,6 +53,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/projects/{project_id}/field-reports", get(list_field_reports))
         .route("/api/v1/projects/{slug}/documents/kinds", get(document_kinds))
         .route("/api/v1/projects/{slug}/features/{feature}/deps", get(feature_deps))
+        .route("/api/v1/projects/{slug}/features/{feature}/evidence", get(feature_evidence))
         .route("/api/v1/projects/{slug}/features/{feature}/tags", get(feature_tags))
         .route("/api/v1/projects/{project_id}/lists", get(project_lists))
         .route("/api/v1/projects/{project_id}/lists/", get(project_lists))
@@ -2860,4 +2861,22 @@ async fn feature_deps(
         .await
         .map_err(internal)?;
     Ok(Json(serde_json::json!(panel)))
+}
+
+/// `GET /api/v1/projects/{slug}/features/{feature}/evidence` — what says this feature is worth building.
+async fn feature_evidence(
+    State(state): State<AppState>,
+    Path((slug, feature)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = project_for(&state, &slug).await?;
+    let user = bearer_user(&state, &headers).await?;
+    if !readable(&state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    let feature = feature_for(&state, project.id, &feature).await?;
+    let rows = concord_db::panels::evidence(&state.pool, feature.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
 }
