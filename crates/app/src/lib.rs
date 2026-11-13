@@ -211,7 +211,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/answers/{request_id}/vote", post(vote_answer))
         .route(
             "/api/v1/projects/{project_id}/features/{id}/solutions",
-            get(feature_solutions),
+            get(feature_solutions).post(create_solution),
         )
         .route(
             "/api/v1/projects/{project_id}/features/{id}/solutions/{solution_id}",
@@ -6158,4 +6158,109 @@ async fn remove_feature_evidence(
         .map_err(internal)?
         .map_err(feature_work_refusal)?;
     Ok(StatusCode::NO_CONTENT)
+}
+
+
+// ── §6.3: filing a solution ────────────────────────────────────────────────────────────────────────────────────────
+
+/// What a filer sends. Every field is optional except the title, and `type` defaults to `build-new` in the store.
+#[derive(serde::Deserialize)]
+struct CreateSolutionRequest {
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    body: String,
+    #[serde(default, rename = "type")]
+    kind: String,
+    #[serde(default)]
+    external_ref: String,
+    #[serde(default)]
+    affiliation: String,
+    #[serde(default)]
+    relationship: String,
+    #[serde(default)]
+    parent_solution_id: i64,
+    #[serde(default)]
+    expertise_tags: Vec<String>,
+}
+
+/// `POST /projects/{id}/features/{feature}/solutions` — file a solution against a feature.
+///
+/// **Any signed-in user may file**, not only a collaborator: filing a proposal is contributing, and a feature whose
+/// solutions could only be written by people already inside the project is a project that never hears from the people it
+/// affects. What is refused is the narrow set of filings that cannot be ranked at all — see
+/// [`concord_db::solution_writes::file_solution`], which owns those rules beside the write.
+///
+/// The response carries `is_baseline` because the caller needs it: the first `do-nothing` becomes the arena's permanent
+/// baseline, and a client that does not know it just filed the baseline cannot label the board correctly.
+async fn create_solution(
+    State(state): State<AppState>,
+    Path((project_segment, feature)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(body): Json<CreateSolutionRequest>,
+) -> Result<impl axum::response::IntoResponse, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("sign in to file a solution"))?;
+    let project = readable_project_segment(&state, &project_segment, &headers).await?;
+    let feature_id = caller_feature(&state, &project, &feature).await?;
+    let new = concord_db::solution_writes::NewSolution {
+        title: body.title,
+        body: body.body,
+        kind: body.kind,
+        external_ref: body.external_ref,
+        affiliation: body.affiliation,
+        relationship: body.relationship,
+        parent_solution_id: body.parent_solution_id,
+        expertise_tags: body.expertise_tags,
+    };
+    let is_do_nothing = new.kind.trim() == concord_db::solution_writes::TYPE_DO_NOTHING;
+    let solution_id = concord_db::solution_writes::file_solution(
+        &state.pool,
+        project.id,
+        feature_id,
+        user.id,
+        new,
+    )
+    .await
+    .map_err(solution_refusal)?;
+    let solution = concord_db::arena::get_solution(&state.pool, solution_id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| internal("the solution vanished after it was written"))?;
+    let baseline = if is_do_nothing {
+        sqlx::query_scalar::<_, bool>(
+            "select coalesce(e.is_baseline, false) from arena_entries e
+               join arenas a on a.id = e.arena_id
+              where a.feature_id = $1 and a.type = 'solution' and e.entity_type = 'solution' and e.entity_id = $2",
+        )
+        .bind(feature_id)
+        .bind(solution_id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(internal)?
+        .unwrap_or(false)
+    } else {
+        false
+    };
+    Ok((
+        StatusCode::CREATED,
+        Json(serde_json::json!({ "solution": solution, "is_baseline": baseline })),
+    ))
+}
+
+/// A refusal from the solution store, as the status each rule deserves.
+fn solution_refusal(refused: concord_db::solution_writes::Refused) -> ApiError {
+    use concord_db::solution_writes::Refused;
+    match refused {
+        Refused::Invalid(detail) => ApiError::invalid_request(detail),
+        Refused::NotFound => ApiError::not_found("no such feature in this project"),
+        Refused::SelfVote => ApiError::forbidden(
+            "a feature's author cannot author its solutions (§5.2: nobody may judge their own entry)".to_string(),
+        ),
+        Refused::ParentNotInArena => {
+            ApiError::invalid_request("the fork's parent is not in this feature's arena")
+        }
+        Refused::Database(error) => internal(error),
+    }
 }
