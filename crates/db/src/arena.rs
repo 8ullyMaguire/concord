@@ -1274,3 +1274,186 @@ pub async fn count_solutions(pool: &PgPool, feature_id: i64) -> Result<i64, sqlx
         .fetch_one(pool)
         .await
 }
+
+/// One solution, whole, with the arena entry joined in for display.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Solution {
+    /// The row.
+    pub id: i64,
+    /// Its feature.
+    pub feature_id: i64,
+    /// Who proposed it.
+    pub author_id: i64,
+    /// Its title.
+    pub title: String,
+    /// Its body.
+    pub body: String,
+    /// `code`, `design`, `do-nothing`, …
+    #[serde(rename = "type")]
+    pub kind: String,
+    /// A link to where it lives.
+    pub external_ref: Option<String>,
+    /// Who it comes from.
+    pub affiliation: Option<String>,
+    /// `exclusive` or `complementary` (§6.3).
+    pub relationship: String,
+    /// Set for a forked proposal — §6.3's "same, but with X".
+    pub parent_solution_id: Option<i64>,
+    /// `proposed`, `withdrawn`, …
+    pub status: String,
+    /// A comma-separated list of the judgement this design needs (§6.4).
+    pub expertise_tags: String,
+    /// The arena entry for this solution, zeros when it is not in an arena yet.
+    pub rating: EntryRating,
+    /// Created, unix seconds.
+    pub created_at: f64,
+    /// Updated, unix seconds.
+    pub updated_at: f64,
+}
+
+/// A solution's arena entry as the single-solution read reports it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct EntryRating {
+    /// The arena, 0 when the solution is not in one.
+    pub arena_id: i64,
+    /// Always `solution`.
+    pub entity_type: String,
+    /// The solution.
+    pub entity_id: i64,
+    /// Rating.
+    pub r: f64,
+    /// Deviation.
+    pub rd: f64,
+    /// Volatility.
+    pub sigma: f64,
+    /// Games.
+    pub games: i64,
+    /// Whether it is the arena's do-nothing competitor.
+    pub is_baseline: bool,
+    /// `r - 2*rd`, derived for display.
+    pub conservative: f64,
+    /// When the rating last moved.
+    pub updated_at: f64,
+}
+
+/// `do-nothing` is the type that makes a solution the baseline — by its TYPE, not by a separate flag: two ways of saying
+/// the same thing is how the arena ended up consulting a column nothing populated and scoring every `neither` as a draw.
+pub const SOLUTION_DO_NOTHING: &str = "do-nothing";
+
+/// One solution by id, with its arena rating joined in.
+///
+/// The join is a LEFT JOIN on purpose: a solution that has not been added to an arena yet is still a solution, and an
+/// inner join would answer 404 for a proposal that exists.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn get_solution(pool: &PgPool, solution_id: i64) -> Result<Option<Solution>, sqlx::Error> {
+    use sqlx::Row;
+    // Read through `Row` rather than a tuple: sqlx implements `FromRow` for tuples up to sixteen elements and this
+    // projection is twenty-one, so the tuple form fails to compile rather than reading short.
+    let row = sqlx::query(
+        "select s.id, s.feature_id, s.author_id, s.title, s.body, s.type,
+                s.external_ref, s.affiliation, s.relationship, s.parent_solution_id,
+                s.status, s.expertise_tags,
+                extract(epoch from s.created_at)::double precision as created_at,
+                extract(epoch from s.updated_at)::double precision as updated_at,
+                e.arena_id, coalesce(e.r, 0) as r, coalesce(e.rd, 0) as rd, coalesce(e.sigma, 0) as sigma,
+                coalesce(e.games, 0) as games, coalesce(e.is_baseline, false) as is_baseline,
+                coalesce(extract(epoch from e.updated_at)::double precision, 0) as rating_updated_at
+           from solutions s
+           left join arena_entries e on e.entity_type = 'solution' and e.entity_id = s.id
+          where s.id = $1",
+    )
+    .bind(solution_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some(row) = row else {
+        return Ok(None);
+    };
+    let id: i64 = row.try_get("id")?;
+    let arena_id: Option<i64> = row.try_get("arena_id")?;
+    let r: f64 = row.try_get("r")?;
+    let rd: f64 = row.try_get("rd")?;
+    Ok(Some(Solution {
+        id,
+        feature_id: row.try_get("feature_id")?,
+        author_id: row.try_get("author_id")?,
+        title: row.try_get("title")?,
+        body: row.try_get("body")?,
+        kind: row.try_get("type")?,
+        external_ref: row.try_get("external_ref")?,
+        affiliation: row.try_get("affiliation")?,
+        relationship: row.try_get("relationship")?,
+        parent_solution_id: row.try_get("parent_solution_id")?,
+        status: row.try_get("status")?,
+        expertise_tags: row.try_get("expertise_tags")?,
+        rating: EntryRating {
+            arena_id: arena_id.unwrap_or(0),
+            entity_type: "solution".to_string(),
+            entity_id: id,
+            r,
+            rd,
+            sigma: row.try_get("sigma")?,
+            games: row.try_get("games")?,
+            is_baseline: row.try_get("is_baseline")?,
+            conservative: r - 2.0 * rd,
+            updated_at: row.try_get("rating_updated_at")?,
+        },
+        created_at: row.try_get("created_at")?,
+        updated_at: row.try_get("updated_at")?,
+    }))
+}
+
+/// One coverage claim a solution makes about a complaint.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SolutionCoverage {
+    /// The solution.
+    pub solution_id: i64,
+    /// The complaint it claims to resolve.
+    pub complaint_id: i64,
+    /// What it claims to do about it.
+    pub claim: String,
+    /// Whether the claim has been challenged (§6.4).
+    pub contested: bool,
+    /// Who challenged it.
+    pub contested_by: Option<i64>,
+    /// When.
+    pub contested_at: Option<f64>,
+    /// Why.
+    pub contest_reason: Option<String>,
+    /// When the claim was made.
+    pub created_at: f64,
+}
+
+/// A solution's coverage claims, ordered by complaint.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn list_coverage(pool: &PgPool, solution_id: i64) -> Result<Vec<SolutionCoverage>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (i64, i64, String, bool, Option<i64>, Option<f64>, Option<String>, f64)>(
+        "select solution_id, complaint_id, claim, coalesce(contested, 0) <> 0, contested_by,
+                extract(epoch from contested_at)::double precision, contest_reason,
+                extract(epoch from created_at)::double precision
+           from solution_coverage where solution_id = $1 order by complaint_id",
+    )
+    .bind(solution_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(
+            |(solution_id, complaint_id, claim, contested, contested_by, contested_at, contest_reason, created_at)| {
+                SolutionCoverage {
+                    solution_id,
+                    complaint_id,
+                    claim,
+                    contested,
+                    contested_by,
+                    contested_at,
+                    contest_reason,
+                    created_at,
+                }
+            },
+        )
+        .collect())
+}

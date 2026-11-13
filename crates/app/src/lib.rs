@@ -81,6 +81,10 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/projects/{project_id}/features/{id}/solutions",
             get(feature_solutions),
         )
+        .route(
+            "/api/v1/projects/{project_id}/features/{id}/solutions/{solution_id}",
+            get(one_solution),
+        )
         .route("/api/v1/projects/{slug}/features/{feature}/deps", get(feature_deps))
         .route("/api/v1/projects/{slug}/features/{feature}/evidence", get(feature_evidence))
         // `{slug}` and not `{project_id}`: axum refuses two routes that differ only in a parameter NAME ("Insertion
@@ -3572,5 +3576,53 @@ async fn feature_solutions(
     Ok(Json(serde_json::json!({
         "feature_id": feature_id,
         "solutions": scores,
+    })))
+}
+
+/// `GET /projects/{id}/features/{feature}/solutions/{solution}` — one proposal, its rating and its coverage claims.
+///
+/// The ownership rule: a solution is checked against the **feature in the path**, not only the project, and a mismatch is
+/// **404** — not the 403 this same family answers for a feature from another project. Serving feature A's proposal under
+/// feature B's URL would show the board a competitor that is not in it, and a distinct refusal would confirm the id.
+async fn one_solution(
+    State(state): State<AppState>,
+    Path((project_id, feature_id, solution_id)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = project_by_id(&state, &project_id).await?;
+    let user = bearer_user(&state, &headers).await?;
+    if !readable(&state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    let Ok(feature_id) = feature_id.parse::<i64>() else {
+        return Err(ApiError::invalid_request("invalid feature id"));
+    };
+    let feature = concord_db::features::feature(&state.pool, feature_id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found("no such feature"))?;
+    if feature.project_id != project.id {
+        return Err(ApiError::forbidden("feature belongs to another project"));
+    }
+    let Ok(solution_id) = solution_id.parse::<i64>() else {
+        return Err(ApiError::invalid_request("invalid solution id"));
+    };
+    let solution = concord_db::arena::get_solution(&state.pool, solution_id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("solution {solution_id}")))?;
+    if solution.feature_id != feature_id {
+        // 404, not the 403 the cross-project case above answers: two sizes of "not yours" in one family, both the Go's.
+        return Err(ApiError::not_found(format!("solution {solution_id}")));
+    }
+    let coverage = concord_db::arena::list_coverage(&state.pool, solution_id)
+        .await
+        .map_err(internal)?;
+    // A solution is the baseline by its TYPE, so the flag the arena stores and the flag this answers cannot disagree.
+    let is_baseline = solution.kind == concord_db::arena::SOLUTION_DO_NOTHING;
+    Ok(Json(serde_json::json!({
+        "solution": solution,
+        "coverage": coverage,
+        "is_baseline": is_baseline,
     })))
 }
