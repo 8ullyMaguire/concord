@@ -1300,6 +1300,35 @@ an improvement in this tool, so it now falls back to recording the route with an
 **Decision (dated, mine): the row's gate is the JSON count.** 113 is the number to drive to zero; the 10 page routes
 belong to row 12 and are listed separately so neither is hidden behind the other.
 
+### Row 11 — part 24: feature tallies, and four defects reproduced on purpose (2026-11-13, `257e4a8`)
+
+```
+gate (before): GET /projects/{project_id}/tallies -> 404
+gate (after):
+  probe_s5_tallies.py -> 11/11 ok
+  routes.py           -> go 216 / port 96   missing: 122 (112 json, 10 page)
+  cargo test -p concord-db --lib -> 31 passed
+  concord-parity      -> 0 shape(s) disagreed of 16 checked, 5 skipped
+```
+
+The Go's tallies carry four behaviours that are not a reasonable reading of the spec, and the port reproduces all four,
+because its gate is "the same answers on the same data" — fixing one here would make the two services disagree and hide
+real port bugs inside a well-intentioned improvement:
+
+* the wire key is **`Title`**, capitalised — that field has no json tag while every sibling is snake_case;
+* **`votes_cast = wins + losses`**, so SKIPS are counted and never cast: eight votes can report `votes_cast: 4`;
+* wins/losses **do not partition** the matches: the count reads the pair's `outcome` without asking which SIDE this
+  feature was on, so a feature that LOST still gains a `wins` when the pair's outcome was `a`;
+* a project with no features answers **`null`**, not `[]` — the Go's nil slice.
+
+**These four are open defects for row 13 (cutover)**, recorded here rather than fixed: each needs one knowing change in
+one place, after the port can no longer be verified by equality. Negative control — the "fix" one would be tempted to
+make (`votes_cast` including skips) — fails two assertions, 9/11, which is the proof the probe distinguishes the
+service's arithmetic from the plausible one.
+
+One schema fact found by failing: `pairwise_votes.arena_id` is NOT NULL, so every vote belongs to an arena and a
+fixture needs one even when the read under test never consults it.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
