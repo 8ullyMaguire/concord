@@ -68,6 +68,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/search", get(search))
         .route("/api/v1/stats", get(stats))
         .route("/api/v1/stats/summary", get(stats_summary))
+        .route("/api/v1/stats/history", get(stats_history))
+        .route("/api/v1/stats/responsiveness", get(stats_responsiveness))
         .route("/api/v1/curation", get(list_curation))
         // The Go mount is `/api/v1/curation` with the page at `GET /` and votes below it; both spellings of
         // the queue path answer here, because a client that appends a slash must not get a 404.
@@ -2166,4 +2168,48 @@ struct SearchParams {
     license: Option<String>,
     #[serde(default)]
     sort: Option<String>,
+}
+
+/// `GET /api/v1/stats/history?days=90` — recorded days, newest first.
+///
+/// A BARE ARRAY, not an envelope: this is the only series route and a charting client wants the rows. A
+/// malformed `days` falls back to the default rather than answering 400 — matching how the audit and finder
+/// routes read their paging parameters — and the cap still applies, so a hostile value cannot widen the
+/// response.
+async fn stats_history(
+    State(state): State<AppState>,
+    Query(params): Query<HistoryParams>,
+) -> Result<Json<Value>, ApiError> {
+    // `days` is read as TEXT and parsed here, not deserialized as a number: axum's `Query` rejects a
+    // non-integer with a 400, and the Go handler falls back to the default instead. The header asks this route
+    // for its series on every render, so a 400 is a broken chart for a value the reader never typed.
+    let days = params
+        .days
+        .as_deref()
+        .and_then(|raw| raw.trim().parse::<i64>().ok())
+        .unwrap_or(0);
+    let rows = concord_db::stats::history(&state.pool, days)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::to_value(rows).map_err(internal)?))
+}
+
+#[derive(Debug, Deserialize, Default)]
+struct HistoryParams {
+    #[serde(default)]
+    days: Option<String>,
+}
+
+/// `GET /api/v1/stats/responsiveness` — the newcomer-responsiveness ranking, as rows.
+///
+/// A project under the sample floor is ABSENT rather than last, and there is no `"unmeasured": true` row to
+/// render as a dash: a dash in a leaderboard still assigns a position, and the position is not the instance's
+/// to publish.
+async fn stats_responsiveness(
+    State(state): State<AppState>,
+) -> Result<Json<Value>, ApiError> {
+    let rows = concord_db::stats::responsiveness_leaderboard(&state.pool)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::to_value(rows).map_err(internal)?))
 }

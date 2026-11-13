@@ -194,6 +194,33 @@ def main() -> int:
                   f"{str(error).strip().splitlines()[0]}", file=sys.stderr)
             pg.rollback()
 
+    # THE MOVE IS NOT DONE WHEN THE ROWS ARE IN. Every insert above names `id`, which leaves each sequence at
+    # its starting value; the next insert that omits `id` asks for 1 and collides with the row already there.
+    # Measured on the migrated database: 19 of 47 sequences behind, and the probe's first write failed with
+    #   duplicate key value violates unique constraint "projects_pkey" DETAIL: Key (id)=(1) already exists
+    with pg:
+        with pg.cursor() as cur:
+            cur.execute("select sequencename from pg_sequences where schemaname = 'public'")
+            behind = 0
+            for (name,) in cur.fetchall():
+                table = name[: -len("_id_seq")]
+                cur.execute("select to_regclass(%s) is not null", (f"public.{table}",))
+                if not cur.fetchone()[0]:
+                    continue
+                cur.execute(f'select max(id) from "{table}"')
+                top = cur.fetchone()[0]
+                if top is None:
+                    continue
+                cur.execute(
+                    "select last_value from pg_sequences where schemaname = 'public' and sequencename = %s",
+                    (name,),
+                )
+                last = cur.fetchone()[0] or 0
+                if last < top:
+                    cur.execute("select setval(%s, %s, true)", (name, top))
+                    behind += 1
+    print(f"sequences: {behind} advanced to the rows they serve")
+
     for note in skipped:
         print("skipped:", note)
     print(f"{moved} rows, {failures} tables failed")

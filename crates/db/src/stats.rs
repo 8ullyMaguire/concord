@@ -580,3 +580,156 @@ mod tests {
         assert_eq!(parse_transition_target("no arrow here"), None);
     }
 }
+
+/// One recorded day of instance statistics.
+#[derive(Debug, Clone, Serialize)]
+pub struct Snapshot {
+    /// The day, as `YYYY-MM-DD`.
+    pub day: String,
+    /// Projects that existed.
+    pub projects: i64,
+    /// Projects with at least one measured signal.
+    pub projects_measured: i64,
+    /// Features in total.
+    pub features_total: i64,
+    /// Features that came from a seed or an import.
+    pub features_seed: i64,
+    /// Complaints in total.
+    pub complaints_total: i64,
+    /// Complaints that came from a seed or an import.
+    pub complaints_seed: i64,
+    /// The triage median, or `null` when the day had no sample. A median of zero is not the same answer.
+    pub triage_median_h: Option<f64>,
+    /// How many episodes the triage median rests on.
+    pub triage_n: i64,
+    /// The delivery median, or `null`.
+    pub delivery_median_h: Option<f64>,
+    /// How many episodes the delivery median rests on.
+    pub delivery_n: i64,
+    /// The decision median, or `null`.
+    pub decision_median_h: Option<f64>,
+    /// How many episodes the decision median rests on.
+    pub decision_n: i64,
+    /// Features with no provenance at all.
+    pub no_origin: i64,
+    /// When the row was written.
+    #[serde(serialize_with = "crate::projects::ser_unix")]
+    pub computed_at: f64,
+}
+
+/// Recorded days, newest first.
+///
+/// `days` is clamped to `[1, 365]`: a request for the whole table is a scrape, and a series longer than a year
+/// is a chart nobody reads. The cap is a constant rather than a setting because the alternative — an unbounded
+/// series route — is how a database ends up serialized into somebody's RSS reader.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn history(pool: &PgPool, days: i64) -> Result<Vec<Snapshot>, sqlx::Error> {
+    let days = if days <= 0 {
+        30
+    } else if days > 365 {
+        365
+    } else {
+        days
+    };
+    let rows = sqlx::query(
+        // `day` is TEXT in this baseline (SQLite stored a string, and the generator kept the type): a
+        // `to_char(day, …)` is `function to_char(text, unknown) does not exist`, which is how this was found.
+        "select day, projects, projects_measured, features_total, \
+                features_seed, complaints_total, complaints_seed, triage_median_h, triage_n, \
+                delivery_median_h, delivery_n, decision_median_h, decision_n, no_origin, \
+                extract(epoch from computed_at)::double precision \
+           from instance_stats order by day desc limit $1",
+    )
+    .bind(days)
+    .fetch_all(pool)
+    .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(Snapshot {
+            day: row.try_get(0)?,
+            projects: row.try_get(1)?,
+            projects_measured: row.try_get(2)?,
+            features_total: row.try_get(3)?,
+            features_seed: row.try_get(4)?,
+            complaints_total: row.try_get(5)?,
+            complaints_seed: row.try_get(6)?,
+            triage_median_h: row.try_get(7)?,
+            triage_n: row.try_get(8)?,
+            delivery_median_h: row.try_get(9)?,
+            delivery_n: row.try_get(10)?,
+            decision_median_h: row.try_get(11)?,
+            decision_n: row.try_get(12)?,
+            no_origin: row.try_get(13)?,
+            computed_at: row.try_get(14)?,
+        });
+    }
+    Ok(out)
+}
+
+/// One row of the newcomer-responsiveness ranking.
+#[derive(Debug, Clone, Serialize)]
+pub struct ResponsivenessRow {
+    /// The project.
+    pub project_id: i64,
+    /// Its slug.
+    pub slug: String,
+    /// Its name.
+    pub name: String,
+    /// Median hours from a newcomer's first PR to the first response by somebody else.
+    #[serde(serialize_with = "crate::projects::ser_unix")]
+    pub hours: f64,
+    /// How many first PRs the median rests on. Part of the row, because two projects at the same median are
+    /// not the same claim when one rests on 5 PRs and the other on 500.
+    pub n: i64,
+}
+
+/// The sample floor below which no number is published.
+///
+/// Five is not a statistical threshold, it is an editorial one: a median over three PRs is a number nobody
+/// should act on, and publishing it invites a reader to rank projects on it.
+pub const NEWCOMER_MIN_SAMPLE: i64 = 5;
+
+/// Projects ranked by how fast they answer a newcomer's first PR.
+///
+/// Three rules, each of which is a defect if dropped:
+///
+/// * **a project under the floor is ABSENT, never last** — "we have not measured this" and "this is the worst"
+///   are different facts, and a leaderboard that renders `0.0` for an unmeasured project ranks it BEST, which
+///   is the one direction a reader will act on;
+/// * **the sample rides along** (see [`ResponsivenessRow::n`]);
+/// * **private projects are not ranked.** Every other statistics route publishes an aggregate, which a private
+///   project contributes to invisibly; this one publishes a ranking of NAMED projects, so an unlisted
+///   project's position would be a disclosure its owner did not make.
+///
+/// The tiebreak on slug is not cosmetic: without it two projects at the same median swap places between two
+/// requests, and a ranking that is not stable cannot be compared with its own previous rendering.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn responsiveness_leaderboard(pool: &PgPool) -> Result<Vec<ResponsivenessRow>, sqlx::Error> {
+    let rows = sqlx::query(
+        "select p.id, p.slug, p.name, pm.newcomer_response_hours, pm.newcomer_sample \
+           from project_metrics pm \
+           join projects p on p.id = pm.project_id \
+          where pm.newcomer_response_hours is not null \
+            and pm.newcomer_sample >= $1 \
+            and p.visibility = 'public' \
+          order by pm.newcomer_response_hours asc, p.slug asc",
+    )
+    .bind(NEWCOMER_MIN_SAMPLE)
+    .fetch_all(pool)
+    .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(ResponsivenessRow {
+            project_id: row.try_get(0)?,
+            slug: row.try_get(1)?,
+            name: row.try_get(2)?,
+            hours: row.try_get(3)?,
+            n: row.try_get(4)?,
+        });
+    }
+    Ok(out)
+}

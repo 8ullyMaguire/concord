@@ -42,3 +42,9 @@
 # is probe_s4_comments.py, not a recording.
 /api/v1/notifications
 /api/v1/curation
+
+# S5: the two list routes, bare arrays rather than frames. `history` is bounded by a 365-day cap and a default
+# of 30, so the recorded body is whatever the instance has; `responsiveness` is the ranking, and a project
+# under the sample floor is absent from it rather than last.
+/api/v1/stats/history
+/api/v1/stats/responsiveness
