@@ -106,6 +106,37 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/projects/{project_id}/threads/{thread_kind}/{thread_id}/{id}/vote",
             post(vote_comment),
         )
+        // §5.1/§6.2's strategy surface, at the GO's own paths: the frontend reads
+        // `/api/v1/projects/{id}/strategy/themes` (settings.js), so a port that only answered the curation queue
+        // would leave the page blank with a 404 while every probe passed.
+        .route(
+            "/api/v1/projects/{project_id}/strategy/weight-proposals",
+            get(list_weight_proposals).post(propose_weight),
+        )
+        .route(
+            "/api/v1/projects/{project_id}/strategy/weight-proposals/{id}/consent",
+            post(consent_weight),
+        )
+        .route(
+            "/api/v1/projects/{project_id}/strategy/weight-proposals/{id}/withdraw",
+            post(withdraw_weight),
+        )
+        .route(
+            "/api/v1/projects/{project_id}/strategy/themes",
+            get(list_themes).post(propose_theme),
+        )
+        .route(
+            "/api/v1/projects/{project_id}/strategy/themes/{id}/consent",
+            post(consent_theme),
+        )
+        .route(
+            "/api/v1/projects/{project_id}/strategy/themes/{id}/withdraw",
+            post(withdraw_theme),
+        )
+        .route(
+            "/api/v1/projects/{project_id}/strategy/theme-proposals",
+            get(list_theme_proposals),
+        )
         .route(
             "/api/v1/projects/{slug}/moderation/arena/remove",
             post(arena_remove),
@@ -2318,5 +2349,251 @@ fn strategy_refusal(refusal: concord_db::strategy::Refused) -> ApiError {
         Refused::Failed(detail) => {
             ApiError::conflict(format!("the weight could not be applied: {detail}"))
         }
+    }
+}
+
+// ---------------------------------------------------------------- §5.1 / §6.2 strategy
+
+/// The caller and their role in the project named by the path. `project_id` is a NUMBER here because that is
+/// what the Go routes take: the frontend passes `data-project-id`.
+struct StrategyCaller {
+    /// The authenticated user.
+    user: concord_db::auth::User,
+    /// Their role in this project, `guest` when they are not a member.
+    role: String,
+}
+
+async fn strategy_project(
+    state: &AppState,
+    project_id: i64,
+    headers: &HeaderMap,
+) -> Result<StrategyCaller, ApiError> {
+    let user = bearer_user(state, headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    let exists: Option<i64> = sqlx::query_scalar("select id from projects where id = $1")
+        .bind(project_id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(internal)?;
+    if exists.is_none() {
+        return Err(ApiError::not_found("no such project"));
+    }
+    let role: String = sqlx::query_scalar(
+        "select coalesce((select role from members where project_id = $1 and user_id = $2), 'guest')",
+    )
+    .bind(project_id)
+    .bind(user.id)
+    .fetch_one(&state.pool)
+    .await
+    .map_err(internal)?;
+    Ok(StrategyCaller { user, role })
+}
+
+async fn list_weight_proposals(
+    State(state): State<AppState>,
+    Path(project_id): Path<i64>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    strategy_project(&state, project_id, &headers).await?;
+    let rows = concord_db::strategy::proposals(&state.pool, project_id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
+}
+
+async fn list_theme_proposals(
+    State(state): State<AppState>,
+    Path(project_id): Path<i64>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    strategy_project(&state, project_id, &headers).await?;
+    let rows = concord_db::themes::proposals(&state.pool, project_id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
+}
+
+async fn list_themes(
+    State(state): State<AppState>,
+    Path(project_id): Path<i64>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    strategy_project(&state, project_id, &headers).await?;
+    let rows = concord_db::themes::themes(&state.pool, project_id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
+}
+
+async fn propose_weight(
+    State(state): State<AppState>,
+    Path(project_id): Path<i64>,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
+    let who = strategy_project(&state, project_id, &headers).await?;
+    let feature_id = body
+        .get("feature_id")
+        .and_then(serde_json::Value::as_i64)
+        .ok_or_else(|| ApiError::invalid_request("feature_id is required"))?;
+    let weight = body
+        .get("weight")
+        .and_then(serde_json::Value::as_f64)
+        .ok_or_else(|| ApiError::invalid_request("weight is required"))?;
+    let rationale = body.get("rationale").and_then(serde_json::Value::as_str).unwrap_or("");
+    match concord_db::strategy::propose(&state.pool, project_id, feature_id, who.user.id, weight, rationale).await
+    {
+        Ok(proposal) => Ok((StatusCode::CREATED, Json(serde_json::json!(proposal)))),
+        Err(refusal) => Err(strategy_refusal(refusal)),
+    }
+}
+
+async fn propose_theme(
+    State(state): State<AppState>,
+    Path(project_id): Path<i64>,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
+    let who = strategy_project(&state, project_id, &headers).await?;
+    let tag = body.get("theme_tag").and_then(serde_json::Value::as_str).unwrap_or("");
+    let namespace = body
+        .get("theme_namespace")
+        .and_then(serde_json::Value::as_str)
+        .unwrap_or("");
+    let weight = body
+        .get("weight")
+        .and_then(serde_json::Value::as_f64)
+        .ok_or_else(|| ApiError::invalid_request("weight is required"))?;
+    let rationale = body.get("rationale").and_then(serde_json::Value::as_str).unwrap_or("");
+    match concord_db::themes::propose(
+        &state.pool,
+        project_id,
+        who.user.id,
+        tag,
+        namespace,
+        weight,
+        rationale,
+    )
+    .await
+    {
+        Ok(proposal) => Ok((StatusCode::CREATED, Json(serde_json::json!(proposal)))),
+        Err(refusal) => Err(theme_refusal(refusal)),
+    }
+}
+
+/// A consent that ratified nothing is `202`, not `200`: answering 200 tells a client the roadmap moved when it
+/// did not. The Go handler draws the same line, which is why this mirrors it clause for clause.
+async fn consent_theme(
+    State(state): State<AppState>,
+    Path((project_id, id)): Path<(i64, i64)>,
+    headers: HeaderMap,
+) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
+    let who = strategy_project(&state, project_id, &headers).await?;
+    match concord_db::themes::consent(&state.pool, id, who.user.id).await {
+        Ok((proposal, ratified)) => Ok((
+            if ratified { StatusCode::OK } else { StatusCode::ACCEPTED },
+            Json(serde_json::json!({ "proposal": proposal, "ratified": ratified })),
+        )),
+        Err(refusal) => match refusal {
+            // A recorded consent below the threshold is not an error the client should treat as a failure: it is
+            // the state §5.1 exists to make visible.
+            concord_db::themes::Refused::NotYet {
+                verdict,
+                consents,
+                eligible,
+            } => Ok((
+                StatusCode::ACCEPTED,
+                Json(serde_json::json!({
+                    "recorded": true,
+                    "ratified": false,
+                    "verdict": verdict,
+                    "consents": consents,
+                    "eligible": eligible,
+                })),
+            )),
+            other => Err(theme_refusal(other)),
+        },
+    }
+}
+
+async fn consent_weight(
+    State(state): State<AppState>,
+    Path((project_id, id)): Path<(i64, i64)>,
+    headers: HeaderMap,
+) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
+    let who = strategy_project(&state, project_id, &headers).await?;
+    match concord_db::strategy::consent(&state.pool, id, who.user.id).await {
+        Ok(recorded) => Ok((
+            StatusCode::OK,
+            Json(serde_json::json!({
+                "recorded": true,
+                "ratified": recorded.ratified,
+                "stale": recorded.stale,
+                "consents": recorded.consents,
+                "eligible": recorded.eligible,
+                "proposal": recorded.proposal,
+            })),
+        )),
+        Err(refusal) => Err(strategy_refusal(refusal)),
+    }
+}
+
+async fn withdraw_theme(
+    State(state): State<AppState>,
+    Path((project_id, id)): Path<(i64, i64)>,
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    let who = strategy_project(&state, project_id, &headers).await?;
+    let maintainer = who.role == "maintainer" || who.role == "owner";
+    concord_db::themes::withdraw(&state.pool, id, who.user.id, maintainer)
+        .await
+        .map_err(theme_refusal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn withdraw_weight(
+    State(state): State<AppState>,
+    Path((project_id, id)): Path<(i64, i64)>,
+    headers: HeaderMap,
+) -> Result<StatusCode, ApiError> {
+    let who = strategy_project(&state, project_id, &headers).await?;
+    let maintainer = who.role == "maintainer" || who.role == "owner";
+    concord_db::strategy::withdraw(&state.pool, id, who.user.id, maintainer)
+        .await
+        .map_err(strategy_refusal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// The theme refusals, with the ones that are about the REQUEST at 400 and the ones about the CALLER at 403.
+fn theme_refusal(refusal: concord_db::themes::Refused) -> ApiError {
+    use concord_db::themes::Refused;
+    match refusal {
+        Refused::NotFound => ApiError::not_found("no such proposal"),
+        Refused::Decided(status) => ApiError::conflict(format!("the proposal is already {status}")),
+        Refused::Invalid(detail) => ApiError::invalid_request(detail),
+        Refused::SelfConsent => {
+            ApiError::forbidden("the proposer cannot consent to their own proposal")
+        }
+        Refused::NotEligible => ApiError::forbidden(
+            "only an eligible collaborator may consent: §8.2 asks for a qualifying contribution",
+        ),
+        Refused::Duplicate(detail) => ApiError::conflict(detail),
+        Refused::NotYet {
+            verdict,
+            consents,
+            eligible,
+        } => ApiError::conflict(format!(
+            "the consent was recorded and the proposal is {verdict} ({consents} of {eligible} eligible \
+             consenting)"
+        )),
+        Refused::NoLifetime(days) => ApiError::invalid_request(format!(
+            "the charter's theme_lifetime_days is {days}: a theme written with no lifetime is born expired, so \
+             nothing was applied"
+        )),
+        Refused::NotYours => {
+            ApiError::forbidden("only the proposer or a maintainer may withdraw a proposal")
+        }
+        Refused::Failed(detail) => ApiError::conflict(format!("the change could not be applied: {detail}")),
     }
 }

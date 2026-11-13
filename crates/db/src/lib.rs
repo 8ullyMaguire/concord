@@ -27,6 +27,7 @@ pub mod snapshot;
 pub mod search;
 pub mod metrics;
 pub mod stats;
+pub mod themes;
 pub mod strategy;
 pub mod taxonomy;
 pub mod override_window;

@@ -118,6 +118,135 @@ pub async fn proposal(pool: &PgPool, id: i64) -> Result<Option<WeightProposal>, 
     }
 }
 
+/// A project's weight proposals, newest first.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn proposals(pool: &PgPool, project_id: i64) -> Result<Vec<WeightProposal>, sqlx::Error> {
+    let rows = sqlx::query(&format!(
+        "select {COLUMNS} from strategic_weight_proposals where project_id = $1 \
+         order by created_at desc, id desc"
+    ))
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+    rows.iter().map(from_row).collect()
+}
+
+/// Open a weight proposal. It applies NOTHING: the feature's weight is recorded as `weight_before` and stays
+/// exactly where it is until a quorum consents.
+///
+/// # Errors
+/// `sqlx::Error`, or a [`Refused`] wrapped in it.
+pub async fn propose(
+    pool: &PgPool,
+    project_id: i64,
+    feature_id: i64,
+    user_id: i64,
+    weight: f64,
+    rationale: &str,
+) -> Result<WeightProposal, Refused> {
+    let inside = move |error: sqlx::Error| Refused::Failed(error.to_string());
+    if !(0.0..=3.0).contains(&weight) {
+        return Err(Refused::Failed("weight must be between 0 and 3".to_string()));
+    }
+    let owner: Option<(i64, f64)> =
+        sqlx::query_as("select project_id, strategic_weight from features where id = $1")
+            .bind(feature_id)
+            .fetch_optional(pool)
+            .await
+            .map_err(inside)?;
+    let Some((owner_project, before)) = owner else {
+        return Err(Refused::NotFound);
+    };
+    if owner_project != project_id {
+        return Err(Refused::Failed(format!(
+            "feature {feature_id} is not in project {project_id}"
+        )));
+    }
+    let rationale = rationale.trim();
+    if rationale.is_empty() {
+        // A weight change with no stated reason is the steering lever the consensus route exists to remove.
+        return Err(Refused::Failed("a rationale is required".to_string()));
+    }
+    let id: i64 = sqlx::query_scalar(
+        "insert into strategic_weight_proposals (project_id, feature_id, proposed_by, weight_before,
+            weight_after, rationale, status, created_at)
+         values ($1, $2, $3, $4, $5, $6, 'pending', to_timestamp($7)) returning id",
+    )
+    .bind(project_id)
+    .bind(feature_id)
+    .bind(user_id)
+    .bind(before)
+    .bind(weight)
+    .bind(rationale)
+    .bind(crate::now_unix())
+    .fetch_one(pool)
+    .await
+    .map_err(|error| {
+        if error.to_string().contains("idx_stratweight_one_pending") {
+            Refused::Decided("a proposal is already pending for this feature".to_string())
+        } else {
+            Refused::Failed(error.to_string())
+        }
+    })?;
+    audit(
+        pool,
+        project_id,
+        user_id,
+        "propose_strategic_weight",
+        "feature",
+        feature_id,
+        &format!("proposal {id}: {before} -> {weight} ({rationale})"),
+    )
+    .await
+    .map_err(inside)?;
+    proposal(pool, id).await.map_err(inside)?.ok_or(Refused::NotFound)
+}
+
+/// Cancel a pending proposal: the proposer may, a maintainer may withdraw any.
+///
+/// # Errors
+/// `sqlx::Error`, or a [`Refused`] wrapped in it.
+pub async fn withdraw(
+    pool: &PgPool,
+    proposal_id: i64,
+    user_id: i64,
+    is_maintainer: bool,
+) -> Result<(), Refused> {
+    let inside = move |error: sqlx::Error| Refused::Failed(error.to_string());
+    let Some(pending) = proposal(pool, proposal_id).await.map_err(inside)? else {
+        return Err(Refused::NotFound);
+    };
+    if pending.status != "pending" {
+        return Err(Refused::Decided(pending.status));
+    }
+    if pending.proposed_by != user_id && !is_maintainer {
+        return Err(Refused::NotEligible);
+    }
+    sqlx::query(
+        "update strategic_weight_proposals set status = 'withdrawn', decided_at = to_timestamp($1)
+          where id = $2 and status = 'pending'",
+    )
+    .bind(crate::now_unix())
+    .bind(proposal_id)
+    .execute(pool)
+    .await
+    .map_err(inside)?;
+    audit(
+        pool,
+        pending.project_id,
+        user_id,
+        "withdraw_strategic_weight",
+        "feature",
+        pending.feature_id,
+        &format!("proposal {proposal_id} withdrawn by {user_id}"),
+    )
+    .await
+    .map_err(inside)?;
+    Ok(())
+}
+
 /// Record one consent to a strategic weight proposal, ratifying if it meets the charter's threshold.
 ///
 /// # Errors
