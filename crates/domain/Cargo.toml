@@ -1,0 +1,10 @@
+[package]
+name = "concord-domain"
+description = "Concord domain: the port's domain types, and later the estate-contracts schemas"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]

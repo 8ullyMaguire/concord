@@ -1,0 +1,34 @@
+[workspace]
+resolver = "2"
+members = ["crates/domain", "crates/db", "crates/app", "crates/parity", "crates/cli"]
+
+[workspace.package]
+version = "0.0.0"
+edition = "2021"
+rust-version = "1.82"
+license = "AGPL-3.0-or-later"
+repository = "https://git.polarisocial.xyz/concord/concord"
+
+[workspace.dependencies]
+anyhow = "1"
+axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio", "matched-path"] }
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "postgres", "macros", "chrono", "uuid"] }
+thiserror = "2"
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "signal"] }
+tower-http = { version = "0.6", features = ["trace", "compression-gzip"] }
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
+ulid = { version = "1", features = ["serde"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+# estate crates, by path while the port is a branch; by version at cutover.
+# Depth counted from THIS file: the concord checkout is <code>/projects/concord, and the family
+# crates are siblings of <code>/projects, so the parent of `projects` is two levels up.
+polaris-core = { path = "../../polaris-core-rust" }
+polaris-healthz = { path = "../../polaris-healthz" }
+polaris-authz = { path = "../../polaris-authz" }
+polaris-ledger = { path = "../../polaris-ledger" }
+polaris-ratelimit = { path = "../../polaris-ratelimit" }
+polaris-slug = { path = "../../polaris-slug" }

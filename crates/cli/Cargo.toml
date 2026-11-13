@@ -1,0 +1,10 @@
+[package]
+name = "concord-cli"
+description = "Concord cli: the operator binary: migrations, the data mover, the sweep and admin commands the Go tree ran as separate binaries"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]

@@ -1,0 +1,10 @@
+[package]
+name = "concord-db"
+description = "Concord db: PostgreSQL access: the baseline schema's row types and the store functions the web layer calls"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
