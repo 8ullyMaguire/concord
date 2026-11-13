@@ -14,6 +14,7 @@ package main
 import (
 	"fmt"
 
+	"git.polarisocial.xyz/concord/concord/internal/discovery"
 	"git.polarisocial.xyz/concord/concord/internal/governance"
 	"git.polarisocial.xyz/concord/concord/internal/ranking"
 )
@@ -223,5 +224,105 @@ func main() {
 		row("arena", pair[0], pair[1], pair[2], pair[3],
 			ranking.Conservative(pair[0], pair[1]),
 			ranking.WinProbability(pair[0], pair[1], pair[2], pair[3]))
+	}
+
+	// 7. §15's health score and §4.5.7's newcomer responsiveness. The grid deliberately crosses every
+	// boundary the piecewise components have (24h and 14 days for responsiveness, 1 contributor and 3
+	// releases for the log and linear ramps), and includes the unknown sentinel, because the rule that
+	// matters most there is that "not measured" is NOT zero.
+	for _, age := range []float64{0, 1, 7, 30, 90, 365, 4000} {
+		for _, review := range []float64{-1, 0, 6, 24, 25, 72, 336, 1000} {
+			for _, contributors := range []int{0, 1, 2, 10, 50, 500} {
+				for _, releases := range []int{0, 1, 3, 9} {
+					b := discovery.HealthScore(discovery.Metrics{
+						LastCommitAgeDays: age,
+						MedianReviewHours: review,
+						Contributors:      contributors,
+						Releases90d:       releases,
+					}, discovery.DefaultWeights)
+					row("health", age, review, contributors, releases,
+						b.Recency, b.Responsiveness, b.Breadth, b.Cadence, b.Total,
+						b.ResponsivenessKnown)
+				}
+			}
+		}
+	}
+
+	// A weight set that does not sum to 1, to prove the normalisation is the same on both sides.
+	for _, w := range [][4]float64{
+		{0.35, 0.25, 0.20, 0.20},
+		{0.70, 0.50, 0.40, 0.40},
+		{1, 0, 0, 0},
+		{0, 0, 0, 0},
+		{0.5, 0.5, 0, 0},
+	} {
+		b := discovery.HealthScore(discovery.Metrics{LastCommitAgeDays: 12, MedianReviewHours: 40,
+			Contributors: 7, Releases90d: 2},
+			discovery.Weights{Recency: w[0], Responsiveness: w[1], Breadth: w[2], Cadence: w[3]})
+		row("weights", w[0], w[1], w[2], w[3], b.Total)
+	}
+
+	// The newcomer medians: every fixture makes one of the three rules decisive, and the input is an EVENT
+	// STREAM because that is the Go signature -- "first pull request" is the earliest opening by that author in
+	// that repository, not a flag a caller could set wrongly.
+	type ev struct {
+		kind   string
+		number int
+		actor  string
+		at     float64
+	}
+	fixtures := map[string][]ev{
+		"five_first_prs": {
+			{discovery.ForgeEventPROpened, 1, "alice", 0}, {discovery.ForgeEventPRComment, 1, "m", 3600},
+			{discovery.ForgeEventPROpened, 2, "bob", 0}, {discovery.ForgeEventPRComment, 2, "m", 7200},
+			{discovery.ForgeEventPROpened, 3, "carol", 0}, {discovery.ForgeEventPRComment, 3, "m", 10800},
+			{discovery.ForgeEventPROpened, 4, "dave", 0}, {discovery.ForgeEventPRComment, 4, "m", 14400},
+			{discovery.ForgeEventPROpened, 5, "erin", 0}, {discovery.ForgeEventPRComment, 5, "m", 18000},
+		},
+		"four_below_floor": {
+			{discovery.ForgeEventPROpened, 1, "alice", 0}, {discovery.ForgeEventPRComment, 1, "m", 3600},
+			{discovery.ForgeEventPROpened, 2, "bob", 0}, {discovery.ForgeEventPRComment, 2, "m", 7200},
+			{discovery.ForgeEventPROpened, 3, "carol", 0}, {discovery.ForgeEventPRComment, 3, "m", 10800},
+			{discovery.ForgeEventPROpened, 4, "dave", 0}, {discovery.ForgeEventPRComment, 4, "m", 14400},
+		},
+		"self_comments_ignored": {
+			{discovery.ForgeEventPROpened, 1, "alice", 0}, {discovery.ForgeEventPRComment, 1, "alice", 60},
+			{discovery.ForgeEventPROpened, 2, "bob", 0}, {discovery.ForgeEventPRComment, 2, "bob", 60},
+			{discovery.ForgeEventPROpened, 3, "carol", 0}, {discovery.ForgeEventPRComment, 3, "carol", 60},
+			{discovery.ForgeEventPROpened, 4, "dave", 0}, {discovery.ForgeEventPRComment, 4, "dave", 60},
+			{discovery.ForgeEventPROpened, 5, "erin", 0}, {discovery.ForgeEventPRComment, 5, "erin", 60},
+		},
+		"second_prs_ignored": {
+			{discovery.ForgeEventPROpened, 1, "alice", 0}, {discovery.ForgeEventPRComment, 1, "m", 3600},
+			{discovery.ForgeEventPROpened, 2, "alice", 100000}, {discovery.ForgeEventPRComment, 2, "m", 460000},
+			{discovery.ForgeEventPROpened, 3, "bob", 0}, {discovery.ForgeEventPRComment, 3, "m", 7200},
+			{discovery.ForgeEventPROpened, 4, "carol", 0}, {discovery.ForgeEventPRComment, 4, "m", 10800},
+			{discovery.ForgeEventPROpened, 5, "dave", 0}, {discovery.ForgeEventPRComment, 5, "m", 14400},
+			{discovery.ForgeEventPROpened, 6, "erin", 0}, {discovery.ForgeEventPRComment, 6, "m", 18000},
+		},
+		"lower_middle_median": {
+			{discovery.ForgeEventPROpened, 1, "alice", 0}, {discovery.ForgeEventPRComment, 1, "m", 3600},
+			{discovery.ForgeEventPROpened, 2, "bob", 0}, {discovery.ForgeEventPRComment, 2, "m", 7200},
+			{discovery.ForgeEventPROpened, 3, "carol", 0}, {discovery.ForgeEventPRComment, 3, "m", 10800},
+			{discovery.ForgeEventPROpened, 4, "dave", 0}, {discovery.ForgeEventPRComment, 4, "m", 14400},
+			{discovery.ForgeEventPROpened, 5, "erin", 0}, {discovery.ForgeEventPRComment, 5, "m", 18000},
+			{discovery.ForgeEventPROpened, 6, "frank", 0}, {discovery.ForgeEventPRComment, 6, "m", 720000},
+		},
+		"out_of_order_redelivery": {
+			{discovery.ForgeEventPROpened, 7, "alice", 50000}, {discovery.ForgeEventPROpened, 1, "alice", 0},
+			{discovery.ForgeEventPRReview, 1, "m", 3600}, {discovery.ForgeEventPRReview, 7, "m", 500000},
+		},
+	}
+	for _, name := range []string{"five_first_prs", "four_below_floor", "self_comments_ignored",
+		"second_prs_ignored", "lower_middle_median", "out_of_order_redelivery"} {
+		stream := []discovery.ForgeEvent{}
+		for _, fixture := range fixtures[name] {
+			stream = append(stream, discovery.ForgeEvent{
+				RepoFull: "owner/repo", Kind: fixture.kind, Number: fixture.number,
+				Actor: fixture.actor, At: fixture.at,
+			})
+		}
+		hours, sample, ok := discovery.NewcomerResponse(stream)
+		row("newcomer", name, ok, hours, sample)
 	}
 }

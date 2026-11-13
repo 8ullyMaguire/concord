@@ -243,6 +243,10 @@ fn every_go_number_survives_the_port() {
             }
             // The counts rows belong to the governance crate; they are read there.
             "counts" => {}
+            // The health, weights and newcomer rows are read by `health_golden.rs`, against the same file:
+            // the score's piecewise boundaries and the newcomer median's three rules have their own test
+            // rather than 1,350 assertions folded into this one.
+            "health" | "weights" | "newcomer" => {}
             other => panic!("unknown oracle row {other}"),
         }
     }

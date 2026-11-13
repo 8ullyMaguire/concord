@@ -6,6 +6,8 @@
 //!     concord-cli check                              # connect, run one query, exit
 //!     concord-cli statsnapshot [--dry-run] [--day YYYY-MM-DD]
 //!     concord-cli proposalsweep [--dry-run] [--ttl-days N] [--verbose]
+//!     concord-cli healthsync --from measurements.json [--dry-run]
+//!     concord-cli healthsync --newcomer slug=hours,sample ...
 //!
 //! The two timer commands follow the same three rules the Go ones do, because a timer's output is read by an
 //! operator who is looking for a reason it failed:
@@ -121,6 +123,7 @@ pub async fn run() -> anyhow::Result<()> {
             println!("{} project(s)", projects.len());
             Ok(())
         }
+        "healthsync" => healthsync(&pool, &args).await,
         "statsnapshot" => statsnapshot(&pool, &args).await,
         "proposalsweep" => proposalsweep(&pool, &args).await,
         other => anyhow::bail!("unknown command {other}"),
@@ -204,4 +207,121 @@ async fn proposalsweep(pool: &sqlx::PgPool, args: &Args) -> anyhow::Result<()> {
         report.total
     );
     Ok(())
+}
+
+/// `healthsync` — write forge measurements over `project_metrics`.
+///
+/// Two inputs, because the two halves of the row come from different places:
+///
+/// * `--from <file>` — the measurements the forge answered with, one JSON object per project. This is where the
+///   fetch lives: **the fetching is NOT ported** (see the ledger), because no estate crate owns a forge client
+///   and a third hand-rolled GitHub client is exactly the component the estate's inventory exists to prevent.
+///   Until one exists, the dump is produced by the Go `healthsync -dump` and this writer applies it, which is
+///   the same split the Go binary itself has between fetching and storing.
+/// * `--newcomer slug=hours,sample` — the responsiveness figure computed from `forge_events`, which is a reading
+///   of this database rather than of the forge.
+///
+/// Three rules, and the gate asserts each of them:
+///
+/// 1. a measurement the forge did not return (`"measured": false`) writes **nothing** — not zeros, not a fresh
+///    `computed_at` over stale numbers;
+/// 2. an unknown review time is written as `NULL`, never as `-1`;
+/// 3. one scorer: the stored score is `concord_ranking::health::health_score` of the metrics stored beside it.
+async fn healthsync(pool: &sqlx::PgPool, args: &Args) -> anyhow::Result<()> {
+    use concord_db::metrics::{self, Measurement};
+
+    if let Some(list) = args.value("newcomer") {
+        for pair in list.split_whitespace() {
+            let (slug, rest) = pair
+                .split_once('=')
+                .ok_or_else(|| anyhow::anyhow!("--newcomer wants slug=hours,sample, got {pair}"))?;
+            let response = if rest.is_empty() || rest == "none" {
+                None
+            } else {
+                let (hours, sample) = rest
+                    .split_once(',')
+                    .ok_or_else(|| anyhow::anyhow!("--newcomer wants hours,sample, got {rest}"))?;
+                Some((hours.parse::<f64>()?, sample.parse::<usize>()?))
+            };
+            metrics::write_newcomer(pool, slug, response).await?;
+            println!("newcomer {slug}: {}", match response {
+                Some((hours, sample)) => format!("{hours:.1}h over {sample} first pull requests"),
+                None => "no number (below the sample floor)".to_string(),
+            });
+        }
+        return Ok(());
+    }
+
+    let path = args
+        .value("from")
+        .ok_or_else(|| anyhow::anyhow!("healthsync needs --from <measurements.json> or --newcomer …"))?;
+    let raw = std::fs::read_to_string(&path)
+        .map_err(|error| anyhow::anyhow!("reading {path}: {error}"))?;
+    let parsed: Vec<serde_json::Value> = serde_json::from_str(&raw)
+        .map_err(|error| anyhow::anyhow!("parsing {path}: {error}"))?;
+    let dry_run = args.flags.contains("dry-run");
+    let (mut written, mut unmeasured, mut unknown) = (0_usize, 0_usize, 0_usize);
+    for entry in parsed {
+        let measurement = Measurement {
+            slug: text(&entry, "slug")?,
+            // Absent means unmeasured: a dump that omits the field because the fetch failed must not be read as
+            // a successful measurement of zero.
+            measured: entry.get("measured").and_then(serde_json::Value::as_bool).unwrap_or(false),
+            stars: integer(&entry, "stars").unwrap_or(0),
+            forks: integer(&entry, "forks").unwrap_or(0),
+            open_issues: integer(&entry, "open_issues").unwrap_or(0),
+            commit_count: integer(&entry, "commit_count").unwrap_or(0),
+            contributors: integer(&entry, "contributors").unwrap_or(0),
+            last_commit_age_days: float(&entry, "last_commit_age_days")
+                .unwrap_or(concord_db::metrics::UNKNOWN_AGE),
+            median_review_hours: float(&entry, "median_review_hours")
+                .unwrap_or(concord_db::metrics::UNKNOWN_REVIEW_HOURS),
+            releases_90d: integer(&entry, "releases_90d").unwrap_or(0),
+            license: entry.get("license").and_then(serde_json::Value::as_str).map(str::to_string),
+        };
+        if dry_run {
+            println!(
+                "dry-run {}: measured={} stars={} review={}",
+                measurement.slug, measurement.measured, measurement.stars, measurement.median_review_hours
+            );
+            continue;
+        }
+        match metrics::sync(pool, &measurement).await? {
+            Ok(synced) => {
+                written += 1;
+                println!(
+                    "synced {}: health {:.6}{}",
+                    measurement.slug,
+                    synced.health_score,
+                    if synced.responsiveness_known { "" } else { " (responsiveness unknown, renormalised)" }
+                );
+            }
+            Err(concord_db::metrics::Skipped::Unmeasured) => {
+                unmeasured += 1;
+                println!("skipped {}: the forge did not answer; nothing written", measurement.slug);
+            }
+            Err(concord_db::metrics::Skipped::UnknownProject) => {
+                unknown += 1;
+                println!("skipped {}: no such project", measurement.slug);
+            }
+        }
+    }
+    println!("healthsync: {written} written, {unmeasured} unmeasured, {unknown} unknown");
+    Ok(())
+}
+
+fn text(entry: &serde_json::Value, key: &str) -> anyhow::Result<String> {
+    entry
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| anyhow::anyhow!("a measurement has no {key}"))
+}
+
+fn integer(entry: &serde_json::Value, key: &str) -> Option<i64> {
+    entry.get(key).and_then(serde_json::Value::as_i64)
+}
+
+fn float(entry: &serde_json::Value, key: &str) -> Option<f64> {
+    entry.get(key).and_then(serde_json::Value::as_f64)
 }

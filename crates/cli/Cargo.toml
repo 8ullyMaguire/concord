@@ -8,11 +8,13 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+serde_json = "1"
 anyhow.workspace = true
 chrono.workspace = true
 axum.workspace = true
 concord-app = { path = "../app" }
 concord-db = { path = "../db" }
+concord-ranking = { path = "../ranking" }
 sqlx.workspace = true
 tokio.workspace = true
 tracing.workspace = true

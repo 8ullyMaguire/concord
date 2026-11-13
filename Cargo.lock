@@ -253,6 +253,8 @@ dependencies = [
  "chrono",
  "concord-app",
  "concord-db",
+ "concord-ranking",
+ "serde_json",
  "sqlx",
  "tokio",
  "tracing",
