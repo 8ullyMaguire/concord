@@ -1750,6 +1750,59 @@ proves precisely the leak the order exists to prevent.
 cannot share a project's slot — the fixture needs a third project. Second time this constraint shaped a fixture; it is
 now recorded on part 34 too.
 
+### Row 11 — part 36: the duplicate-detection embedder (2026-11-13, `230cd06`)
+
+**Why this before more routes.** The request/complaint/feature filing paths go through `checkDuplicates`, and the **live**
+service has an embedder configured (`CONCORD_EMBED_URL=http://127.0.0.1:11434`, `nomic-embed-text`), so the duplicate
+gate is not inert in production and cannot be declared away. The vector layer comes first, or a filed create answers a
+different question than the service it replaces.
+
+New crate **`crates/embed`** = the ported `internal/embed`: signed hashed bag of words (unigrams 1.0, character trigrams
+0.6, word bigrams 0.4) over SHA-256 with the sign taken from the top bit, 2048 dimensions, L2 normalisation, cosine in
+`f64` over `f32` buckets, little-endian blob encode/decode, and the three calibrated thresholds (strong 0.85, duplicate
+0.62, weak 0.40) plus `Rank`'s score-desc / entity-id tiebreak.
+
+```
+gate (before): crates/embed did not exist; internal/embed had no port; 107 json routes missing (unchanged by this part)
+gate (after):
+  cargo test -p concord-embed -> 5 passed   (859 non-zero buckets compared bit-for-bit, 1024 ordered pairs, 32 encode
+                                             round trips, 2 threshold bands, 1 ranked list)
+  cargo test -p concord-db --lib -> 38 passed
+  routes.py -> go 216 / port 111   missing: 107 (97 json, 10 page)
+```
+
+The fixture is **generated, not written**: `scripts/parity/golden_embed.go` runs the reference over a 32-text corpus and
+prints *every* non-zero bucket (index + shortest round-trip `float32`), every pairwise cosine, the encode/decode round
+trip, both threshold decisions and one ranked list. It lived in the archived tree for exactly one command and was deleted
+from it; it is kept in `scripts/parity` so the fixture can be regenerated.
+
+Three things only a golden oracle would have caught:
+
+* a short string's trigram is the **whole padded string** (`"##x##"` as one feature), not a three-byte slice of it — I
+  wrote the slice first;
+* trigrams slice **bytes**, not characters, so non-ASCII text hashes invalid-UTF-8 sequences and must do so identically;
+* stop words are **not** dropped by the tokenizer (the Go doc comment claims they are) — they are skipped at the unigram
+  and bigram sites and deliberately **kept** for the trigram signal. I had copied `"does"` into the stop list; it is not
+  in the reference's list.
+
+And one only the oracle could settle: my hand-written `Rank` expectation said ties come out `[3,5,7]`. The rule says id
+order, so the 0.5 tie is 7 and 1 — `[3,5,1]`, cutting 7 entirely. The oracle was right.
+
+**NEGATIVE CONTROL** (the sign dropped, `let sign = 1.0`):
+
+```
+FAIL the_embedder_reproduces_every_bucket...: text 1 ("crash") bucket 132: 0.3198011 != -0.3198011 (bits differ)
+FAIL every_ordered_pair_keeps_its_cosine
+3 passed, 2 failed
+```
+
+The two threshold tests still passed, and that is the instructive part: flipping every sign negates every vector, and
+cosine is invariant under that, so the band memberships did not move. **Only the bucket-level fixture can see it** —
+which is why the fixture compares buckets, not scores.
+
+**Restore note:** writing the file back on the network mount left cargo running the mutated artefact; `touch` is part of
+the restore. Third time. It is now in the skill, not just in this ledger.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
