@@ -837,3 +837,40 @@ pub async fn set_intake_mode(
     .await?;
     Ok(Ok(()))
 }
+
+/// §4.1's four visibilities, in the order the refusal lists them.
+pub const VISIBILITIES: [&str; 4] = ["public", "unlisted", "protected", "private"];
+
+/// Change a project's visibility, returning the project as it now stands.
+///
+/// An unknown word is refused **with the valid set in the message**, because the settings panel offers a fixed list and a
+/// caller who typed one is owed the list rather than "invalid visibility".
+///
+/// The caller has already checked membership: a non-member must not learn the slug exists, which is a 404 at the handler
+/// and deliberately not a 403 here.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn set_visibility(
+    pool: &PgPool,
+    slug: &str,
+    visibility: &str,
+) -> Result<Result<Project, Invalid>, sqlx::Error> {
+    if !VISIBILITIES.contains(&visibility) {
+        return Ok(Err(Invalid(format!(
+            "unknown visibility {visibility:?}; valid: public, unlisted, protected, private"
+        ))));
+    }
+    let updated = sqlx::query("update projects set visibility = $1, updated_at = now() where slug = $2")
+        .bind(visibility)
+        .bind(slug)
+        .execute(pool)
+        .await?;
+    if updated.rows_affected() == 0 {
+        return Ok(Err(Invalid(format!("no project {slug:?}"))));
+    }
+    let project = project_by_slug(pool, slug)
+        .await?
+        .ok_or_else(|| sqlx::Error::RowNotFound)?;
+    Ok(Ok(project))
+}

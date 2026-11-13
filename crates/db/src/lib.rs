@@ -20,6 +20,7 @@ pub mod feature_writes;
 pub mod embeddings;
 pub mod features;
 pub mod holds;
+pub mod list_writes;
 pub mod milestones;
 pub mod moderation;
 pub mod notifications;
