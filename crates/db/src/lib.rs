@@ -26,6 +26,7 @@ pub mod proposals;
 pub mod snapshot;
 pub mod search;
 pub mod stats;
+pub mod taxonomy;
 pub mod override_window;
 pub mod priorities;
 pub mod projects;

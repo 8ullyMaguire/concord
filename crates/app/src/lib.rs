@@ -2081,12 +2081,31 @@ async fn curation_vote(
                 Json(serde_json::json!({ "recorded": true, "decided": true, "yes": yes, "no": no })),
             ))
         }
-        // No 501 in the envelope's fourteen codes, and inventing one would break every client's mapping; the
-        // honest answer is a 400 that says which slice is missing and why it cannot be faked.
-        "taxonomy" | "strategy" => Err(ApiError::invalid_request(format!(
-            "curation kind {kind:?} is not ported yet: its ratification needs the eligible set, and recording \
-             a consent without that check would let anyone ratify a proposal that was never put to them"
-        ))),
+        // §4.3: a taxonomy proposal is decided by the ELIGIBLE SET, and the set is checked in the store before
+        // anything is written. A consent recorded without it is the defect the Go comment records: "anyone with
+        // an account could ratify a tag proposal for a project they had no relationship with, and since guest
+        // identities exist, a nameless one could."
+        "taxonomy" => match concord_db::taxonomy::consent(&state.pool, ref_id, user.id).await {
+            Ok(recorded) => Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "recorded": true,
+                    "ratified": recorded.ratified,
+                    "consents": recorded.consents,
+                    "eligible": recorded.eligible,
+                    "threshold": recorded.threshold,
+                    "proposal": recorded.proposal,
+                })),
+            )),
+            Err(refusal) => Err(taxonomy_refusal(refusal)),
+        },
+        // `strategy` is the same shape over three tables (weight, theme, and their consents) and its own
+        // ratification, which applies a weight or opens a theme window. Not ported yet: refused with a 400 that
+        // names what is missing rather than a consent that counts toward a quorum nobody convened.
+        "strategy" => Err(ApiError::invalid_request(
+            "curation kind \"strategy\" is not ported yet: its ratification applies a weight or opens a theme \
+             window, and recording a consent without that step would count toward a quorum nobody convened",
+        )),
         other => Err(ApiError::invalid_request(format!(
             "unknown curation kind {other:?}"
         ))),
@@ -2229,4 +2248,32 @@ async fn stats_responsiveness(
         .await
         .map_err(internal)?;
     Ok(Json(serde_json::to_value(rows).map_err(internal)?))
+}
+
+/// Translate a taxonomy refusal into the envelope, keeping the distinction that matters to the voter: "not yet"
+/// (the consent counted, the threshold is not met) is a 200-level fact about the tally, not a failure, but this
+/// route answers it as a 409 so a caller cannot mistake a recorded vote for a ratified change.
+fn taxonomy_refusal(refusal: concord_db::taxonomy::Refused) -> ApiError {
+    use concord_db::taxonomy::Refused;
+    match refusal {
+        Refused::NotFound => ApiError::not_found("no such proposal"),
+        Refused::Decided(status) => {
+            ApiError::conflict(format!("the proposal is already {status}"))
+        }
+        Refused::NotEligible => ApiError::forbidden(
+            "only an eligible tagger may consent: a member with role contributor, reviewer, maintainer or \
+             owner in this project",
+        ),
+        Refused::NotYet {
+            verdict,
+            consents,
+            eligible,
+        } => ApiError::conflict(format!(
+            "the consent was recorded and the proposal is {verdict} ({consents} of {eligible} eligible \
+             consenting)"
+        )),
+        Refused::ApplyFailed(detail) => {
+            ApiError::conflict(format!("the change could not be applied: {detail}"))
+        }
+    }
 }
