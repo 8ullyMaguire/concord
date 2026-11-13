@@ -40,6 +40,7 @@ pub mod taxonomy;
 pub mod override_window;
 pub mod priorities;
 pub mod projects;
+pub mod requests;
 
 /// Build the pool the handlers share.
 ///

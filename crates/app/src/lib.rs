@@ -78,6 +78,17 @@ pub fn router(state: AppState) -> Router {
             get(project_solutions),
         )
         .route(
+            "/api/v1/projects/{project_id}/requests",
+            get(list_project_requests),
+        )
+        .route("/api/v1/requests", get(list_instance_requests))
+        .route("/api/v1/requests/{request_id}", get(one_request))
+        .route(
+            "/api/v1/requests/{request_id}/answers",
+            get(request_answers),
+        )
+        .route("/api/v1/requests/{request_id}/tags", get(request_tags))
+        .route(
             "/api/v1/projects/{project_id}/features/{id}/solutions",
             get(feature_solutions),
         )
@@ -3625,4 +3636,104 @@ async fn one_solution(
         "coverage": coverage,
         "is_baseline": is_baseline,
     })))
+}
+
+/// The one guard every request route but the instance board shares: reach the project THROUGH the request row.
+///
+/// Three branches, each a bug that existed:
+///
+/// * a non-numeric id is **400** and a missing one **404**;
+/// * a request with **no project** is readable by everyone — it belongs to the instance, so there is no project whose
+///   visibility could hide it. The unported code called `GetProjectByID(0)` unconditionally and answered 404, which made
+///   every instance-wide request unreadable through every route that resolves one;
+/// * a project-scoped request whose project has been **deleted** is 404 rather than 500: the cascade should have taken
+///   the request with it, and a row that outlived its project is not a request anybody may read.
+async fn require_readable_request(
+    state: &AppState,
+    request_id: &str,
+    headers: &HeaderMap,
+) -> Result<concord_db::requests::Request, ApiError> {
+    let Ok(request_id) = request_id.parse::<i64>() else {
+        return Err(ApiError::invalid_request("invalid request id"));
+    };
+    let request = concord_db::requests::get(&state.pool, request_id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("request {request_id}")))?;
+    if request.project_id == 0 {
+        return Ok(request);
+    }
+    let user = bearer_user(state, headers).await?;
+    let project = concord_db::projects::project_by_id(&state.pool, request.project_id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("request {request_id}")))?;
+    if !readable(state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found(format!("request {request_id}")));
+    }
+    Ok(request)
+}
+
+/// `GET /projects/{id}/requests` — a project's requests, newest first.
+async fn list_project_requests(
+    State(state): State<AppState>,
+    Path(project_id): Path<i64>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = readable_project(&state, project_id, &headers).await?;
+    let rows = concord_db::requests::by_project(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
+}
+
+/// `GET /requests` — the instance-wide board: every request with no project.
+///
+/// Unguarded on purpose. A request with no project belongs to the instance, so there is no project whose visibility could
+/// hide it; the absence of an access check here is the correct code, not an oversight.
+async fn list_instance_requests(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let rows = concord_db::requests::instance_board(&state.pool)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
+}
+
+/// `GET /requests/{id}` — one request.
+async fn one_request(
+    State(state): State<AppState>,
+    Path(request_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let request = require_readable_request(&state, &request_id, &headers).await?;
+    Ok(Json(serde_json::json!(request)))
+}
+
+/// `GET /requests/{id}/answers` — its answers, best rating first, never null.
+async fn request_answers(
+    State(state): State<AppState>,
+    Path(request_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let request = require_readable_request(&state, &request_id, &headers).await?;
+    let rows = concord_db::requests::answers(&state.pool, request.id)
+        .await
+        .map_err(internal)?;
+    // Never null: "no answers yet" is the normal state of a new request, and an empty array is the honest answer where
+    // `null` forces the client to special-case it.
+    Ok(Json(serde_json::json!(rows)))
+}
+
+/// `GET /requests/{id}/tags` — its tag names, alphabetical.
+async fn request_tags(
+    State(state): State<AppState>,
+    Path(request_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let request = require_readable_request(&state, &request_id, &headers).await?;
+    let tags = concord_db::requests::tags(&state.pool, request.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(tags)))
 }
