@@ -41,7 +41,7 @@ quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 | 9 | S3 consensus, governance, ledger | corpus subset + `consensus_*`, `audit_e2e` green; estate gate 49 green |
 | 10 | S4 moderation, comments, inbox | corpus subset + `notifications_e2e` and the queue suite green; estate gates 22 and 45 green |
 | 11 | S5 stats, feeds, admin binaries | corpus + `stats_e2e` and feed parse; estate gates 4, 5, 47 green; timers migrated to `polaris-loops` |
-| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`** |
+| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
 | 13 | P7 cutover | `concord.polarisocial.xyz/api/v1/version` served by the Rust binary, and estate gate 17 green for `concord` with NO `reason` |
 
 **Row 8 (S2) — the failing probe, pasted before any code** (2026-11-13):
@@ -433,6 +433,38 @@ the first — `override_positions`/`override_windows`, then `admin_ledger`/`emer
 `solutions` (which must go *after* `consensus_calls`, because the call references the solution). A probe
 that deletes children-first by hand is a probe that will be wrong again; the fixtures now list every child
 table in dependency order in one block.
+
+**Correction, dated 2026-11-13 — row 9's gate named two suites that cannot run against an API candidate.**
+Measured before changing anything, with the candidate serving the e2e database:
+
+```
+$ bash /tmp/run_e2e_suite.sh consensus_e2e
+>       cur.execute(
+            "INSERT INTO capabilities (key, label, category, kind, \"values\","
+            " created_at) VALUES (?,?,?,'boolean',?,?)", ...)
+E       sqlite3.OperationalError: no such table: capabilities
+tests/e2e/project_panels_e2e.py:141: OperationalError
+ERROR tests/e2e/consensus_e2e.py::test_the_consensus_page_renders_a_call
+
+$ bash /tmp/run_e2e_suite.sh audit_e2e
+>       owner = cur.execute(
+            "INSERT INTO users (username, display_name, created_at) VALUES (?,?,?)", ...)
+E       sqlite3.OperationalError: no such table: users
+tests/e2e/audit_e2e.py:53: OperationalError
+ERROR tests/e2e/audit_e2e.py::test_the_audit_page_lists_the_seeded_entries
+```
+
+Two obstacles, and the first one is worse than row 8's: these suites never reach a page. They call
+`sqlite3.connect` directly instead of `harness.connect`, so against the PostgreSQL e2e database they open an
+empty SQLite file and every seed statement fails on the first table. Row 8's suites at least had a
+harness-aware fixture and failed at the page. The second obstacle is the same as row 8's: their assertions
+navigate to Go-rendered HTML (`/projects/{slug}/consensus`, `/projects/{slug}/audit`), which no slice before
+row 12 serves.
+
+So the two suites move to **row 12's gate**, which is the row that can make them pass, and row 12 inherits a
+second job it did not have before: `consensus_e2e` and `audit_e2e` must be converted from `sqlite3.connect`
+to `harness.connect` before their page assertions mean anything. Row 9's gate now names the API-level
+evidence it can actually produce: the corpus subset and `probe_s3_api.py`.
 
 ### Blocked
 
