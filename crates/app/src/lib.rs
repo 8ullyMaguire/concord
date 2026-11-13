@@ -62,6 +62,10 @@ pub fn router(state: AppState) -> Router {
             post(close_consensus),
         )
         .route(
+            "/api/v1/projects/{project_id}/charter",
+            get(get_charter),
+        )
+        .route(
             "/api/v1/projects/{slug}/consensus/{call}/hold",
             get(get_call_hold).post(place_emergency_hold),
         )
@@ -1316,4 +1320,28 @@ async fn place_emergency_hold(
         axum::http::StatusCode::CREATED,
         Json(serde_json::to_value(hold).map_err(internal)?),
     ))
+}
+
+/// `GET /api/v1/projects/{project_id}/charter` — the numbers every threshold reads.
+///
+/// The path segment is the NUMERIC project id, as the Go route is; the neighbouring routes take a slug. A
+/// slug here answers a parse error rather than silently resolving, which is what the Go handler does —
+/// `requireProjectID` parses and refuses, it does not look the slug up.
+async fn get_charter(
+    State(state): State<AppState>,
+    Path(project): Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let project_id = parse_id(&project, "project id")?;
+    let exists: Option<i64> = sqlx::query_scalar("select id from projects where id = $1")
+        .bind(project_id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(internal)?;
+    if exists.is_none() {
+        return Err(ApiError::not_found(format!("project {project_id}")));
+    }
+    let charter = concord_db::charter::charter(&state.pool, project_id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(concord_db::charter::to_json(&charter)))
 }

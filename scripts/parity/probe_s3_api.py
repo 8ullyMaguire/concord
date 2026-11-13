@@ -380,6 +380,28 @@ def main():
     results.append(("the refusal names the hold", 1 if "hold" in message(body) else 0, 1,
                     message(body)))
 
+    # 13. The charter: the numbers the verdicts are computed with, published where the page reads them.
+    status, body = call("GET", f"/api/v1/projects/{project}/charter")
+    charter = body if isinstance(body, dict) else {}
+    results.append(("read the charter", status, 200, charter))
+    for key in ("quorum_ratio", "consent_ratio", "override_ratio", "vote_window_days",
+                "merge_requires_quorum", "require_reviewer_approval", "lam", "mu",
+                "support_ratio_min"):
+        results.append((f"the charter carries {key}", 1 if key in charter else 0, 1,
+                        sorted(charter)))
+    # The charters table has no row for this fixture, so every value is the collective model's default --
+    # and the route must still answer rather than 404.
+    # 0.7 is the collective model's decisive bar in internal/governance (ConsentRatio: 0.7). I first wrote
+    # 0.66 here from memory; the probe failed and the Go source settled it.
+    results.append(("a project with no charter row gets the model defaults",
+                    charter.get("consent_ratio"), 0.7, charter.get("consent_ratio")))
+    results.append(("...and the override bar too", charter.get("override_ratio"), 0.8,
+                    charter.get("override_ratio")))
+    status, body = call("GET", f"/api/v1/projects/{slug}/charter")
+    results.append(("a slug in the numeric segment is a parse error", status, 400, message(body)))
+    status, body = call("GET", "/api/v1/projects/999999/charter")
+    results.append(("a charter for a project that does not exist", status, 404, message(body)))
+
     failed = 0
     for label, got, want, detail in results:
         ok = got == want
