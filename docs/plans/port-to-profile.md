@@ -1579,6 +1579,37 @@ FAIL with nothing omitted: got None want 0
 the control produced a traceback instead of assertions. A probe that crashes on the failure it is built to find reports
 nothing; every lookup is now `.get(..., {})`.
 
+### Row 11 — part 32: one feature's solution standings, and two families that disagree (2026-11-13, `0b68ffe`)
+
+```
+gate (before): GET /projects/{id}/features/{feature}/solutions -> 404
+gate (after):
+  probe_s5_featuresolutions.py -> 14/14 ok
+  routes.py                    -> go 216 / port 103   missing: 115 (105 json, 10 page)
+  cargo test -p concord-db --lib -> 36 passed
+  concord-parity               -> 0 shape(s) disagreed of 16 checked, 5 skipped
+```
+
+Rules carried: a feature nobody has proposed for answers an **empty array**, not 404; `limit` defaults to **100** and
+only a positive integer overrides it — junk and `0` fall back rather than erroring; a missing feature is 404 and a
+non-numeric id 400.
+
+**The rule worth the ink:** a feature belonging to **another project** answers **403** here, while the complaint family
+answered **404** for the same situation (part 18). Two routes, two choices, written on different days. The port
+reproduces each family's own behaviour instead of harmonising them behind the service's back — harmonising would make the
+port disagree with the live service in one of the two places, and the parity suite would then have to be taught to
+tolerate a difference I invented.
+
+**NEGATIVE CONTROL** (cross-project feature made 404, i.e. "harmonised" with the complaint family):
+
+```
+FAIL another project's feature is 403 on this family: got 404 want 403
+13/14 ok
+```
+
+A one-assertion control is weak evidence, and it is the right shape here: fourteen assertions, and this mutation can only
+move one of them — a fourteen-way break would have meant the mutation changed something else.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
