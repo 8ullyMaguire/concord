@@ -919,6 +919,42 @@ same split the Go binary has, and it is the one item that would block a cutover 
 2. `probe_s5_healthsync` assumed the no-number newcomer state was `(NULL, NULL)`; the schema says
    `newcomer_sample bigint NOT NULL DEFAULT 0`, so it is `(NULL, 0)`. A schema read beats an assumption every time.
 
+### Row 11 — part 9: the forge fetch (2026-11-13, `fcce61c`)
+
+```
+gate (before): healthsync --from <dump>  ->  Error: needs --from … and there was no way to produce the dump
+gate (after):
+  probe_s5_forgefetch.py -> 16/16 ok   (real HTTP against a fake forge)
+  probe_s5_healthsync.py 15/15   probe_s5_strategy.py 17/17   probe_s5_taxonomy.py 18/18
+  cargo test -p concord-cli -> 5 passed
+  concord-parity -> 0 shape(s) disagreed of 17 checked, 4 skipped
+```
+
+`crates/cli/src/forge.rs` closes the item part 8 named: repo-URL normalisation (five spellings → one value, an
+unknown host refused by name), the GitHub and Forgejo reads, and the four verdicts. `reqwest` with the same
+features as the four sibling estate crates, so no second HTTP stack.
+
+The four verdicts are separate because they mean different things to an operator: **synced** (written),
+**deferred** (the forge asked for a pause; exit 0, next pass reads it), **failed** (corrupt row, 404, broken
+answer; exit 1), **skipped** (nothing measured, nothing written). The Go comment is the reason: *"counting it as
+failed made the timer exit 1 every hour on a shared IP, which trains an operator to ignore the unit."*
+
+**The gate found a bug in my own parser:** `part.find("page=")` matches the `page=` inside `per_page=1`, so a
+137-commit repository reported 1. The probe asserted 137 from the Link header:
+`FAIL commits come from the Link header, not the page: got 1 want 137`. Fixed by requiring the `page=` that is
+not preceded by `_`.
+
+Negative control (reviews only, comments ignored): `FAIL a comment counts as a response: got 4.0 want 2.0` —
+15/16. The fixture's first pull request is answered *only* by a comment, so dropping comments moves the median
+from 2h to 4h, which is the defect that left five of six live repositories "unmeasurable".
+
+**Decision (dated, mine):** the fake forge is reached through `CONCORD_GITHUB_API` / `CONCORD_FORGEJO_API`, not
+through a test-only binary flag. The gate is then a real HTTP exchange — the thing that can actually be wrong —
+and production leaves both empty.
+
+**Not asserted:** the Forgejo branch has no probe; the fixtures are GitHub-shaped. Same code path, different JSON
+keys — the kind of claim that deserves a run, so it is listed as open rather than assumed.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
