@@ -75,7 +75,7 @@ def seed(db):
     Column 3 carries a WIP LIMIT OF 1 and already holds a card, so the board can show
     both halves of the rule: a move within the limit, and a refusal past it.
     """
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     cur = con.cursor()
     now = time.time()
 
@@ -194,7 +194,7 @@ def page(browser, server):
     uid = body.get("user", {}).get("id") or body.get("user_id") or body.get("id")
     assert uid, f"register returned no user id: {body}"
 
-    con = sqlite3.connect(server["db"])
+    con = harness.connect(server["db"])
     try:
         con.execute(
             "INSERT INTO members (project_id, user_id, role, joined_at)"
@@ -278,7 +278,7 @@ def _reset(server):
     Board mutations are tested by MOVING cards; a fixture that cannot be put back makes
     every test after the first one order-dependent.
     """
-    con = sqlite3.connect(server["db"])
+    con = harness.connect(server["db"])
     cur = con.cursor()
     cur.execute(
         "UPDATE board_cards SET column_id ="
@@ -461,7 +461,7 @@ def test_a_refused_move_leaves_the_card_where_it_was(page, server):
     page.reload()
     page.wait_for_selector("#kanban-board .kanban-card", timeout=15000)
     counts = page.locator(".kanban-column.is-at-wip .kanban-card").count()
-    db_counts = sqlite3.connect(server["db"]).execute(
+    db_counts = harness.connect(server["db"]).execute(
         "SELECT COUNT(*) FROM board_cards WHERE column_id = "
         "(SELECT id FROM board_columns WHERE phase='in progress')").fetchone()[0]
     assert counts == db_counts, (

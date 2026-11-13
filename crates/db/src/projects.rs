@@ -110,6 +110,11 @@ pub struct BoardColumn {
 }
 
 /// One card on the board, with the name of the column it sits in.
+///
+/// A card is either a row in `board_cards` (somebody placed it) or *derived* from the feature's own
+/// status. A derived card has no row, so `id` and `column_id` are zero and it is addressed by
+/// `feature_id`; `derived` is what says so, and `title` is carried only for derived cards because a
+/// placed card's title is the feature's and the board page reads it from the feature.
 #[derive(Debug, Clone, Serialize)]
 pub struct BoardCard {
     pub id: i64,
@@ -119,6 +124,32 @@ pub struct BoardCard {
     #[serde(serialize_with = "ser_u64_unix")]
     pub entered_at: f64,
     pub column_id: i64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub derived: bool,
+}
+
+/// A feature's workflow status mapped onto the board phase it belongs in.
+///
+/// The two vocabularies are not the same and an identity match gets it badly wrong: the live
+/// database has seven feature statuses and nine board phases and only four names appear in both, so
+/// matching by name would place 60% of the work nowhere. Spelled out rather than derived, because
+/// each pair is a decision about what the board means — a draft is untriaged work, so it belongs in
+/// `inbox`, not in a column called `draft` that does not exist. A status absent from this table is
+/// omitted: guessing a placement is the same fabrication as guessing any other.
+fn status_phase(status: &str) -> Option<&'static str> {
+    Some(match status {
+        "draft" => "inbox",
+        "discussion" => "triaged",
+        "consensus" => "consensus",
+        "ready" => "ready",
+        "in_progress" => "in_progress",
+        "review" => "review",
+        "shipped" => "done",
+        "rejected" => "rejected",
+        _ => return None,
+    })
 }
 
 fn ser_u64_unix<S: serde::Serializer>(value: &f64, serializer: S) -> Result<S::Ok, S::Error> {
@@ -152,7 +183,7 @@ pub async fn board_by_slug(pool: &PgPool, slug: &str) -> Result<Option<Board>, s
 
     let columns = sqlx::query(
         "select phase, wip_limit, position from board_columns where project_id = $1 \
-         order by position, id",
+         order by position",
     )
     .bind(project_id)
     .fetch_all(pool)
@@ -167,11 +198,11 @@ pub async fn board_by_slug(pool: &PgPool, slug: &str) -> Result<Option<Board>, s
     })
     .collect::<Result<Vec<_>, _>>()?;
 
-    let cards = sqlx::query(
+    let mut cards = sqlx::query(
         "select c.id, c.project_id, coalesce(c.feature_id, 0), coalesce(col.phase, ''), \
                 extract(epoch from c.entered_at)::double precision, c.column_id \
          from board_cards c left join board_columns col on col.id = c.column_id \
-         where c.project_id = $1 order by c.entered_at",
+         where c.project_id = $1 order by c.entered_at asc",
     )
     .bind(project_id)
     .fetch_all(pool)
@@ -185,9 +216,58 @@ pub async fn board_by_slug(pool: &PgPool, slug: &str) -> Result<Option<Board>, s
             column: row.try_get(3)?,
             entered_at: row.try_get(4)?,
             column_id: row.try_get(5)?,
+            title: None,
+            derived: false,
         })
     })
-    .collect::<Result<Vec<_>, _>>()?;
+    .collect::<Result<Vec<_>, sqlx::Error>>()?;
+
+    // The board shows the work the project has, not the work somebody has placed: `board_cards` was
+    // empty for all 70 projects for months, and every board rendered nine columns of "0". So a
+    // feature with no card is derived into the phase its status names.
+    //
+    // `placed` is computed from the cards BEFORE any filtering, which is why the milestone filter is
+    // not applied here: a filtered-out feature would look unplaced and its derived twin would appear
+    // in its status's column, under a filter that claims to show less.
+    let placed: std::collections::HashSet<i64> = cards
+        .iter()
+        .filter(|card| card.feature_id != 0)
+        .map(|card| card.feature_id)
+        .collect();
+    let known: std::collections::HashSet<&str> =
+        columns.iter().map(|column| column.name.as_str()).collect();
+
+    let features = sqlx::query(
+        "select id, status, coalesce(title, '') from features \
+         where project_id = $1 and status is not null and status <> '' order by id",
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+    for row in &features {
+        let id: i64 = row.try_get(0)?;
+        let status: String = row.try_get(1)?;
+        let title: String = row.try_get(2)?;
+        if placed.contains(&id) {
+            continue;
+        }
+        let Some(phase) = status_phase(&status) else {
+            continue;
+        };
+        if !known.contains(phase) {
+            continue;
+        }
+        cards.push(BoardCard {
+            id: 0,
+            project_id,
+            feature_id: id,
+            column: phase.to_string(),
+            entered_at: 0.0,
+            column_id: 0,
+            title: if title.is_empty() { None } else { Some(title) },
+            derived: true,
+        });
+    }
 
     Ok(Some(Board { cards, columns }))
 }

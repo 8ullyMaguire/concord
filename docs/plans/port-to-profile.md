@@ -41,38 +41,53 @@ quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 
 | 7 | S1 projects, documents, board | corpus subset identical + `projects_e2e`, `board_e2e`, `pages_e2e` green against the candidate |
 
-**Row 7 in progress** (2026-11-13) — the service runs, and four of the five S1 shapes it owns are
-already byte-identical to the corpus:
+**Row 7 in progress** (2026-11-13) — the read half is proved and the board derivation is in:
 
 ```
-$ CONCORD_DB_URL=... /tmp/concord-cli check
-73 project(s)
-$ /tmp/concord-parity --corpus /tmp/s1corpus.json    # CANDIDATE=http://127.0.0.1:8107
-/api/v1/projects/concord/documents: ok ([12:{author_id:number:int,body:string:# Known issues...
-1 shape(s) disagreed of 5 checked, 0 skipped        # the board, and only the board
+$ /tmp/concord-parity --corpus /tmp/s1corpus.json      # CANDIDATE=http://127.0.0.1:8107
+0 shape(s) disagreed of 5 checked, 0 skipped           # projects, project, board, documents, healthz
 ```
 
-Landed: `crates/db` (pool + `projects.rs` porting `projectColumns` and the document query),
-`crates/app` (router, `polaris_core::ApiError` rather than the plan's fifth copy of the envelope),
-`crates/cli` (`serve`, `check`). Routes answering: `/healthz`, `/api/v1/healthz`,
-`/api/v1/version`, `/api/v1/projects`, `/api/v1/projects/{slug}`, `.../board`, `.../documents`,
-`.../documents/{document}`, and the 404 envelope for anything else.
+The board was the last disagreement and it was the board's actual job: `GetBoardCards` returns 50
+rows for project 49 and the corpus carries **370** cards, because `GetBoardForMilestone` derives a
+card for every feature that has none — 320 of 370 features are unplaced. `status_phase` is the Go
+`featureStatusToPhase` map spelled out (draft→inbox, discussion→triaged, consensus, ready,
+in_progress, review, shipped→done, rejected), a derived card is `id: 0, column_id: 0, entered_at: 0`
+with `title` and `derived: true`, and cards are placed-by-`entered_at` first and derived-by-feature-id
+after. All of it now matches byte-for-byte.
 
-What the corpus caught that reading the Go code had not, all three now fixed:
+Three earlier corpus catches, all fixed: `license` is **absent** when empty (`omitempty`) while
+`newcomer_response_hours` is **present and null** — two adjacent fields, two nil conventions, visible
+only in the recorded JSON; `/documents` carries `body` and `author_id` and orders `by kind, slug`;
+and Go prints a whole `float64` timestamp without a decimal point, so `ser_unix` keeps whole seconds
+integral or the comparison fails on the type alone.
 
-- `license` is **absent** when empty (`omitempty`) while `newcomer_response_hours` is **present and
-  null** — two adjacent fields, two different nil conventions, visible only in the recorded JSON.
-- `/documents` carries `body` and `author_id` and is ordered `by kind, slug`: my first version
-  omitted both fields and ordered by id, so the first document was `readme`/id 7 instead of
-  `adr`/known-issues.
-- Timestamps are `float64` unix seconds in Go and `encoding/json` prints a whole value without a
-  decimal point, so an `f64` in Rust prints `1790681280.0` and the structural comparison fails on
-  the *type*. `ser_unix` keeps whole seconds integral.
+**The e2e half was blocked on infrastructure, and that infrastructure now exists.**
+The plan says the suites "already take a base URL; if they hardcode a port, that is a one-line
+change in the harness". Probed, that is wrong in two ways: `harness.start_server` **spawns
+`bin/concord` with `CONCORD_DB`**, and **28 of the suites import sqlite3 directly** (86
+`sqlite3.connect` call sites) because they seed the fixture through the database rather than the
+API — deliberately, so a broken write path cannot make a test pass. There was no base URL to point.
 
-**What is left on S1:** the board. `GetBoardCards` returns 50 rows for project 49, but the corpus
-body carries **370** cards: `GetBoardForMilestone` derives a card for every feature that has none
-(`placed` is computed from the unfiltered cards, board.go:92-102), and 320 of 370 features are
-unplaced. That derivation is the board, not a detail of it, and it is not written yet.
+`tests/e2e/harness.py` now takes `CONCORD_E2E_CANDIDATE` (a binary that speaks `serve --addr`) and
+`CONCORD_E2E_DSN` (the PostgreSQL URL it reads), and `harness.connect()` returns either a real
+sqlite3 connection or a `PgSeed` adapter. The adapter does four things and each was forced by a
+failure: `?` → `%s`; a numeric parameter bound to a `timestamptz` column becomes a datetime, matched
+by **placeholder position** because the suites write `VALUES (?, 'feature', ?, ?, ?)` and a by-index
+conversion hands `entered_at` a column id; a `public_id` is generated for the tables the baseline
+gave one; and an INSERT without `RETURNING` gets one appended, because `lastrowid` is how a suite
+carries a fresh id into its next statement.
+
+Proof it is not just plumbing that runs: the harness selftest is **13 passed** and `board_e2e` in Go
+mode is **8 passed**, so the default path is untouched; and in candidate mode the suite seeds into
+PostgreSQL, starts the Rust binary, and reaches
+`urllib.error.HTTPError: HTTP Error 404: Not Found` — the first write route it needs, which is a
+product gap and not a harness one.
+
+**What is left on S1:** the write routes the e2e suites exercise. `board_e2e` 404s on
+`POST /api/v1/auth/register` and needs `PUT .../board/cards/{id}/move` (+ `placeFeature`); the plan
+already assigns `users` and `api_tokens` to this slice as shared tables. After that,
+`projects_e2e` and `pages_e2e`, then `cargo mutants -p concord-db`.
 | 8 | S2 ideas, complaints, ranking | corpus subset + `rank_*`, `milestones_e2e`, `feature_*` green; ranking mutation arms killed |
 | 9 | S3 consensus, governance, ledger | corpus subset + `consensus_*`, `audit_e2e` green; estate gate 49 green |
 | 10 | S4 moderation, comments, inbox | corpus subset + `notifications_e2e` and the queue suite green; estate gates 22 and 45 green |

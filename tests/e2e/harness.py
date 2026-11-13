@@ -30,6 +30,186 @@ import urllib.request
 REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 BIN = os.path.join(REPO, "bin", "concord")
 
+# The port's two knobs on this harness, both unset in the Go world so every existing run behaves
+# exactly as before.
+#
+#   CONCORD_E2E_CANDIDATE — a binary that speaks `serve --addr HOST:PORT`, i.e. the Rust port.
+#   CONCORD_E2E_DSN       — the PostgreSQL URL that binary reads. When set, `connect()` seeds
+#                           PostgreSQL instead of SQLite, because the candidate does not read
+#                           `concord.db` and a suite that seeded it would assert on an empty service.
+#
+# The suites seed through the database rather than the API on purpose (a browser test whose data
+# arrives through the API under test cannot fail for the reason it exists), so seeding is the one
+# thing a candidate has to satisfy — and it is the one thing this harness can translate.
+CANDIDATE = os.environ.get("CONCORD_E2E_CANDIDATE")
+SEED_DSN = os.environ.get("CONCORD_E2E_DSN")
+
+# Whose process a leaked pidfile is allowed to reap. The candidate is a different path, and a reap
+# that only knows `bin/concord` refuses to clean up after the port — which is exactly the state the
+# first candidate run was left in: a server holding the port that the harness would not touch.
+SERVED_BY = CANDIDATE or BIN
+
+
+def connect(path):
+    """A connection for seeding: SQLite, or PostgreSQL when a candidate is under test.
+
+    Returns something the suites already know how to use: `execute(sql, params)`, `commit()`,
+    `close()`, and `lastrowid` after an INSERT. PostgreSQL has no `lastrowid`, so the adapter asks
+    for `RETURNING id` instead; that is the only API difference the suites exercise.
+    """
+    if not SEED_DSN:
+        import sqlite3
+        return sqlite3.connect(path)
+    return PgSeed(SEED_DSN)
+
+
+class PgSeed:
+    """The slice of the sqlite3 API the suites use, over psycopg2.
+
+    Three translations, each because the Go service and the port disagree about a type rather than
+    about a behaviour:
+
+      * `?` placeholders become `%s` (every suite was written against SQLite, and rewriting 86 call
+        sites to prove a point is not the work — translating one string is);
+      * a numeric parameter bound to a `timestamptz` column becomes a datetime, because the suites
+        seed `time.time()` into what is a REAL in SQLite and a timestamp in the baseline. The
+        column's type is read from `information_schema`, not guessed from the value: a 1500 elo and
+        a 1794563868 unix second are both numbers, and only one of them is a time;
+      * an `INSERT` without `RETURNING` gets `RETURNING id` appended, because `lastrowid` is how a
+        suite carries a freshly inserted id into the next statement.
+    """
+
+    def __init__(self, dsn):
+        import psycopg2
+        self._con = psycopg2.connect(dsn)
+        self._cursor = None
+        self._types = {}
+        self.lastrowid = None
+
+    def _column_types(self, table):
+        if table not in self._types:
+            cur = self._con.cursor()
+            cur.execute(
+                "select column_name, data_type from information_schema.columns "
+                "where table_schema = 'public' and table_name = %s", (table,))
+            self._types[table] = dict(cur.fetchall())
+        return self._types[table]
+
+    def _coerce(self, column_type, value):
+        """One parameter as its destination column wants it."""
+        import datetime
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            if column_type == "timestamp with time zone":
+                return datetime.datetime.fromtimestamp(float(value), datetime.UTC)
+            if column_type == "boolean":
+                return bool(value)
+        return value
+
+    def _convert(self, table, columns, params, values_expr):
+        """Parameters as the destination's types want them, matched by PLACEHOLDER position.
+
+        Position matters and by-index is wrong: the suites write `VALUES (?, 'feature', ?, ?, ?)`,
+        so the fourth parameter belongs to the fifth column and `entered_at` would receive a
+        column id. Each `?` is matched to the column at the same position in the list, and a literal
+        consumes a position without consuming a parameter.
+        """
+        tokens, depth, current = [], 0, ""
+        for char in values_expr:
+            if char == "(":
+                depth += 1
+            elif char == ")":
+                depth -= 1
+            if char == "," and depth == 0:
+                tokens.append(current)
+                current = ""
+            else:
+                current += char
+        tokens.append(current)
+
+        types = self._column_types(table)
+        out, next_param = [], 0
+        for position, token in enumerate(tokens):
+            # `?` or `%s`: `_convert` runs after the placeholder translation, so the tokens it
+            # sees are already PostgreSQL's. Checking only for `?` converted nothing at all and the
+            # symptom was the original numeric-into-timestamptz error.
+            if token.strip() not in ("?", "%s"):
+                continue
+            if next_param >= len(params):
+                break
+            column = columns[position] if position < len(columns) else None
+            out.append(self._coerce(types.get(column), params[next_param]))
+            next_param += 1
+        # Anything the walk did not account for is passed through: losing a parameter silently is
+        # how a fixture inserts the wrong row and the suite still passes.
+        out.extend(params[next_param:])
+        return out
+
+    def execute(self, sql, params=None):
+        import re
+        import uuid
+        cur = self._con.cursor()
+        translated = sql.replace("?", "%s")
+        params = list(params or ())
+        match = re.match(r"\s*insert\s+into\s+([\w\"]+)\s*\(([^)]*)\)", translated,
+                         re.IGNORECASE)
+        if match:
+            table = match.group(1).strip('"')
+            columns = [c.strip().strip('"') for c in match.group(2).split(",")]
+            values = re.search(r"values\s*\((.*)\)\s*$", translated,
+                               re.IGNORECASE | re.DOTALL)
+            # The baseline gives every API-facing table a `public_id` the Go schema did not have.
+            # It is added before the parameters are converted, so a single pass sees the final
+            # column list; doing it after produced a placeholder with no argument.
+            if "public_id" in self._column_types(table) and "public_id" not in columns:
+                columns = columns + ["public_id"]
+                params = params + [uuid.uuid4().hex[:26].upper()]
+                column_sql = match.group(0).rstrip().rstrip(")") + ", public_id)"
+                translated = translated.replace(match.group(0), column_sql, 1)
+                values = re.search(r"values\s*\((.*)\)\s*$", translated,
+                                   re.IGNORECASE | re.DOTALL)
+                if values:
+                    translated = (translated[:values.start(1)] + values.group(1).rstrip()
+                                  + ", %s" + translated[values.end(1):])
+            params = self._convert(table, columns, params,
+                                   values.group(1) if values else "")
+        if translated.lstrip().lower().startswith("insert") and "returning" not in translated.lower():
+            translated = translated.rstrip().rstrip(";") + " RETURNING id"
+            row = None
+        cur.execute(translated, tuple(params))
+        if translated.rstrip().upper().endswith("RETURNING ID"):
+            row = cur.fetchone()
+            self.lastrowid = row[0] if row else None
+        self._cursor = cur
+        return self
+
+    def executemany(self, sql, rows):
+        cur = self._con.cursor()
+        cur.executemany(sql.replace("?", "%s"), rows)
+        return self
+
+    def executescript(self, script):
+        cur = self._con.cursor()
+        cur.execute(script.replace("?", "%s"))
+        return self
+
+    def fetchone(self):
+        return self._cursor.fetchone() if self._cursor else None
+
+    def fetchall(self):
+        return self._cursor.fetchall() if self._cursor else []
+
+    def commit(self):
+        self._con.commit()
+
+    def rollback(self):
+        self._con.rollback()
+
+    def close(self):
+        self._con.close()
+
+    def cursor(self):
+        return self
+
 
 def port_is_free(port):
     with socket.socket() as s:
@@ -98,7 +278,11 @@ def reap(port, pidfile):
             cmd = c.read().replace(b"\0", b" ").decode(errors="replace")
     except OSError:
         return  # gone already
-    if BIN not in cmd:
+    # The basename allowance exists only for a candidate, whose path is wherever it was built. In
+    # the Go world the match is the exact binary path, and the selftest that guards this ("refuses
+    # to kill a pid that is not concord") fails the moment the rule loosens: a temp path like
+    # /tmp/concord-e2e-8421.pid contains the word, and an innocent python process was killed.
+    if SERVED_BY not in cmd and not (CANDIDATE and os.path.basename(CANDIDATE) in cmd):
         print(f"harness: pid {pid} is no longer concord ({cmd.strip()[:80]}); "
               f"not touching it")
         return
@@ -148,12 +332,21 @@ def start_server(port, dbdir, logdir, extra_env=None):
             f"Stop it yourself, or change PORT in the suite -- do NOT let a "
             f"pattern-kill reach it.")
 
-    env = dict(os.environ, CONCORD_DB=db, CONCORD_LISTEN=f"127.0.0.1:{port}")
-    if extra_env:
-        env.update(extra_env)
+    if CANDIDATE:
+        # The candidate reads PostgreSQL, not `concord.db`, and takes its address as an argument.
+        env = dict(os.environ, CONCORD_DB_URL=SEED_DSN or "",
+                   RUST_LOG=os.environ.get("RUST_LOG", "info,sqlx=warn"))
+        if extra_env:
+            env.update(extra_env)
+        argv = [CANDIDATE, "serve", "--addr", f"127.0.0.1:{port}"]
+    else:
+        env = dict(os.environ, CONCORD_DB=db, CONCORD_LISTEN=f"127.0.0.1:{port}")
+        if extra_env:
+            env.update(extra_env)
+        argv = [BIN]
     logpath = os.path.join(logdir, f"concord-{port}.log")
     log = open(logpath, "w")
-    proc = subprocess.Popen([BIN], env=env, stdout=log, stderr=subprocess.STDOUT)
+    proc = subprocess.Popen(argv, env=env, stdout=log, stderr=subprocess.STDOUT)
 
     base = f"http://127.0.0.1:{port}"
     for _ in range(100):
