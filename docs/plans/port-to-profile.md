@@ -807,6 +807,51 @@ field skips the project", "one scorer"), the three systemd units in `scheduled.t
 curation eligible sets row 10 deferred here, and `granttrust`/`capableseed`/`forgeseed`/`embedbackfill` folded
 into `crates/cli`.
 
+### Row 11 — part 6: the taxonomy eligible set (2026-11-13, `d5364d6`)
+
+```
+gate (before): POST /api/v1/curation/taxonomy/{id}/vote
+  400  curation kind "taxonomy" is not ported yet: its ratification needs the eligible set …
+gate (after):
+  probe_s5_taxonomy.py -> 18/18 ok
+  probe_s5_stats.py    -> 16/16 ok      probe_s5_timers.py -> 30/30 ok
+  probe_s5_feeds.py    -> 60/60 ok      probe_s4_curation.py -> 27/27 ok
+  concord-parity       -> 0 shape(s) disagreed of 17 checked, 4 skipped
+```
+
+`crates/db/src/taxonomy.rs` closes the hole row 10 recorded: a consent is decided by the eligible set, and the
+set is checked in the store before anything is written. A stranger's 200 is a stranger's vote — the negative
+control reproduces it exactly (`FAIL a non-member cannot consent: got 409 want 403`, `FAIL the third consent
+ratifies: got 409 want 200`, 11/18).
+
+Rules now enforced, each read from the Go store and recorded here so a later reader does not re-derive them:
+
+* eligible = role `contributor`/`reviewer`/`maintainer`/`owner` in the proposal's project; for an instance-wide
+  proposal, in **any** project;
+* the denominator is the eligible set, not the participants;
+* a consent below the threshold is **recorded** and answered as not-yet (409, naming `insufficient_quorum`);
+* ratification **applies** the change (six actions) and writes `ratify_taxonomy_change`;
+* a repeated click is one voice (the tally reads the row count).
+
+**`strategy` is still refused**, now with a 400 that names what is missing: its ratification applies a weight
+or opens a theme window, over three proposal tables, and its consent rule additionally forbids the proposer
+consenting to their own proposal (`themes.go:206`). Recording a consent without that step would count toward a
+quorum nobody convened. This is the last functional gap on the row and the next thing to port.
+
+### A probe that dies mid-way poisons the next gate (2026-11-13)
+
+An interrupted run left one project, three members, one tag and one proposal in the database, and
+`concord-parity` then reported
+
+```
+/api/v1/stats/summary.members_by_role[1].count: 11 vs 8
+/api/v1/stats/summary.projects_by_governance[0].count: 63 vs 62
+```
+
+which reads exactly like a port defect and is not one. **Probes now clean up at START as well as at the end**,
+and the leftovers were removed (73 projects, 0 probe tags, 0 proposals, parity back to 0 disagreed). Any new
+probe written for this port must do the same.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
