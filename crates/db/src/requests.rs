@@ -196,6 +196,103 @@ pub async fn tags(pool: &PgPool, request_id: i64) -> Result<Vec<String>, sqlx::E
     .await
 }
 
+/// What the accept rule decided, when it was not a database failure.
+///
+/// An enum rather than `sqlx::Error` for the three refusals because they are **different HTTP statuses with different
+/// meanings** (403 "not yours to decide", 404 "no such answer on this request", 400 "that answer cannot be accepted"),
+/// and flattening them into one error is how a permission failure ends up reported as a missing row.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Refusal {
+    /// The actor is not the request's author. §17 gives the badge to the author alone; a maintainer, an owner and a
+    /// project member are all refused, because the badge is a statement about what answered the asker's question.
+    NotAuthor,
+    /// The answer does not exist, or does not belong to THIS request. Both are 404: from the request's point of view
+    /// there is no such answer to accept.
+    ForeignAnswer,
+    /// The answer exists but carries a status other than `active` — it was removed, or never made active. 400, because
+    /// the id was real and the request was well formed.
+    NotActive(String),
+}
+
+/// Whether `actor` wrote this request.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn is_author(pool: &PgPool, request_id: i64, actor: i64) -> Result<bool, sqlx::Error> {
+    let author = sqlx::query_scalar::<_, i64>("select author_id from requests where id = $1")
+        .bind(request_id)
+        .fetch_optional(pool)
+        .await?;
+    Ok(author == Some(actor))
+}
+
+/// §17's badge: the request's author marks one answer as accepted.
+///
+/// The order of the three refusals is the ported order and it is observable: **the author check comes first**, so a
+/// stranger who names an answer id that does not exist gets 403 (not yours to decide) rather than 404 (no such answer).
+/// A port that checked the answer first would leak which answer ids exist to people who may not accept anything.
+///
+/// Accepting deliberately touches **`accepted_answer_id` and `updated_at` and nothing else**. The badge is displayed and
+/// does not override the ranking: `request_answers.elo_r` is what orders the page, so an accepted answer that has lost
+/// its comparisons still sits where its rating puts it.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn accept(
+    pool: &PgPool,
+    request_id: i64,
+    answer_id: i64,
+    actor: i64,
+) -> Result<Result<(), Refusal>, sqlx::Error> {
+    if !is_author(pool, request_id, actor).await? {
+        return Ok(Err(Refusal::NotAuthor));
+    }
+    let answer = sqlx::query_as::<_, (String,)>(
+        "select status from request_answers where id = $1 and request_id = $2",
+    )
+    .bind(answer_id)
+    .bind(request_id)
+    .fetch_optional(pool)
+    .await?;
+    let Some((status,)) = answer else {
+        return Ok(Err(Refusal::ForeignAnswer));
+    };
+    if status != "active" {
+        return Ok(Err(Refusal::NotActive(status)));
+    }
+    sqlx::query(
+        "update requests set accepted_answer_id = $1, updated_at = now() where id = $2",
+    )
+    .bind(answer_id)
+    .bind(request_id)
+    .execute(pool)
+    .await?;
+    Ok(Ok(()))
+}
+
+/// Clear the badge. Author-only, for the same reason as accepting it: only the person who made the statement can take it
+/// back.
+///
+/// Unaccepting is **not** restricted by the answer's status. An accepted answer that was later removed still leaves a
+/// badge pointing at it, and the author must be able to clear it — refusing because the answer is no longer `active`
+/// would strand the request with a badge nobody can remove.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn unaccept(pool: &PgPool, request_id: i64, actor: i64) -> Result<Result<(), Refusal>, sqlx::Error> {
+    if !is_author(pool, request_id, actor).await? {
+        return Ok(Err(Refusal::NotAuthor));
+    }
+    sqlx::query(
+        "update requests set accepted_answer_id = null, updated_at = now() where id = $1",
+    )
+    .bind(request_id)
+    .execute(pool)
+    .await?;
+    Ok(Ok(()))
+}
+
+
 #[cfg(test)]
 mod tests {
     use super::*;

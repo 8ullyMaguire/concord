@@ -84,6 +84,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/requests", get(list_instance_requests))
         .route("/api/v1/requests/{request_id}", get(one_request))
         .route(
+            "/api/v1/requests/{request_id}/accept",
+            put(accept_answer).delete(unaccept_answer),
+        )
+        .route(
             "/api/v1/requests/{request_id}/answers",
             get(request_answers),
         )
@@ -3736,4 +3740,72 @@ async fn request_tags(
         .await
         .map_err(internal)?;
     Ok(Json(serde_json::json!(tags)))
+}
+
+/// Map the accept rule's three refusals onto the three statuses that mean them.
+fn refusal_error(refusal: concord_db::requests::Refusal, request_id: i64) -> ApiError {
+    match refusal {
+        concord_db::requests::Refusal::NotAuthor => {
+            ApiError::forbidden("only the request's author may accept an answer")
+        }
+        concord_db::requests::Refusal::ForeignAnswer => {
+            ApiError::not_found(format!("answer on request {request_id}"))
+        }
+        concord_db::requests::Refusal::NotActive(status) => {
+            ApiError::invalid_request(format!("that answer is {status} and cannot be accepted"))
+        }
+    }
+}
+
+/// `PUT /requests/{id}/accept` — §17's badge. Actor from the bearer token, never from the body.
+///
+/// The author check runs FIRST, before the answer is looked up, so a stranger naming a nonexistent answer gets 403 rather
+/// than 404. That order is the ported order and it is observable: the other order tells people who may not accept
+/// anything which answer ids exist.
+async fn accept_answer(
+    State(state): State<AppState>,
+    Path(request_id): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("sign in to accept an answer"))?;
+    let request = require_readable_request(&state, &request_id, &headers).await?;
+    let answer_id = body
+        .get("answer_id")
+        .and_then(serde_json::Value::as_i64)
+        .unwrap_or(0);
+    concord_db::requests::accept(&state.pool, request.id, answer_id, user.id)
+        .await
+        .map_err(internal)?
+        .map_err(|refusal| refusal_error(refusal, request.id))?;
+    // The updated request back, so the caller sees the badge they just set — and can see that the ranking did not move.
+    let updated = concord_db::requests::get(&state.pool, request.id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("request {}", request.id)))?;
+    Ok(Json(serde_json::json!(updated)))
+}
+
+/// `DELETE /requests/{id}/accept` — take the badge back. Author-only, and unaffected by the answer's status: an accepted
+/// answer that was later removed still leaves a badge, and the author must be able to clear it.
+async fn unaccept_answer(
+    State(state): State<AppState>,
+    Path(request_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("sign in to unaccept an answer"))?;
+    let request = require_readable_request(&state, &request_id, &headers).await?;
+    concord_db::requests::unaccept(&state.pool, request.id, user.id)
+        .await
+        .map_err(internal)?
+        .map_err(|refusal| refusal_error(refusal, request.id))?;
+    let updated = concord_db::requests::get(&state.pool, request.id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("request {}", request.id)))?;
+    Ok(Json(serde_json::json!(updated)))
 }
