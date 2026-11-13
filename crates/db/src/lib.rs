@@ -44,6 +44,7 @@ pub mod stats;
 pub mod themes;
 pub mod strategy;
 pub mod tallies;
+pub mod votes_writes;
 pub mod voteweight;
 pub mod membership;
 pub mod taxonomy;

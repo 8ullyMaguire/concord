@@ -222,3 +222,42 @@ pub async fn tag_reputation(
     }
     Ok(out)
 }
+
+/// This voter's weight on a **feature** comparison in `project_id`.
+///
+/// §8.3's formula with the role multiplier **fixed at 1.0**, which is what the reference does: a maintainer's opinion about
+/// which feature matters is worth what their reputation says, not what their title says. The solution vote multiplies the
+/// role in; this one does not. The difference is deliberate and is the reference's, recorded here so it is not quietly
+/// "harmonised" by a later reader.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn feature_vote_weight(
+    pool: &PgPool,
+    project_id: i64,
+    actor: i64,
+    charter: &Charter,
+) -> Result<f64, sqlx::Error> {
+    let reputation: f64 = sqlx::query_scalar(
+        "select coalesce(sum(points), 0)::double precision from reputation_events
+          where project_id = $1 and user_id = $2",
+    )
+    .bind(project_id)
+    .bind(actor)
+    .fetch_one(pool)
+    .await?;
+    let mut weight = concord_ranking::vote_weight(reputation, 1.0, charter.vote_weight_cap);
+    let created_at: Option<f64> = sqlx::query_scalar(
+        "select extract(epoch from created_at)::double precision from users where id = $1",
+    )
+    .bind(actor)
+    .fetch_optional(pool)
+    .await?;
+    if let Some(created_at) = created_at {
+        weight *= concord_ranking::age_gate_multiplier(concord_ranking::account_age_days(
+            created_at,
+            crate::now_unix(),
+        ));
+    }
+    Ok(weight.clamp(0.0, charter.vote_weight_cap))
+}
