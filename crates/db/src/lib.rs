@@ -29,6 +29,8 @@ pub mod search;
 pub mod capabilities;
 pub mod field_reports;
 pub mod criteria;
+/// §4.10's criteria writes.
+pub mod criteria_writes;
 pub mod deps;
 pub mod members;
 pub mod panels;
