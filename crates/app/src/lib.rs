@@ -38,6 +38,16 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/auth/me", get(auth_me))
         .route("/api/v1/projects/{slug}/tags", get(project_tags))
         .route("/api/v1/projects/{project_id}/members", get(list_members))
+        // The project page's panels: the Go nests these under `r.Route("/criteria", …)` and registers GET "/",
+        // so both the bare path and the trailing-slash form answer — a client that appends a slash must not get
+        // a 404.
+        .route("/api/v1/projects/{project_id}/criteria", get(list_criteria))
+        .route("/api/v1/projects/{project_id}/criteria/", get(list_criteria))
+        .route("/api/v1/projects/{project_id}/criteria-profiles", get(list_criteria_profiles))
+        .route("/api/v1/projects/{project_id}/criteria-profiles/", get(list_criteria_profiles))
+        .route("/api/v1/projects/{slug}/languages", get(project_languages))
+        .route("/api/v1/projects/{project_id}/lists", get(project_lists))
+        .route("/api/v1/projects/{project_id}/lists/", get(project_lists))
         .route("/api/v1/projects", get(list_projects))
         .route("/api/v1/projects/{slug}", get(get_project))
         .route("/api/v1/projects/{slug}/board", get(get_board))
@@ -2687,4 +2697,77 @@ async fn list_members(
         .await
         .map_err(internal)?;
     Ok(Json(serde_json::json!(members)))
+}
+
+/// `GET /api/v1/projects/{id}/criteria` — active first, then slug.
+async fn list_criteria(
+    State(state): State<AppState>,
+    Path(project_id): Path<i64>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = readable_project(&state, project_id, &headers).await?;
+    let rows = concord_db::criteria::list(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
+}
+
+/// `GET /api/v1/projects/{id}/criteria-profiles`
+async fn list_criteria_profiles(
+    State(state): State<AppState>,
+    Path(project_id): Path<i64>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = readable_project(&state, project_id, &headers).await?;
+    let rows = concord_db::criteria::profiles(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
+}
+
+/// `GET /api/v1/projects/{slug}/languages` — highest percentage first.
+async fn project_languages(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = project_for(&state, &slug).await?;
+    let user = bearer_user(&state, &headers).await?;
+    if !readable(&state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    let rows = concord_db::criteria::languages(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
+}
+
+/// `GET /api/v1/projects/{id}/lists` — the project's own lists first, then the instance-wide ones.
+async fn project_lists(
+    State(state): State<AppState>,
+    Path(project_id): Path<i64>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = readable_project(&state, project_id, &headers).await?;
+    let rows = concord_db::criteria::lists(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
+}
+
+/// A project by id, refused with a 404 the caller cannot use to enumerate private projects.
+///
+/// 404 and not 403 on purpose: a 403 tells an anonymous caller that the id exists, which is the enumeration
+/// this catalogue's private projects are meant to prevent.
+async fn readable_project(
+    state: &AppState,
+    project_id: i64,
+    headers: &HeaderMap,
+) -> Result<concord_db::projects::Project, ApiError> {
+    let project = project_by_id(state, &project_id.to_string()).await?;
+    let user = bearer_user(state, headers).await?;
+    if !readable(state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    Ok(project)
 }
