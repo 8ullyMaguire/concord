@@ -29,6 +29,7 @@ pub mod capabilities;
 pub mod field_reports;
 pub mod criteria;
 pub mod members;
+pub mod panels;
 pub mod metrics;
 pub mod stats;
 pub mod themes;
