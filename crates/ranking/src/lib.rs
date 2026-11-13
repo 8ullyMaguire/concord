@@ -93,7 +93,7 @@ pub fn rate(r: f64, rd: f64, sigma: f64, games: &[Game], tau: f64) -> (f64, f64,
         big_b = (delta * delta - phi * phi - v).ln();
     } else {
         let mut k = 1.0;
-        while f(big_a - k * tau) > /* ~ changed by cargo-mutants ~ */ 0.0 {
+        while f(big_a - k * tau) < 0.0 {
             k += 1.0;
         }
         big_b = big_a - k * tau;
@@ -343,6 +343,67 @@ mod tests {
         assert!((r - 1464.06).abs() <= 0.1, "new rating = {r:.4}, want ~1464.06");
         assert!((rd - 151.52).abs() <= 0.1, "new RD = {rd:.4}, want ~151.52");
         assert!((sigma - 0.05999).abs() <= 0.0001, "new sigma = {sigma:.6}, want ~0.05999");
+    }
+
+    /// Cross-implementation reference values, computed to full precision by an independent Python
+    /// transliteration of the same algorithm and asserted to 1e-9.
+    ///
+    /// The published worked example above is rounded to two decimals, which is wide enough for a
+    /// mutation that shifts the rating by 0.05 to survive. These are not rounded: every one of these
+    /// numbers is a float64 the algorithm either reproduces or does not, and the mutation gate needs
+    /// that resolution to tell a surviving mutant from an equivalent one.
+    #[test]
+    fn the_full_precision_reference_values() {
+        let cases: [(&[Game], f64, f64, f64, f64, [f64; 3]); 4] = [
+            (
+                &[Game { opponent_r: 1500.0, opponent_rd: 200.0, score: 1.0 }],
+                1500.0, 200.0, 0.06, 0.5,
+                [1578.801716729907, 180.078290804417, 0.059999627543],
+            ),
+            (
+                &[Game { opponent_r: 1500.0, opponent_rd: 200.0, score: 0.5 }],
+                1500.0, 200.0, 0.06, 0.5,
+                [1500.0, 180.078280469121, 0.059998055070],
+            ),
+            (
+                &[Game { opponent_r: 1750.0, opponent_rd: 50.0, score: 0.0 }],
+                1600.0, 120.0, 0.05, 0.5,
+                [1577.601622343057, 114.817166636690, 0.049999110285],
+            ),
+            (
+                &[
+                    Game { opponent_r: 1300.0, opponent_rd: 60.0, score: 1.0 },
+                    Game { opponent_r: 1700.0, opponent_rd: 100.0, score: 0.5 },
+                ],
+                1450.0, 180.0, 0.07, 0.3,
+                [1528.696113067678, 153.763053956230, 0.069999403850],
+            ),
+        ];
+        for (games, r, rd, sigma, tau, want) in cases {
+            let (got_r, got_rd, got_sigma) = rate(r, rd, sigma, games, tau);
+            assert!(
+                (got_r - want[0]).abs() < 1e-9,
+                "r' = {got_r:.12}, want {:.12} (from r={r}, rd={rd}, sigma={sigma}, tau={tau})",
+                want[0]
+            );
+            assert!((got_rd - want[1]).abs() < 1e-9, "RD' = {got_rd:.12}, want {:.12}", want[1]);
+            assert!(
+                (got_sigma - want[2]).abs() < 1e-12,
+                "sigma' = {got_sigma:.12}, want {:.12}",
+                want[2]
+            );
+        }
+        // The published example again, at the same resolution, so the rounded check above is not the
+        // only thing standing between the port and a 0.04 drift.
+        let games = [
+            Game { opponent_r: 1400.0, opponent_rd: 30.0, score: 1.0 },
+            Game { opponent_r: 1550.0, opponent_rd: 100.0, score: 0.0 },
+            Game { opponent_r: 1700.0, opponent_rd: 300.0, score: 0.0 },
+        ];
+        let (r, rd, sigma) = rate(1500.0, 200.0, 0.06, &games, 0.5);
+        assert!((r - 1464.050670539301).abs() < 1e-9, "r' = {r:.12}");
+        assert!((rd - 151.516524123857).abs() < 1e-9, "RD' = {rd:.12}");
+        assert!((sigma - 0.059995984286).abs() < 1e-12, "sigma' = {sigma:.12}");
     }
 
     #[test]
