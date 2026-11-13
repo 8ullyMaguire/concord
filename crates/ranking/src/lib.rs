@@ -532,3 +532,101 @@ pub fn win_probability(r1: f64, rd1: f64, r2: f64, _rd2: f64) -> f64 {
     let mu2 = (r2 - 1500.0) / SCALE;
     1.0 / (1.0 + (-g(rd1 / SCALE) * (mu1 - mu2)).exp())
 }
+
+/// The Glicko-2 system constant an arena's ratings are updated with.
+pub const DEFAULT_TAU: f64 = 0.5;
+
+/// One arena competitor's rating, after one weighted comparison.
+///
+/// Two rules, and the second one is why this is not just `rate`:
+///
+/// * `weight <= 0` returns the rating UNCHANGED — an influence-free vote is still in the log and measured nothing;
+/// * `weight < 1` interpolates the whole update **and** the deviation and volatility toward the new values. A
+///   fractional vote must move the rating by that fraction; snapping to the full update makes a 0.4-weight voter count
+///   as a 1.0 one.
+///
+/// A `weight >= 1` applies the full update, with the pair played `floor(weight)` times (see `games_for_weight`), so a
+/// weight-2 voter is recorded as two games.
+#[must_use]
+pub fn update_arena_rating(
+    r: f64,
+    rd: f64,
+    sigma: f64,
+    games: &[Game],
+    weight: f64,
+) -> (f64, f64, f64) {
+    if weight <= 0.0 {
+        return (r, rd, sigma);
+    }
+    let (new_r, new_rd, new_sigma) = rate(r, rd, sigma, games, DEFAULT_TAU);
+    if weight < 1.0 {
+        return (
+            r + weight * (new_r - r),
+            rd + weight * (new_rd - rd),
+            sigma + weight * (new_sigma - sigma),
+        );
+    }
+    (new_r, new_rd, new_sigma)
+}
+
+/// How many games one comparison counts as, for one side.
+///
+/// A weight-2 vote is two games; a weight BELOW 1 is still **one** game, because the comparison was made. Truncating to
+/// `int(weight)` recorded a 0.4-weight voter as no game at all — a comparison that moved the rating and did not count.
+#[must_use]
+pub fn games_for_weight(weight: f64) -> i64 {
+    if weight <= 0.0 {
+        return 0;
+    }
+    let count = weight as i64;
+    if count < 1 {
+        return 1;
+    }
+    count
+}
+
+/// The game list for one weighted comparison: the same opponent and score, repeated.
+#[must_use]
+pub fn repeated_game(opponent_r: f64, opponent_rd: f64, score: f64, weight: f64) -> Vec<Game> {
+    let mut count = weight as i64;
+    if count < 1 {
+        count = 1;
+    }
+    vec![
+        Game {
+            opponent_r,
+            opponent_rd,
+            score,
+        };
+        usize::try_from(count).unwrap_or(1)
+    ]
+}
+
+#[cfg(test)]
+mod arena_update_tests {
+    use super::*;
+
+    #[test]
+    fn a_zero_weight_vote_leaves_the_rating_untouched() {
+        let (r, rd, sigma) = update_arena_rating(1500.0, 350.0, 0.06, &[], 0.0);
+        assert_eq!((r, rd, sigma), (1500.0, 350.0, 0.06));
+    }
+
+    #[test]
+    fn a_fractional_weight_moves_the_rating_by_that_fraction() {
+        let games = repeated_game(1500.0, 200.0, 1.0, 1.0);
+        let (full_r, _, _) = update_arena_rating(1500.0, 350.0, 0.06, &games, 1.0);
+        let (half_r, _, _) = update_arena_rating(1500.0, 350.0, 0.06, &games, 0.5);
+        assert!(half_r < full_r);
+        assert!((half_r - 1500.0 - (full_r - 1500.0) / 2.0).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_weight_below_one_still_counts_one_game_and_two_counts_two() {
+        assert_eq!(games_for_weight(0.4), 1);
+        assert_eq!(games_for_weight(1.0), 1);
+        assert_eq!(games_for_weight(2.0), 2);
+        assert_eq!(games_for_weight(0.0), 0);
+        assert_eq!(repeated_game(1500.0, 350.0, 1.0, 2.0).len(), 2);
+    }
+}

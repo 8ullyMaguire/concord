@@ -1013,3 +1013,248 @@ mod pair_tests {
         assert_eq!(pair_key(3, 7), pair_key(7, 3));
     }
 }
+
+/// One competitor's rating after replaying the arena's vote log.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Replayed {
+    /// `feature`, `project`, `solution`, `list_entry`.
+    pub entity_type: String,
+    /// The entity.
+    pub entity_id: i64,
+    /// Replayed rating.
+    pub r: f64,
+    /// Replayed deviation.
+    pub rd: f64,
+    /// Replayed volatility.
+    pub sigma: f64,
+    /// Replayed game count.
+    pub games: i64,
+}
+
+/// One entry's stored rating beside the replay of the log it should have come from.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Verification {
+    /// `feature`, `project`, …
+    pub entity_type: String,
+    /// The entity.
+    pub entity_id: i64,
+    /// Whether this entry is the arena's baseline.
+    pub is_baseline: bool,
+    /// What the arena stores.
+    pub stored_r: f64,
+    /// What the arena stores.
+    pub stored_rd: f64,
+    /// What the arena stores.
+    pub stored_games: i64,
+    /// What the log produces.
+    pub replayed_r: f64,
+    /// What the log produces.
+    pub replayed_rd: f64,
+    /// What the log produces.
+    pub replayed_games: i64,
+    /// Exact equality, as the Go compares it — see `verify`.
+    pub agrees: bool,
+}
+
+/// Rebuild every rating in an arena from its vote log, WITHOUT writing.
+///
+/// Two properties are load-bearing, and both are what the incremental path does:
+///
+/// * votes are applied in `(created_at, id)` order — the update depends on the ratings the pair had when the vote was
+///   cast, so the order IS the answer. Grouping by (voter, day) batched two voters' same-day votes together, which is
+///   not the order they arrived in;
+/// * `neither` in an arena WITH a baseline is **two losses to the baseline**, not a draw between the competitors, and
+///   the branch below mirrors the incremental one game for game, including the case where a side IS the baseline.
+///
+/// A vote about an entity that is not in the arena is not scored: it cannot happen through the vote route, so it is a
+/// log written by something else.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn replay(pool: &PgPool, arena_id: i64) -> Result<Vec<Replayed>, sqlx::Error> {
+    let entries = sqlx::query_as::<_, (String, i64, bool)>(
+        "select entity_type, entity_id, coalesce(is_baseline, false) from arena_entries
+          where arena_id = $1 order by entity_id",
+    )
+    .bind(arena_id)
+    .fetch_all(pool)
+    .await?;
+    let votes = sqlx::query_as::<_, (i64, i64, String, f64)>(
+        "select a, b, outcome, weight from pairwise_votes
+          where arena_id = $1 and outcome <> 'skip'
+          order by created_at asc, id asc",
+    )
+    .bind(arena_id)
+    .fetch_all(pool)
+    .await?;
+
+    let mut ratings: std::collections::HashMap<i64, (f64, f64, f64)> = std::collections::HashMap::new();
+    let mut games: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
+    for (_, entity_id, _) in &entries {
+        ratings.insert(
+            *entity_id,
+            (
+                concord_ranking::DEFAULT_R,
+                concord_ranking::DEFAULT_RD,
+                concord_ranking::DEFAULT_VOL,
+            ),
+        );
+        games.insert(*entity_id, 0);
+    }
+    let baseline = entries
+        .iter()
+        .find(|(_, _, is_baseline)| *is_baseline)
+        .map(|(_, id, _)| *id);
+
+    for (a, b, outcome, weight) in votes {
+        if a == b {
+            continue;
+        }
+        let (Some(&(ra, rda, sa)), Some(&(rb, rdb, sb))) = (ratings.get(&a), ratings.get(&b)) else {
+            continue;
+        };
+        let score = outcome_score(&outcome);
+        if outcome == "neither" {
+            if let Some(baseline_id) = baseline {
+                // Mirrors the incremental path game for game, including the case where a SIDE is the baseline. That case
+                // is why this is written as two numbered steps rather than "the baseline beats both": when `a` is the
+                // baseline the first step rates the baseline against `b` as a LOSS, and the second step rates it against
+                // `b` again as a win. Odd, and it is the behaviour the two paths must share — the alternative is a
+                // replay that disagrees with the live path in exactly the arenas that have a baseline.
+                let counted = concord_ranking::games_for_weight(weight);
+                // Step one: the `a` side against the baseline.
+                if baseline_id == a {
+                    let (ra_now, rb_now) = (
+                        ratings.get(&a).copied().unwrap_or((ra, rda, sa)),
+                        ratings.get(&b).copied().unwrap_or((rb, rdb, sb)),
+                    );
+                    let (new_a, new_b) = rate_pair(ra_now, rb_now, 0.0, weight);
+                    ratings.insert(a, new_a);
+                    ratings.insert(b, new_b);
+                    *games.entry(a).or_insert(0) += counted;
+                    *games.entry(b).or_insert(0) += counted;
+                } else if let Some(&baseline_now) = ratings.get(&baseline_id) {
+                    let (new_baseline, new_a) = rate_pair(baseline_now, (ra, rda, sa), 1.0, weight);
+                    ratings.insert(baseline_id, new_baseline);
+                    ratings.insert(a, new_a);
+                    *games.entry(baseline_id).or_insert(0) += counted;
+                    *games.entry(a).or_insert(0) += counted;
+                }
+                // Step two: the `b` side against the baseline, with whatever step one left behind.
+                if baseline_id == b {
+                    let (ra_now, rb_now) = (
+                        ratings.get(&a).copied().unwrap_or((ra, rda, sa)),
+                        ratings.get(&b).copied().unwrap_or((rb, rdb, sb)),
+                    );
+                    let (new_a, new_b) = rate_pair(ra_now, rb_now, 1.0, weight);
+                    ratings.insert(a, new_a);
+                    ratings.insert(b, new_b);
+                    *games.entry(a).or_insert(0) += counted;
+                    *games.entry(b).or_insert(0) += counted;
+                } else if let Some(&baseline_now) = ratings.get(&baseline_id) {
+                    let (rb_now, _) = (
+                        ratings.get(&b).copied().unwrap_or((rb, rdb, sb)),
+                        (),
+                    );
+                    let (new_baseline, new_b) = rate_pair(baseline_now, rb_now, 1.0, weight);
+                    ratings.insert(baseline_id, new_baseline);
+                    ratings.insert(b, new_b);
+                    *games.entry(baseline_id).or_insert(0) += counted;
+                    *games.entry(b).or_insert(0) += counted;
+                }
+                continue;
+            }
+        }
+        let (new_a, new_b) = rate_pair((ra, rda, sa), (rb, rdb, sb), score, weight);
+        ratings.insert(a, new_a);
+        ratings.insert(b, new_b);
+        let counted = concord_ranking::games_for_weight(weight);
+        *games.entry(a).or_insert(0) += counted;
+        *games.entry(b).or_insert(0) += counted;
+    }
+
+    Ok(entries
+        .into_iter()
+        .map(|(entity_type, entity_id, _)| {
+            let (r, rd, sigma) = ratings
+                .get(&entity_id)
+                .copied()
+                .unwrap_or((concord_ranking::DEFAULT_R, concord_ranking::DEFAULT_RD, concord_ranking::DEFAULT_VOL));
+            Replayed {
+                entity_type,
+                entity_id,
+                r,
+                rd,
+                sigma,
+                games: games.get(&entity_id).copied().unwrap_or(0),
+            }
+        })
+        .collect())
+}
+
+/// The score the `a` side earned: a win is 1, a loss 0, a tie 0.5. `neither` is 0 here and only means something special
+/// in an arena with a baseline (see `replay`).
+fn outcome_score(outcome: &str) -> f64 {
+    match outcome {
+        "a" => 1.0,
+        "b" => 0.0,
+        "tie" | "neither" => 0.5,
+        _ => 0.5,
+    }
+}
+
+/// One weighted comparison, as both sides' new ratings.
+fn rate_pair(
+    a: (f64, f64, f64),
+    b: (f64, f64, f64),
+    a_score: f64,
+    weight: f64,
+) -> ((f64, f64, f64), (f64, f64, f64)) {
+    let games_a = concord_ranking::repeated_game(b.0, b.1, a_score, weight);
+    let games_b = concord_ranking::repeated_game(a.0, a.1, 1.0 - a_score, weight);
+    (
+        concord_ranking::update_arena_rating(a.0, a.1, a.2, &games_a, weight),
+        concord_ranking::update_arena_rating(b.0, b.1, b.2, &games_b, weight),
+    )
+}
+
+/// Replay the log and compare with what the arena stores. Writes nothing, which is what makes it readable by anyone.
+///
+/// `agrees` is **exact float equality**, as the Go compares it: a stored rating is either the one the log produces or it
+/// is not. Comparisons are bit-exact because both sides run the same IEEE-754 operations in the same order, and the
+/// golden tests are what keep that true — a tolerance here would hide precisely the drift this route exists to find.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn verify(pool: &PgPool, arena_id: i64) -> Result<Vec<Verification>, sqlx::Error> {
+    let replayed = replay(pool, arena_id).await?;
+    let stored = sqlx::query_as::<_, (String, i64, f64, f64, i64, bool)>(
+        "select entity_type, entity_id, r, rd, games, coalesce(is_baseline, false) from arena_entries
+          where arena_id = $1 order by entity_id",
+    )
+    .bind(arena_id)
+    .fetch_all(pool)
+    .await?;
+    let by_id: std::collections::HashMap<i64, Replayed> =
+        replayed.into_iter().map(|row| (row.entity_id, row)).collect();
+    Ok(stored
+        .into_iter()
+        .map(|(entity_type, entity_id, stored_r, stored_rd, stored_games, is_baseline)| {
+            let replay = by_id.get(&entity_id);
+            Verification {
+                entity_type,
+                entity_id,
+                is_baseline,
+                stored_r,
+                stored_rd,
+                stored_games,
+                replayed_r: replay.map(|row| row.r).unwrap_or_default(),
+                replayed_rd: replay.map(|row| row.rd).unwrap_or_default(),
+                replayed_games: replay.map(|row| row.games).unwrap_or_default(),
+                agrees: replay.is_some_and(|row| {
+                    row.r == stored_r && row.rd == stored_rd && row.games == stored_games
+                }),
+            }
+        })
+        .collect())
+}

@@ -69,6 +69,10 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/projects/{project_id}/arenas/{arena_id}/next-pair",
             get(arena_next_pair),
         )
+        .route(
+            "/api/v1/projects/{project_id}/arenas/{arena_id}/verification",
+            get(arena_verification),
+        )
         .route("/api/v1/projects/{slug}/features/{feature}/deps", get(feature_deps))
         .route("/api/v1/projects/{slug}/features/{feature}/evidence", get(feature_evidence))
         // `{slug}` and not `{project_id}`: axum refuses two routes that differ only in a parameter NAME ("Insertion
@@ -3406,5 +3410,48 @@ async fn arena_next_pair(
         "use_case": arena.use_case,
         "a": a_side,
         "b": b_side,
+    })))
+}
+
+/// `GET /projects/{id}/arenas/{arena}/verification` — replay the vote log and report whether the stored ratings are
+/// the ones the log produces.
+///
+/// **Writes nothing**, which is what makes it something any reader may run: §5.1 says "anyone can verify a ranking",
+/// and a verification only the server may perform is the promise this exists to keep. The recompute route is the
+/// repair; keeping them apart is the difference between publishing a check and publishing a button that silently
+/// rewrites a ranking.
+///
+/// Every entry is checked, not the leaderboard's first page: a verification that silently covers a subset is the
+/// failure it exists to catch.
+async fn arena_verification(
+    State(state): State<AppState>,
+    Path((project_id, arena_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = project_by_id(&state, &project_id).await?;
+    let user = bearer_user(&state, &headers).await?;
+    if !readable(&state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    let arena_id = match arena_id.parse::<i64>() {
+        Ok(id) if id > 0 => id,
+        _ => return Err(ApiError::invalid_request("invalid arena id")),
+    };
+    let arena = concord_db::arena::find(&state.pool, arena_id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found("no such arena"))?;
+    if arena.project_id != project.id {
+        return Err(ApiError::not_found("no such arena"));
+    }
+    let entries = concord_db::arena::verify(&state.pool, arena_id)
+        .await
+        .map_err(internal)?;
+    let divergent = entries.iter().filter(|entry| !entry.agrees).count();
+    Ok(Json(serde_json::json!({
+        "arena_id": arena.id,
+        "agrees": divergent == 0,
+        "divergent": divergent,
+        "entries": entries,
     })))
 }
