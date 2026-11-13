@@ -95,3 +95,17 @@ pub async fn list_complaints(
         .map(complaint_from_row)
         .collect()
 }
+
+/// One complaint by id, `None` when it does not exist.
+///
+/// # Errors
+/// [`sqlx::Error`] when the read fails.
+pub async fn complaint(pool: &PgPool, id: i64) -> Result<Option<Complaint>, sqlx::Error> {
+    let sql = format!("select {COMPLAINT_COLUMNS} from complaints where id = $1");
+    sqlx::query(&sql)
+        .bind(id)
+        .fetch_optional(pool)
+        .await?
+        .map(|row| complaint_from_row(&row))
+        .transpose()
+}

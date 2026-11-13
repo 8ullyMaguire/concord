@@ -48,11 +48,23 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/api/v1/projects/{slug}/features",
-            get(list_features),
+            get(list_features).post(file_feature),
         )
         .route(
             "/api/v1/projects/{slug}/features/{feature}",
             get(get_feature),
+        )
+        .route(
+            "/api/v1/projects/{slug}/features/{feature}/status",
+            put(set_feature_status),
+        )
+        .route(
+            "/api/v1/projects/{slug}/features/{feature}/complaints",
+            post(link_complaint),
+        )
+        .route(
+            "/api/v1/projects/{slug}/features/{feature}/complaints/{complaint}",
+            axum::routing::delete(unlink_complaint),
         )
         .route(
             "/api/v1/projects/{slug}/board/cards/{card_id}/move",
@@ -444,5 +456,222 @@ async fn roadmap(
         "milestones": serde_json::to_value(milestones).map_err(internal)?,
         "totals": {"total": total, "open": open, "shipped": shipped},
         "slippage": serde_json::to_value(slippage).map_err(internal)?,
+    })))
+}
+
+
+#[derive(Debug, Deserialize)]
+struct FileFeatureRequest {
+    title: String,
+    #[serde(default)]
+    body: String,
+    #[serde(default)]
+    effort: String,
+    #[serde(default)]
+    impact: Option<i64>,
+    #[serde(default)]
+    effort_score: Option<i64>,
+    #[serde(default)]
+    linked_complaints: Vec<i64>,
+    #[serde(default)]
+    complaint_ids: Vec<i64>,
+}
+
+fn write_error(error: concord_db::feature_writes::WriteError) -> ApiError {
+    use concord_db::feature_writes::WriteError;
+    match error {
+        WriteError::Invalid(message) => ApiError::invalid_request(message),
+        WriteError::NotFound(message) => ApiError::not_found(message),
+        WriteError::Database(error) => internal(error),
+    }
+}
+
+/// `POST /api/v1/projects/{slug}/features` — file a feature.
+///
+/// Needs an account: an idea is a claim about work, and a nameless one cannot be attributed or
+/// rate-limited. `complaint_ids` is accepted beside `linked_complaints` because both spellings are in
+/// the Go struct's history and a caller that used either must not be silently ignored.
+async fn file_feature(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<FileFeatureRequest>,
+) -> Result<(axum::http::StatusCode, Json<Value>), ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
+    let mut linked = body.linked_complaints.clone();
+    for id in &body.complaint_ids {
+        if !linked.contains(id) {
+            linked.push(*id);
+        }
+    }
+    let feature = concord_db::feature_writes::create_feature(
+        &state.pool,
+        project.id,
+        user.id,
+        body.title.trim(),
+        &body.body,
+        &body.effort,
+        body.impact,
+        body.effort_score,
+        &linked,
+    )
+    .await
+    .map_err(write_error)?;
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(serde_json::to_value(feature).map_err(internal)?),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+struct SetStatusRequest {
+    status: String,
+}
+
+/// `PUT /api/v1/projects/{slug}/features/{id}/status` — the evidence and dependency gates.
+async fn set_feature_status(
+    State(state): State<AppState>,
+    Path((slug, feature)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(body): Json<SetStatusRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
+    let Ok(id) = feature.parse::<i64>() else {
+        return Err(ApiError::invalid_request("feature id must be an integer"));
+    };
+    // The feature must be this project's before it is moved: a write addressed to one project must
+    // not change another's work.
+    let found = concord_db::features::feature(&state.pool, id)
+        .await
+        .map_err(internal)?
+        .filter(|row| row.project_id == project.id)
+        .ok_or_else(|| ApiError::not_found(format!("feature {id}")))?;
+    let from = found.status.clone();
+    concord_db::feature_writes::update_feature_status(&state.pool, id, &body.status)
+        .await
+        .map_err(write_error)?;
+    let _ = concord_db::feature_writes::add_audit(
+        &state.pool,
+        project.id,
+        user.id,
+        "set_feature_status",
+        "feature",
+        id,
+        &format!("{from} -> {}", body.status),
+    )
+    .await;
+    Ok(Json(json!({"status": "ok", "from": from, "to": body.status})))
+}
+
+#[derive(Debug, Deserialize)]
+struct LinkComplaintRequest {
+    complaint_id: i64,
+}
+
+/// `POST /api/v1/projects/{slug}/features/{id}/complaints` — attach a validated complaint.
+///
+/// Answers 200 with the feature's complaints rather than 201 with the link: the section renders its
+/// own count and must not re-read to learn what it just caused.
+async fn link_complaint(
+    State(state): State<AppState>,
+    Path((slug, feature)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(body): Json<LinkComplaintRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
+    let Ok(id) = feature.parse::<i64>() else {
+        return Err(ApiError::invalid_request("feature id must be an integer"));
+    };
+    let _ = concord_db::features::feature(&state.pool, id)
+        .await
+        .map_err(internal)?
+        .filter(|row| row.project_id == project.id)
+        .ok_or_else(|| ApiError::not_found(format!("feature {id}")))?;
+    concord_db::feature_writes::link_complaint(&state.pool, id, body.complaint_id)
+        .await
+        .map_err(write_error)?;
+    let _ = concord_db::feature_writes::add_audit(
+        &state.pool,
+        project.id,
+        user.id,
+        "link_complaint",
+        "feature",
+        id,
+        &format!("complaint {}", body.complaint_id),
+    )
+    .await;
+    let complaints = concord_db::feature_writes::feature_complaints(&state.pool, id)
+        .await
+        .map_err(write_error)?;
+    Ok(Json(json!({
+        "feature_id": id,
+        "complaints": serde_json::to_value(complaints).map_err(internal)?,
+    })))
+}
+
+/// `DELETE /api/v1/projects/{slug}/features/{id}/complaints/{complaint_id}` — the inverse.
+///
+/// The complaint id is a path segment and not a body field, because a DELETE with a body is not
+/// portable.
+async fn unlink_complaint(
+    State(state): State<AppState>,
+    Path((slug, feature, complaint)): Path<(String, String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
+    let Ok(id) = feature.parse::<i64>() else {
+        return Err(ApiError::invalid_request("feature id must be an integer"));
+    };
+    let Ok(complaint_id) = complaint.parse::<i64>() else {
+        return Err(ApiError::invalid_request("complaint id must be an integer"));
+    };
+    let _ = concord_db::features::feature(&state.pool, id)
+        .await
+        .map_err(internal)?
+        .filter(|row| row.project_id == project.id)
+        .ok_or_else(|| ApiError::not_found(format!("feature {id}")))?;
+    concord_db::feature_writes::unlink_complaint(&state.pool, id, complaint_id)
+        .await
+        .map_err(write_error)?;
+    let _ = concord_db::feature_writes::add_audit(
+        &state.pool,
+        project.id,
+        user.id,
+        "unlink_complaint",
+        "feature",
+        id,
+        &format!("complaint {complaint_id}"),
+    )
+    .await;
+    let complaints = concord_db::feature_writes::feature_complaints(&state.pool, id)
+        .await
+        .map_err(write_error)?;
+    Ok(Json(json!({
+        "feature_id": id,
+        "complaints": serde_json::to_value(complaints).map_err(internal)?,
     })))
 }

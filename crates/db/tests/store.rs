@@ -759,3 +759,215 @@ async fn dropping_a_card_into_the_full_column_it_occupies_is_not_refused() {
         .await
         .expect("a card dropped where it already is");
 }
+
+/// A project with `both` intake, a validated complaint and two draft features, one blocking the other.
+async fn writable(pool: &PgPool) -> (i64, i64, i64, i64, i64) {
+    use sqlx::Row;
+    let (user, _) = account(pool).await;
+    let project = concord_db::projects::create_project(
+        pool, &unique("w"), "Writable", "", "collective", "", user,
+    )
+    .await
+    .expect("create");
+    sqlx::query("update projects set intake_mode = 'both' where id = $1")
+        .bind(project.id)
+        .execute(pool)
+        .await
+        .unwrap();
+    let complaint: i64 = sqlx::query_scalar(
+        "insert into complaints (project_id, author_id, title, body, severity, frequency, \
+                                 strategic_multiplier, status, created_at, updated_at, public_id) \
+         values ($1, $2, 'evidence', '', 2, 1.0, 1.0, 'validated', now(), now(), $3) returning id",
+    )
+    .bind(project.id)
+    .bind(user)
+    .bind(ulid::Ulid::new().to_string())
+    .fetch_one(pool)
+    .await
+    .expect("complaint");
+    let blocker = concord_db::feature_writes::create_feature(
+        pool, project.id, user, "blocker", "", "", None, None, &[],
+    )
+    .await
+    .expect("blocker");
+    let blocked = concord_db::feature_writes::create_feature(
+        pool, project.id, user, "blocked", "", "", None, None, &[],
+    )
+    .await
+    .expect("blocked");
+    sqlx::query("insert into feature_deps (blocked_id, blocker_id) values ($1, $2)")
+        .bind(blocked.id)
+        .bind(blocker.id)
+        .execute(pool)
+        .await
+        .unwrap();
+    let row = sqlx::query("select 1").fetch_one(pool).await.unwrap();
+    let _ = row.get::<i32, _>(0);
+    (user, project.id, complaint, blocker.id, blocked.id)
+}
+
+/// The evidence gate: `ready` needs evidence, and the refusal says what would count.
+#[tokio::test]
+async fn a_feature_reaches_ready_only_with_evidence() {
+    let pool = pool().await;
+    let (user, project, complaint, _, _) = writable(&pool).await;
+    let feature = concord_db::feature_writes::create_feature(
+        &pool, project, user, "an idea", "", "", None, None, &[],
+    )
+    .await
+    .expect("file");
+
+    match concord_db::feature_writes::update_feature_status(&pool, feature.id, "ready").await {
+        Err(concord_db::feature_writes::WriteError::Invalid(message)) => {
+            assert!(
+                message.contains("evidence"),
+                "the refusal must name the evidence, got: {message}"
+            );
+        }
+        other => panic!("expected Invalid, got {other:?}"),
+    }
+
+    // The complaint is evidence, and it must be validated to be linked at all.
+    concord_db::feature_writes::link_complaint(&pool, feature.id, complaint)
+        .await
+        .expect("link");
+    concord_db::feature_writes::update_feature_status(&pool, feature.id, "ready")
+        .await
+        .expect("ready with evidence");
+    let status: String = sqlx::query_scalar("select status from features where id = $1")
+        .bind(feature.id)
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+    assert_eq!(status, "ready");
+}
+
+/// §46's hole: evidence removed after `ready` must still stop `in_progress`.
+#[tokio::test]
+async fn starting_work_rechecks_the_evidence_that_ready_accepted() {
+    let pool = pool().await;
+    let (user, project, complaint, _, _) = writable(&pool).await;
+    let feature = concord_db::feature_writes::create_feature(
+        &pool, project, user, "backed", "", "", None, None, &[complaint],
+    )
+    .await
+    .expect("file with evidence");
+    concord_db::feature_writes::update_feature_status(&pool, feature.id, "ready")
+        .await
+        .expect("ready");
+
+    // Unlink does not un-ready — that policy is deliberate, so an edit cannot silently undo a
+    // decision — which is exactly why the start of work has to look again.
+    concord_db::feature_writes::unlink_complaint(&pool, feature.id, complaint)
+        .await
+        .expect("unlink");
+    match concord_db::feature_writes::update_feature_status(&pool, feature.id, "in_progress").await {
+        Err(concord_db::feature_writes::WriteError::Invalid(message)) => {
+            assert!(
+                message.contains("evidence"),
+                "the refusal must name the evidence, got: {message}"
+            );
+        }
+        other => panic!("expected Invalid after the evidence was removed, got {other:?}"),
+    }
+}
+
+/// The dependency refusal, with the blocker named rather than a bare "invalid".
+#[tokio::test]
+async fn work_does_not_start_while_a_blocker_is_open() {
+    let pool = pool().await;
+    let (_, project, complaint, blocker, blocked) = writable(&pool).await;
+    for feature in [blocker, blocked] {
+        concord_db::feature_writes::link_complaint(&pool, feature, complaint)
+            .await
+            .expect("link");
+        concord_db::feature_writes::update_feature_status(&pool, feature, "ready")
+            .await
+            .expect("ready");
+    }
+    match concord_db::feature_writes::update_feature_status(&pool, blocked, "in_progress").await {
+        Err(concord_db::feature_writes::WriteError::Invalid(message)) => {
+            assert!(message.contains("blocked by"), "got: {message}");
+            assert!(
+                message.contains(&format!("#{blocker}")),
+                "the refusal must name the blocker, got: {message}"
+            );
+        }
+        other => panic!("expected Invalid with a blocker, got {other:?}"),
+    }
+    // Ship the blocker and the way opens — the rule is about open blockers, not about dependencies
+    // existing at all.
+    for status in ["in_progress", "shipped"] {
+        concord_db::feature_writes::update_feature_status(&pool, blocker, status)
+            .await
+            .expect("move the blocker along");
+    }
+    // The dependency is still in the table; the blocker's status is what the rule reads: only
+    // `shipped` is closed, so `review` would still block — which is the Go query's own definition.
+    let _ = project;
+    match concord_db::feature_writes::update_feature_status(&pool, blocked, "in_progress").await {
+        Ok(()) => {}
+        Err(error) => panic!("a shipped blocker must open the way, got {error:?}"),
+    }
+}
+
+/// Filing: a `complaint_first` project refuses a feature with no complaint, and an unvalidated
+/// complaint is not evidence.
+#[tokio::test]
+async fn filing_obeys_the_projects_intake_mode_and_the_validated_rule() {
+    let pool = pool().await;
+    let (user, project, _, _, _) = writable(&pool).await;
+    sqlx::query("update projects set intake_mode = 'complaint_first' where id = $1")
+        .bind(project)
+        .execute(&pool)
+        .await
+        .unwrap();
+    match concord_db::feature_writes::create_feature(
+        &pool, project, user, "unbacked", "", "", None, None, &[],
+    )
+    .await
+    {
+        Err(concord_db::feature_writes::WriteError::Invalid(message)) => {
+            assert!(message.contains("complaint_first"), "got: {message}")
+        }
+        other => panic!("expected Invalid, got {other:?}"),
+    }
+    // A draft complaint is not evidence.
+    let draft: i64 = sqlx::query_scalar(
+        "insert into complaints (project_id, author_id, title, body, severity, frequency, \
+                                 strategic_multiplier, status, created_at, updated_at, public_id) \
+         values ($1, $2, 'draft', '', 1, 1.0, 1.0, 'draft', now(), now(), $3) returning id",
+    )
+    .bind(project)
+    .bind(user)
+    .bind(ulid::Ulid::new().to_string())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    match concord_db::feature_writes::create_feature(
+        &pool, project, user, "backed by a draft", "", "", None, None, &[draft],
+    )
+    .await
+    {
+        Err(concord_db::feature_writes::WriteError::Invalid(message)) => {
+            assert!(message.contains("validated"), "got: {message}")
+        }
+        other => panic!("expected Invalid for an unvalidated complaint, got {other:?}"),
+    }
+    // A bad effort size is refused before anything is written.
+    sqlx::query("update projects set intake_mode = 'both' where id = $1")
+        .bind(project)
+        .execute(&pool)
+        .await
+        .unwrap();
+    match concord_db::feature_writes::create_feature(
+        &pool, project, user, "huge", "", "XXL", None, None, &[],
+    )
+    .await
+    {
+        Err(concord_db::feature_writes::WriteError::Invalid(message)) => {
+            assert!(message.contains("effort"), "got: {message}")
+        }
+        other => panic!("expected Invalid for a bad effort, got {other:?}"),
+    }
+}

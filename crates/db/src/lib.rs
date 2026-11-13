@@ -8,6 +8,7 @@ use sqlx::postgres::{PgPool, PgPoolOptions};
 
 pub mod auth;
 pub mod complaints;
+pub mod feature_writes;
 pub mod features;
 pub mod milestones;
 pub mod projects;

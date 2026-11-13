@@ -169,8 +169,23 @@ class PgSeed:
         if match:
             table = match.group(1).strip('"')
             columns = [c.strip().strip('"') for c in match.group(2).split(",")]
-            values = re.search(r"values\s*\((.*)\)\s*$", translated,
-                               re.IGNORECASE | re.DOTALL)
+            # The VALUES list is the span between `values (` and its closing paren, not a suffix: a
+            # suite may write `... ) RETURNING id`, and a regex anchored to the end of the string
+            # matched nothing — which dropped the extra placeholder and failed with "not all
+            # arguments converted".
+            def values_expression(sql):
+                lowered = sql.lower()
+                at = lowered.find("values")
+                if at == -1:
+                    return None, (None, None)
+                open_at = sql.index("(", at)
+                limit = lowered.find("returning")
+                close_at = sql.rfind(")", open_at, limit if limit != -1 else len(sql))
+                if close_at == -1:
+                    close_at = sql.rfind(")")
+                return sql[open_at + 1:close_at], (open_at, close_at)
+
+            expression, span = values_expression(translated)
             # The baseline gives every API-facing table a `public_id` the Go schema did not have.
             # It is added before the parameters are converted, so a single pass sees the final
             # column list; doing it after produced a placeholder with no argument.
@@ -179,19 +194,23 @@ class PgSeed:
                 params = params + [uuid.uuid4().hex[:26].upper()]
                 column_sql = match.group(0).rstrip().rstrip(")") + ", public_id)"
                 translated = translated.replace(match.group(0), column_sql, 1)
-                values = re.search(r"values\s*\((.*)\)\s*$", translated,
-                                   re.IGNORECASE | re.DOTALL)
-                if values:
-                    translated = (translated[:values.start(1)] + values.group(1).rstrip()
-                                  + ", %s" + translated[values.end(1):])
-            params = self._convert(table, columns, params,
-                                   values.group(1) if values else "")
+                expression, span = values_expression(translated)
+                if expression is not None:
+                    open_at, close_at = span
+                    translated = translated[:close_at].rstrip() + ", %s" + translated[close_at:]
+                    expression = expression.rstrip() + ", %s"
+            params = self._convert(table, columns, params, expression or "")
         # `INSERT ... SELECT` also gets a `RETURNING id`, which fails: the select's own columns are
         # what RETURNING sees, and `INSERT INTO members (...) SELECT project_id, ... FROM members`
         # has no `id` to return. Only the VALUES form carries a lastrowid anyway.
+        table_name = translated.split()[2].strip('"').split("(")[0] if translated.lstrip().lower().startswith("insert") else ""
         if (translated.lstrip().lower().startswith("insert")
                 and " returning " not in translated.lower()
-                and "values" in translated.lower()):
+                and "values" in translated.lower()
+                # A join table (`feature_deps`, `feature_complaints`) is keyed by its pair and has no
+                # `id`, so appending `RETURNING id` made PostgreSQL answer `column "id" does not
+                # exist` for a fixture that never asked for one.
+                and "id" in self._column_types(table_name)):
             translated = translated.rstrip().rstrip(";") + " RETURNING id"
             row = None
         cur.execute(translated, tuple(params))

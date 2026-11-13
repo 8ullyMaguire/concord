@@ -114,6 +114,68 @@ Still open in S2: the ranking (`priorities`, arenas, Glicko2), `CreateFeature`/`
 with the evidence gate and dependency refusal (`docs/REMAINING.md` §44/§46), `crates/ranking`, and the
 `rank_*`/`milestones_e2e`/`feature_*` suites.
 
+**Row 8 (S2) — the two rules, probed before they were ported** (2026-11-13). §44/§46 are the reason
+this slice exists; before the change the candidate answered:
+
+```
+$ CANDIDATE=http://127.0.0.1:8107 scripts/parity/probe_s2_status.py
+BAD file without a token: 405 (want 401) -> null
+BAD file a feature: 405 (want 201) -> null
+BAD ready without evidence: 404 (want 400) -> "no such route"
+BAD the refusal names the evidence: 0 (want 1) -> "no such route"
+BAD link a validated complaint: 404 (want 200) -> {"error": {"code": "not_found", ...}}
+BAD ready with evidence: 404 (want 200) -> ...
+BAD blocked feature reaches ready: 404 (want 200) -> ...
+BAD in_progress with an open blocker: 404 (want 400) -> "no such route"
+BAD the refusal names the blocker: 0 (want 1) -> "no such route"
+BAD unlink the evidence after ready: 404 (want 200) -> ...
+BAD in_progress after the evidence was removed: 404 (want 400) -> "no such route"
+11 of 11 failed
+probe exit=1
+```
+
+after:
+
+```
+ok  file without a token: 401 (want 401)
+ok  file a feature: 201 (want 201)
+ok  ready without evidence: 400 (want 400)
+ok  the refusal names the evidence: 1 (want 1)
+ok  link a validated complaint: 200 (want 200)
+ok  ready with evidence: 200 (want 200)
+ok  blocked feature reaches ready: 200 (want 200)
+ok  in_progress with an open blocker: 400 (want 400)
+ok  the refusal names the blocker: 1 (want 1)
+ok  unlink the evidence after ready: 200 (want 200)
+ok  in_progress after the evidence was removed: 400 (want 400)
+0 of 11 failed
+probe exit=0
+```
+
+`crates/db/src/feature_writes.rs` and four tests in `crates/db/tests/store.rs`; `scripts/parity/e2e.sh`
+-> **26 passed, 0 failed**.
+
+Decisions taken here, written down because the Go store leaves them implicit:
+
+1. **Evidence is re-checked at `in_progress`, not only at `ready`.** `UnlinkComplaint` and
+   `RemoveFeatureEvidence` delete rows and neither un-readies anything — that is deliberate, an edit
+   must not silently undo a decision. The consequence is that the gate on `ready` alone has a hole:
+   ready → unlink → start work. Both gates now read the same evidence count.
+2. **"Open" means `status <> 'shipped'`.** A `review`ed or `rejected` blocker still blocks, because the
+   Go `OpenBlockers` query says `f.status <> 'shipped'` and widening it here would let a rejected
+   dependency silently unblock work.
+3. **The intake-mode rule reads the project, not the instance.** A `complaint_first` project refuses a
+   feature with no validated complaint; `idea_first`/`both` do not. Applying the rule globally would
+   tell readers in `idea_first` projects to file complaints the project never asked for.
+4. **Linking and filing accept only `validated` complaints.** A draft is a report nobody confirmed;
+   counting it as evidence would make the gate measure effort, not agreement.
+5. **`feature_ids` ordering is not invented**: `feature_complaints` is read `order by complaint_id`,
+   because the table has no position column and a join's order is not a contract.
+
+Also fixed in the harness by these tests: `PgSeed` appended `RETURNING id` to every INSERT, which fails
+on a join table (`feature_deps` is keyed by its pair), and its VALUES span was matched as a suffix, so
+an INSERT that already ended in `RETURNING id` got a placeholder and no argument.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
