@@ -1544,6 +1544,41 @@ ledger is built to prevent, and it happened here through an unchecked exit statu
 **Found by failing:** `arena_entries.is_baseline` is a real `BOOLEAN` in PostgreSQL, so `coalesce(is_baseline, 0) <> 0`
 fails with "COALESCE types boolean and integer cannot be matched" — the query answers 500 and the route dies.
 
+### Row 11 — part 31: project solution standings (2026-11-13, `33eecff`)
+
+```
+gate (before): GET /projects/{id}/solutions -> 404
+gate (after):
+  probe_s5_standings.py -> 12/12 ok
+  routes.py             -> go 216 / port 102   missing: 116 (106 json, 10 page)
+  cargo test -p concord-db --lib -> 36 passed
+```
+
+Two rules carried from the spec, each a way to be plausible and wrong:
+
+* standings are **grouped per feature and never merged**: a solution's score is computed against the entries competing
+  with it, so a project-wide "best solution" ranks numbers that were never comparable — and a merged list would let one
+  feature's do-nothing baseline outrank another feature's real proposal;
+* a feature with **no** solutions is **included** with an empty array and counted in `features_without`: "one feature has
+  proposals and four do not" is the useful sentence, while a panel that omits the four reads as if one were the project.
+
+Plus truncation: five shown per feature, `omitted` from an explicit `COUNT(*)`. The standings walk the arena and skip
+entries whose solution row is gone, so "one more row" is not a witness of "one more solution" — the Go's own note, now
+the port's.
+
+**NEGATIVE CONTROL** (features with no solutions skipped):
+
+```
+FAIL every feature is present, including the one nobody proposed for: got [5941] want [5941, 5942]
+FAIL the idle feature answers an empty ARRAY and not null: got None want []
+FAIL with nothing omitted: got None want 0
+9/12 ok
+```
+
+**The probe had to be hardened first**: its indexed lookups raised `KeyError` on the very failure they exist to detect, so
+the control produced a traceback instead of assertions. A probe that crashes on the failure it is built to find reports
+nothing; every lookup is now `.get(..., {})`.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
