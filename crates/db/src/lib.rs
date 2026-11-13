@@ -18,6 +18,7 @@ pub mod consensus_writes;
 pub mod curation;
 pub mod feature_writes;
 pub mod embeddings;
+pub mod feature_work;
 pub mod features;
 pub mod holds;
 pub mod list_writes;
