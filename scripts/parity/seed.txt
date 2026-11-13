@@ -1,0 +1,31 @@
+# Shapes the deployed host serves, recorded by scripts/parity/record.py.
+# A path that 404s here is not a shape: it is a belief about the code, and the port must not be
+# judged on a 404 that a deploy would turn into a 200.
+/api/v1/version
+/api/v1/healthz
+/api/v1/projects
+/api/v1/projects/concord
+/api/v1/projects/concord/features
+/api/v1/projects/concord/features/5755
+/api/v1/projects/concord/complaints
+/api/v1/projects/concord/documents
+/api/v1/projects/concord/board
+/api/v1/projects/concord/milestones
+/api/v1/projects/concord/roadmap
+/api/v1/projects/concord/audit
+/api/v1/projects/concord/consensus
+/api/v1/stats
+/api/v1/stats/summary
+
+# The stats payload carries the moment it was computed, so it is a different body every run.
+# Declared rather than skipped: the port still owes this shape, it just cannot be judged on bytes.
+# time-varying: /api/v1/stats
+/api/v1/search?q=arena
+
+# In the tree, answered 404 by the deployed build (pre-merge-2026-11-05-63-g313b4ee, 87 commits
+# behind): internal/httpapi/server.go registers these, so they are shapes the port owes — but
+# recording a 404 today would freeze a deploy artefact into the corpus. Uncomment when the host
+# carries the tree being ported.
+# /api/v1/projects/concord/stats
+# /api/v1/projects/concord/arenas
+# /api/v1/projects/concord/consensus/feed.xml

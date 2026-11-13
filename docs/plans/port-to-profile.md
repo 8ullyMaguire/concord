@@ -33,11 +33,10 @@ Read this table FIRST every turn, before any code. A row is done when its gate r
 quoted below it, never because it merged. The count in this header is the number the turn report
 quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 
-### Open *(11 — M0.3 first)*
+### Open *(10 — M0.4 first)*
 
 | # | step | gate — the command that fails if the step is absent |
 |---|---|---|
-| 3 | M0.3 parity recorder, seed, two stable recordings | two runs of `scripts/parity/record.py` over the seed diff empty on every shape without `unstable` |
 | 4 | M0.4 baseline schema, mapped row by row | `\dt` count equals the SQLite table count minus the `*_fts*` shadows, and `\d features` shows `public_id` and `timestamptz` |
 | 5 | M0.5 data mover loads and counts agree | `select count(*)` prints `73 | 5760 | 2402 | 88` |
 | 6 | M0.6 replay tool passes against the CURRENT Go service | `CANDIDATE=https://concord.polarisocial.xyz cargo run -p parity` prints `0 shape(s) disagreed` |
@@ -49,7 +48,16 @@ quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 | 12 | P6 the frontend on SvelteKit + `@polaris/ui` | every page its slice owns renders from the API with the server-rendered head, in a browser |
 | 13 | P7 cutover | `concord.polarisocial.xyz/api/v1/version` served by the Rust binary, and estate gate 17 green for `concord` with NO `reason` |
 
-### Blocked *(none — a row that cannot advance moves here with what blocks it and on whom)*
+### Blocked
+
+**B1. The corpus describes a build 87 commits behind the tree it will judge.** The deployed host
+answers `version: pre-merge-2026-11-05-63-g313b4ee` (2026-11-05 + 63 commits), while the tree at
+`port-rust` is dated 2026-11-13; four of eighteen seed paths 404 there and exist here. Every
+comparison the port makes is against the older build until that changes. **Blocked on the owner**:
+deploy the current `master` to the host (the ADR's invariant is that the Go service keeps serving —
+deploying master keeps it serving, but 87 commits of drift on a live service is a decision, not a
+cleanup), or accept a corpus of the 2026-11-05 build and re-record before cutover. Row 3 is done
+regardless: the recorder, the seed and two stable recordings exist, and re-recording is one command.
 
 ### Done *(1 — 12 open)*
 
@@ -101,6 +109,45 @@ Two deviations, and why each was taken rather than worked around:
 
 The role password is generated on the host (`openssl rand -hex 24`), written only to
 `~/.config/concord/.env` (mode 600), never printed and never in git.
+
+**3. M0.3 parity recorder, seed, two stable recordings** — done 2026-11-13, commit with this edit.
+
+```
+$ python3 scripts/parity/record.py --seed scripts/parity/seed.txt --out /tmp/r1.json
+17 shapes -> /tmp/r1.json
+$ python3 scripts/parity/record.py --seed scripts/parity/seed.txt --out /tmp/r2.json --previous /tmp/r1.json
+17 shapes -> /tmp/r2.json
+$ diff <(stable r1) <(stable r2)
+DIFF EMPTY            # 16 shapes, 15 compared byte-for-byte, 1 declared time-varying
+```
+
+The seed as written in the plan was **four beliefs and twelve facts**. Probed against the deployed
+host before the recorder ran:
+
+| seed path | answer | what the tree says |
+| --- | --- | --- |
+| `/api/v1/projects/concord/features/5785` | **404** | `features/{id}` exists; 5785 does not. `5755` answers 200 — the id was invented |
+| `/api/v1/projects/concord/stats` | **404** | stats is global: `/api/v1/stats` answers 200 with 6,177 bytes |
+| `/api/v1/projects/concord/arenas` | **404** | `internal/httpapi/server.go:627` registers `.../projects/{project_id}/arenas` — numeric id, and newer than the deployed build |
+| `/api/v1/projects/concord/consensus/feed.xml` | **404** | `feeds_handlers.go:394` registers it; `/projects/concord/feed.xml` also 404, so the deployed build predates the feed routes |
+
+The three that answer 404 on the host but exist in the tree are **commented out of the seed with the
+reason**, not recorded: freezing a 404 into the corpus would make the port owe a piece of deploy
+drift, and uncommenting them is a one-line change once the host carries the tree being ported.
+
+Two things the plan's code could not do, both found by running it:
+
+- **`unstable` could never fire across runs.** The seed visits each shape once, so the per-run check
+  compares a shape against itself; two recordings a minute apart differed at `/api/v1/stats` and
+  neither was flagged. Added `--previous` (defaults to `--out` if it exists) so run 2 compares
+  against run 1, and the gate is now a real diff.
+- **A time-varying shape had no way to say so.** `/api/v1/stats` carries the moment it was computed:
+  same length (6,177 bytes), different hash every run. The seed declares it — `# time-varying:
+  /api/v1/stats` — and the recorder stamps `time_varying: true`; the gate excludes declared shapes
+  and nothing else. A shape that is skipped silently is a shape nobody remembers to port.
+
+The corpus also records which build it describes (`__meta.version` = `pre-merge-2026-11-05-63-g313b4ee`),
+because the answer to "is this corpus stale?" was otherwise a judgement call.
 
 
 ## M0 — the ground (no product code)
