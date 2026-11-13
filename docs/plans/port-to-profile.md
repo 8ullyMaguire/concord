@@ -38,6 +38,28 @@ quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 | # | step | gate — the command that fails if the step is absent |
 |---|---|---|
 | 4 | M0.4 baseline schema, mapped row by row | `\dt` count equals the SQLite table count minus the `*_fts*` shadows, and `\d features` shows `public_id` and `timestamptz` |
+
+**Row 4 measured before it is attempted** (2026-11-13, on the host, not from the migrations):
+
+```
+$ sqlite3 ~/.local/share/concord/concord.db 'select count(*) from sqlite_master where type="table"'
+91
+$ ... and name like '%_fts%'
+11          # 2 virtual tables (projects_fts, project_documents_fts) + 9 shadow tables
+$ ... and name not like '%_fts%'
+80
+```
+
+The row's verify line says `83` ± dropped shadow tables, counted `minus 8`. Measured: 91 total, 11
+FTS-related, 80 non-FTS. **83 matches neither count**, so the gate as written cannot be satisfied
+and the row is not attempted until the target is right. The corrected gate, to be used when the
+schema is translated: `psql "$URL" -c '\dt'` lists **80** relations (91 − 11 FTS tables, with the
+two virtual tables replaced by `tsvector` + GIN on `projects` and `project_documents`), and
+`\d features` shows `public_id`, `timestamptz` timestamps, no `REAL`.
+
+Two facts the mover depends on, both checked: the service's `CONCORD_DB` is that same file, and the
+directory holds no `-wal`/`-shm` and the file's mtime is 2026-11-12 23:10, so a copy taken today is
+current and the 68 MB file is not mid-write.
 | 5 | M0.5 data mover loads and counts agree | `select count(*)` prints `73 | 5760 | 2402 | 88` |
 | 6 | M0.6 replay tool passes against the CURRENT Go service | `CANDIDATE=https://concord.polarisocial.xyz cargo run -p parity` prints `0 shape(s) disagreed` |
 | 7 | S1 projects, documents, board | corpus subset identical + `projects_e2e`, `board_e2e`, `pages_e2e` green against the candidate |
