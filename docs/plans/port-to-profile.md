@@ -1432,6 +1432,42 @@ FAIL and drops the criterion it did not name: got ['cost', 'speed', 'unplayed'] 
 so a client that always sends the header cannot make the "no body means every default" request at all. The probe sends
 the header only when there is a body, and the helper carries the reason.
 
+### Row 11 — part 28: the arena vote log, and the audit view that cannot audit (2026-11-13, `3013a45`)
+
+```
+gate (before): GET /projects/{id}/arenas/{arena}/votes -> 404
+gate (after):
+  probe_s5_arenavotes.py -> 17/17 ok
+  routes.py              -> go 216 / port 99   missing: 119 (109 json, 10 page)
+  cargo test -p concord-db --lib -> 33 passed
+  concord-parity         -> 0 shape(s) disagreed of 16 checked, 5 skipped
+```
+
+Rules carried: a **SKIP is not a vote** (it means "I don't understand this", not "neither"); newest first; **never
+null**, so a client cannot confuse "no votes" with "null"; **arena ids are global**, so another project's arena answers
+exactly what a missing one answers (404) and a non-numeric id is 400; **no authentication at all**, because an audit
+view that only insiders can read is not an audit view.
+
+**PINNED DEFECT, carried deliberately.** Each vote's two sides report `r=0, rd=0, games=0, conservative=0`, because
+`ListArenaVotes` selects only `v.a`/`v.b` and never joins the entries. §5.2 calls this route "the appeals view", and an
+appeals view that cannot show what a vote **changed** is a poor one. The port reproduces it — the probe asserts the
+zeros — so that the two services agree while equality is still the test, and it joins the row-13 defect list.
+
+**NEGATIVE CONTROL** (skips included — the plausible misreading):
+
+```
+FAIL a skip is not a vote: got 3 want 2
+FAIL newest first: got ['tie', 'skip', 'a'] want ['tie', 'a']
+FAIL the reason travels with its vote: got 'do not understand' want 'clearer'
+14/17 ok
+```
+
+**Found by failing:** `arena_entries` has no `project_id` column — it is scoped by `arena_id`, so a fixture cleans up
+through a subquery on `arenas`.
+
+Row 13's carry-in now stands at: **109 JSON routes**, 10 page routes, the four tallies defects, the vote-log zeros, and
+the FTS5-vs-tsquery equivalence question.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
