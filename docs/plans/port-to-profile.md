@@ -1803,6 +1803,51 @@ which is why the fixture compares buckets, not scores.
 **Restore note:** writing the file back on the network mount left cargo running the mutated artefact; `touch` is part of
 the restore. Third time. It is now in the skill, not just in this ledger.
 
+### Row 11 — part 37: the remote embedder and the per-model bands (2026-11-13, `cf4cbb7`)
+
+```
+gate (before): crates/embed had the hashed embedder only; no Ollama client, no per-model thresholds, no Classify
+gate (after):
+  cargo test -p concord-embed -> 15 passed   (5 golden + 10 ollama)
+  cargo test -p concord-db --lib -> 38 passed
+  LIVE on thinkcentre, against the real server, at the deployment's own timeout:
+    timeout 8000 ms
+    id      nomic:nomic-embed-text:latest
+    dims    768 (configured width 768)
+    provider responded with 768 values, first three [0.01169132, 0.028616866, -0.15483397]
+    near    0.9715  the roadmap page shows an empty column for every milestone
+    far     0.5165  users cannot reset their password
+    bands   near Strong, far Weak
+    ok      the model answered and ranks a paraphrase above an unrelated complaint
+```
+
+`crates/embed/src/ollama.rs` — `Ollama` + `OllamaConfig` (endpoint, model, timeout, **prefix**, fallback), `POST
+{endpoint}/api/embed` with `{model, input: prefix+text}`, plural `embeddings[0]` first and the singular old-server form
+accepted, non-200 **and** in-body `error` both degrading to the hashed fallback, and a request mutex held across the round
+trip because two concurrent filings racing the server would both fail — and a failure there reads as "no duplicates".
+
+`crates/embed/src/bands.rs` — `thresholds_for()` keyed by model id (nomic 0.92 / 0.60 / 0.35, hashed 0.85 / 0.62 /
+0.40), `classify`, `is_strong_duplicate_for`, `is_duplicate_for`. The two scales are **not comparable** — identical titles
+score 1.00 under both, a paraphrase 0.37 under one and 0.61 under the other — so a single global constant mis-calibrates
+whichever embedder it was not measured on. Proven at 0.90: strong under hashed, advisory under nomic.
+
+The `Embedder` trait is **async and object-safe by hand** (`BoxFuture`) rather than sync or via `async-trait`: the remote
+call is on the filing path and the store holds the embedder behind a `dyn`.
+
+**NEGATIVE CONTROL** (`thresholds_for` always returns the hashed bands):
+
+```
+FAIL the_bands_are_per_model_and_each_is_a_decision: left (0.85, 0.62, 0.4) right (0.92, 0.6, 0.35)
+9 passed, 1 failed
+```
+
+**Found by running it live rather than by reading:** the first live run **failed** — 2048-wide vector, i.e. the fallback —
+with no diagnostic, because a cold model load exceeded the 10 s default. The fallback did its job (a degraded lexical check
+instead of a false "no duplicates") but nothing said so. The client now prints the reason under `CONCORD_EMBED_DEBUG`, and
+the example honours `CONCORD_EMBED_TIMEOUT_MS` so the measurement uses the deployment's 8 s rather than a friendlier
+default; the second run answered 768-wide. **Cutover note:** the first filing after an idle period may be checked
+lexically, and that is the deployment's timeout, not the port's.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
