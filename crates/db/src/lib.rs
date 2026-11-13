@@ -22,6 +22,7 @@ pub mod holds;
 pub mod milestones;
 pub mod moderation;
 pub mod notifications;
+pub mod stats;
 pub mod override_window;
 pub mod priorities;
 pub mod projects;

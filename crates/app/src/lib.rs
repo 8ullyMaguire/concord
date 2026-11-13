@@ -65,6 +65,8 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/projects/{project_id}/charter",
             get(get_charter),
         )
+        .route("/api/v1/stats", get(stats))
+        .route("/api/v1/stats/summary", get(stats_summary))
         .route("/api/v1/curation", get(list_curation))
         // The Go mount is `/api/v1/curation` with the page at `GET /` and votes below it; both spellings of
         // the queue path answer here, because a client that appends a slash must not get a 404.
@@ -2069,4 +2071,24 @@ async fn curation_vote(
             "unknown curation kind {other:?}"
         ))),
     }
+}
+
+/// `GET /api/v1/stats` — the one payload the statistics page renders from.
+///
+/// The page computes nothing itself: a page that recomputes an aggregate the API returns is two answers
+/// waiting to disagree, and the page is the one nobody notices is wrong.
+async fn stats(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
+    let payload = concord_db::stats::payload(&state.pool)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::to_value(payload).map_err(internal)?))
+}
+
+/// `GET /api/v1/stats/summary` — the census alone, for the reader that wants the instance's own numbers
+/// without accepting anything first.
+async fn stats_summary(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
+    let census = concord_db::stats::census(&state.pool)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::to_value(census).map_err(internal)?))
 }
