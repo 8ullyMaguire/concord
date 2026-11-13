@@ -2062,6 +2062,59 @@ foreign key and answers 500 — the row cannot exist without an attributable per
 holds); and a non-numeric id on the reject/validate path is **404**, kept as the reference has it for *this* path even
 though its generic complaint path answers 400.
 
+### Row 11 — part 41: B5, the milestone writes (2026-11-13, `8c1f46f`)
+
+```
+gate (before): the six milestone write routes -> 404
+gate (after):
+  probe_s5_milestonewrites.py -> 41/41 ok
+  complaintwrites 40/40, requestwrites 43/43, filing 31/31, requests 23/23, accept 15/15   (no regression)
+  routes.py -> go 216 / port 128   missing: 90 (80 json, 10 page)
+  concord-parity -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-db --lib -> 38 passed
+```
+
+`crates/db/src/milestones.rs` gained `create`, `update`, `set_status`, `close`, `assign_features`, `reorder` (+ `Refused`).
+
+**B5 was taken before B4**, which the plan listed next: B5 is self-contained, and its create path is the first insert into a
+new table since the complaint writes, where the `public_id` rule had just been learned — cheaper to pay here than in the
+middle of fourteen admin routes. A reordering, not a change of plan.
+
+Rules asserted: every write is **maintainer** work; `target_date` is optional and an undated milestone has made no
+promise; a title is required and unique **within the project**; `PUT /status` is a **no-op with no act** when nothing
+changes; **closing is the only path** into `done`/`cancelled` — `done` with open features and no successor is refused
+*with the count*, a successor **moves** them with **one act per feature**, a cancellation **moves none**; a batch assign
+**appends after the tail**; a feature from another project is refused rather than pulled in; reordering refuses a feature
+that is not in the milestone instead of skipping it, and answers **204 with no body**.
+
+**NEGATIVE CONTROLS.**
+
+```
+close without the open-features refusal:
+  FAIL closing as done with 3 open features and no successor is 400: got 200 want 400
+  ... and the five after it (the milestone is already done, so nothing can succeed it)        35/41
+status no-op removed (always update + audit):
+  FAIL and writes NO second act: got 2 want 1                                                40/41
+assign ignores feature ownership:
+  FAIL a feature from ANOTHER project is 404: got 200 want 404
+  FAIL positions ... got [1, 2, 3, 3] want [1, 2, 3]   (a duplicate position, from the foreign row)
+  ... and five more                                                                          34/41
+```
+
+**Two things found by running it, not by reading:**
+
+* the probe's cross-project-title assertion was passing **for the wrong reason** — the maintainer was not a member of the
+  second project, so the 403 came from the role gate rather than the uniqueness rule. Fixed by making them a maintainer
+  of both, so the assertion tests what its label says. *A green assertion whose reason differs from its label is a lie that
+  costs a later reviewer an hour.*
+* axum refuses two routes that differ only in a parameter's **name**, so the five writes reuse `{project_id}`/`{milestone}`
+  from the read that already owns that path, and `POST /projects/{slug}/milestones` was attached to the existing GET
+  instead of registered twice — part 40's boot panic, avoided by reading the registration first.
+
+**Recorded, not silently fixed:** `PUT /status` accepts `done` and `cancelled` as words, so a client can mark a milestone
+done with open features under it — the exact state `/close` exists to prevent. The reference does this too and a page may
+use the route, so it is carried as-is for the cutover checklist rather than tightened here.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
