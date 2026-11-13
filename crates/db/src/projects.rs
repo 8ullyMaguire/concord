@@ -707,3 +707,19 @@ pub async fn governance_model(pool: &PgPool, project_id: i64) -> Result<String, 
         })
         .unwrap_or_else(|| "collective".to_string()))
 }
+
+/// A user's role in a project, `None` when they are not a member.
+///
+/// # Errors
+/// [`sqlx::Error`] when the read fails.
+pub async fn member_role(
+    pool: &PgPool,
+    project_id: i64,
+    user_id: i64,
+) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar("select role from members where project_id = $1 and user_id = $2")
+        .bind(project_id)
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await
+}

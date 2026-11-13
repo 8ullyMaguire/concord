@@ -7,13 +7,22 @@
      darker and measures 4.75:1, so the token moves rather than the one rule: every white-on-indigo
      surface inherits the pass. Measured by a browser crawl on 2026-11-13 (.47 on /projects). */
   --indigo: #5f62ea;
+  /* The indigo is two roles and they need two values. As a BUTTON BACKGROUND behind white label text it is
+     #5f62ea (4.75:1). As TEXT on this site's slate-100 surface (#f1f5f9) it is 4.34:1 — under AA, measured on
+     /taxonomy by a browser crawl on 2026-11-13 — so links, stat values and icons take --indigo-text, which is
+     #4f46e5 at 5.74:1. One value could not satisfy both, which is what the crawl was saying on two pages in a row. */
+  --indigo-text: #4f46e5;
   --indigo-hover: #4f46e5;
   --indigo-light: #e0e7ff;
   --indigo-border: #c7d2fe;
   --purple: #8b5cf6;
   --ink: #0f172a;
   --slate-600: #475569;
-  --slate-500: #64748b;
+  /* The body surface is slate-100 (#f1f5f9) and every one of this token's 32 uses is a text colour on it:
+     at #64748b that is 4.34:1 for 14px text, under AA. Measured by a browser crawl on 2026-11-13. The value moves
+     to slate-600's 6.92:1 rather than the 32 call sites; the name stays, because renaming it would touch every one
+     of them to say the same thing. */
+  --slate-500: #475569;
   --slate-400: #94a3b8;
   --slate-300: #cbd5e1;
   --slate-200: #e2e8f0;
@@ -39,7 +48,7 @@ body {
 
 h1, h2, h3, h4, h5, h6 { font-weight: 600; line-height: 1.25; margin: 0; }
 p { margin: 0; }
-a { color: var(--indigo); text-decoration: none; }
+a { color: var(--indigo-text); text-decoration: none; }
 code, pre { font-family: "SF Mono", "Fira Code", "Fira Mono", Menlo, Consolas, monospace; }
 
 ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -426,7 +435,7 @@ a.card { display: block; color: inherit; }
 }
 @media (max-width: 640px) { .stats-grid { grid-template-columns: 1fr; gap: 1.25rem; } }
 
-.stat-value { font-size: 1.875rem; font-weight: 700; color: var(--indigo); line-height: 1; margin-bottom: 0.25rem; }
+.stat-value { font-size: 1.875rem; font-weight: 700; color: var(--indigo-text); line-height: 1; margin-bottom: 0.25rem; }
 .stat-label { font-size: 0.875rem; font-weight: 500; color: var(--slate-500); }
 
 /* Health bar ----------------------------------------------------------------- */
@@ -627,7 +636,10 @@ a.card { display: block; color: inherit; }
 
 .page-header { margin-bottom: 2rem; }
 .page-title { font-size: 1.75rem; font-weight: 700; color: var(--ink); line-height: 1.2; }
-.page-subtitle { font-size: 0.875rem; color: var(--slate-500); margin-top: 0.25rem; }
+.page-subtitle { font-size: 0.875rem; color: var(--slate-600); margin-top: 0.25rem; }
+/* --slate-500 (#64748b) is 4.34:1 on the page's light surface (#f1f5f9) at 14px — under AA, measured by a browser
+   crawl on 2026-11-13. The token is right on the dark surfaces elsewhere in this file, so the subtitle moves a step
+   rather than the token: --slate-600 is 6.92:1 on the same surface. */
 
 /* Grids ---------------------------------------------------------------------- */
 
@@ -664,7 +676,7 @@ a.card { display: block; color: inherit; }
   color: var(--ink);
   margin-bottom: 0.5rem;
 }
-.explore-title svg { height: 1.25rem; width: 1.25rem; color: var(--indigo); }
+.explore-title svg { height: 1.25rem; width: 1.25rem; color: var(--indigo-text); }
 
 /* Dark "flip" section ------------------------------------------------------------ */
 
@@ -1123,7 +1135,7 @@ a.card { display: block; color: inherit; }
 .doc-reader { min-width: 0; }
 .doc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
 .doc-head .page-title { font-size: 1.5rem; }
-.doc-head .page-subtitle { margin-top: 0.25rem; font-size: 0.8125rem; color: var(--slate-500); }
+.doc-head .page-subtitle { margin-top: 0.25rem; font-size: 0.8125rem; color: var(--slate-600); }
 
 .doc-large { display: grid; grid-template-columns: 200px 1fr; gap: 1.5rem; align-items: start; }
 /* The sections occupy the second grid cell as one block and stack inside it.
@@ -1149,7 +1161,7 @@ a.card { display: block; color: inherit; }
 .doc-toc-title { font-size: 0.6875rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--slate-400); margin-bottom: 0.5rem; }
 .doc-toc ol { margin: 0; padding-left: 1.125rem; display: flex; flex-direction: column; gap: 0.25rem; }
 .doc-toc-link { color: var(--slate-600); }
-.doc-toc-link:hover { color: var(--indigo); }
+.doc-toc-link:hover { color: var(--indigo-text); }
 
 /* -------------------------------------------------------------- markdown */
 /* Class prefix md- because these are emitted by markdown.js and nothing else. */

@@ -45,6 +45,26 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/projects/{slug}/consensus/{call}",
             get(get_consensus),
         )
+        .route(
+            "/api/v1/projects/{slug}/consensus",
+            post(open_consensus),
+        )
+        .route(
+            "/api/v1/projects/{slug}/consensus/{call}/position",
+            post(cast_consensus_position),
+        )
+        .route(
+            "/api/v1/projects/{slug}/consensus/{call}/objection",
+            post(create_consensus_objection),
+        )
+        .route(
+            "/api/v1/projects/{slug}/consensus/{call}/close",
+            post(close_consensus),
+        )
+        .route(
+            "/api/v1/projects/{slug}/consensus/objections/{objection}/resolve",
+            put(resolve_consensus_objection),
+        )
         .route("/api/v1/projects/{slug}/audit", get(list_audit))
         .route(
             "/api/v1/projects/{slug}/audit/actions",
@@ -873,4 +893,225 @@ async fn get_consensus(
         "tally_visible": visible,
         "positions": serde_json::to_value(shown_positions).map_err(internal)?,
     })))
+}
+
+/// Resolve a project by slug, or the 404 envelope.
+async fn project_for(
+    state: &AppState,
+    slug: &str,
+) -> Result<concord_db::projects::Project, ApiError> {
+    concord_db::projects::project_by_slug(&state.pool, slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))
+}
+
+/// Parse a path id, naming the segment that was wrong.
+fn parse_id(raw: &str, what: &str) -> Result<i64, ApiError> {
+    raw.parse::<i64>()
+        .map_err(|_| ApiError::invalid_request(format!("{what} must be an integer")))
+}
+
+/// The roles that may open or close a call: §6.8 puts "call and close consensus" in the maintainer's
+/// column, and calling one and closing one are the same power, so they carry the same gate.
+///
+/// A gate that only checked "is a member" let any account with a session decide any project's call.
+async fn require_maintainer(
+    pool: &sqlx::PgPool,
+    project_id: i64,
+    user_id: i64,
+) -> Result<(), ApiError> {
+    let role = concord_db::projects::member_role(pool, project_id, user_id)
+        .await
+        .map_err(internal)?
+        .unwrap_or_default();
+    if !matches!(role.as_str(), "owner" | "maintainer") {
+        return Err(ApiError::forbidden(
+            "calling and closing consensus is a maintainer's act",
+        ));
+    }
+    Ok(())
+}
+
+#[derive(Debug, Deserialize)]
+struct OpenConsensusRequest {
+    #[serde(default)]
+    feature_id: i64,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    description: String,
+}
+
+/// `POST /api/v1/projects/{slug}/consensus` — open a call.
+///
+/// `opened_by` is the authenticated caller. It used to be hardcoded to 1, so every call in the database
+/// claimed user 1 opened it.
+async fn open_consensus(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<OpenConsensusRequest>,
+) -> Result<(axum::http::StatusCode, Json<Value>), ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
+    require_maintainer(&state.pool, project.id, user.id).await?;
+    let call = concord_db::consensus_writes::create_call(
+        &state.pool,
+        project.id,
+        body.feature_id,
+        user.id,
+        &body.title,
+        &body.description,
+    )
+    .await
+    .map_err(write_error)?;
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(serde_json::to_value(call).map_err(internal)?),
+    ))
+}
+
+#[derive(Debug, Deserialize)]
+struct PositionRequest {
+    position: String,
+    #[serde(default)]
+    #[allow(dead_code)]
+    reason: String,
+}
+
+/// `POST /api/v1/projects/{slug}/consensus/{call_id}/position` — cast or replace a stance.
+async fn cast_consensus_position(
+    State(state): State<AppState>,
+    Path((slug, call)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(body): Json<PositionRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    let project = project_for(&state, &slug).await?;
+    let call_id = parse_id(&call, "call id")?;
+    concord_db::consensus_writes::cast_position(&state.pool, project.id, call_id, user.id, &body.position)
+        .await
+        .map_err(write_error)?;
+    let _ = concord_db::feature_writes::add_audit(
+        &state.pool,
+        project.id,
+        user.id,
+        "cast_position",
+        "consensus_call",
+        call_id,
+        &body.position,
+    )
+    .await;
+    Ok(Json(json!({"status": "ok", "position": body.position})))
+}
+
+#[derive(Debug, Deserialize)]
+struct ObjectionRequest {
+    principle: String,
+    violation: String,
+    #[serde(default)]
+    remedy: String,
+}
+
+/// `POST /api/v1/projects/{slug}/consensus/{call_id}/objection` — §6.6's block, in writing.
+async fn create_consensus_objection(
+    State(state): State<AppState>,
+    Path((slug, call)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(body): Json<ObjectionRequest>,
+) -> Result<(axum::http::StatusCode, Json<Value>), ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    let project = project_for(&state, &slug).await?;
+    let call_id = parse_id(&call, "call id")?;
+    let id = concord_db::consensus_writes::create_objection(
+        &state.pool,
+        project.id,
+        call_id,
+        user.id,
+        &body.principle,
+        &body.violation,
+        &body.remedy,
+    )
+    .await
+    .map_err(write_error)?;
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(json!({"id": id, "status": "open"})),
+    ))
+}
+
+/// `POST /api/v1/projects/{slug}/consensus/{call_id}/close` — fix the verdict.
+///
+/// No body: since the eighth pass a close never overrides (the override is the second window, with its
+/// own route), so there is no note for it to carry.
+async fn close_consensus(
+    State(state): State<AppState>,
+    Path((slug, call)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    let project = project_for(&state, &slug).await?;
+    require_maintainer(&state.pool, project.id, user.id).await?;
+    let call_id = parse_id(&call, "call id")?;
+    let summary = concord_db::consensus_writes::close_call(&state.pool, project.id, call_id)
+        .await
+        .map_err(write_error)?;
+    let verdict = summary
+        .get("result")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
+    let _ = concord_db::feature_writes::add_audit(
+        &state.pool,
+        project.id,
+        user.id,
+        "close_consensus",
+        "consensus_call",
+        call_id,
+        &verdict,
+    )
+    .await;
+    Ok(Json(summary))
+}
+
+#[derive(Debug, Deserialize)]
+struct ResolveObjectionRequest {
+    status: String,
+    resolution: String,
+}
+
+/// `PUT /api/v1/projects/{slug}/consensus/objections/{id}/resolve` — the objection's written answer.
+async fn resolve_consensus_objection(
+    State(state): State<AppState>,
+    Path((slug, objection)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(body): Json<ResolveObjectionRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    let project = project_for(&state, &slug).await?;
+    require_maintainer(&state.pool, project.id, user.id).await?;
+    let objection_id = parse_id(&objection, "objection id")?;
+    concord_db::consensus_writes::resolve_objection(
+        &state.pool,
+        objection_id,
+        &body.status,
+        &body.resolution,
+    )
+    .await
+    .map_err(write_error)?;
+    Ok(Json(json!({"id": objection_id, "status": body.status})))
 }

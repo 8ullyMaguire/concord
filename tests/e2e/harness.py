@@ -261,9 +261,12 @@ class PgSeed:
         try:
             cur.execute(translated, tuple(params))
         except Exception as error:  # noqa: BLE001 — the point is to name the statement
+            # `columns` is only bound on the INSERT path, so it is looked up defensively: the earlier
+            # version raised UnboundLocalError from inside the handler and buried the real error.
+            extra = f"\n  columns: {columns}" if "columns" in dir() else ""
             raise AssertionError(
-                f"seed statement failed: {error}\n  sql: {translated}\n"
-                f"  columns: {columns}\n  params: {list(params)!r}"
+                f"seed statement failed: {error}\n  sql: {translated}{extra}\n"
+                f"  params: {list(params)!r}"
             ) from error
         if translated.rstrip().upper().endswith("RETURNING ID"):
             row = cur.fetchone()
