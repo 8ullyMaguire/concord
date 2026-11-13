@@ -955,6 +955,24 @@ and production leaves both empty.
 **Not asserted:** the Forgejo branch has no probe; the fixtures are GitHub-shaped. Same code path, different JSON
 keys — the kind of claim that deserves a run, so it is listed as open rather than assumed.
 
+### Row 11 — part 10: the Forgejo branch (2026-11-13, `62f462b`)
+
+Part 9 closed naming this gap in its own commit message; this closes it.
+
+```
+gate (before): the Forgejo read had no assertion anywhere — the fixtures were GitHub-shaped.
+gate (after):
+  probe_s5_forgefetch.py -> 24/24 ok   (was 16/16)
+    ok forgejo commits come from X-Total-Count: got 88 want 88
+    ok forgejo contributors are distinct logins on one page: got 3 want 3
+    ok forgejo review latency: got 3.0 want 3.0
+```
+
+Three differences from the GitHub path, each now measured: the commit total is `X-Total-Count` (GitHub uses the
+Link header), contributors are distinct `author.login` over one commits page (GitHub has a contributors
+endpoint), and reviews arrive under `/api/v1/repos`. The fixture repeats one login four times so the assertion is
+the distinct count and not the page length.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
