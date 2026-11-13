@@ -1667,6 +1667,47 @@ Consequence for the remaining rows: every "read the Go first" step now reads `~/
 inventory gate is unchanged at its last measurement — 216 Go routes, 104 answered, 114 missing (104 JSON, 10 page) —
 because the reference is the same code, moved.
 
+### Row 11 — part 34: the request board, its answers and its tags (2026-11-13, `4611bde`)
+
+```
+gate (before): GET /projects/{id}/requests, GET /requests, GET /requests/{id}, /answers, /tags -> 404 (five routes)
+gate (after):
+  probe_s5_requests.py -> 23/23 ok
+  routes.py            -> go 216 / port 109   missing: 109 (99 json, 10 page)
+  cargo test -p concord-db --lib -> 38 passed
+  concord-parity       -> 0 shape(s) disagreed of 16 checked, 5 skipped
+```
+
+Five read routes in one part because they share one guard: `require_readable_request` reaches the project **through the
+request row**, since `/api/v1/requests/{id}` has no project segment — the shape that let this family stay unguarded when
+the project-scoped guard was applied everywhere else.
+
+Three rules, each a bug in the service being ported:
+
+* `requests.project_id` is **nullable** and NULL means **instance-wide**. A plain `i64` that scans the column fails on
+  exactly the rows that make the feature work ("converting NULL to int64"); it is read as `Option<i64>`, normalised to
+  `0`, and the JSON **omits** the key so a client can tell *instance-wide* from *project 0*;
+* an instance-wide request is **public by construction** — it belongs to no project, so no project's visibility can hide
+  it. The unported helper called `GetProjectByID(0)` unconditionally and answered 404, making every instance-wide request
+  unreadable through every route that resolves one;
+* an answer's ranking is a **Glicko rating** (`elo_r DESC, id`), not a vote score: the table has `proposed_by` and
+  `elo_r/elo_rd/elo_vol`, and neither `author_id` nor `score`.
+
+**NEGATIVE CONTROL** (the instance-wide branch removed — `GetProjectByID(0)` again):
+
+```
+FAIL an instance-wide request is readable with NO token: got 404 want 200
+FAIL and says what it is: got None want 'Instance-wide request'
+FAIL but an instance-wide request stays readable: got 404 want 200
+20/23 ok
+```
+
+**Found by failing:** `request_answers` carries `UNIQUE (request_id, project_id)` — an answer is **a project's** answer
+to a request, one per project, which is precisely what makes the cross-project comparison the rating exists for. The
+fixture had to create a second project to hold the second answer. Cleanup had to delete through **both** FK routes (by
+request and by project) and the tags before the projects, because a rival project answering another project's request
+holds references on both sides.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
