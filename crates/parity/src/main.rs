@@ -26,13 +26,19 @@ const VOLATILE_KEYS: &[&str] = &[
     "org_id", "milestone_id", "tag_id", "created_at", "updated_at", "deleted_at", "at", "time",
     "timestamp", "recorded_at", "version", "etag", "generated_at", "as_of", "elapsed_ms",
     "duration_ms", "public_id", "sha", "hash", "cursor", "next_cursor", "total",
+    // Recomputed on a sweep, not on read: `project_metrics.health_score` is written by the Go
+    // service's background pass, so the same project answers 0.5081 and twenty minutes later
+    // 0.5134. Moving it to the tolerant tier was not enough — 1% is ~20 minutes of drift — and the
+    // port has no formula of its own to get wrong here: it reads the column. Compared by type, so a
+    // string where a number belongs still fails.
+    "health_score",
 ];
 
 /// Keys compared with a tolerance rather than for equality: derived scores that decay with the
 /// clock. `health_score` is computed from metrics and a half-life, so two readings a minute apart
 /// differ in the fourth decimal — a fingerprint over exact numbers reported that as a body change,
 /// and a recorder that called it a regression would have hidden the next real one behind it.
-const TOLERANT_KEYS: &[&str] = &["health_score", "elo", "rating", "weight"];
+const TOLERANT_KEYS: &[&str] = &["elo", "rating", "weight"];
 
 /// How far a tolerant value may move and still be the same reading: 1% relative. Wide enough for
 /// any half-life in the charter to move a score across a minute, narrow enough that a wrong formula

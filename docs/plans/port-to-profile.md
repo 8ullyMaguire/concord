@@ -44,6 +44,38 @@ quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 | 12 | P6 the frontend on SvelteKit + `@polaris/ui` | every page its slice owns renders from the API with the server-rendered head, in a browser |
 | 13 | P7 cutover | `concord.polarisocial.xyz/api/v1/version` served by the Rust binary, and estate gate 17 green for `concord` with NO `reason` |
 
+**Row 8 (S2) — the failing probe, pasted before any code** (2026-11-13):
+
+```
+$ python3 scripts/parity/record.py --seed scripts/parity/seed.txt --out crates/parity/corpus.json
+17 shapes -> crates/parity/corpus.json
+$ CANDIDATE=http://127.0.0.1:8107 concord-parity --corpus crates/parity/corpus.json
+/api/v1/projects/concord/audit: status 404 != 200
+/api/v1/projects/concord/complaints: status 404 != 200
+/api/v1/projects/concord/consensus: status 404 != 200
+/api/v1/projects/concord/features: status 404 != 200
+/api/v1/projects/concord/features/:id: status 404 != 200
+/api/v1/projects/concord/milestones: status 404 != 200
+/api/v1/projects/concord/roadmap: status 404 != 200
+/api/v1/search?q=arena: status 404 != 200
+/api/v1/stats: status 404 != 200
+/api/v1/stats/summary: status 404 != 200
+10 shape(s) disagreed of 16 checked, 0 skipped
+```
+
+Ten routes, not one: S2 owns features, complaints and ranking; `audit`/`consensus` are S3, `stats` is
+S5, `search` is S5's index. The corpus is now the whole recorded surface rather than S1's five shapes,
+so each slice's gate is "its rows of this list go green" and the remaining rows are visible while it
+works.
+
+**The recording also exposed a disagreement that was the corpus's own fault.** `/api/v1/projects`
+differed at `[43].health_score: 0.5081277429935345 vs 0.5134987204761251` — 1.05%, just outside the
+tolerant tier. `project_metrics.health_score` is written by the Go service's background sweep, not
+computed on read, so the migrated value and the live one diverge between the move and the replay. It
+moved to the volatile tier (compared by type, so a string where a number belongs still fails) with the
+reason in `crates/parity/src/main.rs`: the port reads the column and has no formula here to get wrong,
+so a number comparison measures the sweep's clock, not the port.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
