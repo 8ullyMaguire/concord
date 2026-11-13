@@ -27,6 +27,12 @@
 
 use sha2::{Digest, Sha256};
 
+pub mod bands;
+pub mod ollama;
+
+pub use bands::{classify, thresholds_for, Class};
+pub use ollama::{normalize, BoxFuture, Ollama, OllamaConfig};
+
 /// Where two texts are almost certainly the same filing. At or above this the API refuses a new entry unless the filer
 /// explicitly overrides.
 ///
@@ -72,6 +78,19 @@ const STOP_WORDS: [&str; 23] = [
 
 fn is_stop_word(word: &str) -> bool {
     STOP_WORDS.contains(&word)
+}
+
+/// Converts text to a fixed-width vector.
+///
+/// Async and object-safe on purpose: the remote embedder makes a network call on the filing path, and the store holds
+/// one of these behind a `dyn` trait object. A sync trait would force the call to block a runtime thread.
+pub trait Embedder: Send + Sync {
+    /// Identifies the model that produced a vector. Two vectors are only comparable when their ids match.
+    fn id(&self) -> String;
+    /// The vector width. Constant for a given embedder.
+    fn dims(&self) -> usize;
+    /// Convert one text to a vector. Empty for text with nothing indexable.
+    fn embed<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Vec<f32>>;
 }
 
 /// A hashed bag of words plus character n-grams.
@@ -145,8 +164,25 @@ impl Hashed {
             add_hash(&mut v, &gram, 0.6);
         }
 
-        normalize(&mut v);
+        normalize_in_place(&mut v);
         v
+    }
+}
+
+impl Embedder for Hashed {
+    fn id(&self) -> String {
+        "hashed-v1".to_string()
+    }
+
+    fn dims(&self) -> usize {
+        self.dims
+    }
+
+    fn embed<'a>(&'a self, text: &'a str) -> BoxFuture<'a, Vec<f32>> {
+        // The local embedder does no I/O, so the future is ready on the first poll. Boxed anyway to satisfy the trait:
+        // one shape for both embedders beats two call sites.
+        let vector = Hashed::embed(self, text);
+        Box::pin(async move { vector })
     }
 }
 
@@ -209,7 +245,7 @@ fn trigrams(bytes: &[u8]) -> Vec<Vec<u8>> {
 }
 
 /// Scale `v` to unit length in place, leaving an all-zero vector alone.
-fn normalize(v: &mut [f32]) {
+fn normalize_in_place(v: &mut [f32]) {
     let mut sum = 0.0_f64;
     for x in v.iter() {
         sum += f64::from(*x) * f64::from(*x);
