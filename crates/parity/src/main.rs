@@ -28,6 +28,23 @@ const VOLATILE_KEYS: &[&str] = &[
     "duration_ms", "public_id", "sha", "hash", "cursor", "next_cursor", "total",
 ];
 
+/// Keys compared with a tolerance rather than for equality: derived scores that decay with the
+/// clock. `health_score` is computed from metrics and a half-life, so two readings a minute apart
+/// differ in the fourth decimal — a fingerprint over exact numbers reported that as a body change,
+/// and a recorder that called it a regression would have hidden the next real one behind it.
+const TOLERANT_KEYS: &[&str] = &["health_score", "elo", "rating", "weight"];
+
+/// How far a tolerant value may move and still be the same reading: 1% relative. Wide enough for
+/// any half-life in the charter to move a score across a minute, narrow enough that a wrong formula
+/// (which is off by tens of percent) still fails.
+const TOLERANCE: f64 = 0.01;
+
+fn is_tolerant_context(path: &str) -> bool {
+    let leaf = path.rsplit('.').next().unwrap_or(path);
+    let leaf = leaf.split('[').next().unwrap_or(leaf);
+    TOLERANT_KEYS.iter().any(|k| k.eq_ignore_ascii_case(leaf))
+}
+
 fn is_volatile_context(path: &str) -> bool {
     let leaf = path.rsplit('.').next().unwrap_or(path);
     let leaf = leaf.split('[').next().unwrap_or(leaf);
@@ -81,6 +98,67 @@ fn shape(value: &Value, path: &str, out: &mut String) {
                 out.push_str(&format!("string:{s}"));
             }
         }
+    }
+}
+
+/// Every difference between two JSON values, by path, with the tolerance rule applied.
+///
+/// A fingerprint string can only say "these differ"; the path says where, and the tolerance has to
+/// be applied to the values themselves — bucketing them into the string would fail on the run where
+/// a drifting value happens to straddle a bucket boundary, which is a gate that fails for the clock.
+fn differences(want: &Value, got: &Value, path: &str, out: &mut Vec<String>) {
+    match (want, got) {
+        (Value::Object(a), Value::Object(b)) => {
+            for key in a.keys() {
+                match b.get(key) {
+                    Some(other) => differences(&a[key], other, &format!("{path}.{key}"), out),
+                    None => out.push(format!("{path}.{key}: missing")),
+                }
+            }
+            for key in b.keys() {
+                if !a.contains_key(key) {
+                    out.push(format!("{path}.{key}: unexpected"));
+                }
+            }
+        }
+        (Value::Array(a), Value::Array(b)) => {
+            if a.len() != b.len() {
+                out.push(format!("{path}: {} items, want {}", b.len(), a.len()));
+                return;
+            }
+            for (index, (one, two)) in a.iter().zip(b).enumerate() {
+                differences(one, two, &format!("{path}[{index}]"), out);
+            }
+        }
+        (Value::Number(a), Value::Number(b)) if is_tolerant_context(path) => {
+            let (Some(x), Some(y)) = (a.as_f64(), b.as_f64()) else {
+                out.push(format!("{path}: {got} vs {want}"));
+                return;
+            };
+            let scale = x.abs().max(y.abs()).max(1e-9);
+            if (x - y).abs() / scale > TOLERANCE {
+                out.push(format!("{path}: {y} vs {x} (beyond {:.0}%)", TOLERANCE * 100.0));
+            }
+        }
+        (a, b) if is_volatile_context(path) => {
+            if std::mem::discriminant(a) != std::mem::discriminant(b) {
+                out.push(format!("{path}: type changed"));
+            }
+        }
+        (a, b) => {
+            if a != b {
+                out.push(format!("{path}: {} vs {}", short(b), short(a)));
+            }
+        }
+    }
+}
+
+fn short(value: &Value) -> String {
+    let text = value.to_string();
+    if text.len() > 60 {
+        format!("{}…", &text[..60])
+    } else {
+        text
     }
 }
 
@@ -145,28 +223,39 @@ async fn main() -> anyhow::Result<()> {
             bad += 1;
             continue;
         }
-        let got = fingerprint(&body);
-        // One implementation of the shape, run over both bodies: the recorder stores the body
-        // rather than a shape it computed itself, because two implementations of "structurally
-        // equal" drift and then agree with each other instead of with the service.
-        let want_fp = match rec.get("body").and_then(Value::as_str) {
-            Some(recorded) => fingerprint(recorded),
-            None => {
-                if verbose {
-                    eprintln!("{shape_key}: no body recorded — status only");
-                }
-                continue;
-            }
-        };
-        if got != want_fp {
-            eprintln!("{shape_key}: body shape differs");
+        // One comparison, run over both bodies: the recorder stores the body rather than a shape it
+        // computed itself, because two implementations of "structurally equal" drift and then agree
+        // with each other instead of with the service.
+        let Some(recorded) = rec.get("body").and_then(Value::as_str) else {
             if verbose {
-                eprintln!("  want: {}", truncate(&want_fp));
-                eprintln!("  got:  {}", truncate(&got));
+                eprintln!("{shape_key}: no body recorded — status only");
+            }
+            continue;
+        };
+        let (want_value, got_value) = (
+            serde_json::from_str::<Value>(recorded),
+            serde_json::from_str::<Value>(&body),
+        );
+        let mut diffs = Vec::new();
+        match (want_value, got_value) {
+            (Ok(want_json), Ok(got_json)) => differences(&want_json, &got_json, "", &mut diffs),
+            // Not JSON: there is no structure to compare, so the bytes are the whole answer.
+            _ => {
+                if recorded.trim() != body.trim() {
+                    diffs.push(format!("{}: body differs", shape_key));
+                }
+            }
+        }
+        if diffs.is_empty() {
+            if verbose {
+                eprintln!("{shape_key}: ok ({})", truncate(&fingerprint(&body)));
+            }
+        } else {
+            eprintln!("{shape_key}: {} difference(s)", diffs.len());
+            for line in diffs.iter().take(if verbose { 20 } else { 3 }) {
+                eprintln!("  {line}");
             }
             bad += 1;
-        } else if verbose {
-            eprintln!("{shape_key}: ok ({})", truncate(&got));
         }
     }
     println!("{bad} shape(s) disagreed of {checked} checked, {skipped} skipped");

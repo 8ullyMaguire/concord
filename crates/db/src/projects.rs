@@ -543,3 +543,158 @@ async fn place_feature(
     .await?;
     Ok(())
 }
+
+/// The nine board phases, in the order `governance.BoardPhases` lists them — the column `position`
+/// is this order and the board sorts on it, so a different order is a differently-shaped board.
+const BOARD_PHASES: [&str; 9] = [
+    "inbox",
+    "triaged",
+    "solution_draft",
+    "consensus",
+    "ready",
+    "in_progress",
+    "review",
+    "done",
+    "rejected",
+];
+
+/// Why a project could not be created.
+#[derive(Debug)]
+pub enum CreateError {
+    /// `ErrInvalid`: the slug or the governance model.
+    Invalid(String),
+    /// `ErrDuplicate`: the slug is taken.
+    Duplicate(String),
+    Database(sqlx::Error),
+}
+
+impl From<sqlx::Error> for CreateError {
+    fn from(error: sqlx::Error) -> Self {
+        CreateError::Database(error)
+    }
+}
+
+/// `validSlug`: lowercase kebab-case, up to 100 characters.
+fn valid_slug(slug: &str) -> bool {
+    !slug.is_empty()
+        && slug.len() <= 100
+        && slug
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || matches!(c, '-' | '_' | '.'))
+}
+
+/// Create a project and everything that makes one usable.
+///
+/// The Go store does five writes in one transaction and so does this: the project, its charter, its
+/// nine board columns, the creator's maintainer membership, and its metrics row. The charter is the
+/// project's whole policy surface — quorum, consent, how long votes run, what the WIP limits are —
+/// and a project without one has no rules to read, so the two are never separate.
+///
+/// There is no `projects_fts` write here, unlike the Go store's `ReindexProject`: the baseline makes
+/// `search_tsv` a GENERATED column of `projects`, so the index maintains itself and a reindex call
+/// would be writing a table that does not exist.
+///
+/// # Errors
+/// [`CreateError::Invalid`] for a bad slug or governance model, [`CreateError::Duplicate`] for a
+/// taken slug, [`CreateError::Database`] otherwise.
+pub async fn create_project(
+    pool: &PgPool,
+    slug: &str,
+    name: &str,
+    description: &str,
+    governance_model: &str,
+    license: &str,
+    user_id: i64,
+) -> Result<Project, CreateError> {
+    if !valid_slug(slug) {
+        return Err(CreateError::Invalid(
+            "slug must be lowercase kebab-case".into(),
+        ));
+    }
+    let maintainer_led = match governance_model {
+        "collective" => false,
+        "maintainer_led" => true,
+        other => {
+            return Err(CreateError::Invalid(format!(
+                "governance_model must be collective or maintainer_led, not {other:?}"
+            )))
+        }
+    };
+    // `DefaultCharter`, number for number. `MergeRequiresQuorum` is the one field the model changes,
+    // and it is the whole point of the two models: a maintainer-led project merges on a maintainer's
+    // say-so, a collective one needs the room.
+    let merge_requires_quorum = !maintainer_led;
+
+    let mut tx = pool.begin().await?;
+    let id = sqlx::query_scalar::<_, i64>(
+        "insert into projects (slug, name, description, governance_model, license, created_at, \
+                               updated_at, public_id) \
+         values ($1, $2, $3, $4, $5, now(), now(), $6) returning id",
+    )
+    .bind(slug)
+    .bind(name)
+    .bind(description)
+    .bind(governance_model)
+    .bind(license)
+    .bind(ulid::Ulid::new().to_string())
+    .fetch_one(&mut *tx)
+    .await
+    .map_err(|error| match error {
+        sqlx::Error::Database(ref database) if database.code().as_deref() == Some("23505") => {
+            CreateError::Duplicate(slug.to_string())
+        }
+        other => CreateError::Database(other),
+    })?;
+
+    sqlx::query(
+        "insert into charters (project_id, quorum_ratio, quorum_min, consent_ratio, \
+             support_ratio_min, override_ratio, vote_window_days, merge_requires_quorum, \
+             merge_quorum_min, merge_quorum_ratio, require_reviewer_approval, wip_in_progress, \
+             wip_review, lam, mu, pain_halflife_days, rep_halflife_days, glicko_tau, \
+             vote_weight_cap, theme_lifetime_days, solution_call_min_voters, \
+             solution_call_confidence, solution_stable_hours) \
+         values ($1, 0.2, 3, 0.7, 0.5, 0.8, 7, $2, 2, 0.25, true, 3, 4, 20.0, 100.0, 90, 180, \
+                 0.5, 3.0, 90, 3, 0.80, 72)",
+    )
+    .bind(id)
+    .bind(merge_requires_quorum)
+    .execute(&mut *tx)
+    .await?;
+
+    for (position, phase) in BOARD_PHASES.iter().enumerate() {
+        let wip: Option<i64> = match *phase {
+            "in_progress" => Some(3),
+            "review" => Some(4),
+            _ => None,
+        };
+        sqlx::query(
+            "insert into board_columns (project_id, phase, position, wip_limit) \
+             values ($1, $2, $3, $4)",
+        )
+        .bind(id)
+        .bind(*phase)
+        .bind(position as i64)
+        .bind(wip)
+        .execute(&mut *tx)
+        .await?;
+    }
+
+    sqlx::query(
+        "insert into members (project_id, user_id, role, joined_at) values ($1, $2, 'maintainer', now())",
+    )
+    .bind(id)
+    .bind(user_id)
+    .execute(&mut *tx)
+    .await?;
+
+    sqlx::query("insert into project_metrics (project_id, computed_at) values ($1, now())")
+        .bind(id)
+        .execute(&mut *tx)
+        .await?;
+
+    tx.commit().await?;
+    project_by_slug(pool, slug)
+        .await
+        .map_err(CreateError::Database)?
+        .ok_or_else(|| CreateError::Invalid(format!("project {slug:?} vanished after insert")))
+}

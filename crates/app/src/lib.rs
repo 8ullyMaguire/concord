@@ -36,6 +36,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/projects/{slug}", get(get_project))
         .route("/api/v1/projects/{slug}/board", get(get_board))
         .route("/api/v1/auth/register", post(register))
+        .route("/api/v1/projects", post(create_project))
         .route(
             "/api/v1/projects/{slug}/board/cards/{card_id}/move",
             put(move_card),
@@ -192,18 +193,8 @@ async fn move_card(
     headers: HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
     use concord_db::projects::MoveError;
-    let token = headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "))
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
-    match concord_db::auth::user_for_token(&state.pool, token).await {
-        Ok(Some(_)) => {}
-        Ok(None) => return Err(ApiError::unauthenticated("authentication required")),
-        Err(error) => return Err(internal(match error {
-            concord_db::auth::AuthError::Database(e) => e.to_string(),
-            other => format!("{other:?}"),
-        })),
+    if bearer_user(&state, &headers).await?.is_none() {
+        return Err(ApiError::unauthenticated("authentication required"));
     }
     let to = query
         .to
@@ -228,4 +219,81 @@ async fn move_card(
         Err(MoveError::ColumnFull(message)) => Err(ApiError::conflict(message)),
         Err(MoveError::Database(error)) => Err(internal(error)),
     }
+}
+
+
+#[derive(Debug, Deserialize)]
+struct CreateProjectRequest {
+    slug: String,
+    name: String,
+    #[serde(default)]
+    description: String,
+    #[serde(default)]
+    governance_model: String,
+    #[serde(default)]
+    license: String,
+}
+
+/// `POST /api/v1/projects` — a namespace with a slug, a charter and a board.
+///
+/// Needs an account, not merely a token: a nameless party holding namespaces is a squatting vector,
+/// which is why the Go handler refuses a guest identity here and nowhere else in the read path.
+async fn create_project(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<CreateProjectRequest>,
+) -> Result<(axum::http::StatusCode, Json<Value>), ApiError> {
+    use concord_db::projects::CreateError;
+    let user = match bearer_user(&state, &headers).await? {
+        Some(user) => user,
+        None => return Err(ApiError::unauthenticated("authentication required")),
+    };
+    let model = if body.governance_model.is_empty() {
+        "collective"
+    } else {
+        body.governance_model.as_str()
+    };
+    match concord_db::projects::create_project(
+        &state.pool,
+        body.slug.trim(),
+        body.name.trim(),
+        &body.description,
+        model,
+        &body.license,
+        user.id,
+    )
+    .await
+    {
+        Ok(project) => Ok((
+            axum::http::StatusCode::CREATED,
+            Json(serde_json::to_value(project).map_err(internal)?),
+        )),
+        Err(CreateError::Invalid(message)) => Err(ApiError::invalid_request(message)),
+        Err(CreateError::Duplicate(slug)) => Err(ApiError::conflict(format!("project {slug:?} exists"))),
+        Err(CreateError::Database(error)) => Err(internal(error)),
+    }
+}
+
+/// The user behind `Authorization: Bearer …`, or `None` when there is no usable token.
+///
+/// One helper rather than a middleware: the port has routes that treat an absent identity as an
+/// error and routes that treat it as an anonymous read, and a layer that decided for both would be
+/// wrong for one of them.
+async fn bearer_user(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<Option<concord_db::auth::User>, ApiError> {
+    let Some(token) = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+    else {
+        return Ok(None);
+    };
+    concord_db::auth::user_for_token(&state.pool, token)
+        .await
+        .map_err(|error| match error {
+            concord_db::auth::AuthError::Database(e) => internal(e),
+            other => internal(format!("{other:?}")),
+        })
 }

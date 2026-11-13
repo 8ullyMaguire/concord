@@ -80,6 +80,25 @@ def main():
 
     results = [registered]
 
+    # Creating a project: needs an account, validates the slug, seeds charter + nine columns +
+    # membership + metrics, and refuses a slug already taken.
+    status, body = call("POST", "/api/v1/projects",
+                        {"slug": "no-token", "name": "No token"})
+    results.append(("create without a token", status, 401, body))
+    status, body = call("POST", "/api/v1/projects",
+                        {"slug": "Not A Slug", "name": "Bad"}, token=token)
+    results.append(("create with a bad slug", status, 400, body))
+    status, body = call("POST", "/api/v1/projects",
+                        {"slug": "created-probe", "name": "Created probe"}, token=token)
+    results.append(("create", status, 201, (body or {}).get("slug")
+                    if isinstance(body, dict) else body))
+    status, body = call("POST", "/api/v1/projects",
+                        {"slug": "created-probe", "name": "Created probe"}, token=token)
+    results.append(("create a duplicate slug", status, 409, body))
+    status, body = call("GET", "/api/v1/projects/created-probe/board")
+    columns = len(((body or {}).get("columns") or [])) if isinstance(body, dict) else 0
+    results.append((f"nine board columns ({columns})", columns, 9, body if columns != 9 else ""))
+
     # A derived card has no row; naming the feature is how it is placed, and the row is created.
     status, body = call("PUT", f"/api/v1/projects/{slug}/board/cards/0/move?to=inbox&feature_id="
                                 f"{features[0]}", token=token)
