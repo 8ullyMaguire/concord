@@ -248,11 +248,18 @@ def main():
     status, body = call("POST", f"/api/v1/curation/act/{act_by_other}/vote", {"vote": "maybe"},
                         token=author_token)
     results.append(("a vote that is neither is refused", status, 400, message(body)))
-    status, body = call("POST", f"/api/v1/curation/taxonomy/1/vote", {"vote": "yes"},
+    # TaxONOMY IS PORTED as of row 11's part 6, so the assertion changed with it — and the change is the point:
+    # a proposal id that does not exist is a 404 ("no such proposal"), NOT a recorded consent and not the old
+    # "not ported yet" 400. The rule this line exists to protect is that an unported OR unknown kind never
+    # records a consent, so the check is on the unknown kind beside it.
+    status, body = call("POST", "/api/v1/curation/taxonomy/1/vote", {"vote": "yes"},
                         token=author_token)
-    results.append(("an unported kind says so instead of recording a consent", status, 400, message(body)))
-    results.append(("and names the missing eligible set",
-                    1 if "eligible set" in message(body) else 0, 1, message(body)))
+    results.append(("a missing proposal is a 404, not a recorded consent", status, 404, message(body)))
+    status, body = call("POST", "/api/v1/curation/nonsense/1/vote", {"vote": "yes"},
+                        token=author_token)
+    results.append(("an unknown kind is refused", status, 400, message(body)))
+    results.append(("and names the kind",
+                    1 if "nonsense" in message(body) else 0, 1, message(body)))
 
     con = harness.connect("unused")
     con.execute("delete from act_reviews where audit_id in (select id from audit_log where project_id = ?)",

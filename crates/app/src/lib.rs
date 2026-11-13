@@ -2099,13 +2099,22 @@ async fn curation_vote(
             )),
             Err(refusal) => Err(taxonomy_refusal(refusal)),
         },
-        // `strategy` is the same shape over three tables (weight, theme, and their consents) and its own
-        // ratification, which applies a weight or opens a theme window. Not ported yet: refused with a 400 that
-        // names what is missing rather than a consent that counts toward a quorum nobody convened.
-        "strategy" => Err(ApiError::invalid_request(
-            "curation kind \"strategy\" is not ported yet: its ratification applies a weight or opens a theme \
-             window, and recording a consent without that step would count toward a quorum nobody convened",
-        )),
+        // §5.1: a strategic weight is proposed, consented to by §8.2's eligible population, and applied only if
+        // the feature still carries the weight the proposal was written against.
+        "strategy" => match concord_db::strategy::consent(&state.pool, ref_id, user.id).await {
+            Ok(recorded) => Ok((
+                StatusCode::OK,
+                Json(serde_json::json!({
+                    "recorded": true,
+                    "ratified": recorded.ratified,
+                    "stale": recorded.stale,
+                    "consents": recorded.consents,
+                    "eligible": recorded.eligible,
+                    "proposal": recorded.proposal,
+                })),
+            )),
+            Err(refusal) => Err(strategy_refusal(refusal)),
+        },
         other => Err(ApiError::invalid_request(format!(
             "unknown curation kind {other:?}"
         ))),
@@ -2274,6 +2283,40 @@ fn taxonomy_refusal(refusal: concord_db::taxonomy::Refused) -> ApiError {
         )),
         Refused::ApplyFailed(detail) => {
             ApiError::conflict(format!("the change could not be applied: {detail}"))
+        }
+    }
+}
+
+/// Translate a strategy refusal into the envelope.
+///
+/// `Stale` is a 409 that names both numbers: the proposer needs to know the weight it expected and the one it
+/// found, because the difference is the whole reason nothing was written.
+fn strategy_refusal(refusal: concord_db::strategy::Refused) -> ApiError {
+    use concord_db::strategy::Refused;
+    match refusal {
+        Refused::NotFound => ApiError::not_found("no such proposal"),
+        Refused::Decided(status) => ApiError::conflict(format!("the proposal is already {status}")),
+        Refused::SelfConsent => {
+            ApiError::forbidden("the proposer cannot consent to their own proposal")
+        }
+        Refused::NotEligible => ApiError::forbidden(
+            "only an eligible collaborator may consent: §8.2 asks for a qualifying contribution, not merely a \
+             membership",
+        ),
+        Refused::NotYet {
+            verdict,
+            consents,
+            eligible,
+        } => ApiError::conflict(format!(
+            "the consent was recorded and the proposal is {verdict} ({consents} of {eligible} eligible \
+             consenting)"
+        )),
+        Refused::Stale { found } => ApiError::conflict(format!(
+            "the proposal is stale: the feature's weight changed to {found} while the vote was open, and \
+             nothing was written"
+        )),
+        Refused::Failed(detail) => {
+            ApiError::conflict(format!("the weight could not be applied: {detail}"))
         }
     }
 }
