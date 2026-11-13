@@ -326,12 +326,16 @@ pub async fn measured(pool: &PgPool) -> Result<Measured, sqlx::Error> {
 /// # Errors
 /// `sqlx::Error`.
 pub async fn triage_latency(pool: &PgPool) -> Result<Latency, sqlx::Error> {
+    // ONE pass over the audit log, not a correlated subquery per complaint. Measured before the change:
+    // `rows_returned=2402 elapsed=4.291468634s` -- four seconds on an instance with 2,402 complaints, spent
+    // re-scanning the same table for every row, on a route the statistics page loads.
     let rows = sqlx::query(
-        "select extract(epoch from c.created_at)::double precision, \
-                (select min(extract(epoch from a.created_at))::double precision from audit_log a \
-                  where a.action = 'validate_complaint' and a.entity = 'complaint' \
-                    and a.entity_id = c.id) \
-           from complaints c",
+        "with validated as ( \
+            select entity_id, min(extract(epoch from created_at))::double precision as at \
+               from audit_log where action = 'validate_complaint' and entity = 'complaint' \
+              group by entity_id) \
+         select extract(epoch from c.created_at)::double precision, v.at \
+           from complaints c left join validated v on v.entity_id = c.id",
     )
     .fetch_all(pool)
     .await?;

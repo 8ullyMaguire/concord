@@ -22,6 +22,8 @@ pub mod holds;
 pub mod milestones;
 pub mod moderation;
 pub mod notifications;
+pub mod proposals;
+pub mod snapshot;
 pub mod search;
 pub mod stats;
 pub mod override_window;
@@ -35,4 +37,16 @@ pub mod projects;
 /// decides whether that is fatal, which for a service it is.
 pub async fn pool(url: &str) -> Result<PgPool, sqlx::Error> {
     PgPoolOptions::new().max_connections(16).connect(url).await
+}
+
+/// Unix seconds, from the system clock.
+///
+/// One definition for the whole crate: a timestamp written by a job and a timestamp written by the server must
+/// be the same kind of number, or the series has two clocks in it.
+#[must_use]
+pub fn now_unix() -> f64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|elapsed| elapsed.as_secs_f64())
+        .unwrap_or(0.0)
 }
