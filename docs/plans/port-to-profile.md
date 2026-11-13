@@ -233,6 +233,45 @@ survive. Rules from here: the tree is clean before a run starts, nothing is edit
 `git status` is checked after, and a killed run is followed by `git checkout -- ` on every mutated
 path — `git checkout` restores from HEAD, so it cannot fix a mutation that a commit already captured.
 
+**Row 9 (S3) — the read side landed, the write side has not** (2026-11-13). Corpus, before and after:
+
+```
+before: 4 shape(s) disagreed of 14 checked, 3 skipped   (audit 404, consensus 404, search, stats/summary)
+after:  2 shape(s) disagreed of 14 checked, 3 skipped   (search, stats/summary — both S5)
+scripts/parity/e2e.sh -> 29 passed, 0 failed
+```
+
+`/api/v1/projects/concord/audit` now matches the recorded body row for row — 50 entries, `total` 9073,
+`undone`, `can_undo`, `actor_display_name` — and `/consensus` matches its `[]`. Landed in `f49d333`:
+`crates/db/src/audit.rs`, `crates/db/src/consensus.rs`, `governance_model`, and
+`crates/governance` (the decision rules themselves, from the previous commit).
+
+Five rules carried across rather than re-derived, each because the obvious version produced a plausible
+page: the audit page's **two** clamps (an absent limit is 50, a limit over the ceiling is the ceiling —
+folding them silently answers 50 to a caller who asked for 200); no `LIKE` at all for an empty search;
+wildcards escaped backslash-first with `ESCAPE`; the total counted before the rows are read; and §6.6's
+**hidden tally enforced on the server** — an open call returns counts and ratios as `null` while
+`participants`, `eligible` and `quorum_required` stay visible, and positions are reduced to the caller's
+own, because a client-side rule is bypassed by devtools.
+
+`eligible` is computed from §8.2 (role **and** a qualifying contribution inside 365 days) and not
+assumed: `quorum_threshold(0)` is 0 and the quorum check is `participants < threshold`, so an unset
+eligible makes every call quorate by definition — one member consenting to their own call was enough to
+accept it.
+
+Two findings, both from writing the fixtures:
+
+1. **A process decision's `feature_id` must be `NULL`, not `0`.** PostgreSQL enforces
+   `fk_consensus_calls_feature_id`; SQLite never enforced anything (`PRAGMA foreign_keys=OFF`). The
+   application already writes `NULLIF(?, 0)`, so production is unaffected — but every fixture that
+   writes a sentinel must write `NULL`, and every Rust route that creates one owes the same `NULLIF`.
+2. **An audit total is a count over the whole log, not over the page**, and the project's own
+   `create_project`/`create_feature` rows live in it — a fixture must read the delta.
+
+Still open in row 9: the consensus **writes** (`POST /consensus`, `/{id}/position`, `/{id}/objection`,
+`/{id}/close`, `/{id}/override`, `/{id}/outcome`, `/{id}/hold`, `PUT /objections/{id}/resolve`), the
+`consensus_*` and `audit_e2e` suites, and estate gate 49.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
