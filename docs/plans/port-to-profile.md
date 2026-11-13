@@ -33,7 +33,11 @@ Read this table FIRST every turn, before any code. A row is done when its gate r
 quoted below it, never because it merged. The count in this header is the number the turn report
 quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 
-### Open *(6 — S2 first)*
+### Open *(3 — row 11 in progress; 12 and 13 not started)*
+
+Rows 7, 8, 9, 9b and 10 are Done and stay in this table with their commits and gates, because a row is done when its
+gate ran and its output is quoted — not when it was removed from a list. The header count says 3: 11, 12, 13.
+
 
 | # | step | gate — the command that fails if the step is absent |
 |---|---|---|
