@@ -1066,3 +1066,178 @@ async fn priorities_sum_pain_and_theme_weight_and_order_by_the_score() {
     );
     let _ = sqlx::query("select 1").fetch_one(&pool).await.unwrap().get::<i32, _>(0);
 }
+
+/// The audit reader's two clamps and its search escaping — the three rules that produce a plausible
+/// page when they are wrong.
+#[tokio::test]
+async fn the_audit_page_clamps_its_limit_and_escapes_its_search() {
+    let pool = pool().await;
+    let (user, project, _, _, _) = writable(&pool).await;
+    let base = concord_db::audit::Filter { project_id: project, ..Default::default() };
+    // The fixture's own writes (create_project, create_feature) put rows in this project's log, so
+    // every total below is read as a delta from what is already there rather than as an absolute —
+    // read BEFORE the 62 rows this test adds.
+    let before = concord_db::audit::list(&pool, &base).await.expect("baseline page").total;
+    // 60 rows, so the default page (50) and the ceiling (200) can be told apart.
+    for index in 0..60 {
+        concord_db::feature_writes::add_audit(
+            &pool, project, user, "fixture.action", "feature", index,
+            "plain detail",
+        )
+        .await
+        .expect("audit row");
+    }
+    // Two rows whose detail carries LIKE metacharacters: a search for "50%" must find exactly one.
+    concord_db::feature_writes::add_audit(
+        &pool, project, user, "fixture.action", "feature", 900, "the 50% case",
+    )
+    .await
+    .expect("percent row");
+    concord_db::feature_writes::add_audit(
+        &pool, project, user, "fixture.action", "feature", 901, "the 500 case",
+    )
+    .await
+    .expect("plain row");
+
+    let base = concord_db::audit::Filter { project_id: project, ..Default::default() };
+
+    // Absent limit is the default.
+    let page = concord_db::audit::list(&pool, &base).await.expect("page");
+    assert_eq!(page.limit, 50, "an absent limit means the default");
+    assert_eq!(page.entries.len(), 50);
+    assert_eq!(page.total, before + 62, "the total counts the whole log, not the page");
+
+    // A limit above the ceiling is the ceiling, NOT the default. Folding the two clamps answers 50
+    // here and the only symptom is a page that looks like it lost rows.
+    let capped = concord_db::audit::list(
+        &pool,
+        &concord_db::audit::Filter { limit: 5_000, ..base.clone() },
+    )
+    .await
+    .expect("capped");
+    assert_eq!(capped.limit, 200, "a limit above the ceiling is the ceiling");
+
+    // An explicit small limit is honoured.
+    let small = concord_db::audit::list(
+        &pool,
+        &concord_db::audit::Filter { limit: 5, offset: 3, ..base.clone() },
+    )
+    .await
+    .expect("small page");
+    assert_eq!((small.limit, small.offset, small.entries.len()), (5, 3, 5));
+
+    // Newest first.
+    assert!(
+        small.entries[0].id > small.entries[4].id,
+        "the log is newest first"
+    );
+
+    // The wildcard is a literal: "50%" finds the one row that says so, not every row with a 50.
+    let wildcard = concord_db::audit::list(
+        &pool,
+        &concord_db::audit::Filter { text: "50%".into(), ..base.clone() },
+    )
+    .await
+    .expect("search");
+    assert_eq!(
+        wildcard.total, 1,
+        "a search for 50%% must not also match 'the 500 case' -- got {:?}",
+        wildcard.entries.iter().map(|entry| &entry.detail).collect::<Vec<_>>()
+    );
+    assert_eq!(wildcard.entries[0].detail, "the 50% case");
+
+    // An empty search emits no LIKE at all: the unfiltered total comes back.
+    let empty = concord_db::audit::list(&pool, &concord_db::audit::Filter { text: String::new(), ..base.clone() })
+        .await
+        .expect("empty search");
+    assert_eq!(empty.total, before + 62, "an empty search must not narrow anything");
+
+    // The display name is resolved and the email never is: `users` has an email column and this log
+    // is meant to be read by anyone.
+    assert!(
+        page.entries.iter().all(|entry| entry.actor_display_name.is_some()),
+        "every fixture row has an actor, so every row must carry a display name"
+    );
+    let actions = concord_db::audit::actions(&pool, project).await.expect("actions");
+    assert!(actions.contains(&"fixture.action".to_string()));
+    assert_eq!(actions, {
+        let mut sorted = actions.clone();
+        sorted.sort();
+        sorted
+    }, "the filter vocabulary is alphabetical");
+    assert_eq!(concord_db::audit::kind_actions("nonsense"), None, "an unknown kind is an error");
+}
+
+/// §6.6's hidden tally, and the eligible population that makes quorum mean something.
+#[tokio::test]
+async fn an_open_call_hides_its_tally_and_an_unset_eligible_would_make_quorum_vacuous() {
+    let pool = pool().await;
+    let (user, project, _, _, _) = writable(&pool).await;
+    use sqlx::Row;
+    // `feature_id` is NULL, not 0: a §6.6 process decision is not about a feature, and PostgreSQL
+    // enforces `fk_consensus_calls_feature_id` where SQLite never did (`PRAGMA foreign_keys=OFF`). The
+    // fixture writes what the application writes — `internal/store/arenas.go` and the consensus
+    // writer both use `NULLIF(?, 0)` — rather than a sentinel the port is right to refuse.
+    let call: i64 = sqlx::query_scalar(
+        "insert into consensus_calls (project_id, feature_id, opened_by, opens_at, closes_at, \
+                                      status, question, public_id) \
+         values ($1, null, $2, now(), now() + interval '7 days', 'open', 'ship it?', $3) returning id",
+    )
+    .bind(project)
+    .bind(user)
+    .bind(ulid::Ulid::new().to_string())
+    .fetch_one(&pool)
+    .await
+    .expect("call");
+    for stance in ["consent", "consent", "block"] {
+        sqlx::query(
+            "insert into positions (call_id, user_id, position, updated_at) \
+             values ($1, (select id from users order by id limit 1), $2, now()) \
+             on conflict (call_id, user_id) do update set position = excluded.position",
+        )
+        .bind(call)
+        .bind(stance)
+        .execute(&pool)
+        .await
+        .expect("position");
+    }
+
+    let counts = concord_db::consensus::tally(&pool, project, call)
+        .await
+        .expect("tally");
+    assert_eq!(counts.participants, 1, "three rows, one distinct voter");
+    let summary = concord_db::consensus::thresholds_summary(
+        &counts,
+        &concord_governance::Charter::default_for(
+            concord_governance::GovernanceModel::Collective,
+        ),
+    );
+    assert!(summary["consent"].as_i64().is_some(), "a closed call's tally carries counts");
+
+    let hidden = concord_db::consensus::hidden_tally(summary);
+    assert_eq!(hidden["consent"], serde_json::Value::Null, "an open call hides the counts");
+    assert_eq!(hidden["block"], serde_json::Value::Null);
+    assert_eq!(hidden["decisive_ratio"], serde_json::Value::Null);
+    // §6.6 preserves participation progress and the quorum bar.
+    assert!(hidden["participants"].as_i64().is_some(), "participation stays visible");
+    assert!(hidden["eligible"].as_i64().is_some(), "eligibility stays visible");
+    assert!(hidden["quorum_required"].as_i64().is_some(), "the quorum bar stays visible");
+
+    // The caller's own position is returned and nobody else's.
+    let positions = concord_db::consensus::positions(&pool, call).await.expect("positions");
+    let own = concord_db::consensus::own_positions_only(positions.clone(), positions[0].user_id);
+    assert_eq!(own.len(), 1);
+    assert!(concord_db::consensus::own_positions_only(positions, 0).is_empty(), "an anonymous reader owns no position");
+
+    // Eligible is computed from §8.2, not assumed: this fixture's project has a member with no
+    // qualifying contribution, so the count is what it is rather than "everyone".
+    let eligible = concord_db::consensus::eligible_collaborators(&pool, project, 365.0)
+        .await
+        .expect("eligible");
+    assert_eq!(
+        counts.eligible,
+        eligible.len() as i64,
+        "tally.eligible must be the same number the threshold is computed from"
+    );
+    let _ = sqlx::query("select 1").fetch_one(&pool).await.unwrap().get::<i32, _>(0);
+}

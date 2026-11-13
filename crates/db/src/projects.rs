@@ -686,3 +686,24 @@ pub async fn create_project(
         .map_err(CreateError::Database)?
         .ok_or_else(|| CreateError::Invalid(format!("project {slug:?} vanished after insert")))
 }
+
+/// A project's governance model, `collective` when the row has no valid value.
+///
+/// The charters table is not consulted: the model lives on `projects`, and it decides which defaults
+/// apply — a maintainer-led project merges without a quorum, and every threshold read from the charter
+/// has to agree with that.
+///
+/// # Errors
+/// [`sqlx::Error`] when the read fails.
+pub async fn governance_model(pool: &PgPool, project_id: i64) -> Result<String, sqlx::Error> {
+    let model: Option<String> =
+        sqlx::query_scalar("select governance_model from projects where id = $1")
+            .bind(project_id)
+            .fetch_optional(pool)
+            .await?;
+    Ok(model
+        .filter(|value| {
+            concord_governance::GovernanceModel::parse(value).is_some()
+        })
+        .unwrap_or_else(|| "collective".to_string()))
+}
