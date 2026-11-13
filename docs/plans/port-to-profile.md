@@ -33,11 +33,10 @@ Read this table FIRST every turn, before any code. A row is done when its gate r
 quoted below it, never because it merged. The count in this header is the number the turn report
 quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 
-### Open *(12 — M0.2 first)*
+### Open *(11 — M0.3 first)*
 
 | # | step | gate — the command that fails if the step is absent |
 |---|---|---|
-| 2 | M0.2 the PostgreSQL cluster, decided and recorded | `psql "$CONCORD_PG_URL" -c 'select version()'` names a version, and `[site.stack]` carries either 18 or a `reason` |
 | 3 | M0.3 parity recorder, seed, two stable recordings | two runs of `scripts/parity/record.py` over the seed diff empty on every shape without `unstable` |
 | 4 | M0.4 baseline schema, mapped row by row | `\dt` count equals the SQLite table count minus the `*_fts*` shadows, and `\d features` shows `public_id` and `timestamptz` |
 | 5 | M0.5 data mover loads and counts agree | `select count(*)` prints `73 | 5760 | 2402 | 88` |
@@ -72,6 +71,36 @@ every commit on this branch must while the Go tree serves traffic. The gate befo
 Two decisions the row left open, taken here: `/target/` added to `.gitignore` (the tree had no
 Rust ignore rule), and `Cargo.lock` is committed — this is a binary product, so the lock file is
 part of the build, and the branch must be reproducible on the host that deploys it.
+
+**2. M0.2 PostgreSQL 18 on the concord cluster, port 55450** — done 2026-11-13, commit (this one; host
+state plus this ledger edit).
+
+```
+$ psql "$DATABASE_URL" -tAc "select version()"
+PostgreSQL 18.7 (Ubuntu 18.7-1.pgdg24.04+2) on x86_64-pc-linu...
+
+$ grep -c 55450 ~/.config/concord/.env
+1
+```
+
+`pg_lsclusters` now lists `18 concord 55450 online` beside the four 16 clusters, which did not move;
+the live Go service answered `200 0.100743s` on `https://concord.polarisocial.xyz/` with the unit
+still `active` after the install, so the invariant held through the row.
+
+Two deviations, and why each was taken rather than worked around:
+
+- **`noble-pgdg`, not `<codename>-pgdg`.** This host is Linux Mint 22.3 "zena"; pgdg publishes no
+  `zena` suite, and the first attempt with the detected codename failed exactly as it should —
+  `E: The repository 'https://apt.postgresql.org/pub/repos/apt zena-pgdg Release' does not have a
+  Release file`. Mint 22.3 is Ubuntu 24.04 underneath, so the suite is `noble-pgdg` and the package
+  that landed is `18.7-1.pgdg24.04+2`.
+- **The database's timezone is set to UTC on the database itself** (`alter database concord set
+  timezone to 'UTC'`), not left at the cluster default. The Go tree's timestamps travel as
+  contiguous values, so every reader here compares them without a session zone in play; making UTC
+  a property of the database means a psql check cannot be the one thing that reads local time.
+
+The role password is generated on the host (`openssl rand -hex 24`), written only to
+`~/.config/concord/.env` (mode 600), never printed and never in git.
 
 
 ## M0 — the ground (no product code)
