@@ -2461,6 +2461,48 @@ the previous baseline is not demoted:
   fork updated the *parent's* row and then its own. The ratings looked plausible at a glance; only the RD gave it away.
   Read the bind list after every patched SQL statement.
 
+### Row 11 — part 49: B2c, the solution arena's pairwise vote (2026-11-13, `f66b0ab`)
+
+```
+gate (before): POST /projects/{}/features/{}/solutions/vote -> 404
+gate (after):
+  probe_s5_solutionvote.py -> 21/21 ok
+  solutionwrites 24/24, solutioncall 24/24, workitems 44/44, featurewrites 37/37, listwrites 41/41,
+  criteriawrites 45/45, projsettings 28/28, milestonewrites 41/41, complaintwrites 40/40, requestwrites 43/43,
+  filing 31/31, requests 23/23, accept 15/15
+  routes.py -> go 216 / port 157   missing: 61 (51 json, 10 page)
+  concord-parity -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-db --lib -> 38 passed; -p concord-ranking -> 28 passed + 3 golden
+```
+
+`crates/db/src/arena_writes.rs` (new): `cast_vote`, `entry`, `baseline`, `refuse_own_vote`, `apply_game`.
+`voteweight`: `solution_vote_weight` + `tag_reputation` (§8.3's per-tag reputation over four sources — validated complaints,
+merged merge requests, solutions that reached consensus, and non-skip votes on tagged solutions).
+`ranking`: `expertise_multiplier`, `parse_expertise_tags`, `best_tag_reputation`, `outcome_score`.
+
+Rules: both sides must be solutions **of this feature**, checked before the arena is touched; an author cannot rank their own
+entry; a **skip** is recorded and moves nothing; **neither with a baseline is two losses to the baseline**, not a draw; the
+weight comes from the charter, never from the body. Both ratings are computed from their **pre-vote** values and written
+together — updating A then scoring B against the new A gives the winner a smaller gain than the loser's loss.
+
+**Negative controls.**
+
+```
+a skip is scored:                    FAIL and moves nothing at all: got ((1576.68, 260.48, 2), …)   20/21
+neither is a draw:                   FAIL both competitors LOSE to the baseline: got (True, False)   18/21
+an author may rank their own entry:  FAIL an author cannot rank their own entry: got 200 want 403   18/21
+```
+
+**Two things found by running it:**
+
+* the first run measured a weight of **8.79e-07** and *"the winner rose"* **passed** — on a rounding-level change. §12.3's
+  age gate ramps over seven days, so a brand-new account's vote weighs almost nothing: correct behaviour, and a measurement
+  that could not have failed. The probe now backdates the voter a month and asserts the weight lands in `0.5..4.0` (it is
+  1.25) **and** that each rating moves by more than a rating point;
+* removing two statements made **rustc 1.99 ICE** on `crates/cli`; the retry with the parameters explicitly consumed built
+  cleanly. Recorded because the failed build left the **previous binary** in place, so control C printed control B's
+  failures — a stale binary under a failed build is exactly how a control reports somebody else's result.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
