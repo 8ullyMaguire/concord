@@ -1,4 +1,4 @@
-# Plan — port Concord onto the estate profile
+ `stats`, `stats/summary`, `search` done 2026-11-13 (`4f9a707`, `23c4910`); parity 0 disagreed of 14 checked, 2 declared; leaderboards, feeds, binaries and gates 4/5/47 open |# Plan — port Concord onto the estate profile
 
 Implements `docs/specs/port-to-profile-spec.md`; the decisions are
 `~/code/estate/docs/adr/0011-concord-joins-the-profile.md`. Read those two first.
@@ -693,6 +693,55 @@ cannot silently rewrite the text a person reads.
 
 **Corpus after this row:** 20 shapes recorded; `2 shape(s) disagreed of 14 checked, 5 skipped` — both
 survivors are row 11's (`/api/v1/search`, `/api/v1/stats/summary`).
+
+### Row 11 — in progress (2026-11-13)
+
+**Landed:** `/api/v1/stats`, `/api/v1/stats/summary` (`4f9a707`) and `/api/v1/search` (`23c4910`).
+
+```
+$ CANDIDATE=…:8108 concord-parity --corpus crates/parity/corpus.json
+DECLARED /api/v1/notifications: the Go build's 401 is a bare string; … (removed by row 13)
+DECLARED /api/v1/search?q=arena: the Go fts index is missing 2 of 73 projects, so it returns 2 hits where the
+         port returns 3 (suki's description contains 'an arena'); the port's index is generated and cannot go
+         stale (removed by row 13)
+0 shape(s) disagreed of 14 checked, 5 skipped
+```
+
+`/api/v1/stats` is declared time-varying, so the tool skips it; compared by hand against the recorded live
+body with `generated_at` removed: **195 leaf values, 0 differences**.
+
+**The finding of this row, and the first difference the port is right about.** The live build's search cannot
+find two of its own projects:
+
+```
+$ sqlite3 ~/.local/share/concord/concord.db \
+    "select (select count(*) from projects), (select count(*) from projects_fts),
+            (select count(*) from projects p where not exists
+               (select 1 from projects_fts f where f.slug = p.slug))"
+73|111|2
+# missing: ascend, suki
+```
+
+111 index rows for 73 projects, and two projects absent entirely — `suki`'s description reads "…a wiki, an
+arena…" and the live search for `arena` does not return it. The port's index is a generated `search_tsv`
+column, so the database recomputes it from the row and this class of staleness cannot exist. That is DECLARED
+in `concord-parity` with the query above beside it, not reproduced: copying a stale index is not parity, it is
+a bug with a test.
+
+**Two things that cannot be reproduced and are stated rather than hidden:**
+
+1. **The rank.** fts5 ranks by bm25, PostgreSQL by `ts_rank`. The shape keeps a `score` on every hit and orders
+   by it; the values are this database's own. A number forged to look like another database's is worse than an
+   honest one from this one.
+2. **Coverage, kept deliberately.** `projects_fts` indexed name, description, **tags** and **languages**; the
+   generated column covers only the two columns of `projects`, so free text also matches a tag or a language
+   through an `EXISTS`. Without it, a search for `rust` would have quietly stopped finding the `rust` projects
+   — a regression in the direction of "the search got worse", which is exactly what a port must not ship.
+
+**Still open on this row:** the newcomer-responsiveness leaderboard, the feeds, the three binaries
+(`healthsync`, `proposalsweep`, `statsnapshot`) onto `polaris-loops`, `granttrust`/`capableseed`/`forgeseed`/
+`embedbackfill` folded into `crates/cli`, `taxonomy`/`strategy` curation votes (whose eligible sets row 10
+deferred here), and gates 4, 5 and 47.
 
 ### Blocked
 
