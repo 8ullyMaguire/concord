@@ -10,6 +10,7 @@ repository.workspace = true
 [dependencies]
 concord-governance = { path = "../governance" }
 anyhow.workspace = true
+chrono.workspace = true
 axum.workspace = true
 concord-db = { path = "../db" }
 polaris-core.workspace = true

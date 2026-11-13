@@ -8,6 +8,7 @@
 //! salt), because the `$argon2id$v=19$m=...` string is parsed by whichever side verifies it.
 
 use argon2::Argon2;
+use sqlx::Row;
 use base64::Engine;
 use rand::RngCore;
 use serde::Serialize;
@@ -204,4 +205,41 @@ pub async fn user_for_token(pool: &PgPool, token: &str) -> Result<Option<User>, 
         Some(id) => Ok(Some(user_by_id(pool, id).await?)),
         None => Ok(None),
     }
+}
+
+/// Display names for a set of users, in one query.
+///
+/// A feed item carries an author as a NAME, not an id: the document is read outside the product, where an id
+/// means nothing. One query for the whole page rather than one per item — a feed of fifty entries is fifty round
+/// trips otherwise, and the batch is what keeps the feed from being the slowest route on the instance.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn display_names(
+    pool: &PgPool,
+    ids: &[i64],
+) -> Result<std::collections::HashMap<i64, String>, sqlx::Error> {
+    let mut out = std::collections::HashMap::new();
+    if ids.is_empty() {
+        return Ok(out);
+    }
+    let unique: Vec<i64> = {
+        let mut seen: Vec<i64> = ids.iter().copied().filter(|id| *id != 0).collect();
+        seen.sort_unstable();
+        seen.dedup();
+        seen
+    };
+    if unique.is_empty() {
+        return Ok(out);
+    }
+    let rows = sqlx::query(
+        "select id, coalesce(nullif(display_name, ''), username) from users where id = any($1)",
+    )
+    .bind(&unique)
+    .fetch_all(pool)
+    .await?;
+    for row in rows {
+        out.insert(row.try_get(0)?, row.try_get(1)?);
+    }
+    Ok(out)
 }

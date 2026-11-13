@@ -198,3 +198,52 @@ fn chrono_now_unix() -> f64 {
         .map(|elapsed| elapsed.as_secs_f64())
         .unwrap_or(0.0)
 }
+
+/// One milestone's publication event, for the milestones feed.
+///
+/// `status_changed_at` is `0` when the audit log has never recorded a change for it: the feed reports
+/// `created_at` for such a row rather than a change that did not happen. The Go store expresses the same thing
+/// with `COALESCE(…, 0)`, and the caller reads the zero as "no change recorded" instead of as 1970.
+#[derive(Debug, Clone)]
+pub struct Event {
+    /// The milestone.
+    pub milestone_id: i64,
+    /// Its title.
+    pub title: String,
+    /// Its current status.
+    pub status: String,
+    /// When it was created, unix seconds.
+    pub created_at: f64,
+    /// When its status last changed, or zero.
+    pub status_changed_at: f64,
+}
+
+/// Milestones for a project, newest id first, with the last recorded status change.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn events(pool: &PgPool, project_id: i64) -> Result<Vec<Event>, sqlx::Error> {
+    let rows = sqlx::query(
+        "select m.id, m.title, m.status, \
+                extract(epoch from m.created_at)::double precision, \
+                coalesce((select max(extract(epoch from a.created_at))::double precision \
+                            from audit_log a \
+                           where a.entity = 'milestone' and a.entity_id = m.id \
+                             and a.action = 'milestone.status'), 0) \
+           from milestones m where m.project_id = $1 order by m.id desc",
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(Event {
+            milestone_id: row.try_get(0)?,
+            title: row.try_get(1)?,
+            status: row.try_get(2)?,
+            created_at: row.try_get(3)?,
+            status_changed_at: row.try_get(4)?,
+        });
+    }
+    Ok(out)
+}

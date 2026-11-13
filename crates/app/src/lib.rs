@@ -15,6 +15,8 @@ use axum::{
     Json, Router,
 };
 use serde::Deserialize;
+pub mod feeds;
+
 use polaris_core::ApiError;
 use serde_json::{json, Value};
 use sqlx::PgPool;
@@ -65,6 +67,21 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/projects/{project_id}/charter",
             get(get_charter),
         )
+        // §12: the thirteen `.xml` documents. `.xml` and `?format=` are both accepted because they are both
+        // what people type: `/feed.xml` in a reader's UI, `?format=atom` in a link.
+        .route("/feed.xml", get(feeds::projects_feed))
+        .route("/rss.xml", get(feeds::projects_feed))
+        .route("/atom.xml", get(feeds::projects_feed))
+        .route("/projects/{slug}/feed.xml", get(feeds::project_feed))
+        .route("/projects/{slug}/rss.xml", get(feeds::project_feed))
+        .route("/projects/{slug}/atom.xml", get(feeds::project_feed))
+        .route("/projects/{slug}/board/feed.xml", get(feeds::board_feed))
+        .route("/projects/{slug}/board/atom.xml", get(feeds::board_feed))
+        .route("/projects/{slug}/milestones/feed.xml", get(feeds::milestones_feed))
+        .route("/projects/{slug}/consensus/feed.xml", get(feeds::consensus_feed))
+        .route("/projects/{slug}/consensus/atom.xml", get(feeds::consensus_feed))
+        .route("/projects/{slug}/documents/feed.xml", get(feeds::documents_feed))
+        .route("/projects/{slug}/documents/atom.xml", get(feeds::documents_feed))
         .route("/api/v1/search", get(search))
         .route("/api/v1/stats", get(stats))
         .route("/api/v1/stats/summary", get(stats_summary))
