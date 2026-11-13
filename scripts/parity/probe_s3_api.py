@@ -96,6 +96,10 @@ def main():
         "delete from complaints where project_id in (select id from projects where slug = ?)",
         "delete from board_columns where project_id in (select id from projects where slug = ?)",
         "delete from members where project_id in (select id from projects where slug = ?)",
+        # A hold writes an admin_ledger row, which references the project: the ledger is deliberately
+        # durable, so a probe that repeated itself hit the FK on the SECOND run, not the first.
+        "delete from admin_ledger where project_id in (select id from projects where slug = ?)",
+        "delete from emergency_holds where project_id in (select id from projects where slug = ?)",
     ):
         con.execute(drop, (slug,))
     con.execute("delete from projects where slug = ?", (slug,))
@@ -261,6 +265,7 @@ def main():
     # A call on no feature is a §6.6 process decision and must not need one.
     status, body = call("POST", f"/api/v1/projects/{slug}/consensus",
                         {"title": "amend the charter"}, token=token)
+    process_call = (body or {}).get("id")
     results.append(("a process decision opens without a feature", status, 201,
                     (body or {}).get("feature_id")))
     results.append(("...and its feature_id is 0", (body or {}).get("feature_id"), 0,
@@ -329,6 +334,51 @@ def main():
     status, body = call("GET", f"/api/v1/projects/{slug}/consensus/{blocked_call}")
     results.append(("the override accepts the call", (body or {}).get("call", {}).get("result"),
                     "accepted_overridden", (body or {}).get("call", {}).get("result")))
+
+    # 12. §6.6's emergency hold: a pause that cannot become a veto.
+    status, body = call("GET", f"/api/v1/projects/{slug}/consensus/{process_call}/hold")
+    results.append(("no hold yet", (body or {}).get("hold"), None, body))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{process_call}/hold",
+                        {"grounds": "security", "reason": "an embargo"})
+    results.append(("hold without a token", status, 401, message(body)))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{process_call}/hold",
+                        {"grounds": "security", "reason": "an embargo"}, token=member_token)
+    results.append(("hold as a contributor", status, 403, message(body)))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{process_call}/hold",
+                        {"grounds": "vibes", "reason": "we do not like it"}, token=token)
+    results.append(("hold on an invented ground", status, 400, message(body)))
+    results.append(("the refusal names the grounds", 1 if "security" in message(body) else 0, 1,
+                    message(body)))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{process_call}/hold",
+                        {"grounds": "legal", "reason": "   "}, token=token)
+    results.append(("hold with no written reason", status, 400, message(body)))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{process_call}/hold",
+                        {"grounds": "legal", "reason": "a subpoena", "days": 90}, token=token)
+    results.append(("a hold past the ceiling is refused, not clamped", status, 400, message(body)))
+    # The cross-project defect this store check exists to close: project B suspending project A's call.
+    status, body = call("POST", f"/api/v1/projects/no-such-project/consensus/{process_call}/hold",
+                        {"grounds": "legal", "reason": "a subpoena"}, token=token)
+    results.append(("a hold through another project's URL", status, 404, message(body)))
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{process_call}/hold",
+                        {"grounds": "Security", "reason": " an embargo "}, token=token)
+    hold = body if isinstance(body, dict) else {}
+    results.append(("place a hold", status, 201, hold))
+    results.append(("the ground is normalised", hold.get("grounds"), "security", hold.get("grounds")))
+    results.append(("the reason is trimmed", hold.get("reason"), "an embargo", hold.get("reason")))
+    results.append(("the default duration is seven days",
+                    1 if hold.get("expires_at") and hold.get("created_at")
+                    and abs((hold["expires_at"] - hold["created_at"]) - 7 * 86400) < 2 else 0,
+                    1, (hold.get("expires_at"), hold.get("created_at"))))
+    results.append(("the hold is active", hold.get("active"), True, hold.get("active")))
+    status, body = call("GET", f"/api/v1/projects/{slug}/consensus/{process_call}/hold")
+    results.append(("the hold reads back", (body or {}).get("hold", {}).get("id"), hold.get("id"),
+                    body))
+    # A hold suspends: the call cannot be closed while it is force.
+    status, body = call("POST", f"/api/v1/projects/{slug}/consensus/{process_call}/close",
+                        None, token=token)
+    results.append(("a held call cannot be closed", status, 400, message(body)))
+    results.append(("the refusal names the hold", 1 if "hold" in message(body) else 0, 1,
+                    message(body)))
 
     failed = 0
     for label, got, want, detail in results:

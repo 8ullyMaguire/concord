@@ -62,6 +62,10 @@ pub fn router(state: AppState) -> Router {
             post(close_consensus),
         )
         .route(
+            "/api/v1/projects/{slug}/consensus/{call}/hold",
+            get(get_call_hold).post(place_emergency_hold),
+        )
+        .route(
             "/api/v1/projects/{slug}/consensus/{call}/override",
             get(get_override_window).post(open_override_window),
         )
@@ -1239,4 +1243,77 @@ async fn close_override_window(
         .await
         .map_err(write_error)?;
     Ok(Json(serde_json::to_value(window).map_err(internal)?))
+}
+
+/// `GET /api/v1/projects/{slug}/consensus/{call_id}/hold` — the in-force hold, or null.
+///
+/// The call's OWN project answers, not the URL's: the id is sequential, so a route that resolved the call
+/// by id alone would let anyone who can read project A read project B's hold grounds and expiry.
+async fn get_call_hold(
+    State(state): State<AppState>,
+    Path((slug, call)): Path<(String, String)>,
+) -> Result<Json<Value>, ApiError> {
+    let project = project_for(&state, &slug).await?;
+    let call_id = parse_id(&call, "call id")?;
+    let call = concord_db::consensus::call(&state.pool, call_id)
+        .await
+        .map_err(internal)?
+        .filter(|found| found.project_id == project.id)
+        .ok_or_else(|| ApiError::not_found(format!("consensus call {call_id}")))?;
+    let _ = call;
+    let hold = concord_db::holds::active_for_call(&state.pool, call_id)
+        .await
+        .map_err(internal)?;
+    // `{"hold": null}` rather than 404: "no hold" is a fact about the call, not a missing resource.
+    Ok(Json(json!({
+        "hold": hold.map(|hold| serde_json::to_value(hold)).transpose().map_err(internal)?
+    })))
+}
+
+#[derive(Debug, Deserialize)]
+struct HoldRequest {
+    #[serde(default)]
+    grounds: String,
+    #[serde(default)]
+    reason: String,
+    #[serde(default)]
+    days: i64,
+}
+
+/// `POST /api/v1/projects/{slug}/consensus/{call_id}/hold` — suspend a call.
+///
+/// The call is resolved first, so the role is asked for on the project that owns it. Asking for the role
+/// against the URL's project while loading the call by id alone let a maintainer of one project suspend
+/// another's call.
+async fn place_emergency_hold(
+    State(state): State<AppState>,
+    Path((slug, call)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(body): Json<HoldRequest>,
+) -> Result<(axum::http::StatusCode, Json<Value>), ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    let _url_project = project_for(&state, &slug).await?;
+    let call_id = parse_id(&call, "call id")?;
+    let owner = concord_db::consensus::call(&state.pool, call_id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("consensus call {call_id}")))?;
+    require_maintainer(&state.pool, owner.project_id, user.id).await?;
+    let hold = concord_db::holds::place(
+        &state.pool,
+        owner.project_id,
+        call_id,
+        user.id,
+        &body.grounds,
+        &body.reason,
+        body.days,
+    )
+    .await
+    .map_err(write_error)?;
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(serde_json::to_value(hold).map_err(internal)?),
+    ))
 }

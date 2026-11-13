@@ -14,6 +14,7 @@ pub mod consensus;
 pub mod consensus_writes;
 pub mod feature_writes;
 pub mod features;
+pub mod holds;
 pub mod milestones;
 pub mod override_window;
 pub mod priorities;
