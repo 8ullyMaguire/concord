@@ -1129,6 +1129,25 @@ want 0.8333`.
 Two schema facts found by failing: `reputation_events` has `kind`, not `reason`; and a bare `0` in a select list is
 INT4, so decoding it as `i64` fails with a message naming a **column number** rather than a column — `0::bigint`.
 
+### Row 11 — part 16: document kinds and feature tags (2026-11-13, `171c2b1`)
+
+```
+gate (before): GET /projects/{slug}/documents/kinds -> 404
+               GET /projects/{slug}/features/{feature}/tags -> 404
+gate (after):
+  probe_s5_kinds.py -> 7/7 ok
+  routes.py         -> go 216 / port 87   (131 remain)
+  cargo test -p concord-db --lib -> 29 passed
+```
+
+Two one-line lookups, each carrying the rule that makes it honest: `documents/kinds` returns the schema's
+vocabulary rather than `select distinct kind` (a distinct query lets one typo invent a kind that the writer then
+validates against), and the tags route resolves the feature INSIDE the project first, so another project's feature
+id is a 404 rather than a list of somebody else's tags. Both are also refused for a project the caller cannot read.
+
+Three schema facts found by failing: `features` has no `description` column, `features.author_id` is NOT NULL (a
+fixture needs a real user, not a literal), and the e2e harness appends `public_id` on its own.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
