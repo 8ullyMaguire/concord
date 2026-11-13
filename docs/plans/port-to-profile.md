@@ -400,6 +400,40 @@ evidence.** Every rule in this slice was shipped with a control run that made it
 tally (44/46 with the reader forced visible), the hold (60/62 with the close not consulting it), and the
 one survivor that had to be applied by hand before it could be called equivalent.
 
+**Row 9 (S3) — §6.5's outcomes, the decision record, the charter and the hold** (2026-11-13, `a2ace5d`,
+`69c3c68`, `bc90fd8`). The probe is at **94/94**:
+
+```
+scripts/parity/probe_s3_api.py -> 94/94 ok, exit 0
+negative control (guard restored to `status == "closed"`, as the Go store had it): 88/94
+  FAIL record the outcome: got 409 want 200  (call 55 was already decided: )
+```
+
+That control is the whole point of the entry: the Go store guarded the decision record on
+`status != "open"`, so a call the page had just closed could never record its outcome. Six assertions fail
+under the old guard and all 94 pass under the new one, which is the difference between a rule and a comment.
+
+Landed: `POST /{call}/outcome` (five outcomes, each moving both the solution and the feature; "sent-back"
+returns the feature to discussion rather than rejecting it), the `adr` decision record carrying positions,
+objections with remedies, and the solutions' final states; `GET /projects/{id}/charter`; `GET`/`POST
+/{call}/hold` with the narrow reading of §6.6 — suspend, never override, written reason, stated ground,
+refused above the ceiling rather than clamped; and `GET`/`POST /{call}/override` with four refusals.
+
+One deliberate gap, recorded rather than papered over: the decision record's table is **not** ordered by
+§6.4's score, because `solutions` carries no rating and the score comes from the feature's arena
+(`arena_entries`, coverage, kappa, distinct voters). Reproducing that here would be a second implementation
+of the arena's arithmetic — the arena slice's job. The record says where the order lives instead of printing
+a column that does not exist.
+
+Still open in row 9: `GET /{call}/fallback`, the `consensus_*` and `audit_e2e` browser suites, and estate
+gate 49.
+
+The probe's delete order has now been wrong three times in a row, each time on the second run rather than
+the first — `override_positions`/`override_windows`, then `admin_ledger`/`emergency_holds`, then
+`solutions` (which must go *after* `consensus_calls`, because the call references the solution). A probe
+that deletes children-first by hand is a probe that will be wrong again; the fixtures now list every child
+table in dependency order in one block.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
