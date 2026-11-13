@@ -2503,6 +2503,47 @@ an author may rank their own entry:  FAIL an author cannot rank their own entry:
   cleanly. Recorded because the failed build left the **previous binary** in place, so control C printed control B's
   failures — a stale binary under a failed build is exactly how a control reports somebody else's result.
 
+### Row 11 — part 50: B2c, coverage claims and their contests (2026-11-13, `5040712`)
+
+```
+gate (before): POST …/solutions/{}/coverage -> 404 ; POST …/coverage/{}/contest -> 404
+gate (after):
+  probe_s5_coverage.py -> 22/22 ok
+  solutionvote 21/21, solutionwrites 24/24, solutioncall 24/24, workitems 44/44, featurewrites 37/37,
+  listwrites 41/41, criteriawrites 45/45, projsettings 28/28, milestonewrites 41/41, complaintwrites 40/40,
+  requestwrites 43/43, filing 31/31, requests 23/23, accept 15/15
+  routes.py -> go 216 / port 159   missing: 59 (49 json, 10 page)
+  concord-parity -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-db --lib -> 38 passed
+```
+
+`crates/db/src/coverage_writes.rs` (new): `claim_coverage`, `contest_coverage`, `coverage_score` + `CoverageScore`.
+
+The score is served **with its parts** (`coverage`, `resolved_pain`, `total_pain`, `claimed_pain`, `contested`) because
+"resolves 340 of 510 pain" is what a reader can act on. Pain comes from `priorities::complaint_pain` — the project's one
+definition — so coverage ranks against the same measure as every other pain-based number.
+
+Rules: the complaint must be linked to the **solution's own feature** (else the solution picks its own denominator); a contest
+needs a reason and the claimant cannot be the contestor; a contested claim **stops counting until restated**, and restating
+clears the contest.
+
+**Negative controls.**
+
+```
+a contested claim keeps counting:   FAIL a contested claim stops counting: got 0.8333… want 0.0     21/22
+restating does not clear:           FAIL the claim counts again: got False want True
+                                    FAIL and only the other contest remains: got 2 want 1           20/22
+```
+
+**Two things found by running it:**
+
+* `solution_coverage.contested` is a **bigint count (0/1), not a boolean** — `contested = false` was a 500 that answered
+  nothing. Same class as `parent_entry_id` in part 48: **a column is what the schema says it is**, not what the reference's
+  variable name suggests;
+* three assertions failed first because **pain decays** against the charter's half-life, so an exact float equality between
+  two HTTP calls asserts that no time passed. They compare at 1e-6 relative now — the claim is that the denominator did not
+  move by a claim's worth, not that the clock stopped.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
