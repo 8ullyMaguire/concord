@@ -2,7 +2,11 @@
    Indigo/slate palette, cards, badges, kanban, health bars. */
 
 :root {
-  --indigo: #6366f1;
+  /* #6366f1 behind white label text is 4.47:1 — 0.03 short of AA for the cookie banner's own accept
+     button, which is the first button a visitor is asked to press. #5f62ea is the same indigo two steps
+     darker and measures 4.75:1, so the token moves rather than the one rule: every white-on-indigo
+     surface inherits the pass. Measured by a browser crawl on 2026-11-13 (.47 on /projects). */
+  --indigo: #5f62ea;
   --indigo-hover: #4f46e5;
   --indigo-light: #e0e7ff;
   --indigo-border: #c7d2fe;
