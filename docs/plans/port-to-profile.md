@@ -1907,6 +1907,53 @@ gate removed (never refuse):
 hashed embedder (measured before: 0 of 6 paraphrases flagged) and only surfaces as a lead. Asserting a 409 there would
 have been asserting that the local embedder is a transformer.
 
+### Row 11 — what remains, and in what order (plan, 2026-11-13)
+
+Generated from `scripts/parity/routes.py --verbose`, not from memory: **94 JSON routes missing, 10 page routes** (the page
+routes are row 12's, not row 11's). Grouped into eleven batches so each has one gate a reader can run.
+
+| batch | routes | what it is |
+|---|---|---|
+| B1 requests | 3 | `PUT /requests/{}/tags`, `POST /requests/{}/answers`, `POST /answers/{}/vote` |
+| B2 features | 18 | claim, deps, evidence, tags(+remove), vote, milestone, strategic-weight, work-item, consensus, solutions, solution vote, coverage + contest |
+| B3 complaints | 6 | file, impact, merge, reject, validate, `POST /complaints/{}/merge/{}` |
+| B4 project admin | 14 | charter, criteria (+vote, +active), criteria-profiles, intake-mode, visibility, metrics, languages, lists (+entries, +vote), tags (+completeness) |
+| B5 milestones | 6 | create, patch, close, features, order, status |
+| B6 merge + invites | 9 | `projects/{}/merge` read/create, approve, execute, reject; invites read/create/revoke; join |
+| B7 documents + threads | 4 | `PUT`/`DELETE /projects/{}/documents`, `GET`/`POST /projects/{}/threads/{}/{}` |
+| B8 alternatives | 4 | read, create, add entry, vote |
+| B9 finder | 7 | questions, session create/read/results, answer, back, lift |
+| B10 autonomy + filed + arena | 9 | votes/next, work-items, field-reports (+responses), taxonomy read/create/consent, `arenas/{}/recompute` |
+| B11 auth + global | 14 | login, logout, redeem-invite, guest (read/create), `GET /lists`, `GET /scout`, `GET /contribute/next`, `GET /stats/rising`, `GET /badge/{}`, `GET /admin-ledger`, `POST /consent`, `POST /emergency-holds/{}/release`, `POST /hooks/forgejo` |
+
+Each batch follows the same shape this row has used since part 12: paste the route's 404 from `routes.py` **before**,
+implement the store function and the handler, write one probe asserting the *rules* (not the status codes) plus a negative
+control that breaks one rule and shows exactly which assertions move, then quote the probe's line and the inventory count
+in the commit.
+
+**Order is by risk, not by size.** B1 first because two of its three routes have already been half-designed here (the
+answer table's `unique (request_id, project_id)` and the author rule the accept badge already reads); B2 last of the big
+ones because its 18 routes share three stores that do not exist yet (claim, evidence, work-item) and one that does
+(solutions). B11 sits at the end because two of its members are not port work at all: `POST /hooks/forgejo` needs the
+deployment's webhook secret, and `GET /admin-ledger` reads an admin view whose authorization rule lives in the Go template,
+not the router.
+
+**Rows 12 and 13, restated so they are not a surprise at the end.**
+
+* Row 12 is the SvelteKit frontend plus **eleven** browser suites: the four it inherited (`feature_e2e`,
+  `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`), the two moved here from row 9 (`consensus_e2e`, `audit_e2e`)
+  and the three from row 10 (`curation_e2e`, `comments_e2e`, `notifications_e2e`), plus the ten page routes above. The
+  first obstacle is mechanical and shared by all of them: each seeds through `sqlite3.connect` instead of
+  `harness.connect`, so against PostgreSQL they open an empty file and die on the first table.
+* Row 13 is the cutover: Rust binary serving `concord.polarisocial.xyz`, `systemd` unit replaced, sequence repair re-run,
+  corpus re-recorded after the deploy, estate gate 17 green with no `reason`.
+
+**One correction to this session's own record:** the B1 store code written in the turn before this plan was **lost** — the
+tool call that wrote it was interrupted and the tree was left clean at `610ac9f` (verified with `git status --short` and
+`grep -c set_tags`). Nothing half-applied, nothing to revert; B1 starts from the query I read out of the reference
+(`SetRequestTags` replaces and reuses instance-wide tag rows; `AnswerRequest` writes `(request_id, project_id, body,
+'active', proposed_by)`).
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
