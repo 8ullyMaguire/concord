@@ -2544,6 +2544,50 @@ restating does not clear:           FAIL the claim counts again: got False want 
   two HTTP calls asserts that no time passed. They compare at 1e-6 relative now — the claim is that the denominator did not
   move by a claim's worth, not that the clock stopped.
 
+### Row 11 — part 51: B2c, the feature vote (2026-11-13, `28a1670`)
+
+```
+gate (before): POST /projects/{}/features/{}/vote -> 404
+gate (after):
+  probe_s5_featurevote.py -> 20/20 ok
+  coverage 22/22, solutionvote 21/21, solutionwrites 24/24, solutioncall 24/24, workitems 44/44,
+  featurewrites 37/37, listwrites 41/41, criteriawrites 45/45, projsettings 28/28, milestonewrites 41/41,
+  complaintwrites 40/40, requestwrites 43/43, filing 31/31, requests 23/23, accept 15/15
+  routes.py -> go 216 / port 160   missing: 58 (48 json, 10 page)
+  concord-parity -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-db --lib -> 38 passed
+```
+
+`crates/db/src/votes_writes.rs` (new): `record_feature_vote`, `ensure_priority_arena`. `voteweight`: `feature_vote_weight`.
+
+Three behaviours that differ from the solution vote **on purpose**: the weight **ignores the member's role**
+(`VoteWeight(reputation, 1.0, cap) × age gate`, as the reference computes it); **one live vote per voter per pair** — the
+reference's `INSERT OR REPLACE` relied on a uniqueness constraint this schema does not have (primary key only), so without the
+replacement a voter could repeat one comparison to walk a feature up the board; and the vote row carries **both shapes**
+(legacy `feature_a`/`feature_b`/`project_id` for the priority query, `arena_id`/`entity_type`/`a`/`b` for the arena queries
+and the recompute) — a half-populated row is invisible to one reader and the recompute would then rebuild every rating at the
+prior.
+
+**Decision (dated, my call):** the join happens **after** the vote succeeds, not before as the reference's code does. Its own
+comment says *"enrol only after the vote has been recorded"*; its code joins first, so a vote refused for ranking your own
+feature still added you to the project. Following the documented intent over the code, and the weight is unaffected — a
+non-member has no reputation there and this arena does not use the role.
+
+**Negative controls.**
+
+```
+a repeat vote inserts a second row:  FAIL but there is still ONE row for it: got 2 want 1               18/20
+the self-vote check removed:         FAIL an author cannot rank their own feature: got 200 want 403
+                                     … and six more (enrolment, the reputation point doubling, two rows,
+                                     the last-said outcome, the maintainer weight)                         13/20
+```
+
+The second control is worth keeping: **one removed rule moved seven observations**, which is what a probe looks like when it
+is measuring a decision rather than a route.
+
+Also: `pairwise_votes.feature_a` and `.project_id` are foreign keys, so the probe's cleanup had to delete votes before
+features — it failed at cleanup *after* every assertion passed, which is the good order for a fixture bug to appear in.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
