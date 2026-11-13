@@ -79,12 +79,19 @@ def main() -> int:
         key = shape(path)
         entry = corpus.setdefault(key, {
             "key": key, "status": status,
+            # The recorded path, not only the shape: replay must ask the candidate the question
+            # that was asked, and `/:id` replayed as `/0` asks whether a row zero exists.
+            "path": path,
             "content_type": headers.get("content-type", ""),
             "estate_headers": {k: headers[k] for k in headers
                                if k.lower() in ("x-estate-site", "x-estate-version", "etag",
                                                 "cache-control")},
             "body_sha": hashlib.sha256(body.encode()).hexdigest()[:16],
             "body_len": len(body),
+            # The body itself, so the replay tool can compute one fingerprint implementation over
+            # both recordings instead of two implementations that drift apart. ~620 KB of JSON for
+            # 16 shapes; if that ever hurts, the move is gzip, not a second shape function.
+            "body": body,
         })
         # Two recordings of the same shape must agree, or the corpus is of a moving target.
         digest = hashlib.sha256(body.encode()).hexdigest()[:16]

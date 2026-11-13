@@ -33,13 +33,12 @@ Read this table FIRST every turn, before any code. A row is done when its gate r
 quoted below it, never because it merged. The count in this header is the number the turn report
 quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 
-### Open *(8 — M0.6 first)*
+### Open *(7 — S1 first)*
 
 | # | step | gate — the command that fails if the step is absent |
 |---|---|---|
 
 
-| 6 | M0.6 replay tool passes against the CURRENT Go service | `CANDIDATE=https://concord.polarisocial.xyz cargo run -p parity` prints `0 shape(s) disagreed` |
 | 7 | S1 projects, documents, board | corpus subset identical + `projects_e2e`, `board_e2e`, `pages_e2e` green against the candidate |
 | 8 | S2 ideas, complaints, ranking | corpus subset + `rank_*`, `milestones_e2e`, `feature_*` green; ranking mutation arms killed |
 | 9 | S3 consensus, governance, ledger | corpus subset + `consensus_*`, `audit_e2e` green; estate gate 49 green |
@@ -50,14 +49,9 @@ quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 
 ### Blocked
 
-**B1. The corpus describes a build 87 commits behind the tree it will judge.** The deployed host
-answers `version: pre-merge-2026-11-05-63-g313b4ee` (2026-11-05 + 63 commits), while the tree at
-`port-rust` is dated 2026-11-13; four of eighteen seed paths 404 there and exist here. Every
-comparison the port makes is against the older build until that changes. **Blocked on the owner**:
-deploy the current `master` to the host (the ADR's invariant is that the Go service keeps serving —
-deploying master keeps it serving, but 87 commits of drift on a live service is a decision, not a
-cleanup), or accept a corpus of the 2026-11-05 build and re-record before cutover. Row 3 is done
-regardless: the recorder, the seed and two stable recordings exist, and re-recording is one command.
+**B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
+stays a recording of `pre-merge-2026-11-05-63-g313b4ee` and is re-recorded after the cutover
+deploy, before row 13 closes.)
 
 ### Done *(1 — 12 open)*
 
@@ -246,6 +240,50 @@ partial index nor the columns of an expression index. `WHERE is_baseline = 1` ha
 unique index, refusing rows the source accepts. `ddl.py` now translates the index DDL from
 `sqlite_master` itself — predicate kept, `ifnull` mapped to `coalesce`, and `col = 1` on a boolean
 column mapped to the column, because PostgreSQL has no `boolean = integer`.
+
+**6. M0.6 replay tool passes against the CURRENT Go service** — done 2026-11-13, commit with this
+edit (`crates/parity/src/main.rs`, `crates/parity/corpus.json`, `scripts/parity/record.py`).
+
+```
+$ CANDIDATE=https://concord.polarisocial.xyz cargo run -q -p concord-parity -- \
+      --corpus crates/parity/corpus.json
+0 shape(s) disagreed of 16 checked, 0 skipped
+$ ... --verbose
+/api/v1/projects: ok ([73:{created_at:number:int,description:string:Tauri ebook library manager...
+/api/v1/projects/concord/board: ok ({cards:[370:{...}],columns:[9:{name:string:inbox,...
+```
+
+Negative control, because a gate that cannot fail is not a gate:
+`CANDIDATE=https://concord.polarisocial.xyz/wrong` -> `16 shape(s) disagreed of 16 checked`,
+exit **1**, against exit **0** for the real candidate.
+
+The plan's sketch compared **only the status code** while its own doc comment promised a structural
+diff. A 200 says the route exists and nothing about the payload, and the payload is what S1–S5 are
+judged on. The binary now compares bodies by shape: key order normalised (objects are key-sorted),
+array length compared with the first element standing for the rest, and volatile leaves — ids,
+timestamps, versions, cursors, totals — reduced to their *type* so a timestamp that becomes a string
+still fails. Two decisions that follow from it:
+
+- **The recorder stores the body, not a shape it computed itself** (682 KB of JSON for 16 shapes).
+  Two implementations of "structurally equal" drift and then agree with each other instead of with
+  the service; one implementation, run over both bodies, cannot. If 682 KB ever hurts, the move is
+  gzip, not a second shape function.
+- **The corpus records the path as asked, not only the shape.** The sketch replays `/:id` as `/0`,
+  which asks a candidate whether it has a row zero — a different question, and one that turns every
+  id-shaped route into a guaranteed 404 against a service that works.
+
+`reqwest` with `rustls-tls` and a `curl/8` user agent: Cloudflare answers 403 to a bare reqwest UA,
+which would have made every replay look like a parity failure.
+
+**B1 is closed by decision, not by a deploy** (2026-11-13): the corpus stays a recording of
+`pre-merge-2026-11-05-63-g313b4ee`, and the replay is re-run against the host after the cutover
+deploy, before row 13 is called done. Reason: the ADR's invariant is that the Go service keeps
+serving, and sending 87 commits of drift to a live service to make a fixture match its source tree
+trades a certainty (the port compares against the build that is actually in front of users) for a
+risk (a redeploy nobody asked for, on the day the port starts). Where the tree has a route the
+deployed build lacks — `arenas`, `consensus/feed.xml`, the project-scoped `stats` — the corpus is
+silent rather than 404, so the port implements the tree's route and the cutover replay is where that
+divergence gets its first real test.
 
 
 ## M0 — the ground (no product code)
