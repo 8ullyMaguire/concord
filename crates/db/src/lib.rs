@@ -9,6 +9,7 @@ use sqlx::postgres::{PgPool, PgPoolOptions};
 pub mod auth;
 pub mod arena;
 pub mod arena_writes;
+pub mod coverage_writes;
 pub mod solution_writes;
 pub mod audit;
 pub mod call_outcome;
