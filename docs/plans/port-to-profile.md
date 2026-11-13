@@ -2216,6 +2216,55 @@ the current charter, not zeroed`).
 nothing and the projects stayed behind a foreign key — the tear-down failed, not the product. Recorded because a probe
 that cannot clean up poisons every later run that shares the database.
 
+### Row 11 — part 44: B4c, list writes, entry votes, metrics, visibility (2026-11-13, `faf01d9`)
+
+```
+gate (before): POST /projects/{}/lists, POST /projects/{}/lists/{}/entries,
+               POST /projects/{}/lists/{}/entries/vote, PUT /projects/{}/metrics,
+               PUT /projects/{}/visibility -> 404
+gate (after):
+  probe_s5_listwrites.py -> 41/41 ok
+  criteriawrites 45/45, projsettings 28/28, milestonewrites 41/41, complaintwrites 40/40,
+  requestwrites 43/43, filing 31/31, requests 23/23, accept 15/15
+  routes.py -> go 216 / port 142   missing: 76 (66 json, 10 page)
+  concord-parity -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-db --lib -> 38 passed
+```
+
+**B4 is now whole:** B4a (4 settings writes) + B4b (5 criteria and charter) + B4c (these 5) = the 14 routes the batch
+listed. `list_writes.rs` (new): `create`, `add_entry`, `vote_entry` (+ `Refused`). `projects.rs`: `set_visibility`
+(+ `VISIBILITIES`).
+
+Rules asserted: **instance-wide must be asked for** (the path's project is also the access check); the audit row for an
+instance-wide list is written against the **path's** project because the list has none; an entry is **proposed** with its
+proposer recorded; an entry vote uses the same §8.3 weight as every other vote and refuses a removed entry, an entry from
+another list, and **a proposer voting on their own entry**; an instance-wide list cannot be voted through a project URL
+(the weight needs a project); a missing `median_review_hours` is **NULL, not 0**; a non-member changing visibility gets
+**404, not 403**, because visibility is the one setting where the project's existence is the secret.
+
+**NEGATIVE CONTROLS.**
+
+```
+self-vote refusal removed:
+  FAIL a proposer may not vote on their own entry: got 200 want 403
+  FAIL a vote is audited: got 2 want 1                                              39/41
+removed-entry refusal removed:
+  FAIL a removed entry is not a candidate: got 403 want 400                          40/41
+an unmeasured review time written as 0:
+  FAIL an unmeasured review time is NULL, not 0: got 0.0 want None                   40/41
+```
+
+**Reuse rather than a second formula, twice:** the vote weight is `voteweight::answer_vote_weight` and the health score
+is `metrics::sync` — the same functions the answer votes and the forge importer already use. A copy of either here would
+be a second answer to "how much does this vote count" and "how healthy is this project", and the search ordering reads the
+first one.
+
+**Found by running it:** the probe expected a **maintainer** to be a neutral voter, but entry B was proposed by that
+maintainer and the refusal is **per-proposer, not per-role** — so "someone else may" was 403. Fixed by adding a fourth
+member who proposed neither entry, which is the only honest way to test a successful comparison. The teardown also needed
+both patterns: the list's slug does not prefix-match the project's, so cleaning by project and by slug separately left
+list rows behind a foreign key.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
