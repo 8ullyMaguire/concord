@@ -1007,6 +1007,49 @@ renewal ratifies and changes nothing, so the proposal says the weight moved and 
    silently ran on the 90-day default and asserted 200. It is an upsert now. **A write that matches no row is not
    a write** — the same class of mistake as a green build with an unwired route.
 
+### Row 11 — part 12: the route inventory, and the 139 that remain (2026-11-13, `3365a04`)
+
+```
+gate (before):
+  scripts/parity/routes.py -> go routes: 216   port routes: 56
+                              142 go route(s) the port does not answer
+gate (after):
+  scripts/parity/routes.py -> go routes: 216   port routes: 79   (139 remain; the script exits 1)
+  probe_s5_panels.py       -> 15/15 ok
+  concord-parity           -> 0 shape(s) disagreed of 17 checked, 4 skipped
+```
+
+**This is the most important measurement of the port so far, and it is not flattering.** The port answered 56 of
+the Go's 216 routes. Every probe written before this one asked for the routes its author remembered, so
+`/auth/me` — which every page needs before it can render an identity — was a 404 that no probe looked at, while
+every gate stayed green.
+
+`scripts/parity/routes.py` is the answer to that class of blindness: it parses the Go's chi registrations
+(`r.Get/Post/Put/Delete`, nested `r.Route`/`r.Group` prefixes) against the port's `.route(…)` chains, compares by
+SHAPE (`{slug}` and `{project_id}` are the same path), and exits 1 with the missing list. It also prints the
+port's extras, because an extra route is a claim the Go tree does not make.
+
+**Its own first two runs were wrong, and both errors are recorded because the tool is now a gate:** it compared
+prefixed paths against nested ones (reporting 182 of 236), and its lazy regex stopped at the first nested `)` (so
+`/projects/{}/features` looked missing when the port answers it). A route-comparison tool that lies is worse than
+none, so it was validated against paths known to be ported before its verdict was believed.
+
+Ported in this part, by what the frontend needs first: `GET /auth/me`, `GET /projects/{slug}/tags`,
+`GET /projects/{id}/members`. `readable()` implements the Go's `CanAccessProject` rule for rule, including "an
+unknown visibility FAILS CLOSED". Negative control (visibility check removed, 13/15):
+`FAIL a private project's tags are 404, not an empty 200: got 200 want 404`.
+
+**The remaining 139, measured and named** (regenerate with `python3 scripts/parity/routes.py`; the script is the
+state list, this paragraph is a snapshot): finder 4 · contribute 2 · field reports 2 · lists 5 · invites 1 ·
+criteria + criteria-profiles 3 · solutions 6 · requests 5 · arena reads 3 · capabilities 1 · languages 1 ·
+documents kinds/search 2 · merge 4 · admin-ledger 1 · guest 1 · badge/login/pages 6 · per-feature
+evidence/deps/tags/claim 9 · plus the write routes on board/features/milestones that the port answers under a
+different method or path.
+
+**Decision (dated, mine):** the `routes.py` exit code is the row's gate from here. A slice is not finished because
+its probe is green; it is finished when the missing count drops by the routes it claims and nothing else moves.
+The count is 139 and the ledger will not say otherwise.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
