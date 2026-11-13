@@ -743,6 +743,70 @@ a bug with a test.
 `embedbackfill` folded into `crates/cli`, `taxonomy`/`strategy` curation votes (whose eligible sets row 10
 deferred here), and gates 4, 5 and 47.
 
+### Row 11 — parts 3, 4, 5 (2026-11-13)
+
+**Landed:** `5e6ed67` (stats/history + stats/responsiveness), `2d60543` (thirteen feed documents), `da88036`
+(statsnapshot + proposalsweep into `concord-cli`).
+
+```
+$ python3 scripts/parity/probe_s5_stats.py    -> 16/16 ok
+$ python3 scripts/parity/probe_s5_feeds.py    -> 60/60 ok
+$ python3 scripts/parity/probe_s5_timers.py   -> 30/30 ok
+$ CANDIDATE=…:8108 concord-parity --corpus crates/parity/corpus.json
+  0 shape(s) disagreed of 17 checked, 4 skipped
+$ curl /api/v1/stats                          -> 0.058s
+```
+
+**The migrated database could not take a write, and nothing but a probe would have found it.**
+
+```
+$ python3 scripts/parity/sequences.py
+19 of 47 sequences are behind the rows they serve
+  arenas: sequence at 0, rows reach 74 (73 rows)
+  audit_log: sequence at 0, rows reach 9332 (9326 rows)
+  features: sequence at 0, rows reach 5784 (5760 rows)
+```
+
+The mover inserts explicit ids, which leaves every sequence at its starting value; the first insert the port
+attempted failed with `duplicate key … "projects_pkey" DETAIL: Key (id)=(1) already exists`. Fixed in two
+places: `scripts/parity/sequences.py` measures and repairs (`--fix` applied, 0 of 47 behind), and `move.py` now
+advances sequences as its last step. The e2e database hid this by seeding fresh.
+
+**A 4.3-second statistics query.** `concord-cli statsnapshot --dry-run` printed
+`WARN sqlx::query: slow statement: elapsed=4.291468634s rows_returned=2402` — `triage_latency` ran a correlated
+subquery per complaint. Rewritten as one grouped pass with a left join; the route now answers in 0.058s.
+
+**All thirteen feed routes are 503 on the live instance**, because `CONCORD_BASE_URL` is not in the unit's
+environment (`systemctl --user show concord -p Environment` lists `CONCORD_LISTEN`, `CONCORD_DB`,
+`CONCORD_EMBED_URL`, `CONCORD_EMBED_MODEL`, `CONCORD_EMBED_TIMEOUT_MS` — no base URL). So syndication has never
+been on, and "feed parse against live" cannot be the proof: the proof is the candidate with the variable set.
+**Row 13 inherits: set `CONCORD_BASE_URL=https://concord.polarisocial.xyz` in the unit and declare the feeds in
+`estate.toml`, then gate 47 covers concord too.**
+
+**Estate gates 4, 5 and 47, measured:**
+
+```
+gate  4 check-versions      20/22 hostnames report the estate version   media.polarisocial.xyz 502
+gate  5 check-capabilities  21/22 hostnames serve what the manifest declares   media 502
+gate 47 check-feed-routes   8 arm(s) passed, 0 failed
+```
+
+Gates 4 and 5 are red for **`media.polarisocial.xyz`** (502; no unit answers to `media`), which is not concord's
+and not this row's. Gate 47 is green and does not yet cover concord, because no manifest entry declares its
+feeds — deliberately, since every live feed answers 503 today.
+
+**`polaris-loops` does not own scheduling.** The row's line says "timers migrated to `polaris-loops`"; the crate
+is `level_for`/`next_level_at`/`weight_for` — XP arithmetic, no scheduler. The estate's scheduler is systemd and
+`scheduled.toml` is its declaration (`scripts/schedule-registry.py` writes it). So the migration is: jobs in
+`concord-cli`, units declared in `scheduled.toml`, and **the Go timers keep running until row 13** — moving a
+timer onto a service that is not serving yet would stop the live instance's data from being refreshed.
+
+**Still open on this row:** `healthsync` (709 lines, forge HTTP clients + the health scorer — the scorer belongs
+beside `crates/ranking`'s math, and the job's three rules are "a failed fetch writes nothing", "an unmeasurable
+field skips the project", "one scorer"), the three systemd units in `scheduled.toml`, the `taxonomy`/`strategy`
+curation eligible sets row 10 deferred here, and `granttrust`/`capableseed`/`forgeseed`/`embedbackfill` folded
+into `crates/cli`.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
