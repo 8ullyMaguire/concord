@@ -1848,6 +1848,65 @@ the example honours `CONCORD_EMBED_TIMEOUT_MS` so the measurement uses the deplo
 default; the second run answered 768-wide. **Cutover note:** the first filing after an idle period may be checked
 lexically, and that is the deployment's timeout, not the port's.
 
+### Row 11 — part 38: filing with the duplicate gate, and the `/similar` panel (2026-11-13, `01052ce`)
+
+```
+gate (before): POST /projects/{id}/requests, POST /requests, GET /similar/{kind} -> 404 (three routes)
+               no embedding store
+gate (after):
+  probe_s5_filing.py   -> 31/31 ok
+  probe_s5_requests.py -> 23/23 ok   (no regression)
+  probe_s5_accept.py   -> 15/15 ok   (no regression)
+  routes.py            -> go 216 / port 114   missing: 104 (94 json, 10 page)
+  concord-parity       -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-db --lib -> 38 passed
+```
+
+`crates/db/src/embeddings.rs` — `upsert_field`, `upsert_entity_text`, `delete_for`, `find_similar`, `hydrate`, `coverage`.
+Four rules, each one a defect the service already paid for: **two fields per entity and the max over them** (title-to-title
+1.00 against 0.58 for the concatenation, which filed a literal duplicate with no warning); **`has_content` and not a
+length check** (a zero vector occupies a slot forever, scores 0 against everything, and makes "is it indexed?" checks that
+count rows lie); **the visibility clause inside the query**, not at the caller (without it `/similar` is an oracle: submit
+a sentence, learn whether a matching row exists in a private project, read back its title); and **an unindexable query
+returns nothing**, not everything.
+
+`AppState` grew an embedder (`Arc<dyn Embedder>`) built by `embedder_from_env()` — `CONCORD_EMBED_URL` / `_MODEL` /
+`_TIMEOUT_MS` / `_PREFIX`, with an absent or misconfigured remote falling back to the local embedder rather than to "no
+duplicate detection".
+
+The gate (`check_duplicates`): title first then title+body; **instance-wide** scope (§6.1's *"this was fixed in X"*); a
+failure to *check* must not block the filing; the band is per model. The 409 carries `similar[]`, `top_score`,
+`threshold`, `resubmit_with` and a note; `confirm_duplicate: true` proceeds and leaves the existing row untouched.
+`POST /requests` (instance-wide) has **no gate** — the reference never checked there, and matching it is the job until
+cutover. Recorded rather than silently improved.
+
+**NEGATIVE CONTROLS.**
+
+```
+visibility clause removed (1 = 1 OR ...):
+  FAIL once it is private, the anonymous panel no longer sees it: got True want False
+  30/31 ok
+
+gate removed (never refuse):
+  FAIL filing the SAME text again is refused with 409: got 201 want 409
+  ... and the five field assertions that follow it
+  25/31 ok
+```
+
+**Two failures found by the probe, not by reading.**
+
+* `operator does not exist: bigint = text` — the visibility predicate reused `$2` for the actor while `$2` held the model
+  id. It did **not** surface as a 500 on the filing path, because the gate's own rule is *"a failure to check must not
+  block the filing"*: the duplicate check silently proceeded. Only the 409 assertion caught it. **A silent-proceed rule
+  needs an assertion on the refusal, or it hides every bug in the checker.**
+* the 409 body was built as an `ApiError`, whose envelope has room for a message and nothing else — so `similar[]`,
+  `top_score`, `threshold` and `resubmit_with` were dropped and the refusal said only that something was wrong. It is now
+  a full response.
+
+**And one of my expectations corrected by the embedder's own documented limit:** a paraphrase is **filed** under the local
+hashed embedder (measured before: 0 of 6 paraphrases flagged) and only surfaces as a lead. Asserting a 409 there would
+have been asserting that the local embedder is a transformer.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
