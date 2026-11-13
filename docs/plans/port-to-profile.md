@@ -38,7 +38,8 @@ quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 | # | step | gate — the command that fails if the step is absent |
 |---|---|---|
 | 8 | S2 ideas, complaints, ranking | **Done 2026-11-13** (`0a32d49`) — corpus subset, `concord-ranking` suite and store tests green; every killable ranking mutation arm killed, the rest proved unobservable (see the dated entry below) |
-| 9 | S3 consensus, governance, ledger | corpus subset + `consensus_*`, `audit_e2e` green; estate gate 49 green |
+| 9 | S3 consensus, governance, ledger | **Done 2026-11-13** (`a2ace5d`) — corpus subset green, `probe_s3_api.py` 94/94, estate gate 49 green; `consensus_e2e`/`audit_e2e` moved to row 12 by the dated correction |
+| 9b | S3 arena and solutions | the routes §6.4's scores live behind — `/solution-call` readiness and open, `/{call}/fallback`, the solutions list — with a probe that fails before them; this row exists because row 9's gate could not name them (see the dated entry) and three routes would otherwise 404 on a port called done |
 | 10 | S4 moderation, comments, inbox | corpus subset + `notifications_e2e` and the queue suite green; estate gates 22 and 45 green |
 | 11 | S5 stats, feeds, admin binaries | corpus + `stats_e2e` and feed parse; estate gates 4, 5, 47 green; timers migrated to `polaris-loops` |
 | 12 | P6 the frontend on SvelteKit + `@polaris/ui` | every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
@@ -465,6 +466,33 @@ So the two suites move to **row 12's gate**, which is the row that can make them
 second job it did not have before: `consensus_e2e` and `audit_e2e` must be converted from `sqlite3.connect`
 to `harness.connect` before their page assertions mean anything. Row 9's gate now names the API-level
 evidence it can actually produce: the corpus subset and `probe_s3_api.py`.
+
+**Row 9 Done — 2026-11-13, `a2ace5d`.** The gate, in the form the dated correction left it:
+
+```
+CANDIDATE=http://127.0.0.1:8107 concord-parity --corpus crates/parity/corpus.json
+  2 shape(s) disagreed of 14 checked, 3 skipped        (/search, /stats/summary — S5's)
+scripts/parity/probe_s3_api.py -> 94/94 ok, exit 0
+bash scripts/check-ledger.sh -> CHECK ledger: 8 arm(s) passed, 0 failed   (gate 49, exit 0)
+```
+
+What the slice contains: the audit log's reader (two clamps, escaped LIKE, count before rows, NULL detail as
+""), the consensus index and detail with §6.6's hidden tally enforced server-side, the five writes that open,
+vote, object, close and decide a call, §6.5's decision record as an `adr` project document, §6.6's override
+window with its four refusals, and the emergency hold in its narrow reading. Four controls were run against
+those rules and each one made the suite fail first; the entries above quote them.
+
+Two things this row leaves open, both named rather than buried:
+
+1. **Three routes that need §6.4's arena.** `GET`/`POST /{feature}/solution-call` (readiness and open) and
+   `GET /{call}/fallback` all read the arena: `FindArena`, `arena_entries`, the leaderboard's conservative
+   rating, coverage, kappa and distinct voters. Returning a half-filled `SolutionScore` would be a lie in a
+   response body, so they are not written — and because row 9's gate never named them, a port could have
+   been called done with three 404s where the Go service answers. They get their own row, **9b**, whose gate
+   is a probe that fails on all three before the change.
+2. **Gate 49 will need editing at cutover.** One of its eight arms reads "concord's trigger refuses the same
+   rows the crate refuses (conformance, not adoption — concord is Go)". That sentence stops being true the
+   moment row 13 serves the Rust binary, and the gate does not fail when a comment goes stale.
 
 ### Blocked
 
