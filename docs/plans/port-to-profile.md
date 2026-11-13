@@ -1329,6 +1329,32 @@ service's arithmetic from the plausible one.
 One schema fact found by failing: `pairwise_votes.arena_id` is NOT NULL, so every vote belongs to an arena and a
 fixture needs one even when the read under test never consults it.
 
+### Row 11 — part 25: document search, and a control that did NOT fail (2026-11-13, `8c39449`)
+
+```
+gate (before): GET /projects/{slug}/documents/search?q=… -> 404
+gate (after):
+  probe_s5_search.py -> 10/10 ok
+  routes.py          -> go 216 / port 97   missing: 121 (111 json, 10 page)
+  cargo test -p concord-db --lib -> 33 passed
+```
+
+`q` is REQUIRED (missing → 400) while a present-but-empty `q` is an empty array: "you did not ask" and "you asked for
+nothing" are different requests. A bare term is quoted as a PHRASE (`language-neutral` under FTS5 is "language AND NOT
+neutral"); multi-word and quoted queries pass through untouched; `limit <= 0 or > 100` becomes 20. The fixture has a
+document that says "language" and never "neutral", so the boolean reading returns it and the phrase reading does not —
+`language-neutral` returns exactly one of the three documents.
+
+**The negative control did NOT fail, and that is this part's finding.** Forcing every query down the expression path
+changed no assertion, because PostgreSQL's `websearch_to_tsquery` already treats a bare hyphen as a phrase separator
+where FTS5 treats it as NOT. The quoting rule is REDUNDANT on this engine for the very case that motivated it. It stays
+— `phraseto_tsquery` pins the semantics instead of leaving them to be re-derived — and the code now says so. The real
+engine risk is elsewhere: **stopwords, stemming and operator syntax differ between FTS5 and tsquery**, and only a
+corpus comparison can say whether that matters. That is an **open question for row 13**, not an assumed equivalence.
+
+A control that passes on unfixed code is not evidence — but a control that passes because the premise was wrong is
+still information, and recording it is cheaper than rediscovering it at cutover.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
