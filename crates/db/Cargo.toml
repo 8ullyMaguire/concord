@@ -7,6 +7,11 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[dev-dependencies]
+argon2 = "0.5"
+tokio = { workspace = true, features = ["macros", "rt-multi-thread", "rt"] }
+ulid.workspace = true
+
 [dependencies]
 anyhow.workspace = true
 argon2 = "0.5"

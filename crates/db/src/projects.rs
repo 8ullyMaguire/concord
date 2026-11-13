@@ -5,7 +5,7 @@
 //! `description` as `""` rather than `null`, `visibility` as `public`, `newcomer_sample` as `0`.
 
 use serde::Serialize;
-use serde_json::{Number, Value};
+use serde_json::Number;
 use sqlx::PgPool;
 
 /// A row of `projects` joined to its metrics, in the shape `/api/v1/projects/{slug}` serves.
@@ -138,7 +138,7 @@ pub struct BoardCard {
 /// each pair is a decision about what the board means — a draft is untriaged work, so it belongs in
 /// `inbox`, not in a column called `draft` that does not exist. A status absent from this table is
 /// omitted: guessing a placement is the same fabrication as guessing any other.
-fn status_phase(status: &str) -> Option<&'static str> {
+pub fn status_phase(status: &str) -> Option<&'static str> {
     Some(match status {
         "draft" => "inbox",
         "discussion" => "triaged",
@@ -328,50 +328,31 @@ pub async fn list_documents(pool: &PgPool, project_id: i64) -> Result<Vec<Docume
 ///
 /// # Errors
 /// `sqlx::Error`.
-pub async fn document(
-    pool: &PgPool,
-    project_slug: &str,
-    document_slug: &str,
-) -> Result<Option<Document>, sqlx::Error> {
-    let sql = format!(
-        "select {} from project_documents d \
-         join projects p on p.id = d.project_id \
-         where p.slug = $1 and d.slug = $2",
-        DOCUMENT_COLUMNS
-            .split(", ")
-            .map(|c| format!("d.{c}"))
-            .collect::<Vec<_>>()
-            .join(", ")
-    );
-    let row = sqlx::query(&sql)
-        .bind(project_slug)
-        .bind(document_slug)
-        .fetch_optional(pool)
-        .await?;
-    row.as_ref().map(document_from_row).transpose()
-}
-
-/// The body of a document, which the list shape above deliberately does not carry.
+/// One document of a project, by its integer id — the key the Go route uses
+/// (`/projects/{slug}/documents/{doc_id}`), not the slug.
 ///
 /// # Errors
-/// `sqlx::Error`.
-pub async fn document_body(
+/// [`sqlx::Error`] when the read fails. A missing document is `None`, which the route answers as the
+/// same 404 a project that does not exist gets.
+pub async fn document(
     pool: &PgPool,
-    project_slug: &str,
-    document_slug: &str,
-) -> Result<Option<Value>, sqlx::Error> {
-    use sqlx::Row;
-    let row = sqlx::query(
-        "select d.body from project_documents d join projects p on p.id = d.project_id \
-         where p.slug = $1 and d.slug = $2",
-    )
-    .bind(project_slug)
-    .bind(document_slug)
-    .fetch_optional(pool)
-    .await?;
-    let Some(row) = row else { return Ok(None) };
-    let body: String = row.try_get(0)?;
-    Ok(Some(Value::String(body)))
+    project_id: i64,
+    id: i64,
+) -> Result<Option<Document>, sqlx::Error> {
+    // The column list is written for a bare table and cannot be reused through a join: prefixing
+    // every entry with an alias turns `extract(epoch from created_at)` into `d.extract(epoch from …)`,
+    // which is a syntax error at `from`. That is what the first version did, and nothing caught it
+    // because no corpus shape asked for this route — the mutation run is what pointed at it.
+    let sql = format!(
+        "select {DOCUMENT_COLUMNS} from project_documents where project_id = $1 and id = $2"
+    );
+    sqlx::query(&sql)
+        .bind(project_id)
+        .bind(id)
+        .fetch_optional(pool)
+        .await?
+        .map(|row| document_from_row(&row))
+        .transpose()
 }
 
 /// Why a card could not be moved.
@@ -520,15 +501,22 @@ async fn place_feature(
     }
     // The limit applies here too: place_feature is the path taken by every feature with no row, so
     // a limit checked only in move_row would be bypassed by exactly the cards nobody dragged.
-    let existing: Option<i64> =
-        sqlx::query_scalar("select id from board_cards where project_id = $1 and feature_id = $2")
-            .bind(project_id)
-            .bind(feature_id)
-            .fetch_optional(pool)
-            .await?;
+    // Both ids, because they are different keys and the first version compared a *card* id to a
+    // *column* id — a guard that is always true and therefore never took the branch it was written
+    // for. The mutation run reported three survivors on this line, which is how it was found: a
+    // comparison of two things that are never equal kills nothing.
+    let existing: Option<(i64, Option<i64>)> = sqlx::query_as(
+        "select id, column_id from board_cards where project_id = $1 and feature_id = $2",
+    )
+    .bind(project_id)
+    .bind(feature_id)
+    .fetch_optional(pool)
+    .await?;
     match existing {
         None => check_wip(pool, column, 0, project_id, to).await?,
-        Some(row) if row != column => check_wip(pool, column, row, project_id, to).await?,
+        Some((card, current)) if current != Some(column) => {
+            check_wip(pool, column, card, project_id, to).await?
+        }
         _ => {}
     }
     sqlx::query(

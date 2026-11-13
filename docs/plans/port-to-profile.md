@@ -160,9 +160,68 @@ $ CANDIDATE=.../wrong concord-parity --corpus s1corpus.json
 5 shape(s) disagreed of 5 checked, 0 skipped          # the negative control still fails
 ```
 
-**What is left on S1:** `cargo mutants -p concord-db` (the tool is **not installed**:
-`cargo-mutants NOT installed`), gates 17/19, and the two write routes entered into the corpus
-(`POST /projects`, `PUT .../move`) so the corpus and not only the probe carries them.
+**S1's mutation gate ran for the first time, and it is what found the rest** (2026-11-13).
+
+Before this turn the crate had **no tests at all** (`grep -c '#\[tokio::test\]' crates/` = 0), so
+`cargo mutants -p concord-db` reported every mutant as survived and answered nothing. `crates/db/tests/store.rs`
+now holds 19 tests against PostgreSQL via `scripts/parity/e2e.sh` (a scratch `concord_test` database,
+recreated each run, because a test that passes on last run's rows is not evidence).
+
+```
+$ scripts/parity/e2e.sh
+test result: ok. 19 passed; 0 failed                      (was: no tests in the crate)
+$ cargo mutants -p concord-db --in-place        # needs --in-place: the polaris-core path dep
+                                                 # escapes the copied tree, so the baseline build
+                                                 # fails in /tmp with "failed to read
+                                                 # /polaris-core-rust/Cargo.toml"
+119 mutants tested: 93 caught, 5 missed, 19 unviable       (first run: 42 missed, 58 caught)
+```
+
+Two real defects the survivors pointed at, both in code no corpus shape asked for:
+
+1. **`document()` was a syntax error.** `DOCUMENT_COLUMNS` is written for a bare table and the port
+   reused it through a join by prefixing every entry with `d.`, so
+   `d.extract(epoch from created_at)` → `syntax error at or near "from"`, code 42601. It also keyed
+   on a slug while the Go route is `/documents/{doc_id}` by **integer id**. Both fixed; the test
+   asserts the id key and that another project's id is not this project's document.
+2. **`place_feature` compared a card id to a column id.** `Some(row) if row != column` was a guard
+   that is always true, so the branch it guarded never ran the way it read; it now selects
+   `id, column_id` and compares the column. This is the class of defect a mutation run exists to
+   find: a comparison between two things that are never equal kills nothing.
+
+Also removed: `document_body`, which had no Go counterpart and no route — an invention with a test
+I had written against my own mistake, which is why its failure read like a bug in the port.
+
+**Five survivors remain, classified rather than ignored:**
+
+| mutant | why it survives | verdict |
+| --- | --- | --- |
+| `auth.rs:173` duplicate guard → `true` | the users insert has no constraint that can fail except the unique username | killable: a NUL byte in `display_name` is error 22021, not 23505 |
+| `projects.rs:631` duplicate guard → `true` | same, for the projects insert | killable: a NUL byte in `description` |
+| `projects.rs:41` `value.abs() < 9.007e15` → `<=` | needs a timestamp at exactly that boundary, which no data has | killable by a direct serializer test at the boundary |
+| `check_wip` `already > 0` → `<` | with place_feature fixed, the guard is only reachable by moving a **card id** into the full column it already occupies | killable: move by card id, not feature id |
+| `place_feature` `current != Some(column)` → `true` | behaviourally equivalent: the branch calls `check_wip`, whose own already-here guard returns `Ok` | equivalent, document and leave |
+
+**What is left on S1:** those four killable survivors, gates 17/19 re-check (**done this turn: see
+below**), and the two write routes entered into the corpus so the corpus and not only the probe
+carries them.
+
+**Gates 17 and 19, run on thinkcentre where the estate's paths exist** (`check-stack` and
+`check-duplication` both `cd /personal/...`; on the workstation every file is "absent" and gate 19
+answers `0 surviving cop(ies) across 0 file(s)`, a pass that measured nothing):
+
+```
+$ ./scripts/check-stack.sh
+concord  reference  go  rust  FAIL  declared go, found rust
+CHECK stack: 23/24 sites declare a profile their repo matches
+$ ./scripts/check-duplication.sh
+CHECK duplication: 0 surviving cop(ies) across 10 file(s) checked
+```
+
+The stack declaration was corrected in the estate manifest rather than the port being bent to fit it:
+`runtime = "go+rust"` for as long as two services really live in the tree, with the reason stated and
+the note that row 13 restores `runtime = "rust"`. After: `CHECK stack: 24/24 sites declare a profile
+their repo matches` (commit `8de3f0f` in `~/code/estate`).
 | 8 | S2 ideas, complaints, ranking | corpus subset + `rank_*`, `milestones_e2e`, `feature_*` green; ranking mutation arms killed |
 | 9 | S3 consensus, governance, ledger | corpus subset + `consensus_*`, `audit_e2e` green; estate gate 49 green |
 | 10 | S4 moderation, comments, inbox | corpus subset + `notifications_e2e` and the queue suite green; estate gates 22 and 45 green |

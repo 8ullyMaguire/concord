@@ -108,16 +108,27 @@ async fn list_documents(
     Ok(Json(serde_json::to_value(documents).map_err(internal)?))
 }
 
+/// `GET /api/v1/projects/{slug}/documents/{doc_id}` — one document, body and all.
+///
+/// By integer id, because that is the Go route's key. A non-integer is a 400 with the Go handler's
+/// own message rather than a 404: the path is well-formed and the id is not.
 async fn get_document(
     State(state): State<AppState>,
     Path((slug, document)): Path<(String, String)>,
 ) -> Result<Json<Value>, ApiError> {
-    match concord_db::projects::document(&state.pool, &slug, &document)
+    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
+    let Ok(id) = document.parse::<i64>() else {
+        return Err(ApiError::invalid_request("document id must be an integer"));
+    };
+    match concord_db::projects::document(&state.pool, project.id, id)
         .await
         .map_err(internal)?
     {
         Some(doc) => Ok(Json(serde_json::to_value(doc).map_err(internal)?)),
-        None => Err(ApiError::not_found(format!("document {slug}/{document}"))),
+        None => Err(ApiError::not_found(format!("document {id}"))),
     }
 }
 
