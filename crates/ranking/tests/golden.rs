@@ -91,6 +91,30 @@ fn every_go_number_survives_the_port() {
                     }
                 }
             }
+            "rate1" => {
+                // The regula-falsi `else` branch: one game whose result matches the expectation.
+                let (r, rd, sigma) = (number(row, 1), number(row, 2), number(row, 3));
+                let game = Game {
+                    opponent_r: number(row, 4),
+                    opponent_rd: number(row, 5),
+                    score: number(row, 6),
+                };
+                let (got_r, got_rd, got_vol) = rate(r, rd, sigma, &[game], 0.5);
+                for (index, (got, want)) in [
+                    (got_r, number(row, 7)),
+                    (got_rd, number(row, 8)),
+                    (got_vol, number(row, 9)),
+                ]
+                .into_iter()
+                .enumerate()
+                {
+                    checked += 1;
+                    let label = format!("rate1({r}, {rd}, {sigma}, {} vs {}, {})[{index}]", game.opponent_r, game.opponent_rd, game.score);
+                    if !same(&label, got, want) {
+                        failures.push(label);
+                    }
+                }
+            }
             "pairwise" => {
                 let out = outcome(&row[1]);
                 let weight = number(row, 2);

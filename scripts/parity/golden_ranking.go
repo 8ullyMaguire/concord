@@ -72,6 +72,31 @@ func main() {
 		}
 	}
 
+	// 1b. The regula-falsi `else` branch in `rate`.
+	//
+	// When delta^2 <= phi^2 + v the volatility iteration starts from `A - k*tau` found by stepping down
+	// until f goes negative, instead of from `ln(delta^2 - phi^2 - v)`. Almost every game in the grid
+	// above takes the other branch, so the mutants in that step survived: a game whose result MATCHES the
+	// expectation (delta ~ 0) against a high-RD opponent is what reaches it, and 0.5 against an equal
+	// opponent is the sharpest case.
+	for _, start := range [][3]float64{
+		{1500, 350, 0.06},
+		{1500, 250, 0.06},
+		{1500, 120, 0.03},
+	} {
+		for _, one := range []opp{
+			{1500, 350, 0.5}, // exactly the expectation
+			{1505, 350, 0.5}, // and a hair off it
+			{1490, 300, 0.5},
+			{1500, 200, 1.0}, // a win the expectation half-expected
+			{1500, 200, 0.0},
+		} {
+			games := []ranking.Game{{OpponentR: one.r, OpponentRD: one.rd, Score: one.score}}
+			r, rd, vol := ranking.Rate(start[0], start[1], start[2], games, 0.5)
+			row("rate1", start[0], start[1], start[2], one.r, one.rd, one.score, r, rd, vol)
+		}
+	}
+
 	// 2. apply_pairwise_vote(): the weight clamp, the zero-weight no-op and the volatility carry, each of
 	// which is a branch a survivor can delete.
 	a := ranking.Feature{R: 1520, RD: 90, Vol: 0.06, StrategicWeight: 1.5}
