@@ -1189,6 +1189,25 @@ broken build looked like a broken probe — rows are now indexed with `.get` so 
 Three schema facts found by failing: `project_documents.slug` and `.author_id` are NOT NULL, and `field_reports` has
 a FK from `projects` (teardown order).
 
+### Row 11 — part 19: one complaint, bound to the project (2026-11-13, `b6eab0c`)
+
+```
+gate (before): GET /projects/{project_id}/complaints/{id} -> 404
+gate (after):
+  probe_s5_complaint.py -> 12/12 ok
+  routes.py             -> go 216 / port 90   (128 remain)
+  cargo test -p concord-db --lib -> 30 passed
+  concord-parity        -> 0 shape(s) disagreed of 16 checked, 5 skipped
+```
+
+The URL has two halves and this route ties them: a complaint id is global, so a handler reading only `{id}` makes the
+project half decoration and lets any caller reach any complaint through their own project's URL. A mismatch is 404,
+never 403. The probe separates four refusals that are four different mistakes: another project's complaint (404), a
+non-numeric complaint id (**400** — parsing it as 0 is a 404 for the wrong reason), an unknown or non-numeric project
+segment (404, as the Go's `requireProjectID` maps a parse failure to `ErrNotFound`), and a private project without a
+token (404). The probe caught the third: `FAIL an unknown project is 404: got 400 want 404`, because the handler used
+the slug helper on a numeric segment.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
