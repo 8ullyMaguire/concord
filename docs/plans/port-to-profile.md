@@ -1954,6 +1954,57 @@ tool call that wrote it was interrupted and the tree was left clean at `610ac9f`
 (`SetRequestTags` replaces and reuses instance-wide tag rows; `AnswerRequest` writes `(request_id, project_id, body,
 'active', proposed_by)`).
 
+### Row 11 — part 39: B1, request tags, answers and the answer vote (2026-11-13, `8024005`)
+
+```
+gate (before): PUT /requests/{}/tags, POST /requests/{}/answers, POST /answers/{}/vote -> 404
+gate (after):
+  probe_s5_requestwrites.py -> 43/43 ok
+  probe_s5_filing.py 31/31, probe_s5_requests.py 23/23, probe_s5_accept.py 15/15   (no regression)
+  routes.py  -> go 216 / port 117   missing: 101 (91 json, 10 page)
+  concord-parity -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-db --lib -> 38 passed
+```
+
+`crates/db/src/requests.rs` gained `set_tags`, `answer`, `one_answer`, `vote_answer` (+ `VoteRefusal`); `crates/db/src/voteweight.rs`
+is §8.3's formula in one place with the two omissions the reference makes and documents — **no expertise term** (an answer
+has no tags; borrowing the solution's would apply a multiplier computed from an unrelated question) and **reputation as a
+plain `sum(points)`**, not decayed by `rep_halflife_days` (the charter carries the half-life, `GetReputation` never applies
+it).
+
+Rules asserted, each one a defect already paid for: tags are **author-only and not a role check** (the reference's first
+version refused the author for having an ordinary role); setting tags **replaces** and drops whitespace-only names; the tag
+vocabulary is **instance-wide**; an answer belongs to a **project** while the caller goes in `proposed_by` (the reference
+once put the caller's user id in the project column — a cross-project write); **one answer per project per request**;
+an **instance-wide** request has no project to inherit; a vote names **two answers and an outcome**; a foreign answer is
+**403**, an unknown one 404; **you cannot vote on your own proposal** (§5.1); **skip records and moves nothing**; and
+`weight` in the body is **ignored** (§8.3).
+
+**NEGATIVE CONTROLS.**
+
+```
+weight taken from the body:
+  FAIL the 999 in the body is IGNORED: got False want True
+  FAIL the stored weight is the computed one, not 999            41/43
+self-vote check removed:
+  FAIL you cannot vote on an answer you proposed: got 200 want 403
+  FAIL every accepted vote left a row...  got ['a','skip','b']   41/43   (the refused vote also left a row)
+author check on tags removed:
+  FAIL a stranger may not set them: got 200 want 403             42/43
+```
+
+**Two decisions taken by running it, both recorded as deliberate divergences:**
+
+* `unique (voter_id, answer_a, answer_b)` — a voter compares a given **ordered pair** once. The reference lets that
+  constraint error out as a **500**, so a second click on the same pair looks like a server fault. Ported as **409**, the
+  refusal itself unchanged. Same treatment as a project answering twice (`unique (request_id, project_id)`).
+* the **instance-wide answer**: the reference passes the request's project (`0`) straight into a NOT NULL column and answers
+  500 for a question the instance board exists for. The port requires the body to name the answering project and refuses
+  with **400** otherwise — guessing a project from the caller's memberships would invent an answer's provenance.
+
+Also: an answer's `strategic_weight` is **0** in the Glicko call. §6.2's weight is a feature's maintainer-set importance
+and an answer has no such thing; borrowing one would move ratings by an unrelated project decision.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
