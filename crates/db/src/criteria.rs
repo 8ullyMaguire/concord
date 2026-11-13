@@ -193,3 +193,111 @@ mod tests {
         assert_eq!(serde_json::to_value(&scoped).unwrap()["project_id"], 7);
     }
 }
+
+/// One list by id, with its visibility decided from the LIST's own project.
+///
+/// An instance-wide list (`project_id` NULL) is readable by everyone — §16 makes it the scope every project shares,
+/// so it has no project to check and its content is public by definition. A project list is readable only if its
+/// project is, and a refusal is a 404 rather than a 403, because a 403 confirms the id is real.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn list_by_id(pool: &PgPool, id: i64) -> Result<Option<ProjectList>, sqlx::Error> {
+    let row = sqlx::query_as::<_, (i64, Option<i64>, String, String, String, String, f64, f64)>(
+        "select id, project_id, slug, title, coalesce(description, ''), status,
+                extract(epoch from created_at)::double precision,
+                extract(epoch from updated_at)::double precision
+           from lists where id = $1",
+    )
+    .bind(id)
+    .fetch_optional(pool)
+    .await?;
+    Ok(row.map(
+        |(id, project_id, slug, title, description, status, created_at, updated_at)| ProjectList {
+            id,
+            project_id,
+            slug,
+            title,
+            description,
+            status,
+            created_at,
+            updated_at,
+        },
+    ))
+}
+
+/// One entry of a list.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Entry {
+    /// The row.
+    pub id: i64,
+    /// The list.
+    pub list_id: i64,
+    /// Where it points.
+    pub url: String,
+    /// What it is called.
+    pub title: String,
+    /// What it is.
+    pub description: String,
+    /// Its category, `null` when nobody set one — the Go makes it a pointer for the same reason `project_id` above
+    /// is one: "no category" is a fact, and `""` would render as an empty chip.
+    pub category: Option<String>,
+    /// Its status.
+    pub status: String,
+    /// Rating.
+    pub elo_r: f64,
+    /// Rating deviation.
+    pub elo_rd: f64,
+    /// Rating volatility.
+    pub elo_vol: f64,
+    /// Who proposed it.
+    pub proposed_by: i64,
+    /// Created, unix seconds.
+    pub created_at: f64,
+    /// Updated, unix seconds.
+    pub updated_at: f64,
+}
+
+/// A list's entries, **ranked**: `elo_r DESC`, and removed entries hidden.
+///
+/// §16 says "entries are ranked, not just listed". Ordering by title or id would be the alphabetical accident the
+/// section forbids, and a list whose entries all read `1500` is exactly that accident wearing a rating column.
+///
+/// An EMPTY array, never null.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn entries(pool: &PgPool, list_id: i64) -> Result<Vec<Entry>, sqlx::Error> {
+    let rows = sqlx::query_as::<_, (i64, i64, String, String, String, Option<String>, String, f64, f64, f64, i64, f64, f64)>(
+        "select id, list_id, url, coalesce(title, ''), coalesce(description, ''), category, status,
+                elo_r, elo_rd, elo_vol, coalesce(proposed_by, 0),
+                extract(epoch from created_at)::double precision,
+                extract(epoch from updated_at)::double precision
+           from list_entries where list_id = $1 and status <> 'removed'
+          order by elo_r desc, id asc",
+    )
+    .bind(list_id)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(
+            |(id, list_id, url, title, description, category, status, elo_r, elo_rd, elo_vol, proposed_by,
+              created_at, updated_at)| Entry {
+                id,
+                list_id,
+                url,
+                title,
+                description,
+                category,
+                status,
+                elo_r,
+                elo_rd,
+                elo_vol,
+                proposed_by,
+                created_at,
+                updated_at,
+            },
+        )
+        .collect())
+}

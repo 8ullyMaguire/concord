@@ -54,6 +54,9 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/projects/{project_id}/complaints/{complaint}", get(get_complaint))
         .route("/api/v1/projects/{project_id}/complaints/{complaint}/features", get(complaint_features))
         .route("/api/v1/projects/{project_id}/milestones/{milestone}", get(get_milestone))
+        .route("/api/v1/projects/{project_id}/lists/{list}", get(get_list))
+        .route("/api/v1/projects/{project_id}/lists/{list}/", get(get_list))
+        .route("/api/v1/projects/{project_id}/lists/{list}/entries", get(get_list_entries))
         .route("/api/v1/projects/{slug}/documents/kinds", get(document_kinds))
         .route("/api/v1/projects/{slug}/features/{feature}/deps", get(feature_deps))
         .route("/api/v1/projects/{slug}/features/{feature}/evidence", get(feature_evidence))
@@ -3016,4 +3019,70 @@ async fn get_milestone(
         .await
         .map_err(internal)?;
     Ok(Json(serde_json::json!({ "milestone": found, "features": features })))
+}
+
+/// The visibility decision for a LIST, which is not the decision for its project.
+///
+/// A protected list inside a public project must not become readable because its parent is, and an instance-wide list
+/// (no project at all) is readable from everywhere by §16. Both refusals are 404: a 403 would confirm the id exists.
+///
+/// The path's project is still checked, because the route names one and a client that pairs a list with the wrong
+/// project is asking a question the URL cannot answer — the Go keeps the same check for the same reason.
+async fn readable_list(
+    state: &AppState,
+    path_project: &concord_db::projects::Project,
+    list_segment: &str,
+    headers: &HeaderMap,
+) -> Result<concord_db::criteria::ProjectList, ApiError> {
+    let Ok(id) = list_segment.parse::<i64>() else {
+        return Err(ApiError::invalid_request("list id must be an integer"));
+    };
+    let Some(list) = concord_db::criteria::list_by_id(&state.pool, id)
+        .await
+        .map_err(internal)?
+    else {
+        return Err(ApiError::not_found(format!("list {list_segment}")));
+    };
+    match list.project_id {
+        // Instance-wide: no project to consult, and the content is public by definition.
+        None => Ok(list),
+        Some(owner) => {
+            let user = bearer_user(state, headers).await?;
+            let owner_project = concord_db::projects::project_by_id(&state.pool, owner)
+                .await
+                .map_err(internal)?
+                .ok_or_else(|| ApiError::not_found(format!("list {list_segment}")))?;
+            if !readable(state, &owner_project, user.as_ref()).await?
+                || !readable(state, path_project, user.as_ref()).await?
+            {
+                return Err(ApiError::not_found(format!("list {list_segment}")));
+            }
+            Ok(list)
+        }
+    }
+}
+
+/// `GET /api/v1/projects/{project_id}/lists/{id}`
+async fn get_list(
+    State(state): State<AppState>,
+    Path((project_id, list)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = numeric_project(&state, &project_id, &headers).await?;
+    let found = readable_list(&state, &project, &list, &headers).await?;
+    Ok(Json(serde_json::json!(found)))
+}
+
+/// `GET /api/v1/projects/{project_id}/lists/{id}/entries` — §16's ranked entries.
+async fn get_list_entries(
+    State(state): State<AppState>,
+    Path((project_id, list)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = numeric_project(&state, &project_id, &headers).await?;
+    let found = readable_list(&state, &project, &list, &headers).await?;
+    let rows = concord_db::criteria::entries(&state.pool, found.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
 }
