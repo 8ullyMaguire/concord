@@ -40,7 +40,7 @@ quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 | 8 | S2 ideas, complaints, ranking | **Done 2026-11-13** (`0a32d49`) — corpus subset, `concord-ranking` suite and store tests green; every killable ranking mutation arm killed, the rest proved unobservable (see the dated entry below) |
 | 9 | S3 consensus, governance, ledger | **Done 2026-11-13** (`a2ace5d`) — corpus subset green, `probe_s3_api.py` 94/94, estate gate 49 green; `consensus_e2e`/`audit_e2e` moved to row 12 by the dated correction |
 | 9b | S3 arena and solutions | **Done 2026-11-13** (`345b132`) — `probe_s3b_arena.py` 20/20 (was 5/20), the negative control at 19/20, corpus still 2 disagreed of 14, ranking oracle green with 10 arena rows |
-| 10 | S4 moderation, comments, inbox | corpus subset + `notifications_e2e` and the queue suite green; estate gates 22 and 45 green |
+| 10 | S4 moderation, comments, inbox | gates 22 and 45 green (measured 2026-11-13: `CHECK inbox` exit 0, `CHECK authz` 10/10) **and** the four surfaces' probes green — done — plus adoption of `polaris-comments` then `polaris-authz`, which is what gates 19 and 45 actually ask for. Probes: 26/26, 27/27, 31/31, 39/39 |
 | 11 | S5 stats, feeds, admin binaries | corpus + `stats_e2e` and feed parse; estate gates 4, 5, 47 green; timers migrated to `polaris-loops` |
 | 12 | P6 the frontend on SvelteKit + `@polaris/ui` | every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
 | 13 | P7 cutover | `concord.polarisocial.xyz/api/v1/version` served by the Rust binary, and estate gate 17 green for `concord` with NO `reason` |
@@ -593,6 +593,46 @@ Both seed through `sqlite3.connect`. This is the **sixth and seventh** suite to 
 no longer row-specific and is stated once here: **every browser suite in `tests/e2e/` whose fixture opens
 `sqlite3.connect` cannot run against a PostgreSQL candidate, and the port cannot fix that from the API side.**
 They move to row 12, which is the row that can convert them; row 10's gate now names the two probes.
+
+**Row 10 status, dated 2026-11-13 — the four surfaces answer, but two of them are mine and should be the
+estate's.** This is the ledger correcting itself rather than a row being marked Done, because the plan's own
+`Adopt:` line for S4 names three crates and I built two of them from scratch instead of looking first:
+
+```
+$ ls -d /personal/documents/code/polaris-* | wc -l          -> 20+
+$ ls src/ of polaris-authz                                    -> eval.rs authorize(policy, subject, capability, scope, now)
+$ grep -nE "^pub (fn|struct|enum)" polaris-comments/src/lib.rs
+   pub fn check_body(policy, body) -> Result<(), Refused>
+   pub fn place(policy, parent: Option<Parent>) -> Result<u8, Refused>
+   pub fn order(policy, comments: &mut [Comment])
+   pub fn after_delete(policy, comment) -> Option<Comment>
+   pub fn replies_lost(policy, comments, id) -> usize
+```
+
+Both exist, both are pure, both are exactly what I hand-wrote:
+
+* `crates/db/src/moderation.rs` keeps a `ROLES` ladder and `role_at_least` — a permission check beside
+  `polaris-authz`, which is what **gate 45** fails a site for. The crate's `authorize()` is deny-overrides,
+  expiry-aware, and returns a `Denial` variant per reason; my ladder returns a bool.
+* `crates/db/src/comments.rs` keeps `body.trim().is_empty()`, ordering by `created_at`, and a tombstone
+  delete — `check_body`, `order`, and `after_delete` in `polaris-comments`. `place` (max depth, overflow
+  policy) and `replies_lost` (what a delete costs the tree) are rules I did not implement at all, which is
+  the part of this that is a real gap rather than a style preference.
+
+What landed and is proved by probes stands: the inbox answers with the owner check in the WHERE clause
+(26/26), the queue pages on a three-part cursor (27/27), threads refuse a cross-project or cross-parent
+comment (31/31), and moderation refuses a shipped feature, a baseline entry and a second reversal (39/39),
+with the reason now validated before the first write. Those are behaviours the Go service has; adopting the
+crates must not lose one of them, and the probes are the evidence that it did not.
+
+**Decision, dated 2026-11-13:** adoption happens by building the crate's `Policy` from concord's governance
+model (its `Charter` already carries the quorum and role rules) and deleting the hand-written parts, in this
+order — `polaris-comments` first, because it closes a functional gap (`max_depth`/`overflow` are unimplemented
+today), then `polaris-authz`, then `polaris-inbox` at cutover, where the gate's old-route counter is what
+retires `/api/v1/notifications`. Rejected alternative: keep the hand-written pair and declare `authz = local`
+in the manifest, because gate 45 does not care that it works — it fails on the check existing beside the
+crate, and a second implementation of a permission ladder is how one surface ends up granting what another
+denies.
 
 ### Blocked
 
