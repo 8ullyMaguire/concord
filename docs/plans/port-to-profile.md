@@ -33,11 +33,10 @@ Read this table FIRST every turn, before any code. A row is done when its gate r
 quoted below it, never because it merged. The count in this header is the number the turn report
 quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 
-### Open *(13 — M0.1 first)*
+### Open *(12 — M0.2 first)*
 
 | # | step | gate — the command that fails if the step is absent |
 |---|---|---|
-| 1 | M0.1 Rust workspace skeleton on `port-rust` | `cargo metadata --no-deps --format-version 1 >/dev/null && echo OK` |
 | 2 | M0.2 the PostgreSQL cluster, decided and recorded | `psql "$CONCORD_PG_URL" -c 'select version()'` names a version, and `[site.stack]` carries either 18 or a `reason` |
 | 3 | M0.3 parity recorder, seed, two stable recordings | two runs of `scripts/parity/record.py` over the seed diff empty on every shape without `unstable` |
 | 4 | M0.4 baseline schema, mapped row by row | `\dt` count equals the SQLite table count minus the `*_fts*` shadows, and `\d features` shows `public_id` and `timestamptz` |
@@ -53,7 +52,26 @@ quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 
 ### Blocked *(none — a row that cannot advance moves here with what blocks it and on whom)*
 
-### Done *(empty — 13 open)*
+### Done *(1 — 12 open)*
+
+**1. M0.1 Rust workspace skeleton on `port-rust`** — done 2026-11-13, commit `89057c8`, pushed to
+`forgejo/port-rust` and `github/port-rust`.
+
+```
+$ cargo metadata --no-deps --format-version 1 >/dev/null && echo OK
+OK
+```
+
+Five members (`concord-domain`, `concord-db`, `concord-app`, `concord-parity`, `concord-cli`), the
+workspace dependencies of the plan, and the six family crates by path. The path depth is counted
+from `Cargo.toml`, not copied: the checkout is `<code>/projects/concord` and the family crates are
+siblings of `<code>/projects`, so `../../polaris-*`. `go build ./...` passes on the same commit, as
+every commit on this branch must while the Go tree serves traffic. The gate before the change was
+`error: could not find Cargo.toml in .../projects/concord or any parent directory`.
+
+Two decisions the row left open, taken here: `/target/` added to `.gitignore` (the tree had no
+Rust ignore rule), and `Cargo.lock` is committed — this is a binary product, so the lock file is
+part of the build, and the branch must be reproducible on the host that deploys it.
 
 
 ## M0 — the ground (no product code)
