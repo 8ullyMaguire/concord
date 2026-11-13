@@ -1,5 +1,11 @@
 # Concord
 
+> **Layout, 2026-11-13.** This checkout is the **Rust** implementation (`crates/`, workspace `Cargo.toml`). The Go
+> implementation that still serves production until the cutover row is **archived** at `~/code/archive/concord` and is
+> not built from here; `scripts/parity/routes.py` reads it from there (`CONCORD_GO_SRC` overrides). Every commit of both
+> implementations remains in this repository's history. The port's state list is
+> `docs/plans/port-to-profile.md` — its ledger is the only one.
+
 A complaint-driven, consensus-based forge: development is driven by real
 complaints, ranked by pairwise Glicko-2 comparisons, decided through quorum
 consensus, executed on a phase-gated kanban board — and **discovered** through

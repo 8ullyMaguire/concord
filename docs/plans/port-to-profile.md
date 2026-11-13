@@ -1640,6 +1640,29 @@ twenty-one, so the tuple form does not compile (rewritten to `Row` accessors); a
 the same trap as `arena_entries.is_baseline` being a real `BOOLEAN`, in the opposite direction. A schema skimmed from the
 Go's scan targets gets both wrong.
 
+## Layout change, 2026-11-13: the Go tree archived, the Rust tree moved
+
+Decision, recorded here because it changes every path in this ledger:
+
+* the **Go implementation** — the reference until cutover — now lives at **`~/code/archive/concord`**
+  (`/personal/documents/code/archive/concord` on thinkcentre), frozen at this repository's `port-rust` commit `eb10320`.
+  It carries `ARCHIVE.md` with its provenance. It has no `.git`: history for every file stays in this repository, which
+  is why the removal below is a commit and not a delete;
+* the **Rust implementation** — this checkout — moved from `~/code/projects/concord` to **`~/code/rust/concord`**;
+* the paths *inside* this ledger that say `crates/…`, `scripts/parity/…` or `docs/…` are unchanged and relative to the new
+  root. `CONCORD_GO_SRC`, if set, points elsewhere for the reference; otherwise `scripts/parity/routes.py` resolves this
+  repository first and `~/code/archive/concord` second, and **refuses to report an inventory** when it finds neither —
+  an inventory computed against a missing tree would read as a finished port.
+
+What did NOT change, and is the point of keeping the archive: the Go service still serves `concord.polarisocial.xyz`
+until the cutover row, its binary is `/home/alvaro/concord-deploy/concord` built from the archived tree, and this port's
+gate is still behavioural — the parity corpus replays responses recorded from the LIVE service and compares them with the
+Rust candidate. Nothing in the Rust tree compiles against the archive.
+
+Consequence for the remaining rows: every "read the Go first" step now reads `~/code/archive/concord`. The route
+inventory gate is unchanged at its last measurement — 216 Go routes, 104 answered, 114 missing (104 JSON, 10 page) —
+because the reference is the same code, moved.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus

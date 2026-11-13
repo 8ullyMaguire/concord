@@ -1,8 +1,0 @@
-{{define "content"}}
-<div class="page-header">
-  <h1 class="page-title">Roadmap <span class="muted" style="color:var(--slate-500);font-weight:400;">&middot; {{.Slug}}</span></h1>
-  <p class="page-subtitle">Milestones on a timeline &mdash; planned versus shipped, with the slip measured rather than asserted.</p>
-</div>
-<div id="roadmap" data-slug="{{.Slug}}" aria-busy="true"><p class="muted">Loading milestones&hellip;</p></div>
-<script src="{{ asset "/assets/js/milestones.js" }}"></script>
-{{end}}

@@ -21,6 +21,28 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Where the REFERENCE implementation lives. The Go service still serves production until the cutover row, and this
+# script parses its router to know what the port owes — but the Go tree now lives in the archive, not in this repo.
+#
+# Resolved in that order:
+#   1. `CONCORD_GO_SRC` — set it when the reference is somewhere else (a second checkout, a build box);
+#   2. `internal/httpapi` under this repo — true for any checkout that still carries the Go tree;
+#   3. `~/code/archive/concord` — where it was archived on 2026-11-13 (`archived-go`, commit eb10320).
+#
+# A missing reference is a hard error rather than an empty route set: "the port answers every route" is a claim, and a
+# claim made against a directory that is not there is the most comfortable kind of false green.
+def go_source_root() -> str:
+    """The directory holding the Go implementation this script parses."""
+    configured = os.environ.get("CONCORD_GO_SRC")
+    if configured:
+        return configured
+    if os.path.isdir(os.path.join(ROOT, "internal", "httpapi")):
+        return ROOT
+    return os.path.expanduser("~/code/archive/concord")
+
+
+GO_ROOT = go_source_root()
+
 # chi method helpers, in the order a chained call can appear.
 METHODS = ("Get", "Post", "Put", "Delete", "Patch", "Head", "Options", "Method")
 
@@ -39,7 +61,12 @@ def go_routes_with_handlers():
     JSON — work that would then have to be deleted.
     """
     found = {}
-    httpapi = os.path.join(ROOT, "internal", "httpapi")
+    httpapi = os.path.join(GO_ROOT, "internal", "httpapi")
+    if not os.path.isdir(httpapi):
+        raise SystemExit(
+            f"no Go reference found at {httpapi} — set CONCORD_GO_SRC to the archived Go tree "
+            f"(default ~/code/archive/concord). Reporting an inventory without it would read as a finished port."
+        )
     for name in sorted(os.listdir(httpapi)):
         if not name.endswith(".go") or name.endswith("_test.go"):
             continue
@@ -87,7 +114,7 @@ def go_routes_with_handlers():
 
 def handler_body(name):
     """The source of one `func (s *Server) <name>(` body, or "" when it cannot be found."""
-    httpapi = os.path.join(ROOT, "internal", "httpapi")
+    httpapi = os.path.join(GO_ROOT, "internal", "httpapi")
     needle = f"func (s *Server) {name}("
     for filename in sorted(os.listdir(httpapi)):
         if not filename.endswith(".go") or filename.endswith("_test.go"):
