@@ -33,33 +33,12 @@ Read this table FIRST every turn, before any code. A row is done when its gate r
 quoted below it, never because it merged. The count in this header is the number the turn report
 quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 
-### Open *(10 — M0.4 first)*
+### Open *(9 — M0.5 first)*
 
 | # | step | gate — the command that fails if the step is absent |
 |---|---|---|
-| 4 | M0.4 baseline schema, mapped row by row | `\dt` count equals the SQLite table count minus the `*_fts*` shadows, and `\d features` shows `public_id` and `timestamptz` |
 
-**Row 4 measured before it is attempted** (2026-11-13, on the host, not from the migrations):
 
-```
-$ sqlite3 ~/.local/share/concord/concord.db 'select count(*) from sqlite_master where type="table"'
-91
-$ ... and name like '%_fts%'
-11          # 2 virtual tables (projects_fts, project_documents_fts) + 9 shadow tables
-$ ... and name not like '%_fts%'
-80
-```
-
-The row's verify line says `83` ± dropped shadow tables, counted `minus 8`. Measured: 91 total, 11
-FTS-related, 80 non-FTS. **83 matches neither count**, so the gate as written cannot be satisfied
-and the row is not attempted until the target is right. The corrected gate, to be used when the
-schema is translated: `psql "$URL" -c '\dt'` lists **80** relations (91 − 11 FTS tables, with the
-two virtual tables replaced by `tsvector` + GIN on `projects` and `project_documents`), and
-`\d features` shows `public_id`, `timestamptz` timestamps, no `REAL`.
-
-Two facts the mover depends on, both checked: the service's `CONCORD_DB` is that same file, and the
-directory holds no `-wal`/`-shm` and the file's mtime is 2026-11-12 23:10, so a copy taken today is
-current and the 68 MB file is not mid-write.
 | 5 | M0.5 data mover loads and counts agree | `select count(*)` prints `73 | 5760 | 2402 | 88` |
 | 6 | M0.6 replay tool passes against the CURRENT Go service | `CANDIDATE=https://concord.polarisocial.xyz cargo run -p parity` prints `0 shape(s) disagreed` |
 | 7 | S1 projects, documents, board | corpus subset identical + `projects_e2e`, `board_e2e`, `pages_e2e` green against the candidate |
@@ -170,6 +149,58 @@ Two things the plan's code could not do, both found by running it:
 
 The corpus also records which build it describes (`__meta.version` = `pre-merge-2026-11-05-63-g313b4ee`),
 because the answer to "is this corpus stale?" was otherwise a judgement call.
+
+**4. M0.4 baseline schema, mapped row by row** — done 2026-11-13, commit with this edit
+(`crates/db/sql/0001_baseline.sql` 1,115 lines + `scripts/parity/ddl.py`).
+
+```
+$ psql -c '\dt' | grep -c '^ public'                                   79
+$ information_schema columns where data_type='real'                    0
+$ columns named public_id                                              7
+$ columns where data_type='tsvector'                                   2
+$ columns where data_type='boolean'                                    7
+$ psql -v ON_ERROR_STOP=1 -f crates/db/sql/0001_baseline.sql           79 relations, no error
+```
+
+Before the change: `select count(*) from pg_tables where schemaname='public'` -> **0**, and
+`\d features` -> `Did not find any relation named "features"`.
+
+The row's verify line said `83` ± eight shadows. Measured on the live database: **91** tables = 11
+fts-related + 1 `sqlite_sequence` + **79** real, so 79 is the only count that means anything. That
+is now the gate.
+
+Generated rather than typed (39 migrations, 79 tables — a hand translation drifts on the next
+migration), with every judgement in `OVERRIDES` or in a rule the code refuses to apply naively.
+Five places where the plan's mapping is not safely mechanical, all found by applying it:
+
+- **R2 (`INTEGER` holding 0/1 -> boolean) converts counters.** `project_metrics.stars`,
+  `project_metrics.forks`, `users.trust_level`, `trust_grants.level`,
+  `charters.merge_requires_quorum`, `features.milestone_position` all hold only 0 and 1 in today's
+  data and none is a flag. A boolean now also requires a boolean-shaped name (`is_`, `has_`,
+  `needs_`, `requires_`, or a known flag word); **10 columns the data test alone would have
+  converted stay `bigint`**. The plan's test ("check the column never holds 2") is necessary and not
+  sufficient, which is the same lesson row 3's draw produced.
+- **R2 must also refuse foreign keys and id-shaped names.** `capability_assertions.asserted_by`
+  holds 0 and 1 because the table has two rows; PostgreSQL refused the FK with
+  `Key columns "asserted_by" ... are of incompatible types: boolean and bigint`, which is the rule
+  stating itself. Ids ending `_id`, and `by`/`actor`/`owner`/`author`, are excluded outright.
+- **FKs cannot be inline.** Alphabetical order puts a child above its parent and PostgreSQL will
+  not reference a table that does not exist yet: they are added by `ALTER TABLE` after every table
+  exists, which also makes the file's table order irrelevant.
+- **Single-column non-integer primary keys must keep the constraint.** `capabilities.key` is
+  `TEXT PRIMARY KEY`, and a translation that emits `key text` leaves the FK pointing at a column
+  that is no longer unique — `ERROR: there is no unique constraint matching given keys for
+  referenced table "capabilities"`.
+- **R7 needs a decision on the text-search config.** `to_tsvector('simple', ...)` and not
+  `'english'`: fts5's `unicode61` tokeniser does no stemming, so an English config in the move would
+  silently change which rows match. One generated column per table (`search_tsv`), not one per
+  indexed column, because search queries the union.
+
+Two facts the row surfaced that the slices owe: `projects_fts` indexed **`tags` and `languages`**,
+which are not columns of `projects` — the fts row was assembled by the writer, so the generated
+`search_tsv` covers `name` and `description` only and the slice that serves search must decide what
+replaces the rest. And `api_tokens`, `admin_ledger`, `act_reviews` came through as ordinary tables,
+so the port's schema is 79 relations and not the 83 the plan assumed.
 
 
 ## M0 — the ground (no product code)
