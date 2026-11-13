@@ -46,6 +46,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/projects/{project_id}/criteria-profiles", get(list_criteria_profiles))
         .route("/api/v1/projects/{project_id}/criteria-profiles/", get(list_criteria_profiles))
         .route("/api/v1/projects/{slug}/languages", get(project_languages))
+        // Top-level `{project_id}`, NOT nested under the `{slug}` subtree: nested, axum binds the segment by its
+        // own name and a handler reading a numeric id would get the slug — the Go comment records the same bug
+        // chi had ("requireProjectID reads project_id, gets "", and every call 404s with project \"\"").
+        .route("/api/v1/projects/{project_id}/capabilities", get(list_capabilities))
         .route("/api/v1/projects/{project_id}/lists", get(project_lists))
         .route("/api/v1/projects/{project_id}/lists/", get(project_lists))
         .route("/api/v1/projects", get(list_projects))
@@ -2770,4 +2774,17 @@ async fn readable_project(
         return Err(ApiError::not_found("no such project"));
     }
     Ok(project)
+}
+
+/// `GET /api/v1/projects/{id}/capabilities` — the whole catalogue, each entry with this project's claim.
+async fn list_capabilities(
+    State(state): State<AppState>,
+    Path(project_id): Path<i64>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = readable_project(&state, project_id, &headers).await?;
+    let panel = concord_db::capabilities::panel(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(panel)))
 }
