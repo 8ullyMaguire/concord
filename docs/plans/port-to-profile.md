@@ -1107,6 +1107,28 @@ It is a census over a corpus that is still growing: the live Go counts projects 
 port's copy cannot, so the COUNTS are not comparable before cutover. The SHAPE is compared, by probe_s5_stats.py.
 Declaring it unstable without the reason would be exactly the silence the parity tool exists to prevent.
 
+### Row 11 — part 15: field reports, and the denominator (2026-11-13, `7e5fbc6`)
+
+```
+gate (before): GET /projects/{id}/field-reports -> 404
+gate (after):
+  probe_s5_fieldreports.py -> 14/14 ok
+  routes.py                -> go 216 / port 85   (133 remain)
+  cargo test -p concord-db --lib -> 28 passed
+  concord-parity           -> 0 shape(s) disagreed of 16 checked, 5 skipped
+```
+
+§4.7's "worked for 83% of **reporters** on arm64" — the rate without its denominator is the whole bug, so no
+reports is an ABSENT `outcome_rate` with `sample_size: 0` (never a zero, which claims a failure nobody observed),
+one report carries `sample_size: 1`, the rate is reputation-weighted with the weight CAPPED at 100 (else two
+prolific users decide the panel), `worked-with-caveats` counts half (scoring it as either erases the caveat), and
+removed reports are excluded from both the list and the rate — serving one would undo the quorum decision that
+removed it. Negative control (caveats credited as full success, 12/14): `FAIL arm64 is the spec's 83%: got 1.0
+want 0.8333`.
+
+Two schema facts found by failing: `reputation_events` has `kind`, not `reason`; and a bare `0` in a select list is
+INT4, so decoding it as `i64` fails with a message naming a **column number** rather than a column — `0::bigint`.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
