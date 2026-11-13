@@ -306,6 +306,47 @@ saves the session.
 Still open in row 9: `POST /{id}/override`, `/{id}/outcome`, `/{id}/hold`, and the `consensus_*` plus
 `audit_e2e` browser suites, then estate gate 49.
 
+**Row 9 (S3) — §6.6's override window landed** (2026-11-13, `edd156e`). `scripts/parity/probe_s3_api.py`:
+
+```
+46/46 ok, exit 0                       (was 27/27; 19 new assertions)
+negative control (open window publishes its tally): 44/46 ok
+  FAIL an open window hides its counts: got 0 want None
+  FAIL ...and still hides the counts: got 1 want None
+```
+
+`crates/db/src/override_window.rs` plus four routes: `GET`/`POST /{call}/override`,
+`/override/position`, `/override/close`. Rules carried across: a window opens only on a call that closed
+`blocked` (and names the actual status and result when it did not); only while an objection is **open**,
+since a withdrawn block was already resolved by §6.6's other branch; **one window ever**, where
+`UNIQUE(call_id)` is the refusal and `23505` becomes a 409; below quorum there is **no verdict at all**
+(recording "upheld" would claim the room decided when most of it did not vote); an override requires the
+objector's remedy **answered in writing**, checked before any write because the verdict is what makes it
+required; and a **held call's window cannot resolve it**, or the hold becomes a pause you can vote around.
+On `overridden` the call's own `result` becomes `accepted_overridden` in the same transaction — the write
+that makes the window a decision rather than a poll.
+
+The hidden tally lives in the **reader** (`fill_tally`), not in each handler, so no route can publish a
+live ballot by forgetting to strip it. That is why the negative control had to flip the reader rather
+than a handler.
+
+Two fixture findings. A probe delete must go children-first through `override_positions` and
+`override_windows` too (`fk_override_windows_call_id`) — invisible on a first run, fatal on the second. And
+"a window opens only on a blocked call" was asserted against call 1, which closes `blocked` *because the
+probe filed an objection on it*: a 201 there is correct behaviour and the assertion was wrong. It now
+names a call that closed `rejected`, and a blocked call whose objection was withdrawn gets its own refusal.
+
+**Row 8 — the mutation gate's survivor count, and one proof that a survivor cannot be killed**
+(2026-11-13, `629bdcc` + `0a32d49`). The isolated run went from **99 missed to 27** once the oracle existed,
+then four more classes were closed with the case each one was missing. One class refuses to die and the
+reason is structural, so it is recorded here rather than chased again: in `rate`'s regula-falsi `else`
+branch, `delta^2 <= phi^2 + v` bounds `delta^2` at roughly 8, while `x = ln(sigma^2) - tau <= -0.5` for
+any `sigma <= 1` gives `x^2 >= 0.25`; the first probe's polynomial term `x^2 - delta^2 - phi^2 - e^x`
+therefore stays positive and the linear term adds `+1/tau`, so **the `while` body is never entered** and
+mutants inside it cannot change an answer. Verified by hand: applying `k * tau -> k + tau` and running the
+suite leaves it green. Applied to the ledger as an equivalent mutant, like `place_feature`'s duplicate
+guard in row 7.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
