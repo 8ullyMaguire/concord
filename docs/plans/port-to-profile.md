@@ -27,6 +27,35 @@ Rules that will bite, from this repo's own record:
 
 ---
 
+## Ledger — the only state list
+
+Read this table FIRST every turn, before any code. A row is done when its gate ran and its output is
+quoted below it, never because it merged. The count in this header is the number the turn report
+quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
+
+### Open *(13 — M0.1 first)*
+
+| # | step | gate — the command that fails if the step is absent |
+|---|---|---|
+| 1 | M0.1 Rust workspace skeleton on `port-rust` | `cargo metadata --no-deps --format-version 1 >/dev/null && echo OK` |
+| 2 | M0.2 the PostgreSQL cluster, decided and recorded | `psql "$CONCORD_PG_URL" -c 'select version()'` names a version, and `[site.stack]` carries either 18 or a `reason` |
+| 3 | M0.3 parity recorder, seed, two stable recordings | two runs of `scripts/parity/record.py` over the seed diff empty on every shape without `unstable` |
+| 4 | M0.4 baseline schema, mapped row by row | `\dt` count equals the SQLite table count minus the `*_fts*` shadows, and `\d features` shows `public_id` and `timestamptz` |
+| 5 | M0.5 data mover loads and counts agree | `select count(*)` prints `73 | 5760 | 2402 | 88` |
+| 6 | M0.6 replay tool passes against the CURRENT Go service | `CANDIDATE=https://concord.polarisocial.xyz cargo run -p parity` prints `0 shape(s) disagreed` |
+| 7 | S1 projects, documents, board | corpus subset identical + `projects_e2e`, `board_e2e`, `pages_e2e` green against the candidate |
+| 8 | S2 ideas, complaints, ranking | corpus subset + `rank_*`, `milestones_e2e`, `feature_*` green; ranking mutation arms killed |
+| 9 | S3 consensus, governance, ledger | corpus subset + `consensus_*`, `audit_e2e` green; estate gate 49 green |
+| 10 | S4 moderation, comments, inbox | corpus subset + `notifications_e2e` and the queue suite green; estate gates 22 and 45 green |
+| 11 | S5 stats, feeds, admin binaries | corpus + `stats_e2e` and feed parse; estate gates 4, 5, 47 green; timers migrated to `polaris-loops` |
+| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | every page its slice owns renders from the API with the server-rendered head, in a browser |
+| 13 | P7 cutover | `concord.polarisocial.xyz/api/v1/version` served by the Rust binary, and estate gate 17 green for `concord` with NO `reason` |
+
+### Blocked *(none — a row that cannot advance moves here with what blocks it and on whom)*
+
+### Done *(empty — 13 open)*
+
+
 ## M0 — the ground (no product code)
 
 ### M0.1 Branch and workspace skeleton (20 min)
