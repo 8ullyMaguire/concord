@@ -46,7 +46,7 @@ gate ran and its output is quoted — not when it was removed from a list. The h
 | 9b | S3 arena and solutions | **Done 2026-11-13** (`345b132`) — `probe_s3b_arena.py` 20/20 (was 5/20), the negative control at 19/20, corpus still 2 disagreed of 14, ranking oracle green with 10 arena rows |
 | 10 | S4 moderation, comments, inbox | **Done 2026-11-13** (`b969b26`): four probes 26/26, 27/27, 40/40, 39/39; `e2e.sh` 29 passed; gates 22 and 45 green (`CHECK inbox` exit 0, `CHECK authz` 10/10); `polaris-comments` and `polaris-authz` adopted |
 | 11 | S5 stats, feeds, admin binaries | **Done 2026-11-14** (`3ac7f5e`) — corpus `0 shape(s) disagreed of 16 checked, 5 skipped`; `probe_s5_stats` 16/16; `probe_admin_binaries` **69/69** with four controls; three `concord-rs-*` timers declared in `scheduled.toml` (`active = false` until cutover); `CHECK feed-routes: 8 arm(s) passed, 0 failed`. **Dated correction 2026-11-14:** "feed parse" moves to row 12 — the feeds are page routes returning XML, not JSON routes, and `probe_s5_feeds` is that row's gate. Gates 4 and 5 are red for `media.polarisocial.xyz` and not for concord (recorded in the row-11 body below). |
-| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **In progress 2026-11-14** — **44 of 44** page routes answered (`routes.py missing: 0`), `probe_pages.py` 148/148; the row's remaining gate is the six inherited e2e suites — **five are green 2026-11-14**: `feature_e2e` 15/15 (`d15ceba`), `milestones_e2e` 5/5 + `rank_links_e2e` 4/4 + `audit_e2e` 11/11 (`6081f27`), `consensus_e2e` 15/15 (`a5db6e7`); `feature_ui_mutants` is a script rather than a suite and is being run against the candidate (`/`, `/projects`, `/projects/{slug}`, `/badge/{slug}.svg` and the 13 feeds, plus six project sub-pages, four instance pages ), 0 remain but the suites do not pass; part 66 opened the crate and corrected the count from 10 to 44. Gate unchanged: every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
+| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **Done 2026-11-14** — 215/215 routes answered, 44/44 page routes, six browser suites **76/76 in one run** (`feature_e2e` 15, `milestones_e2e` 5, `rank_links_e2e` 4, `audit_e2e` 11, `consensus_e2e` 15, `project_panels_e2e` 26), `probe_pages.py` **132/132**, `probe_project_segments.py` **86/86**, `feature_ui_mutants` **9/9 killed** with a byte-identical restore. Parts 66–76. `d238898`, `31fa726`, `97c348a`, `09f909c`, `b03db53`, `6639d8e`, `d15ceba`, `6081f27`, `a5db6e7`, `942daa8`, `9f6cee5`, `92d8a40` |
 | 13 | P7 cutover | `concord.polarisocial.xyz/api/v1/version` served by the Rust binary, and estate gate 17 green for `concord` with NO `reason` |
 
 **Row 8 (S2) — the failing probe, pasted before any code** (2026-11-13):
@@ -4187,6 +4187,69 @@ lacked rather than documents it serves.
 **Commit:** `31fa726`. **Files:** `crates/cli/src/lib.rs` (boot warning), `scripts/parity/probe_s5_feeds.py` (origin from the
 service's configuration), `scripts/parity/routes.py` (any `*.xml` route is a document).
 
+
+### Part 76 — row 12 closed: six suites, nine mutants, and a private project that was a 200 to a stranger (2026-11-14)
+
+**Before:**
+```
+=== feature_e2e         15 passed
+=== milestones_e2e       5 passed
+=== rank_links_e2e       4 passed
+=== audit_e2e           11 passed
+=== consensus_e2e       15 passed
+=== project_panels_e2e  2 failed, 24 passed
+FAILED test_an_instance_with_no_capability_catalog_says_so_distinctly
+FAILED test_a_private_projects_panels_are_not_rendered
+```
+**After (one run, final binary):**
+```
+15 / 5 / 4 / 11 / 15 / 26 passed          (76 tests, six suites, no failures)
+probe_project_segments.py   86/86 answered
+probe_pages.py             132/132 ok
+feature_ui_mutants  tags 6/6 killed, detach 3/3 killed, source restored byte-identical: True
+```
+
+**The last two failures were one defect and one fixture, and the defect was real.** The project page 404'd only when the SLUG did not exist,
+so `/projects/panels-private` answered **200 for a stranger** — with the project's name in `<title>`, its description in `og:description`, its
+canonical URL, and four panels whose reads all refused — while `/api/v1/projects/panels-private` answered 404 to the same stranger. The DOM
+asserted the project exists. The suite caught it by comparing the two views rather than by asking for a status code.
+
+The fix is part 47's decision applied again: the visibility rule moved into the store as `projects::readable_for(pool, project, user_id)`,
+the JSON API's `readable()` delegates to it, and the page asks it with the reader the `concord_nav` cookie names. Two callers deriving one
+rule is how they come to disagree, and here the disagreement was a disclosure.
+
+**The fixture failures were PostgreSQL refusing what SQLite had allowed**, both of the same family as part 73's:
+
+* `DELETE FROM capabilities` violated `fk_capability_assertions_capability`; deleting assertions first then violated
+  `fk_capability_confirmations_assertion_id`. The order was read from `pg_constraint` on the live database, not assumed from the schema;
+  the test now snapshots and restores three tables in measured FK order.
+* `capability_confirmations.id` is `GENERATED ALWAYS`, so restoring the snapshot needed `OVERRIDING SYSTEM VALUE`. Without it the `finally`
+  threw over the top of the test's own result **and left the capability catalog empty**, which is why
+  `test_the_owner_sees_a_private_projects_panels` passed alone (26.57s, 1 passed) and failed inside the suite. A cleanup that fails is not
+  a cleanup: it is the next test's fixture bug, filed under the wrong name.
+* `PgSeed.description` joined the shim — a suite that snapshots a table it did not create reads column names off the cursor, and
+  `'PgSeed' object has no attribute 'description'` is the shim failing to be sqlite3 rather than the test being wrong.
+
+**And the mutation gate finally ran at a sane cost.** Nine mutants, and with the asset embedded each one needed a relink of a 21 MB binary:
+four to six minutes apiece on a host that was also building darkhold, one killed by the kernel under memory pressure and misfiled as a
+*surviving mutant*. Three harness defects came out of that:
+
+1. a red build was counted as SURVIVED — the opposite claim (a survivor says the suite ran and missed it; a red build says nothing ran), and
+   the reason is now carried (`cargo exit -9`) and failed separately;
+2. progress was block-buffered into the log, so a twenty-eight-minute run printed nothing and read as "never started";
+3. the install was `shutil.copy` onto a path a shutdown server still mapped (ETXTBSY) — now `os.replace`.
+
+Then `CONCORD_ASSET_DIR` made the whole thing cheap: the handler reads from a directory when it is set, so a mutant costs a file write and
+the nine reran in **three minutes**, every one killed. The embed stays the production answer, the override is dev-only, and the path from
+the URL is rejected on `.`/`..`/empty segments before any read.
+
+**Gate:** six suites 76/76 in one run; `probe_project_segments.py` 86/86; `probe_pages.py` 132/132; `feature_ui_mutants` 9/9 killed with a
+byte-identical restore. **Commits:** `92d8a40` (the page's 404 + harness), `9f6cee5` (thirteen segments), `553c52a` (ledger), plus the
+mutation-gate harness fixes (`cdb5d5c`, `9f1a0b7`, `e0c9ea1`, `a2f4d33` — `git log --oneline` in order: flush/`-x`, `--only`, red-build
+verdict, asset override).
+
+**Row 12: Done.** The port answers every route and every page the reference serves, the browser suites agree, and the mutation gate proves
+the suites assert what the scripts do rather than passing beside them.
 
 ### Part 75 — thirteen routes that were the right shape and the wrong argument, and the gate that finds them (2026-11-14)
 
