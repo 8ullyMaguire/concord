@@ -153,6 +153,7 @@ pub async fn run() -> anyhow::Result<()> {
         "healthsync" => healthsync(&pool, &args).await,
         "statsnapshot" => statsnapshot(&pool, &args).await,
         "proposalsweep" => proposalsweep(&pool, &args).await,
+        "dormancysweep" => dormancysweep(&pool, &args).await,
         "granttrust" => granttrust(&pool, &args).await,
         "capableseed" => capableseed(&pool, &args).await,
         "forgeseed" => forgeseed(&pool, &args).await,
@@ -236,6 +237,43 @@ async fn proposalsweep(pool: &sqlx::PgPool, args: &Args) -> anyhow::Result<()> {
     println!(
         "proposalsweep: {verb} {} proposal(s) older than {days} days as stale",
         report.total
+    );
+    Ok(())
+}
+
+
+/// `dormancysweep` — mark projects that have not moved in a season (roadmap step 5).
+///
+/// `dormancysweep [--apply] [--days N]`
+///
+/// **Dry run is the DEFAULT here, which is the opposite of `proposalsweep`'s choice, and the difference is deliberate**: this job writes
+/// an act to the audit log that says an instance observed a project dead, and an act that nobody asked for is worse than a report nobody
+/// read. `--apply` is how an operator says they meant it.
+///
+/// It only ever considers a project that STATES a repository. A project with no `repo_url` is not swept, not skipped silently — it is
+/// counted in `unmeasured` and printed, because "0 marked" and "0 measured" are different facts and the second is this instance's actual
+/// state for most of the catalogue.
+async fn dormancysweep(pool: &sqlx::PgPool, args: &Args) -> anyhow::Result<()> {
+    let apply = args.flag("apply");
+    let days: f64 = match args.value("days") {
+        Some(raw) => raw
+            .parse()
+            .map_err(|_| anyhow::anyhow!("bad --days {raw}: want a number of days"))?,
+        None => std::env::var("CONCORD_DORMANT_AFTER_DAYS")
+            .ok()
+            .and_then(|raw| raw.parse().ok())
+            .unwrap_or(concord_ranking::lifecycle::DORMANT_AFTER_DAYS),
+    };
+    let report = concord_db::lifecycle_sweep::sweep(pool, days, apply).await?;
+    for (slug, age) in &report.marked {
+        println!("{slug:<32} {age:>7.1} days silent");
+    }
+    println!(
+        "dormancysweep: {} project(s) {}, {} considered, {} with a repository but no readable commit age",
+        report.marked.len(),
+        if apply { "marked" } else { "would be marked" },
+        report.considered,
+        report.unmeasured
     );
     Ok(())
 }

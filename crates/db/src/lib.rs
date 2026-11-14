@@ -32,6 +32,7 @@ pub mod forge_events;
 pub mod forge_repos;
 pub mod identity;
 pub mod invite_writes;
+pub mod lifecycle_sweep;
 pub mod list_writes;
 pub mod milestones;
 pub mod moderation;

@@ -1,0 +1,12 @@
+[Unit]
+Description=concord (Rust) dormancy sweep timer — weekly, Monday night
+
+[Timer]
+# Weekly, not hourly: the threshold is ninety days, so a project cannot become dormant between two runs of a daily job — and an act that
+# fires weekly is one an operator can read in a journal without paging through repeated entries.
+OnCalendar=Mon *-*-* 03:40:00
+Persistent=true
+Unit=concord-rs-dormancysweep.service
+
+[Install]
+WantedBy=timers.target

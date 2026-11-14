@@ -1,0 +1,11 @@
+[Unit]
+Description=concord (Rust) dormancy sweep — mark projects with no commit in a season
+After=network-online.target
+
+[Service]
+Type=oneshot
+# The sweep WRITES an act to the audit log, so it names the binary that is deployed rather than a build-time path.
+EnvironmentFile=%h/.config/concord/.env
+ExecStart=%h/concord-deploy/concord-rs dormancysweep --apply
+StandardOutput=journal
+StandardError=journal

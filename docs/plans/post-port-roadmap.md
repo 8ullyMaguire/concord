@@ -339,7 +339,7 @@ Gate: `ai_declaration_e2e.py` 7 passed (four rendering, three API: declare-and-w
 refused). One fixture trap cost a round and is worth the line: the harness's token must be hashed `base64 RawStd` — **no padding** — or
 every authenticated request answers 401, which reads as a permissions bug and is an encoding one.
 
-### Step 5 — BLOCKED on repository identity for 69 of 73 projects
+### Step 5 — the sweep is built and scheduled; the POOL is blocked on 68 unstated repositories
 
 Measured, not assumed: `embedbackfill` was easy because a project's text is in the database. Dormancy needs commit age, and commit age needs
 a repository. **Zero projects in PostgreSQL have a `repo_url`**, and the Go tree's seed file — the only place the mapping ever lived — says
