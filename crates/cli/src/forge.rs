@@ -56,9 +56,28 @@ pub struct Repo {
     pub full: String,
 }
 
+impl Repo {
+    /// The canonical web URL for this repository — `https://host/owner/repo`.
+    ///
+    /// The catalog stores ONE spelling: without it the same repository appears twice under two spellings and the ingest fetches it twice,
+    /// which is harmless until somebody counts contributors.
+    #[must_use]
+    pub fn url(&self) -> String {
+        format!("https://{}/{}", self.host_name, self.full)
+    }
+}
+
 /// Why a URL was refused.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct RefusedUrl(pub String);
+
+impl std::fmt::Display for RefusedUrl {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for RefusedUrl {}
 
 /// The three forges the ingest knows how to call. A host outside this set is refused rather than stored:
 /// `repo_host` is the switch the fetch dispatches on, and an unknown host would either never be fetched

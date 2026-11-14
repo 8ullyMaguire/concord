@@ -328,6 +328,105 @@ pub struct Coverage {
     pub note: Option<String>,
 }
 
+/// Index every embeddable row of `kind` that has no vector from the **current** model.
+///
+/// Returns how many ENTITIES were indexed. Re-running is cheap and idempotent: only rows with no vector under this model are selected, so
+/// after a model change exactly the stale rows are re-embedded and nothing else.
+///
+/// Two properties worth stating, because they are what a backfill gets wrong:
+///
+/// * the selection is `not exists (… this model …)`, never `count(*) = 0` over the table — an entity with a title vector and no full-text
+///   vector is half-indexed, and treating it as done leaves the panel comparing against a title only;
+/// * rows with nothing to embed are skipped by the same `trim(…) = ''` test the writer uses, so the denominator in `coverage` and the work
+///   done here agree by construction rather than by coincidence.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn backfill(
+    pool: &PgPool,
+    embedder: &dyn Embedder,
+    kind: &str,
+) -> Result<usize, sqlx::Error> {
+    let (table, text) = match kind {
+        KIND_COMPLAINT | KIND_FEATURE | KIND_REQUEST => (table_for(kind), 0),
+        KIND_PROJECT => ("projects", 1),
+        _ => return Ok(0),
+    };
+    // Projects have no `title`/`body`: their text is the name and the description, and asking for the wrong columns is a 500 rather than an
+    // empty result. The branch is on the kind because the schema is, not because the caller is trusted to know.
+    let (title_column, body_column) = if text == 0 { ("title", "body") } else { ("name", "description") };
+    let rows: Vec<(i64, String, String, Option<i64>)> = sqlx::query_as(&format!(
+        "select t.id, t.{title_column}, coalesce(t.{body_column}, ''), {project}
+           from {table} t
+          where trim(t.{title_column} || ' ' || coalesce(t.{body_column}, '')) <> ''
+            and not exists (
+                  select 1 from embeddings e
+                   where e.kind = $1 and e.entity_id = t.id and e.model_id = $2 and e.field = 'full')
+          order by t.id",
+        project = if kind == KIND_PROJECT { "t.id" } else { "t.project_id" },
+    ))
+    .bind(kind)
+    .bind(embedder.id())
+    .fetch_all(pool)
+    .await?;
+    let mut done = 0;
+    for (id, title, body, project) in rows {
+        upsert_entity_text(pool, embedder, kind, id, project.unwrap_or(0), &title, &body).await?;
+        done += 1;
+    }
+    Ok(done)
+}
+
+/// The title-only variant of [`backfill`], used only by the `embedbackfill` mutant: it writes the title vector and skips the full text.
+///
+/// Kept in the library rather than in the command so the defect is the same shape as the real write — the same selection, the same
+/// predicate, one field fewer.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn backfill_titles_only(
+    pool: &PgPool,
+    embedder: &dyn Embedder,
+    kind: &str,
+) -> Result<usize, sqlx::Error> {
+    let (table, title_column, body_column, project) = match kind {
+        KIND_COMPLAINT => ("complaints", "title", "body", "t.project_id"),
+        KIND_FEATURE => ("features", "title", "body", "t.project_id"),
+        KIND_REQUEST => ("requests", "title", "body", "t.project_id"),
+        KIND_PROJECT => ("projects", "name", "description", "t.id"),
+        _ => return Ok(0),
+    };
+    let rows: Vec<(i64, String, Option<i64>)> = sqlx::query_as(&format!(
+        "select t.id, t.{title_column}, {project}
+           from {table} t
+          where trim(t.{title_column} || ' ' || coalesce(t.{body_column}, '')) <> ''
+            and not exists (
+                  select 1 from embeddings e
+                   where e.kind = $1 and e.entity_id = t.id and e.model_id = $2 and e.field = 'full')
+          order by t.id",
+    ))
+    .bind(kind)
+    .bind(embedder.id())
+    .fetch_all(pool)
+    .await?;
+    let mut done = 0;
+    for (id, title, project) in rows {
+        upsert_field(pool, embedder, kind, id, project.unwrap_or(0), FIELD_TITLE, &title).await?;
+        done += 1;
+    }
+    Ok(done)
+}
+
+/// The table a kind lives in.
+fn table_for(kind: &str) -> &'static str {
+    match kind {
+        KIND_COMPLAINT => "complaints",
+        KIND_FEATURE => "features",
+        KIND_REQUEST => "requests",
+        _ => "projects",
+    }
+}
+
 /// Count how much of `kind` the index covers.
 ///
 /// Two decisions that make the number mean something:

@@ -31,6 +31,9 @@ struct Args {
     flags: std::collections::HashSet<String>,
     /// `--key value` pairs.
     values: std::collections::HashMap<String, String>,
+    /// Bare arguments, in order. The Go binaries took positionals (`granttrust <user-id> <level>`) and an operator copying a documented
+    /// line should not have to learn a second spelling; flags win where both are given.
+    positional: Vec<String>,
 }
 
 impl Args {
@@ -40,12 +43,15 @@ impl Args {
         let command = args.next().unwrap_or_else(|| "serve".to_string());
         let mut flags = std::collections::HashSet::new();
         let mut values = std::collections::HashMap::new();
+        let mut positional = Vec::new();
         let rest: Vec<String> = args.collect();
         let mut index = 0;
         while index < rest.len() {
             let arg = rest[index].clone();
             if !arg.starts_with("--") {
-                anyhow::bail!("unexpected argument {arg}");
+                positional.push(arg);
+                index += 1;
+                continue;
             }
             let name = arg.trim_start_matches("--").to_string();
             let takes_value = rest
@@ -63,6 +69,7 @@ impl Args {
             command,
             flags,
             values,
+            positional,
         })
     }
 
@@ -74,6 +81,11 @@ impl Args {
     /// A flag's value.
     fn value(&self, name: &str) -> Option<&str> {
         self.values.get(name).map(String::as_str)
+    }
+
+    /// The `n`th bare argument, if one was given.
+    fn arg(&self, n: usize) -> Option<&str> {
+        self.positional.get(n).map(String::as_str)
     }
 }
 
@@ -131,6 +143,10 @@ pub async fn run() -> anyhow::Result<()> {
         "healthsync" => healthsync(&pool, &args).await,
         "statsnapshot" => statsnapshot(&pool, &args).await,
         "proposalsweep" => proposalsweep(&pool, &args).await,
+        "granttrust" => granttrust(&pool, &args).await,
+        "capableseed" => capableseed(&pool, &args).await,
+        "forgeseed" => forgeseed(&pool, &args).await,
+        "embedbackfill" => embedbackfill(&pool, &args).await,
         other => anyhow::bail!("unknown command {other}"),
     }
 }
@@ -211,6 +227,415 @@ async fn proposalsweep(pool: &sqlx::PgPool, args: &Args) -> anyhow::Result<()> {
         "proposalsweep: {verb} {} proposal(s) older than {days} days as stale",
         report.total
     );
+    Ok(())
+}
+
+/// `embedbackfill` — index existing complaints, features and requests for duplicate detection.
+///
+/// `embedbackfill [--kind complaint] [--status]`
+///
+/// The index is not populated by the migration, for a reason worth keeping in view: embedding every row on startup would block the listen
+/// path, and a PARTIAL index is worse than none because it produces "no duplicates found" — which a filer reads as "I am the first to report
+/// this". So the index is built deliberately, by an operator, and reported when it is done.
+///
+/// `--status` reports coverage without writing. That mode exists because the question an operator asks before and after a run is the same
+/// one, and answering it the same way both times is what makes the numbers comparable.
+///
+/// The report distinguishes three states, because two of them look identical in a percentage: `OK` (every embeddable row indexed),
+/// `INCOMPLETE` (duplicate detection will miss rows), and `NO ROWS` (nothing to index yet — a 0.0% that is not a failure and not a success).
+async fn embedbackfill(pool: &sqlx::PgPool, args: &Args) -> anyhow::Result<()> {
+    let embedder = concord_app::embedder_from_env();
+    let kinds: Vec<&str> = match args.value("kind") {
+        Some(kind) => vec![match kind {
+            "complaint" => concord_db::embeddings::KIND_COMPLAINT,
+            "feature" => concord_db::embeddings::KIND_FEATURE,
+            "request" => concord_db::embeddings::KIND_REQUEST,
+            "project" => concord_db::embeddings::KIND_PROJECT,
+            other => anyhow::bail!("unknown kind {other:?}: want complaint, feature, request or project"),
+        }],
+        None => vec![
+            concord_db::embeddings::KIND_COMPLAINT,
+            concord_db::embeddings::KIND_FEATURE,
+            concord_db::embeddings::KIND_REQUEST,
+            concord_db::embeddings::KIND_PROJECT,
+        ],
+    };
+    // The embedder identity goes to stderr with the rest of the logs: a backfill with the wrong model writes vectors the server will not
+    // read, and the model id is the only way to see which one wrote them.
+    eprintln!("embedder {} ({} dims)", embedder.id(), embedder.dims());
+
+    // The embedder must be the one the table already holds. A backfill run with the wrong model writes vectors no reader will use — and
+    // worse, leaves TWO models' vectors in one table, so a later reader comparing against the wrong one silently scores nonsense. The Go
+    // tree stated this as a comment ("$CONCORD_EMBED_URL must be set identically for both") and a comment refuses nothing; this was found by
+    // running the command against a live database whose index is `nomic` and watching `hashed-v1` appear beside it.
+    let stored_models: Vec<(String, i64)> =
+        sqlx::query_as("select model_id, count(*) from embeddings group by 1 order by 2 desc")
+            .fetch_all(pool)
+            .await?;
+    let mine = stored_models.iter().any(|(model, _)| model.as_str() == embedder.id());
+    if !args.flag("status") && !mine && !stored_models.is_empty() && !args.flag("force") {
+        let names: Vec<String> = stored_models
+            .iter()
+            .map(|(model, count)| format!("{model} ({count})"))
+            .collect();
+        anyhow::bail!(
+            "the index holds {} and nothing from {}; point CONCORD_EMBED_URL/model at the same model, or pass --force to re-embed under a new one",
+            names.join(", "),
+            embedder.id()
+        );
+    }
+
+    if !args.flag("status") {
+        // `embedbackfill-title-only` indexes the title and not the full text, leaving every entity half-indexed while coverage (which counts
+        // the full-text field) reports it correctly — the panel then compares against a title alone.
+        let title_only = std::env::var("CONCORD_MUTANT").unwrap_or_default().split(',').any(|m| m.trim() == "embedbackfill-title-only");
+        for kind in &kinds {
+            let done = if title_only {
+                concord_db::embeddings::backfill_titles_only(pool, embedder.as_ref(), kind).await?
+            } else {
+                concord_db::embeddings::backfill(pool, embedder.as_ref(), kind).await?
+            };
+            println!("{kind:<11} embedded {done}");
+        }
+        println!();
+    }
+
+    for kind in &kinds {
+        let coverage = concord_db::embeddings::coverage(pool, embedder.as_ref(), kind).await?;
+        let mark = if coverage.indexed == Some(false) {
+            "NO BACKING TABLE -- nothing to index yet".to_string()
+        } else if coverage.total == 0 {
+            "NO ROWS -- nothing to index yet".to_string()
+        } else if coverage.complete == Some(true) {
+            "OK".to_string()
+        } else {
+            "INCOMPLETE -- duplicate detection will miss rows".to_string()
+        };
+        let percent = coverage.coverage.unwrap_or(0.0) * 100.0;
+        println!("{kind:<11} {percent:6.1}%  {mark} ({} rows)", coverage.total);
+    }
+    Ok(())
+}
+
+/// `forgeseed` — state where each project's upstream repository lives (§4.5.7.1).
+///
+/// `forgeseed --file seed/forge_repos.json [--dry-run]`
+///
+/// It refuses more than it accepts, on purpose, and each refusal is a question the operator can answer:
+///
+/// * a slug in the file that is not in the catalogue is a REFUSAL — a typo would silently measure nothing;
+/// * a project in the catalogue the file does not mention is a REFUSAL — "a new project was added" must be a visible decision, not a project
+///   that quietly never gets a repository and therefore never gets health;
+/// * a project with no repository must be listed with `"skip": true` **and a reason**, so "we have not stated this one" is written down.
+///
+/// Every problem is reported before anything is written, and the whole file is refused if any of them is present: a partial application is
+/// a catalogue where half the projects are declared and the operator has no way to know which half.
+///
+/// It prints counts and slugs, never URLs: a URL list in a terminal transcript is a list of places to send traffic, and the file it read is
+/// right there.
+async fn forgeseed(pool: &sqlx::PgPool, args: &Args) -> anyhow::Result<()> {
+    let path = args.value("file").unwrap_or("seed/forge_repos.json");
+    let dry_run = args.flag("dry-run");
+    let raw = std::fs::read_to_string(path).map_err(|error| anyhow::anyhow!("read mapping {path}: {error}"))?;
+    let entries: Vec<ForgeEntry> =
+        serde_json::from_str(&raw).map_err(|error| anyhow::anyhow!("parse {path}: {error}"))?;
+    if entries.is_empty() {
+        // An empty mapping applied successfully is the worst outcome available: it reports a clean run that did nothing.
+        anyhow::bail!("{path} lists no projects; an empty mapping is a refusal, not a sync");
+    }
+
+    let slugs = concord_db::forge_repos::project_slugs(pool).await?;
+    let in_catalog: std::collections::HashSet<&str> = slugs.iter().map(String::as_str).collect();
+    let mut problems = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for entry in &entries {
+        if entry.slug.is_empty() {
+            problems.push("an entry has no slug".to_string());
+            continue;
+        }
+        if !seen.insert(entry.slug.clone()) {
+            problems.push(format!("{} is listed twice", entry.slug));
+        }
+        if !entry.skip && (entry.repo_url.is_empty() || entry.repo_host.is_empty()) {
+            problems.push(format!(
+                "{} has neither a repository nor \"skip\": true",
+                entry.slug
+            ));
+        }
+        if entry.skip && entry.reason.trim().is_empty() {
+            problems.push(format!("{} is skipped with no reason", entry.slug));
+        }
+        if !in_catalog.contains(entry.slug.as_str()) {
+            problems.push(format!("{} is in the file and not in the catalogue", entry.slug));
+        }
+    }
+    for slug in &slugs {
+        if !seen.contains(slug) {
+            problems.push(format!(
+                "{slug} is in the catalogue and not in the file (list it, or list it as a skip)"
+            ));
+        }
+    }
+    if !problems.is_empty() {
+        problems.sort();
+        for problem in &problems {
+            eprintln!("REFUSED: {problem}");
+        }
+        anyhow::bail!(
+            "refusing to apply a mapping that does not account for the catalogue: {} problem(s)",
+            problems.len()
+        );
+    }
+
+    let current: std::collections::HashMap<String, concord_db::forge_repos::ProjectRepo> =
+        concord_db::forge_repos::projects_with_repo(pool)
+            .await?
+            .into_iter()
+            .map(|project| (project.slug.clone(), project))
+            .collect();
+
+    let (mut applied, mut unchanged, mut skipped, mut cleared) = (0_usize, 0_usize, 0_usize, 0_usize);
+    for entry in &entries {
+        if entry.skip {
+            // A project that becomes a skip must LOSE the repository it used to have.
+            // `forgeseed-skip-keeps-repo` leaves the old URL on a project that became a skip: the hourly ingest then keeps retrying a URL
+            // the mapping no longer contains, which is the failure this clear exists for.
+            let keep = std::env::var("CONCORD_MUTANT").unwrap_or_default().split(',').any(|m| m.trim() == "forgeseed-skip-keeps-repo");
+            if !keep && current.get(&entry.slug).is_some_and(|project| !project.url.is_empty()) {
+                if dry_run {
+                    println!("would clear {} (was set, now skipped: {})", entry.slug, entry.reason);
+                    cleared += 1;
+                    continue;
+                }
+                concord_db::forge_repos::clear_repo(pool, &entry.slug).await?;
+                cleared += 1;
+            }
+            skipped += 1;
+            continue;
+        }
+        let want = forge::parse_repo_url(&entry.repo_url).map_err(|error| anyhow::anyhow!("{}: {error}", entry.slug))?;
+        if let Some(project) = current.get(&entry.slug) {
+            if project.url == want.url() && project.host == entry.repo_host {
+                unchanged += 1;
+                continue;
+            }
+        }
+        if dry_run {
+            println!("would set {} -> {} ({})", entry.slug, want.url(), entry.repo_host);
+            applied += 1;
+            continue;
+        }
+        concord_db::forge_repos::set_repo(pool, &entry.slug, &want.url(), &entry.repo_host).await?;
+        applied += 1;
+    }
+    println!(
+        "applied {applied} of {} ({unchanged} already set, {cleared} cleared, {skipped} skipped)",
+        entries.len()
+    );
+    Ok(())
+}
+
+/// One line of the forge mapping file.
+#[derive(serde::Deserialize)]
+struct ForgeEntry {
+    /// The project's slug.
+    #[serde(default)]
+    slug: String,
+    /// The repository URL as typed.
+    #[serde(default)]
+    repo_url: String,
+    /// The forge family the URL belongs to.
+    #[serde(default)]
+    repo_host: String,
+    /// Whether this project deliberately has no repository.
+    #[serde(default)]
+    skip: bool,
+    /// Why it has none. Required when `skip` is set.
+    #[serde(default)]
+    reason: String,
+}
+
+/// `capableseed` — register a capability set, and optionally assert values against projects.
+///
+/// `capableseed --list [--category design]` prints the registered matrix. `capableseed --apply capabilities.json [--assert --as <username>]`
+/// registers what the file declares and, with `--assert`, writes the per-project values in its `assert` maps.
+///
+/// The file is the operator's statement of what the matrix should contain, and it is read as a whole: a file that declares assertions while
+/// `--assert` was not given is a REFUSAL, not a silent registration, because the operator would otherwise leave believing the values are in
+/// the database. Assertions are written as claims, never as confirmed ones — a seed that could manufacture a quorum would let whoever
+/// edits the file promote their own claims, and confirmation means two real accounts agreed.
+///
+/// The final line reports what was achieved, not what was attempted: a seed that registers definitions and writes no assertion has built a
+/// matrix with nothing in it, and Finder will correctly decline to ask anything.
+async fn capableseed(pool: &sqlx::PgPool, args: &Args) -> anyhow::Result<()> {
+    if args.flag("list") {
+        let capabilities = concord_db::capability_writes::list(pool, args.value("category")).await?;
+        for capability in &capabilities {
+            println!(
+                "{:<24} {:<20} {:<8} {:?}",
+                capability.key, capability.category, capability.kind, capability.values
+            );
+        }
+        println!("{} capability(ies)", capabilities.len());
+        return Ok(());
+    }
+
+    let path = args
+        .value("apply")
+        .ok_or_else(|| anyhow::anyhow!("usage: capableseed --list [--category c] | --apply <file> [--assert --as <username>]"))?;
+    let raw = std::fs::read_to_string(path).map_err(|error| anyhow::anyhow!("read {path}: {error}"))?;
+    let file: SeedFile = serde_json::from_str(&raw).map_err(|error| anyhow::anyhow!("parse {path}: {error}"))?;
+    if file.capabilities.is_empty() {
+        anyhow::bail!("{path} declares no capabilities");
+    }
+
+    let mutate = args.flag("assert");
+    let author = if mutate {
+        let name = args
+            .value("as")
+            .ok_or_else(|| anyhow::anyhow!("--assert requires --as <username>"))?;
+        concord_db::capability_writes::user_id(pool, name)
+            .await?
+            .ok_or_else(|| anyhow::anyhow!("no account named {name:?}"))?
+    } else {
+        0
+    };
+
+    // Checked before the first write: a file that declares assertions and was run without `--assert` must not register half of itself and
+    // then stop.
+    if !mutate {
+        if let Some(capability) = file
+            .capabilities
+            .iter()
+            .find(|capability| capability.assert.as_ref().is_some_and(|map| !map.is_empty()))
+        {
+            anyhow::bail!(
+                "capability {:?} declares assertions but --assert was not given",
+                capability.key
+            );
+        }
+    }
+
+    let mut created = 0_usize;
+    let mut updated = 0_usize;
+    let mut asserted = 0_usize;
+    let mut categories = std::collections::BTreeMap::new();
+    for capability in &file.capabilities {
+        let kind = capability.kind.as_deref().unwrap_or("boolean");
+        let made = concord_db::capability_writes::ensure(
+            pool,
+            &capability.key,
+            &capability.label,
+            &capability.category,
+            kind,
+            capability.values.as_deref().unwrap_or(&[]),
+        )
+        .await
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
+        if made {
+            created += 1;
+        } else {
+            updated += 1;
+        }
+        *categories.entry(capability.category.clone()).or_insert(0_usize) += 1;
+
+        for (slug, value) in capability.assert.iter().flatten() {
+            concord_db::capability_writes::assert_value(
+                pool,
+                &capability.key,
+                slug,
+                value,
+                "seed file",
+                author,
+            )
+            .await
+            .map_err(|error| anyhow::anyhow!("{error}"))?;
+            asserted += 1;
+        }
+    }
+
+    print!(
+        "registered {created} new and {updated} existing capabilities across {} categories",
+        categories.len()
+    );
+    if mutate {
+        print!(", {asserted} assertions");
+    }
+    println!();
+    let names: Vec<&str> = categories.keys().map(String::as_str).collect();
+    println!("categories: {}", names.join(", "));
+    if mutate && asserted == 0 {
+        println!(
+            "WARNING: no assertions were written; every capability is unasserted and Finder will have no capability questions to ask."
+        );
+    }
+    Ok(())
+}
+
+/// The seed file's shape: capabilities, with the values to assert keyed by project slug so the file does not depend on autoincrement ids.
+#[derive(serde::Deserialize)]
+struct SeedFile {
+    /// The capability definitions.
+    capabilities: Vec<SeedCapability>,
+}
+
+/// One capability definition plus the values seeded for specific projects.
+#[derive(serde::Deserialize)]
+struct SeedCapability {
+    /// The capability's name in the query language.
+    key: String,
+    /// The human label.
+    label: String,
+    /// The category the matrix groups it under.
+    category: String,
+    /// `boolean` or `enum`; absent means boolean.
+    #[serde(default)]
+    kind: Option<String>,
+    /// An enum's values.
+    #[serde(default)]
+    values: Option<Vec<String>>,
+    /// Values to assert, keyed by project slug.
+    #[serde(default)]
+    assert: Option<std::collections::BTreeMap<String, String>>,
+}
+
+/// `granttrust` — assign a trust level, and record who did it.
+///
+/// There is no HTTP route that writes a trust level, so this is the only way an account reaches the configured minimum. Without it every
+/// trust-gated endpoint is unreachable for everyone, including the operator — which is why the command exists at all rather than being an
+/// SQL snippet in a runbook: it goes through the same function the application uses, so `trust_grants` and `users.trust_level` cannot
+/// disagree.
+///
+/// Interface: `granttrust --user <id> --level <n>` or the Go spelling `granttrust <id> <n>`.
+///
+/// Authorisation is reaching the database: there is no admin role on a local instance to check against, and pretending there is would mean
+/// a second permission system with one user. `granted_by` is the target account, which keeps a self-grant legible in the history.
+///
+/// The ceiling is a refusal, not a clamp: a clamped write reports success while storing something else, and the operator leaves believing
+/// the level they asked for is in force.
+async fn granttrust(pool: &sqlx::PgPool, args: &Args) -> anyhow::Result<()> {
+    let user = args
+        .value("user")
+        .or_else(|| args.arg(0))
+        .ok_or_else(|| anyhow::anyhow!("usage: granttrust <user-id> <level>  (or --user <id> --level <n>)"))?
+        .parse::<i64>()
+        .map_err(|_| anyhow::anyhow!("bad user id {:?}: want a number", args.value("user").or_else(|| args.arg(0))))?;
+    let level = args
+        .value("level")
+        .or_else(|| args.arg(1))
+        .ok_or_else(|| anyhow::anyhow!("usage: granttrust <user-id> <level>  (or --user <id> --level <n>)"))?
+        .parse::<i64>()
+        .map_err(|_| anyhow::anyhow!("bad level {:?}: want a number", args.value("level").or_else(|| args.arg(1))))?;
+    let reason = args
+        .value("reason")
+        .unwrap_or("operator grant: concord-cli granttrust");
+    concord_db::trust::set_trust_level(pool, user, level, user, reason)
+        .await
+        .map_err(|error| anyhow::anyhow!("{error}"))?;
+    let current = concord_db::trust::get_trust_level(pool, user).await?;
+    let ceiling = concord_db::trust::trust_ceiling(pool).await?;
+    // One line, and the same shape as the Go's, because the operator reads this to know what is now in force.
+    println!("user {user} trust_level={current} ceiling={ceiling}");
     Ok(())
 }
 
