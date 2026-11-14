@@ -348,6 +348,7 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/auth/register", post(register))
         .route("/api/v1/projects", post(create_project))
         // The AI-involvement declaration (roadmap step 4): a claim by a person with a role, never an inference.
+        .route("/api/v1/projects/{slug}/claim", post(claim_project))
         .route(
             "/api/v1/projects/{slug}/archive",
             post(archive_project).delete(unarchive_project),
@@ -943,6 +944,85 @@ async fn project_maintainer(
         ));
     }
     Ok((project, user))
+}
+
+/// `POST /api/v1/projects/{slug}/claim` — take on a project the forge has measured dormant (roadmap step 5's pool).
+///
+/// This is not "join": joining says you are taking part, and claiming says you are answerable. So the refusals are about the MEASUREMENT,
+/// not about the person — a project that is alive cannot be claimed, because offering a live project to a stranger is taking it from
+/// somebody who is still working on it.
+///
+/// Three refusals, and each one names the number it read:
+///  * `unknown` — the project names no repository this instance can read, so its silence was never measured and nothing can be said about
+///    whether it is abandoned. Refusing here is the same rule the badges follow: unknown is never zero.
+///  * `dormant` is the only stage that may be claimed. A project that is merely old, or has no features, is not abandoned; a project its
+///    maintainer declared archived is a decision, and a decision is reversed by the maintainer, not outvoted by a claim.
+///  * the claimant must be an account, not a guest, because the whole point is that the record names somebody.
+async fn claim_project(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("sign in to adopt a project"))?;
+    if concord_db::identity::is_guest(&state.pool, user.id).await.map_err(internal)? {
+        return Err(ApiError::forbidden(
+            "a guest cannot adopt: the record must name somebody",
+        ));
+    }
+    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
+
+    match project.stage.as_str() {
+        "dormant" => {}
+        "archived" => {
+            return Err(ApiError::invalid_request(format!(
+                "{} was declared archived by its maintainer: {}",
+                project.slug, project.stage_because
+            )))
+        }
+        "unknown" => {
+            return Err(ApiError::invalid_request(format!(
+                "{} names no repository this instance can read, so its silence has not been measured — it cannot be offered for adoption \
+                 on the strength of a number nobody took",
+                project.slug
+            )))
+        }
+        stage => {
+            return Err(ApiError::invalid_request(format!(
+                "{} is {stage}, not dormant: {}",
+                project.slug, project.stage_because
+            )))
+        }
+    }
+
+    // Read the number the refusal above would have quoted, so the success carries the same measurement the pool showed.
+    let days = concord_db::adoption::days_silent(&state.pool, project.id)
+        .await
+        .map_err(internal)?
+        .unwrap_or(0.0);
+    concord_db::projects::claim(&state.pool, project.id, user.id)
+        .await
+        .map_err(internal)?;
+    let _ = concord_db::feature_writes::add_audit(
+        &state.pool,
+        project.id,
+        user.id,
+        "claim_project",
+        "project",
+        project.id,
+        &format!("adopted after {days:.0} days without a commit: {}", user.username),
+    )
+    .await;
+    Ok(Json(json!({
+        "status": "ok",
+        "slug": project.slug,
+        "role": "maintainer",
+        "days_silent_display": format!("{days:.0} days without a commit"),
+    })))
 }
 
 /// `POST /api/v1/projects/{slug}/archive` — declare a project dead, in the maintainer's own words.

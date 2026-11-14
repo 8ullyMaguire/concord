@@ -914,6 +914,27 @@ pub const VISIBILITIES: [&str; 4] = ["public", "unlisted", "protected", "private
 /// `public` and `unlisted` are readable by anyone (unlisted means "not in the catalogue", not "not by link"); `protected` and `private`
 /// need membership, and an unknown value is refused rather than guessed at.
 
+/// Give somebody a maintainer's standing on a dormant project, and say what they are taking on.
+///
+/// `on conflict do update` rather than `or ignore`: a contributor who adopts a dead project is PROMOTED, because the point of the act is
+/// that they are now answerable for it. An owner is never demoted by adopting their own project back.
+pub async fn claim(
+    pool: &PgPool,
+    project_id: i64,
+    user_id: i64,
+) -> Result<(), sqlx::Error> {
+    sqlx::query(
+        "insert into members (project_id, user_id, role, joined_at) values ($1, $2, 'maintainer', now()) \
+         on conflict (project_id, user_id) do update set role = \
+             case when members.role = 'owner' then 'owner' else 'maintainer' end",
+    )
+    .bind(project_id)
+    .bind(user_id)
+    .execute(pool)
+    .await?;
+    Ok(())
+}
+
 /// Declare a project archived (`Some((actor, reason))`) or clear the declaration (`None`).
 ///
 /// The reason is trimmed and refused when empty at the route; here it is stored as given, because this is the store, and a store that

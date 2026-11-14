@@ -63,7 +63,17 @@ print(u._replace(path="/" + sys.argv[2]).geturl())
 PY
 )
     export CONCORD_TEST_DSN="$DSN"
-    echo "scratch database: $DBNAME"
+    # A scratch database is an EMPTY database, and the store tests are not a schema: they assume one exists and fail with `relation
+    # "users" does not exist` — which reads like a broken test rather than an un-migrated database. So the gate applies the migrations it
+    # ships, in order, before it asserts anything. Same files the binary runs at boot, so the schema under the tests is the schema in
+    # production.
+    for migration in crates/db/sql/*.sql; do
+      psql "$DSN" -q -v ON_ERROR_STOP=1 -f "$migration" >/dev/null 2>&1 || {
+        echo "gate: $migration did not apply to the scratch database"
+        FAILED=1
+      }
+    done
+    echo "scratch database: $DBNAME (migrated: $(ls crates/db/sql/*.sql | wc -l) files)"
   else
     echo "gate: could not create a scratch database — the store tests will fail on CONCORD_TEST_DSN"
   fi

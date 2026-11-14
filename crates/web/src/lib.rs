@@ -314,6 +314,79 @@ async fn project_index(State(pool): State<PgPool>, headers: HeaderMap) -> Respon
     }, body.finish())
 }
 
+/// `/adopt` — the pool of projects the lifecycle has measured dormant, and the act of taking one on (roadmap step 5).
+///
+/// The page exists because a catalogue with no exit for a dead project is a catalogue that fills with dead projects. Everything on it is
+/// server-rendered from one query; the only script is the claim button, because claiming is a write and the number that justifies it is
+/// already in the document.
+///
+/// The empty state is the interesting one, and it is written to be TRUE rather than reassuring: this instance has 73 projects and 23 of
+/// them name a repository it can read, so "nothing to adopt" would be a claim it cannot support. It says what was measured instead, and
+/// when nothing was measured it says that.
+async fn adopt(State(db): State<PgPool>, headers: HeaderMap) -> Response {
+    let pool = match concord_db::adoption::pool(&db).await {
+        Ok(pool) => pool,
+        Err(error) => return error_page(&headers, "the adoption pool could not be read", &error.to_string()),
+    };
+    let mut body = Html::new();
+    body.open("h1", &[]).text("Adopt an abandoned project").close("h1")
+        .open("p", &[]).text(concat!(
+            "A project is in this pool when the forge measures ninety days or more since its last commit. ",
+            "Taking one on makes you a maintainer of it, and the record says who did it and how long the silence was — ",
+            "so the next reader can see that the project was abandoned rather than merely quiet.",
+        )).close("p");
+
+    if pool.candidates.is_empty() {
+        body.open("p", &[("class", "muted")]);
+        if pool.measured == 0 {
+            body.text(&format!(
+                "Nothing is listed, and that is not the same as nothing being abandoned: none of this instance's {} projects has a commit \
+                 history it has read, so no project's silence has been measured at all.",
+                pool.total,
+            ));
+        } else {
+            body.text(&format!(
+                "Nothing is dormant right now. {} of {} projects have a measured commit history, and the longest measured silence is \
+                 {} days.",
+                pool.measured,
+                pool.total,
+                pool.longest_silence.map(|days| format!("{days:.1}")).unwrap_or_else(|| "an unmeasured number of".to_string()),
+            ));
+        }
+        body.close("p");
+    } else {
+        body.open("p", &[("class", "muted")]).text(&format!(
+            "{} of {} projects are measured dormant, and {} of the catalogue have a commit history this instance has read.",
+            pool.candidates.len(), pool.total, pool.measured,
+        )).close("p");
+        body.open("ul", &[("class", "adoption-list")]);
+        for candidate in &pool.candidates {
+            body.open("li", &[])
+                .open("a", &[("href", &format!("/projects/{}", candidate.project.slug))])
+                .text(&candidate.project.name)
+                .close("a")
+                .open("span", &[("class", "muted")])
+                .text(&format!(" — {:.0} days since its last commit", candidate.days_silent))
+                .close("span")
+                .open("button", &[("class", "btn btn-secondary"), ("type", "button"), ("data-claim", &candidate.project.slug)])
+                .text("Take it on")
+                .close("button")
+                .close("li");
+        }
+        body.close("ul");
+    }
+
+    // The claim button is the only script on the page; the list, the numbers and the reason all arrived in the document above.
+    body.open("script", &[("src", &shell::asset("/assets/js/adopt.js")), ("defer", "")]).close("script");
+    let bootstrap = serde_json::json!({ "route": "/adopt" });
+    render(&headers, Page {
+        title: "Adopt a project",
+        path: "/adopt",
+        description: "Projects the forge has measured dormant, and the act of taking one on.",
+        bootstrap,
+    }, body.finish())
+}
+
 /// One project's overview: a server-rendered HEADER, and a mount for the pills that need the API.
 ///
 /// The port first rendered this whole page in the browser, and the comment here argued for it ("a server-rendered body would be a second
@@ -489,6 +562,7 @@ where
     Router::new()
         .route("/", get(home))
         .route("/projects", get(project_index))
+        .route("/adopt", get(adopt))
         // Static before dynamic: `/projects/new` must be the form, not a project whose slug is "new".
         .route("/projects/new", get(misc::new_project))
         .route("/projects/{slug}", get(project_overview))

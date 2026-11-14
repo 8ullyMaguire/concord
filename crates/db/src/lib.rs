@@ -8,6 +8,7 @@ use sqlx::postgres::{PgPool, PgPoolOptions};
 
 pub mod auth;
 pub mod alternatives;
+pub mod adoption;
 pub mod arena;
 pub mod arena_writes;
 pub mod coverage_writes;
