@@ -2748,6 +2748,46 @@ the tie by hand, and it fails under the mutation (`left: "cap:x"`). A probe that
 durability the Go service does not have, and `persisted: false` already tells the client. And `filtered_out` records the filter,
 not the slugs it removed: naming near-miss projects would disclose what the catalogue holds.
 
+### Row 11 — part 56 (S2): alternatives arenas (2026-11-14, `ca79518`)
+
+```
+gate (before): GET /projects/{id}/alternatives -> 404   (all 4 routes missing)
+gate (after):
+  probe_alternatives.py -> 62/62 ok
+  probe_s6_finder_diff.py -> 34/34 ok
+  documents 46/46, merge 37/37, invites 32/32, featurevote 20/20, coverage 22/22, solutionvote 21/21, solutionwrites 24/24,
+  solutioncall 24/24, workitems 44/44, featurewrites 37/37, listwrites 41/41, criteriawrites 45/45, projsettings 28/28,
+  milestonewrites 41/41, complaintwrites 40/40, requestwrites 43/43, filing 31/31, requests 23/23, accept 15/15
+  routes.py -> go 216 / port 184   missing: 34 (24 json, 10 page)
+  cargo test -p concord-db --lib -> 38 passed
+```
+
+`crates/db/src/alternatives.rs`: `list`, `ensure`, `add_competitor`, `not_for_use_case`. Four routes in `crates/app/src/lib.rs`.
+
+The machinery already existed and had never been exercised — every arena in the database was feature-priority — so the probe
+proves the door, not the engine:
+
+* the **key is the use case** and an empty one is refused (400 naming `use_case`): the other arena shapes key on
+  `use_case IS NULL`, and an empty string is how a "create" becomes a silent second arena of a different kind;
+* create is an **ensure**: the same use case twice, whitespace included, is one arena;
+* an arena ranks **other** projects — its own project cannot compete (400) nor be one side of a vote;
+* **no baseline**: "do nothing" is a solution's competitor; asserted from the table, 0 baseline rows;
+* **visibility for the reader**: unreadable competitor → 404 on add and on vote, and filtered out of the panel if it later became
+  private (filtered AFTER the sort, so the ranking stays the arena's real one);
+* **the weight is the server's**: reputation × role with the age gate last — a fresh account's vote asserted from
+  `pairwise_votes.weight` to be strictly between 0 and 1;
+* **an author cannot judge their own competing project** (403) — for a project, authorship is the maintainer/owner row in
+  `members`, the only authorship this schema has.
+
+**Negative controls**: self-competition guard removed → 9 observations move ("got 200 want 400", entry count doubles, rank 1
+becomes the arena's own project, ranks `[1,2,3]`); empty use case defaulted instead of refused → 4 move ("got 201 want 400",
+three arenas).
+
+**The finding that matters**: this probe leaked three public projects per run — it cleaned on the way in only — and the finder's
+differential probe, which asserts both catalogues hold the same 73, went red and named all 28 leftovers by slug. `probe_alternatives.py`
+now cleans on the way out too, and `.gitignore` covers the `unused` file a probe's DB handle drops in the repo root. A probe that
+writes must not leave a trace; one that cleans only on entry leaves one on every run that fails halfway.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
