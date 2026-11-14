@@ -9,5 +9,6 @@ publish = false
 concord-db = { path = "../db" }
 axum.workspace = true
 sqlx.workspace = true
-serde_json.workspace = true
+serde = { workspace = true }
+serde_json = { workspace = true }
 chrono.workspace = true

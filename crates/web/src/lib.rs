@@ -15,6 +15,7 @@
 
 pub mod html;
 pub mod project;
+pub mod top;
 
 use axum::{
     extract::{Path, State},
@@ -326,7 +327,7 @@ pub(crate) fn not_found(headers: &HeaderMap) -> Response {
 }
 
 /// A 500 that is a document: the reader gets a sentence and the operator gets the error in the log.
-fn error_page(headers: &HeaderMap, headline: &str, detail: &str) -> Response {
+pub(crate) fn error_page(headers: &HeaderMap, headline: &str, detail: &str) -> Response {
     eprintln!("page error: {headline}: {detail}");
     let mut body = Html::new();
     body.open("h1", &[]).text(headline).close("h1")
@@ -360,4 +361,8 @@ where
         .route("/projects/{slug}/documents", get(project::documents))
         .route("/projects/{slug}/criteria", get(project::criteria))
         .route("/projects/{slug}/audit", get(project::audit))
+        .route("/search", get(top::search))
+        .route("/stats", get(top::stats))
+        .route("/taxonomy", get(top::taxonomy))
+        .route("/scout", get(top::scout))
 }

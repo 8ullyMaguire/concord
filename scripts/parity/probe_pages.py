@@ -194,6 +194,57 @@ def main():
                 check("  and a card's title appears on the page",
                       escape_html(named[0]["title"]) in board_page, True)
 
+
+    # ── the four instance pages ───────────────────────────────────────────────────────────────────────────────────────────────
+    # Each is a GET whose whole state is in the URL, so each is checked twice: once empty, once carrying a query — a page that
+    # only works with no input has not been shown to work.
+    status, content_type, search_page = get("/search")
+    check("GET /search is a document", status, 200)
+    check("  and it is HTML", content_type.split(";")[0], "text/html")
+    check("  and it carries a GET form", '<form method="get" action="/search"' in search_page, True)
+    # An empty query browses: the read has no WHERE without one, so the page says how many projects it is showing.
+    check("  and an empty query browses the catalogue", "in the catalogue — every one you may see." in search_page, True)
+
+    status, _content_type, hits = get("/search?q=suki")
+    check("GET /search?q=suki answers", status, 200)
+    check("  and finds the project", '<a href="/projects/suki">' in hits, True)
+    note("  and prints a total", "project(s) match." in hits, "")
+
+    status, _content_type, nothing = get(f"/search?q=zzz-nothing-{STAMP}")
+    check("a search that matches nothing still answers", status, 200)
+    check("  and says so rather than rendering an empty list", "No project matches" in nothing, True)
+
+    status, _content_type, stats_page = get("/stats")
+    check("GET /stats is a document", status, 200)
+    note("  and either has rows or says there is no slope to measure",
+         "Span (days)" in stats_page or "No project has two snapshots" in stats_page, "")
+    # An unmeasured health score is an em dash on this page, exactly as on the badge: never 0.00.
+    check("  and no row prints a zero health", "<td>0.00</td>" in stats_page, False)
+
+    status, _content_type, taxonomy_page = get("/taxonomy")
+    check("GET /taxonomy is a document", status, 200)
+    note("  and either lists tags or says none are ratified",
+         'class="tags"' in taxonomy_page or "No tags have been ratified yet." in taxonomy_page, "")
+    status, _, tags_api = get("/api/v1/taxonomy/tags")
+    if status == 200:
+        api_tags = json.loads(tags_api)
+        api_tags = api_tags.get("tags") if isinstance(api_tags, dict) else api_tags
+        rendered = taxonomy_page.count('<li><a href="/search?tag=')
+        check("  and renders every tag the API lists", rendered, len(api_tags or []))
+
+    status, _content_type, scout_page = get("/scout")
+    check("GET /scout is a document", status, 200)
+    check("  and its form submits to the API's own verdict route",
+          '<form method="get" action="/api/v1/scout"' in scout_page, True)
+    # The vocabulary Scout compares against is the `capabilities` table, which has NO JSON route — only `capableseed` reads it. So the
+    # page is compared against itself: the number in the sentence must be the number in the attribute a client reads. Anything else
+    # would be the probe asserting an agreement it cannot observe.
+    import re as _re
+    attribute = _re.search(r'data-capabilities="(\d+)"', scout_page)
+    sentence = _re.search(r"against (\d+) capability", scout_page)
+    check("  and the count in its sentence is the count a client reads",
+          attribute.group(1) if attribute else None, sentence.group(1) if sentence else "none")
+
     # ── a project that does not exist is a 404 on every sub-page too ─────────────────────────────────────────────────────────
     status, _content_type, _body = get(f"/projects/no-such-{STAMP}/audit")
     check("a missing project's audit page is 404", status, 404)
