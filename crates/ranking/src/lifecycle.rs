@@ -28,9 +28,13 @@
 
 /// Where a project is in its life.
 ///
-/// `Archived` and `Forked` are deliberately absent — see the module comment.
+/// `Archived` is the one stage this module READS FROM AN ACT rather than infers: it is set by a maintainer through
+/// `POST /api/v1/projects/{slug}/archive` and arrives here as `signals.archived`. `Forked & alive` is still absent, because it needs a
+/// parent pointer that does not exist yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Stage {
+    /// Declared dead by a maintainer: an act, with a date and a reason, that overrides every measurement.
+    Archived,
     /// An idea: nothing shipped, nothing committed.
     Seed,
     /// Something works, but it is young or not yet measured healthy.
@@ -47,6 +51,7 @@ impl Stage {
     /// The word a page prints. Lowercase, because every other label on these pages is.
     pub fn as_str(self) -> &'static str {
         match self {
+            Stage::Archived => "archived",
             Stage::Seed => "seed",
             Stage::Sprout => "sprout",
             Stage::Mature => "mature",
@@ -57,7 +62,7 @@ impl Stage {
 
     /// Whether a reader should be warned before relying on the project.
     ///
-    /// True for `Dormant` only. `Unknown` is not a warning: it says this instance has not measured the project, which is a statement
+    /// True for `Dormant` and `Archived`, and for nothing else. `Unknown` is not a warning: it says this instance has not measured the project, which is a statement
     /// about us, and warning a reader about our own gap would teach them to ignore the warning that matters.
     pub fn is_warning(self) -> bool {
         matches!(self, Stage::Dormant)
@@ -66,10 +71,14 @@ impl Stage {
 
 /// Everything the rules read. Each field is a stored measurement; none is an opinion.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Signals {
+pub struct Signals<'a> {
     /// Whether the project names a repository at all. It is the difference between "holds only ideas" and "names a repository this
     /// instance has never read", and those two must not be the same stage.
     pub has_repository: bool,
+    /// The reason a maintainer declared this project archived, or `None` when nobody has. This is the ONE signal in this struct that is
+    /// an act rather than a measurement, and it is why the field is a sentence: "declared dead" without a reason is a label a reader
+    /// cannot act on.
+    pub archived: Option<&'a str>,
     /// Days since the last commit. `None` means the forge has not been read — either because there is no repository
     /// (`has_repository == false`) or because the sweep has never run for it.
     pub last_commit_age_days: Option<f64>,
@@ -86,9 +95,11 @@ pub struct Signals {
 /// `because` is not decoration: a stage on a page with no reason is a label a reader has to trust, and the sweep that will read this
 /// (step 5) has to be able to say why it marked something dormant.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub struct Verdict {
+/// A reading, and the sentence that justifies it. The borrowed `because` is what lets an archived project carry the maintainer's OWN
+/// reason into the badge tooltip instead of a generic sentence about archival — an act's words, not the code's.
+pub struct Verdict<'a> {
     pub stage: Stage,
-    pub because: &'static str,
+    pub because: &'a str,
 }
 
 /// How long without a commit makes a project dormant. The note's number.
@@ -102,7 +113,15 @@ pub const MATURE_AFTER_DAYS: f64 = 180.0;
 pub const MATURE_HEALTH: f64 = 0.6;
 
 /// Derive the stage.
-pub fn stage(signals: Signals) -> Verdict {
+pub fn stage<'a>(signals: Signals<'a>) -> Verdict<'a> {
+    // The act comes first, before every measurement: a maintainer who declares a project dead is not overruled by a commit graph, and a
+    // project that says so should not have to keep a repository to keep the label.
+    if let Some(reason) = signals.archived {
+        return Verdict {
+            stage: Stage::Archived,
+            because: if reason.is_empty() { "declared archived by a maintainer" } else { reason },
+        };
+    }
     // Rule 1. Dormant, and only from a measurement — `None` never reaches this arm.
     if let Some(age) = signals.last_commit_age_days {
         // `age >= 90` is false for NaN, which is the right answer: an unreadable timestamp is not a fortnight of silence.
@@ -146,14 +165,14 @@ pub fn stage(signals: Signals) -> Verdict {
 mod tests {
     use super::*;
 
-    fn signals(commit: Option<f64>, health: Option<f64>, shipped: i64, age: f64) -> Signals {
+    fn signals(commit: Option<f64>, health: Option<f64>, shipped: i64, age: f64) -> Signals<'static> {
         // A project that names a repository, unless a test says otherwise — that is the common shape and the interesting default:
         // the subtle arms are the ones where a repository exists and the forge has not been read.
-        Signals { has_repository: commit.is_some(), last_commit_age_days: commit, health_score: health, features_shipped: shipped, age_days: age }
+        Signals { archived: None, has_repository: commit.is_some(), last_commit_age_days: commit, health_score: health, features_shipped: shipped, age_days: age }
     }
 
-    fn with_repo(has_repository: bool, commit: Option<f64>, shipped: i64) -> Signals {
-        Signals { has_repository, last_commit_age_days: commit, health_score: None, features_shipped: shipped, age_days: 10.0 }
+    fn with_repo(has_repository: bool, commit: Option<f64>, shipped: i64) -> Signals<'static> {
+        Signals { archived: None, has_repository, last_commit_age_days: commit, health_score: None, features_shipped: shipped, age_days: 10.0 }
     }
 
     /// Rule 1 — and the number itself, because a threshold that drifts is a rule that drifts.
@@ -248,4 +267,52 @@ mod tests {
         assert_eq!(Stage::Dormant.as_str(), "dormant");
         assert_eq!(Stage::Unknown.as_str(), "unknown");
     }
+    /// The one stage that is an ACT: it outranks every measurement, including a commit from this morning.
+    #[test]
+    fn a_declared_archive_outranks_a_fresh_commit() {
+        let signals = Signals {
+            archived: Some("superseded by tessera; fork it if you need the importer"),
+            has_repository: true,
+            last_commit_age_days: Some(0.5),
+            health_score: Some(0.95),
+            features_shipped: 40,
+            age_days: 900.0,
+        };
+        let verdict = stage(signals);
+        assert_eq!(verdict.stage, Stage::Archived);
+        assert_eq!(verdict.stage.as_str(), "archived");
+        // The tooltip is the maintainer's own sentence, not a generic one: an act carries the actor's words.
+        assert!(verdict.because.contains("superseded by tessera"));
+    }
+
+    /// An archived project with an EMPTY reason still reads as archived — the act happened, even if the sentence was not written — but
+    /// the tooltip says so rather than rendering an empty title.
+    #[test]
+    fn an_archived_project_with_no_reason_still_states_the_act() {
+        let verdict = stage(Signals {
+            archived: Some(""),
+            has_repository: false,
+            last_commit_age_days: None,
+            health_score: None,
+            features_shipped: 0,
+            age_days: 1.0,
+        });
+        assert_eq!(verdict.stage, Stage::Archived);
+        assert_eq!(verdict.because, "declared archived by a maintainer");
+    }
+
+    /// And the absence rule that makes the column honest: `None` is "nobody declared this", so the measurable rules still decide.
+    #[test]
+    fn no_declaration_leaves_the_measurements_in_charge() {
+        let verdict = stage(Signals {
+            archived: None,
+            has_repository: true,
+            last_commit_age_days: Some(120.0),
+            health_score: Some(0.4),
+            features_shipped: 3,
+            age_days: 400.0,
+        });
+        assert_eq!(verdict.stage, Stage::Dormant);
+    }
+
 }

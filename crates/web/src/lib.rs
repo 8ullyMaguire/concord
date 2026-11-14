@@ -250,6 +250,8 @@ fn stage_badge(body: &mut Html, project: &concord_db::projects::Project) {
     if project.stage == "unknown" {
         return;
     }
+    // `dormant` warns (it might still be alive and worth reviving); `archived` does not — it is a decision, and a decision is not a
+    // caution. It keeps the slate colour and carries the maintainer's own sentence in the tooltip.
     let class = if project.stage == "dormant" { "badge badge-amber" } else { "badge badge-slate" };
     // The tooltip is the REASON alone. Prefixing it with the stage said "dormant: measured: no commit for ninety days or more", which
     // repeats the word already on the badge and buries the sentence a reader wanted.

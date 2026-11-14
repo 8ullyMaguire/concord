@@ -348,6 +348,10 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/auth/register", post(register))
         .route("/api/v1/projects", post(create_project))
         // The AI-involvement declaration (roadmap step 4): a claim by a person with a role, never an inference.
+        .route(
+            "/api/v1/projects/{slug}/archive",
+            post(archive_project).delete(unarchive_project),
+        )
         .route("/api/v1/projects/{slug}/ai-involvement", put(declare_ai_involvement))
         .route(
             "/api/v1/projects/{slug}/consensus",
@@ -904,6 +908,108 @@ struct CreateProjectRequest {
     license: String,
 }
 
+
+#[derive(Debug, Deserialize, Default)]
+struct ArchiveRequest {
+    #[serde(default)]
+    reason: String,
+}
+
+/// The actor, if they may speak for this project. One helper because these four refusals are the same four for every act that speaks for
+/// a project, and a fifth copy is a fifth chance to disagree.
+async fn project_maintainer(
+    state: &AppState,
+    headers: &HeaderMap,
+    slug: &str,
+) -> Result<(concord_db::projects::Project, concord_db::auth::User), ApiError> {
+    let user = bearer_user(state, headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("sign in to do this"))?;
+    if concord_db::identity::is_guest(&state.pool, user.id).await.map_err(internal)? {
+        return Err(ApiError::forbidden(
+            "a guest cannot speak for a project: the record must name somebody",
+        ));
+    }
+    let project = concord_db::projects::project_by_slug(&state.pool, slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
+    let role = concord_db::feed_reads::role_for(&state.pool, project.id, user.id)
+        .await
+        .map_err(internal)?;
+    if !matches!(role.as_deref(), Some("owner") | Some("maintainer")) {
+        return Err(ApiError::forbidden(
+            "only the project's owner or a maintainer may do this",
+        ));
+    }
+    Ok((project, user))
+}
+
+/// `POST /api/v1/projects/{slug}/archive` — declare a project dead, in the maintainer's own words.
+///
+/// `Archived` is the one stage the lifecycle function refuses to infer, and this route is why: it is a person saying the project is over.
+/// The reason is stored as a sentence rather than an enum, because an abandonment that carries no reason leaves the next reader with a
+/// dead end instead of a pointer, and because the note's own requirement is that abandonment names suggested alternatives.
+///
+/// An empty reason is refused rather than stored: the sentence IS the value of the act.
+async fn archive_project(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    headers: HeaderMap,
+    body: Option<Json<ArchiveRequest>>,
+) -> Result<Json<Value>, ApiError> {
+    let (project, user) = project_maintainer(&state, &headers, &slug).await?;
+    let reason = body.map(|Json(b)| b.reason).unwrap_or_default();
+    let reason = reason.trim().to_string();
+    if reason.is_empty() {
+        return Err(ApiError::invalid_request(
+            "archiving needs a reason: it is the sentence the next reader acts on",
+        ));
+    }
+    concord_db::projects::set_archived(&state.pool, project.id, Some((user.id, &reason)))
+        .await
+        .map_err(internal)?;
+    let _ = concord_db::feature_writes::add_audit(
+        &state.pool,
+        project.id,
+        user.id,
+        "archive_project",
+        "project",
+        project.id,
+        &reason,
+    )
+    .await;
+    Ok(Json(json!({"status": "ok", "stage": "archived", "reason": reason})))
+}
+
+/// `DELETE /api/v1/projects/{slug}/archive` — the maintainer changes their mind.
+///
+/// No body and no argument, because the only thing it can mean is "clear the declaration". The audit row keeps the old reason, so the fact
+/// that it was once declared dead survives the reversal.
+async fn unarchive_project(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let (project, user) = project_maintainer(&state, &headers, &slug).await?;
+    let previous = concord_db::projects::archived_reason(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    concord_db::projects::set_archived(&state.pool, project.id, None)
+        .await
+        .map_err(internal)?;
+    let _ = concord_db::feature_writes::add_audit(
+        &state.pool,
+        project.id,
+        user.id,
+        "unarchive_project",
+        "project",
+        project.id,
+        &format!("was archived: {}", previous.unwrap_or_else(|| "(no reason recorded)".to_string())),
+    )
+    .await;
+    Ok(Json(json!({"status": "ok"})))
+}
 
 /// `PUT /api/v1/projects/{slug}/ai-involvement` — declare, or withdraw, what a project says about AI in its code.
 ///

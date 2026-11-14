@@ -72,13 +72,20 @@ pub(crate) const PROJECT_COLUMNS: &str = "p.id, p.slug, p.name, coalesce(p.descr
     case when m.last_commit_at is null then null \
          else extract(epoch from (now() - m.last_commit_at))::double precision / 86400.0 end, \
     extract(epoch from (now() - p.created_at))::double precision / 86400.0, \
-    p.ai_involvement";
+    p.ai_involvement, p.archived_reason";
 
 pub(crate) fn project_from_row(row: &sqlx::postgres::PgRow) -> Result<Project, sqlx::Error> {
     use sqlx::Row;
     let license: String = row.try_get(5)?;
     // The stage is derived here, from the same row, so a page, the badge, the API and the sweep cannot disagree about it.
+    // The one signal here that is an ACT rather than a measurement: a maintainer's declaration outranks every number below it, which is
+    // why `Signals::archived` is checked first inside the pure function. `None` means nobody declared it — not that the project is alive.
+    // By NAME, not by index: every other field here is positional and this one is the eighteenth, which is exactly the kind of number
+    // that goes wrong when a column is appended — it did, once, and read `ai_involvement` instead (a text column, so the read succeeded
+    // and the stage silently stayed `seed`).
+    let archived_reason: Option<String> = row.try_get("archived_reason")?;
     let verdict = concord_ranking::lifecycle::stage(concord_ranking::lifecycle::Signals {
+        archived: archived_reason.as_deref(),
         has_repository: row.try_get(13)?,
         last_commit_age_days: row.try_get(15)?,
         health_score: row.try_get(10)?,
@@ -906,6 +913,50 @@ pub const VISIBILITIES: [&str; 4] = ["public", "unlisted", "protected", "private
 ///
 /// `public` and `unlisted` are readable by anyone (unlisted means "not in the catalogue", not "not by link"); `protected` and `private`
 /// need membership, and an unknown value is refused rather than guessed at.
+
+/// Declare a project archived (`Some((actor, reason))`) or clear the declaration (`None`).
+///
+/// The reason is trimmed and refused when empty at the route; here it is stored as given, because this is the store, and a store that
+/// invents a policy is a store whose callers cannot test their own.
+pub async fn set_archived(
+    pool: &PgPool,
+    project_id: i64,
+    declaration: Option<(i64, &str)>,
+) -> Result<(), sqlx::Error> {
+    match declaration {
+        Some((actor, reason)) => {
+            sqlx::query(
+                "update projects set archived_at = now(), archived_reason = $2, archived_by = $3 \
+                  where id = $1",
+            )
+            .bind(project_id)
+            .bind(reason)
+            .bind(actor)
+            .execute(pool)
+            .await?;
+        }
+        None => {
+            sqlx::query(
+                "update projects set archived_at = null, archived_reason = null, archived_by = null where id = $1",
+            )
+            .bind(project_id)
+            .execute(pool)
+            .await?;
+        }
+    }
+    Ok(())
+}
+
+/// The reason a project carries today, or `None` when nobody has declared it archived. Used by the un-archive audit row so the reversal
+/// does not erase what it reversed.
+pub async fn archived_reason(pool: &PgPool, project_id: i64) -> Result<Option<String>, sqlx::Error> {
+    sqlx::query_scalar("select archived_reason from projects where id = $1")
+        .bind(project_id)
+        .fetch_optional(pool)
+        .await
+        .map(|row| row.flatten())
+}
+
 pub async fn readable_for(
     pool: &PgPool,
     project: &Project,

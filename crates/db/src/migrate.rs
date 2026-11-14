@@ -35,11 +35,18 @@ pub struct Migration {
 }
 
 /// Every migration this binary knows, in order.
-pub const MIGRATIONS: &[Migration] = &[Migration {
-    version: 1,
-    name: "baseline",
-    sql: include_str!("../sql/0001_baseline.sql"),
-}];
+pub const MIGRATIONS: &[Migration] = &[
+    Migration {
+        version: 1,
+        name: "baseline",
+        sql: include_str!("../sql/0001_baseline.sql"),
+    },
+    Migration {
+        version: 2,
+        name: "project_archived",
+        sql: include_str!("../sql/0002_project_archived.sql"),
+    },
+];
 
 /// What one `apply` did.
 #[derive(Debug, Default)]
