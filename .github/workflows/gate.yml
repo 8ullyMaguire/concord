@@ -1,0 +1,39 @@
+name: gate
+
+# Review decision 7: until now every gate in this repository was run by hand, from memory, on one host, in an order the operator chose
+# that day. A gate that depends on somebody remembering is a gate that is skipped on the day it matters.
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: concord
+          POSTGRES_PASSWORD: concord
+          POSTGRES_DB: concord
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://concord:concord@127.0.0.1:5432/concord
+      CARGO_TERM_COLOR: always
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # `mkfifo`/`psql` are preinstalled on the runner image; nothing else is needed because the gate shells out to the same commands a
+      # person runs by hand. The point of CI here is not to invent a second gate, it is to run the one gate where nobody can skip it.
+      - name: gate
+        run: |
+          chmod +x scripts/gate.sh
+          scripts/gate.sh
