@@ -267,19 +267,20 @@ async fn project_index(State(pool): State<PgPool>, headers: HeaderMap) -> Respon
         Err(error) => return error_page(&headers, "the catalogue could not be read", &error.to_string()),
     };
     let mut body = Html::new();
-    body.open("h1", &[]).text("Projects").close("h1")
-        .open("p", &[("class", "muted")])
+    body.open("h1", &[]).text("Projects").close("h1");
+    body.open("p", &[("class", "muted")])
         .text(&format!("{} project(s) in the catalogue", projects.len()))
-        .close("p")
-        .open("ul", &[("class", "project-list")]);
-    // The create page was reachable only by typing its URL, which is a page that does not exist. The link is here because this is
-    // where a reader who has just finished looking at what is already here decides to start something.
+        .close("p");
+    // The create page was reachable only by typing its URL, which is a page that does not exist. The link belongs above the
+    // list: written after the <ul> was opened it became a <p> among the <li>s, and axe's list rule fired on this page
+    // (one node, .project-list). A <ul> holds list items.
     body.open("p", &[("class", "muted")])
         .open("a", &[("href", "/projects/new")])
         .text("Start a project")
         .close("a")
         .text(" — after this page has shown you what already exists.")
         .close("p");
+    body.open("ul", &[("class", "project-list")]);
     for project in &projects {
         body.open("li", &[])
             .open("a", &[("href", &format!("/projects/{}", project.slug))])
