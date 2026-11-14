@@ -110,6 +110,17 @@ DETACH_MUTANTS = [
 ]
 
 if __name__ == "__main__":
-    rc = run_mutants(JS, SUITE, MUTANTS, "feature.js")
-    rc |= run_mutants(JS, DETACH_SUITE, DETACH_MUTANTS, "feature.js (detach)")
-    sys.exit(rc)
+    # Each set rebuilds the binary once per mutant, so the two sets together outlast a single outer timeout on a host that is also
+    # building something else — the first full run was killed mid-DETACH with the TAG verdict already printed. `--only` makes the
+    # sets independently runnable, so a slow host costs a re-run of the set that did not finish, not of both.
+    import sys as _sys
+
+    only = None
+    if "--only" in _sys.argv:
+        only = _sys.argv[_sys.argv.index("--only") + 1]
+    rc = 0
+    if only in (None, "tags"):
+        rc |= run_mutants(JS, SUITE, MUTANTS, "feature.js")
+    if only in (None, "detach"):
+        rc |= run_mutants(JS, DETACH_SUITE, DETACH_MUTANTS, "feature.js (detach)")
+    _sys.exit(rc)
