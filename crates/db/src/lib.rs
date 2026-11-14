@@ -38,6 +38,7 @@ pub mod notifications;
 pub mod proposals;
 pub mod snapshot;
 pub mod search;
+pub mod scout_reads;
 pub mod capabilities;
 pub mod field_report_writes;
 pub mod field_reports;
