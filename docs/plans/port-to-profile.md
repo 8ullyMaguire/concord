@@ -3956,3 +3956,63 @@ missing 12 (2 json, 10 page) — the JSON remainder is `/badge/{slug}.svg` and `
 **Commit:** `957f348`. **Files:** `crates/db/src/forge_events.rs` (new), `crates/db/src/arena_writes.rs` (`recompute`),
 `crates/db/src/arena.rs` (`entries`), `crates/app/src/lib.rs` (2 routes, 2 handlers, HMAC + RFC 3339 + tests),
 `scripts/parity/probe_arena_webhook.py` (new, 30 checks).
+
+### Part 64 — the badge: three numbers in someone else's README (2026-11-14)
+
+**Before** (`probe_badge.py` against the deployed port):
+```
+FAIL a project badge is 200: got 404 want 200
+FAIL served as an image, never as html: got '' want 'image/svg+xml'
+```
+
+**After:**
+```
+21/21 ok
+```
+
+**Routes:** `GET /badge/{slug}.svg` and `GET /badge/instance.svg`. Mounted **outside `/api/v1`** because it is fetched by an `<img>`
+tag, not by `fetch()` — like the feeds. New store reads: `stats::delivery_latency_for_project`, `stats::shipped_since`. The existing
+`stats::delivery_latency` was refactored into `latency_for(pool, Option<project_id>)` rather than copied: two copies of the episode
+rule would eventually disagree about the same log.
+
+**Rules, each of which is a claim it must not make:**
+
+1. *An unmeasured health or latency renders `—`.* A zero is a claim that the instance measured nothing **and found it instantaneous**,
+   and that claim lands in a README where nobody can check it. Same reason `n=0` is not a median of zero.
+2. *`instance` is a reserved slug handled before the project lookup.* A project actually named `instance` would shadow its own badge,
+   and the instance badge would then show one project's numbers to every reader but that project's.
+3. *An unreadable project and a nonexistent one answer the same 404, and the body never echoes the slug.* A badge is public and
+   unauthenticated; a 404 naming the slug confirms an unlisted project exists. The probe asserts the two 404 bodies are byte-identical.
+4. *The width is the sum of the segments*, not a constant — truncation in an image is invisible to the person reading it.
+5. *`Content-Type: image/svg+xml`*, because an SVG served as `text/html` is a script execution vector in someone else's page.
+
+**The finding: widths in the reference are Go's `len()`, which is BYTES.** An em dash is three UTF-8 bytes, so the reference allots it
+21px while drawing it in 7 — every badge with an unmeasured value is 14px wider than the text needs. The port reproduced
+`chars().count()` first and produced a 273px badge against the reference's 301px; the byte-for-byte check caught it, which is the whole
+reason that check exists. Matching the defect is deliberate: this SVG is embedded in other people's pages, and a badge one glyph
+narrower than its neighbours is a diff in someone else's README. **Decision (dated 2026-11-14): match the reference's byte-counted
+geometry exactly, and say so in the code.**
+
+**A live header disagrees with the reference's source:** `stats.go` sets `max-age=3600`, the live service answers `max-age=14400`. The
+difference is Cloudflare's edge (`Cache-Control` is rewritten when a response is edge-cached), not the service. The port sets the
+source's 3600; the probe asserts a numeric `max-age` rather than the digit, because the number a client sees will be rewritten by
+whatever proxy is in front of the cut-over host too.
+
+**Controls** (startup seam, no rebuild):
+```
+control badge-zero-for-unmeasured: 19/21 — FAIL unmeasured renders a dash got '0.00'; FAIL byte-identical
+control badge-fixed-width:         18/21 — FAIL width is the sum got 270 want 301; FAIL instance geometry; FAIL byte-identical
+control badge-chars-not-bytes:     18/21 — FAIL width got 273; FAIL instance geometry; FAIL byte-identical
+control badge-slug-in-404:         19/21 — FAIL body does not echo the slug; FAIL the two 404 bodies are byte-identical
+```
+
+**Probe bugs found while writing it:** response headers arrive lowercased (`content-type`), so the probe compares case-insensitively;
+and the byte-for-byte comparison initially ran against the *fixture* project, which does not exist on the reference — whose answer was a
+404 body. It now compares `/badge/suki.svg`, a project both services serve.
+
+**Gate:** `probe_badge.py` 21/21; controls 19/21, 18/21, 18/21, 19/21; regressions `probe_ops_reads` 34/34,
+`probe_arena_webhook` 30/30, `probe_taxonomy` 48/48; `concord-app` lib 4 passed. `routes.py` go 215 / port 206 / missing 11
+(1 json, 10 page) — `/scout` is the last JSON route in row 11.
+**Commit:** `94eff41`. **Files:** `crates/db/src/stats.rs` (`latency_for`, `delivery_latency_for_project`, `shipped_since`),
+`crates/app/src/lib.rs` (`badge_svg`, `badge_svg_text`, `escape_xml`, `advance`, `latency_value`, 1 route),
+`scripts/parity/probe_badge.py` (new, 21 checks).
