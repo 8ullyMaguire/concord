@@ -4069,3 +4069,79 @@ for that signal used a *subset* match. The reference's own comment documents tha
 **Gate:** `cargo test -p concord-scout` → 22 passed; five mutants, five kills after the survivor was repaired.
 **Commit:** `a8bc2c9`. **Files:** `crates/scout/Cargo.toml`, `crates/scout/src/lib.rs` (types, `classify`, `apply_verdict`,
 `lead_counts`, `score`), `crates/scout/src/decompose.rs`, `crates/scout/tests/rules.rs` (22 tests), workspace `Cargo.toml`.
+
+### Part 65b — the last JSON route, and a database that had been lying about its catalogue (2026-11-14)
+
+**Before:** `GET /api/v1/scout` answered `404`. It was the only JSON route in row 11 still missing.
+
+**After:**
+```
+$ python3 scripts/parity/probe_scout.py
+ok   the idea is echoed trimmed: got 'a self hosted tool for WIP limits with offline use and live-sync' want '…'
+ok   an unconfirmed assertion is partial coverage: got 'partial' want 'partial'
+ok   the count is the whole catalogue, not the trimmed page: got 73 want 73
+ok   and it is not counted either: the stranger's total is the readable catalogue: got 73 want 73
+ok   the decomposition is byte-identical to the reference's: got [...] want [...]
+ok   every verdict disagreement is a tie the reference could not express: got [] want []
+55/55 ok
+```
+
+**What the route is.** Four reads behind one answer, each a different question and kept apart in `scout_reads` so a change to one cannot be
+mistaken for a change to another: the **catalogue** (the vocabulary the decomposition matches, always whole — a filtered catalogue silently
+changes what Scout can see), the **candidates** (readable projects with their asserted `value` attached), the **state counts** (from
+`capability_confirmations`, not from the values — reading coverage out of the values makes `covered` unreachable and every capability comes
+back `partial`), and **pain** (unresolved complaints, newest first).
+
+**Where the decisions live, and why there rather than in the handler.** Health is read live through `ops_reads::project_health`, never from
+`project_metrics.health_score` — that column is 0 for every project on this instance, so a rule keyed on it calls the whole catalogue dead.
+`Some` means measured; `None` becomes `Health { known: false }` and the verdict says `health_unmeasured` instead of scoring the absence as
+zero. Visibility is filtered **in the WHERE**, not afterwards: applying it afterwards reads the row first, and the next edit that adds a field
+to the map would leak it for a project the caller cannot read.
+
+**Zero verdict disagreements.** Across 73 projects and a `max=500` fetch on both sides, the port and the reference classify every project
+identically — `got [] want []` for the disagreement list. Part 65a's tie fix was the one expected deviation and it fires only when two
+candidates tie, which this idea does not produce.
+
+**The finding that cost the most and had nothing to do with Scout.** The target database carried **120 fixture projects** — 111 `probe-…`
+slugs and nine one-offs named `api-probe`, `arena-probe`, `created-probe`, `s2-probe`, `s3-probe` — left by earlier probe runs, against a
+catalogue the reference serves as 73. Two consequences: `routes.py` and every count read off that database were describing fixtures, and the
+differential probe reported 12 of 25 candidates in common because fixtures were crowding real projects out of the trimmed list. Purging them
+took three failed scripts before one worked, and the failures are worth recording because each is a real property of the schema:
+
+* `clean_project.py` has the right algorithm (depth-descending per root, derived from `pg_constraint`) and did not finish over 120 roots:
+  thousands of statements on a slow disk, and it was killed three times before this part ended.
+* A first rewrite keyed the doomed values by **(table, column)** — the column that names the parent — which cannot walk transitively: the
+  ids of an `arenas` row are needed by `pairwise_votes.arena_id`, and no plan entry ever holds them, so the parent was deleted first.
+* A second rewrite computed the delete order by leaf-peeling but compared `(parent, "_")` as a tuple, where `"_"` is the literal string: no
+  edge ever matched, every table looked like a leaf, and parents were deleted before children again.
+* `set session_replication_role = replica` — the standard bulk-delete route, which removes the ordering problem entirely — is **not
+  permitted to the application role** (`permission denied to set parameter`). So the ordering cannot be avoided, only respected.
+
+`scripts/parity/purge_fixtures.py` is the version that worked: collect each table's **own ids** (`id`) from the rows already identified and
+walk outward level by level, then delete `where id = any(…)` with a savepoint per statement so a delete blocked by a foreign key is retried
+on the next round instead of failing the transaction. Result: `projects 193 → 73`, which is exactly the catalogue the
+reference serves, and a second run finds nothing (`fixture projects: 0`) — the purge is idempotent. One transaction throughout, so a failure leaves the database untouched.
+
+**Controls** (startup seam, no rebuild):
+```
+control scout-private-leak:     53/57 — FAIL the PRIVATE fixture project is invisible to a stranger's report: got True want False;
+                                         FAIL and it is not counted either: got 75 want 74
+control scout-health-assumed:   33/37 — FAIL an unmeasured project is not called abandoned: got 'avoid' want 'adopt';
+                                         37 of 73 verdicts flip adopt→avoid in the differential
+control scout-ignore-license:   52/55 — FAIL a licence constraint is echoed so a reader can see it was applied: got None
+```
+The private-leak control is why the assertion is on the **count**, not on the verdict list: a leaked private project only appears in a
+trimmed list when it happens to rank in the top 25, so a list-shaped assertion catches the defect on some runs and not others. The count
+moves by exactly one, every run.
+
+**Probe bug found while writing it:** the reference sits behind Cloudflare and rate-limits a client that asks several questions inside a
+minute — `429` on the fourth call of a control loop. That is not a disagreement, so a persistent `429` is now reported as
+`(not judged — reference unavailable)` and the differential checks become notes rather than failures. The alternative — treating it as a
+failure — reports two services as differing because one refused to answer, which is the error this probe exists to avoid.
+
+**Gate:** `probe_scout.py` 55/55; controls 53/57, 33/37, 52/55; `routes.py` **go 215 / port 207 / missing 10 — 0 JSON, 10 page**, and
+`every go JSON route is answered`. Regressions: `concord-db` lib 38 passed, `concord-scout` 22 passed.
+**Commit:** `9274bea`. **Files:** `crates/db/src/scout_reads.rs` (new: `catalog`, `candidates`, `state_counts`, `ids_of`, `pain`, `mutant`),
+`crates/app/src/lib.rs` (`scout_report`, `apply_coverage`, 1 route, 2 startup seams), `scripts/parity/probe_scout.py` (new, 55 checks),
+`scripts/parity/purge_fixtures.py` (new).
+
