@@ -45,7 +45,7 @@ gate ran and its output is quoted — not when it was removed from a list. The h
 | 9 | S3 consensus, governance, ledger | **Done 2026-11-13** (`a2ace5d`) — corpus subset green, `probe_s3_api.py` 94/94, estate gate 49 green; `consensus_e2e`/`audit_e2e` moved to row 12 by the dated correction |
 | 9b | S3 arena and solutions | **Done 2026-11-13** (`345b132`) — `probe_s3b_arena.py` 20/20 (was 5/20), the negative control at 19/20, corpus still 2 disagreed of 14, ranking oracle green with 10 arena rows |
 | 10 | S4 moderation, comments, inbox | **Done 2026-11-13** (`b969b26`): four probes 26/26, 27/27, 40/40, 39/39; `e2e.sh` 29 passed; gates 22 and 45 green (`CHECK inbox` exit 0, `CHECK authz` 10/10); `polaris-comments` and `polaris-authz` adopted |
-| 11 | S5 stats, feeds, admin binaries | corpus + `stats_e2e` and feed parse; estate gates 4, 5, 47 green; timers migrated to `polaris-loops` |
+| 11 | S5 stats, feeds, admin binaries | **Done 2026-11-14** (`3ac7f5e`) — corpus `0 shape(s) disagreed of 16 checked, 5 skipped`; `probe_s5_stats` 16/16; `probe_admin_binaries` **69/69** with four controls; three `concord-rs-*` timers declared in `scheduled.toml` (`active = false` until cutover); `CHECK feed-routes: 8 arm(s) passed, 0 failed`. **Dated correction 2026-11-14:** "feed parse" moves to row 12 — the feeds are page routes returning XML, not JSON routes, and `probe_s5_feeds` is that row's gate. Gates 4 and 5 are red for `media.polarisocial.xyz` and not for concord (recorded in the row-11 body below). |
 | 12 | P6 the frontend on SvelteKit + `@polaris/ui` | every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
 | 13 | P7 cutover | `concord.polarisocial.xyz/api/v1/version` served by the Rust binary, and estate gate 17 green for `concord` with NO `reason` |
 
@@ -4144,4 +4144,73 @@ failure — reports two services as differing because one refused to answer, whi
 **Commit:** `9274bea`. **Files:** `crates/db/src/scout_reads.rs` (new: `catalog`, `candidates`, `state_counts`, `ids_of`, `pain`, `mutant`),
 `crates/app/src/lib.rs` (`scout_report`, `apply_coverage`, 1 route, 2 startup seams), `scripts/parity/probe_scout.py` (new, 55 checks),
 `scripts/parity/purge_fixtures.py` (new).
+
+### Part 65c — the four admin binaries, and three timers the registry could not see (2026-11-14)
+
+**Before:** `concord-cli granttrust` → `Error: unknown command granttrust`; `probe_admin_binaries.py` **3/13 ok**, and all three passes were
+vacuous — the refusal assertions passed only because every command 404'd the same way.
+
+**After:**
+```
+ok   a grant at the ceiling exits 0                                  ok   a complete mapping exits 0
+ok   and writes the level to the account                             ok   and the repository is stored
+ok   the grant carries the level                                     ok   a project that becomes a skip loses its repository
+ok   a grant above the ceiling exits non-zero                        ok   a backfill under a model the index does not hold is refused
+ok   and the refusal names the ceiling                               ok   and writes both vectors: title and full text
+ok   the positional form is accepted                                 69/69 ok
+```
+
+**What each one is, and the rule that keeps it honest.**
+
+* **`granttrust`** — the only writer of `users.trust_level`, because `SetTrustLevel` has no HTTP route: without it no account reaches
+  the configured minimum and every trust-gated endpoint is unreachable for everyone, including the operator. Both writes (the grant row and
+  the account column) are one transaction; the ceiling is read **inside** it, so a concurrent second writer cannot slip past a
+  read-then-write check, and the refusal precedes both writes, so a refused assignment leaves no history of an attempt that did not happen.
+  The ceiling is a **refusal, not a clamp**: a clamp reports success while storing something else. `granted_by` is the target account —
+  reaching the database is the authorisation, and pretending there is an admin role would be a second permission system with one user.
+* **`capableseed`** — the matrix is what Finder asks from, and a matrix nobody asserted into carries no information: the question selector
+  picks by information gain, so an empty matrix makes the engine correctly decline to ask anything. Three refusals: the key is
+  canonicalised **on write** (a second spelling would be a second capability holding half the assertions); re-registering may change the
+  label and category but never the kind or the value set (the assertions point at the old vocabulary); a value must be one the capability
+  permits. Assertions are written as claims and never as confirmed — a seed file that could manufacture a quorum would let whoever edits it
+  promote their own claims.
+* **`forgeseed`** — refuses more than it accepts, and the whole file is refused if any problem is present: an unlisted catalogue project, a
+  slug that is not in the catalogue, a skip without a reason. Found on the instance this port replaces: a remote started answering 404, the
+  mapping was changed to a skip, and the row kept its `repo_url` — so the hourly ingest kept failing against a URL the mapping no longer
+  contained. Clearing is therefore a write (`repo_url = null`), not an absence.
+* **`embedbackfill`** — deliberate, because a partial index silently answers "no duplicates found" and a filer reads that as "I am the
+  first to report this". Re-running re-embeds exactly the rows with no vector from the **current** model and nothing else.
+
+**The finding that changed the command.** Running `embedbackfill` against the live database indexed the whole complaint kind under the
+port's default `hashed-v1` embedder — **4,818 vectors** beside the **5,482** `nomic` ones the service actually reads. Inert for readers
+that filter by model id, and a trap for any reader that does not: two models' vectors in one table score nonsense against each other. The
+Go tree documented this as a comment (`$CONCORD_EMBED_URL must be set identically for both`) and a comment refuses nothing. **Decision
+(dated 2026-11-14): `embedbackfill` refuses to write when the table holds vectors from a model other than its own and none of its own,
+naming the models present; `--force` overrides for a real model change.** The 4,818 stray rows were deleted with one
+statement, `delete from embeddings where model_id = 'hashed-v1'`, verified by re-reading the table: 5,482 rows, all `nomic`.
+
+**The three timers, and why the registry had never seen them.** `~/.config/systemd/user/concord-{healthsync,statsnapshot,proposalsweep}` have
+existed for a year, running `/home/alvaro/concord-deploy/{…}` — copies of the Go build, **outside every owned-code prefix**, which is exactly
+why `scheduled.toml` contained zero concord rows. Three `concord-rs-*` unit pairs now point at `deploy/concord-cli` inside the repository, so
+a target that moves shows up as `target_exists = false` rather than as a timer that has been failing quietly. They are installed and
+**disabled**, and the registry says so (`active = false`): they run the Rust binary against Postgres, which is not the live database until
+the cutover row, and enabling them now would refresh one database twice and the other not at all.
+
+**Controls** (startup/`CONCORD_MUTANT` seam, no rebuild):
+```
+control granttrust-clamp:            66/69 — FAIL a grant above the ceiling exits non-zero — code=0; a grant row was written for the attempt
+control capableseed-shape:           68/69 — FAIL changing a capability's kind is refused
+control forgeseed-skip-keeps-repo:   67/69 — FAIL and loses its repository: got ('https://github.com/example/probe', 'github')
+control embedbackfill-title-only:    67/69 — FAIL and writes both vectors: got 1 want 2; FAIL and embeds nothing — embedded 77
+```
+The `granttrust-clamp` control is the one worth keeping: it moves three observations, because a clamped grant does not just succeed — it
+writes a grant row and makes `granted_by` history say something the operator did not ask for.
+
+**Gate:** `probe_admin_binaries.py` **69/69**; controls 66/69, 68/69, 67/69, 67/69; corpus `0 shape(s) disagreed of 16 checked, 5 skipped`;
+`probe_s5_stats` 16/16; `concord-db --test store` **29 passed** against a scratch database; `concord-cli` 5 passed; `concord-db` lib 38
+passed; `CHECK feed-routes: 8 arm(s) passed, 0 failed`.
+**Commit:** `3ac7f5e`. **Files:** `crates/db/src/trust.rs` (new), `crates/db/src/capability_writes.rs` (new), `crates/db/src/forge_repos.rs`
+(new), `crates/db/src/embeddings.rs` (`backfill`, `backfill_titles_only`), `crates/cli/src/lib.rs` (four subcommands, positional arguments,
+four seams), `crates/cli/src/forge.rs` (`Repo::url`, `Display for RefusedUrl`), `scripts/parity/probe_admin_binaries.py` (new, 69 checks),
+`~/code/estate/scheduled.toml` (three `concord-rs-*` jobs).
 
