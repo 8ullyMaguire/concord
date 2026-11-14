@@ -357,12 +357,30 @@ unreachable for the rest — which means the adoption pool (mark dormant after 9
 of at most five candidates and a false "everything else is fine".
 
 **This is a decision, not work.** Stating a project's upstream is somebody saying where its code lives, and a guess would put a stranger's
-repository on a project's page. What blocks it: **the owner stating the remaining 69 repository URLs** (or stating that some have none,
-which is also an answer). What is not blocked: copying `seed/forge_repos.json` into this tree and running `forgeseed` for the five, which
-is a prerequisite for the sweep and proves the ingest path on the Rust side.
+repository on a project's page. What blocks it: **the owner stating the remaining 68 repository URLs** (or stating that some have none,
+which is also an answer).
 
-Until then the honest state on the page is what it is now: every project renders `seed` or `sprout`, no project claims `mature`, and no
-project claims `dormant` — because nothing about the forge has been measured.
+What was not blocked, and is now done: `seed/forge_repos.json` copied into this tree from the Go checkout and applied with the port's own
+`forgeseed`. Two things that run taught:
+
+- **The file refused to apply, and it was right.** It names `piefed-rs-broken-git`, a project that is not in the catalogue — a typo or a
+  deleted project. `forgeseed` refuses a mapping that does not account for the catalogue rather than applying the rest quietly, which is
+  the difference between a job that reports success and a job that is right. The stale row was removed from the file (73 rows for 73
+  projects) and the dry run then read `applied 5 of 73 (0 already set, 0 cleared, 68 skipped)`.
+- **The stage function immediately responded to new measurement**, which is the whole argument for computing it instead of storing it.
+  Before: 61 `seed`, 12 `sprout`. After: 59 `seed`, 14 `sprout` — `stash` and `stash-box` moved because commits are now readable, and
+  `commons` / `darkhold` / `tessera` moved because they ship and are old enough to be measured.
+
+Their health was already present (inherited from the Go database copy): `commons 0.389`, `darkhold 0.505`, `stash 0.592`, `stash-box
+0.400`, `tessera 0.491` — all below the 0.6 mature floor, so **no project claims `mature` yet, and that is the honest reading rather than
+a bug**: five projects are measured and none is above the line.
+
+The Rust `healthsync` does not fetch from forges — it takes `--from <measurements.json>` — so keeping those five current is a file to
+produce, not a job to schedule. That is a design question for step 5, not an oversight: the Go binary scraped GitHub and Forgejo itself,
+and the port moved the scraping out.
+
+Until then the honest state is what the page shows: `seed` and `sprout` only, no `mature` claim, no `dormant` claim — because a project
+with no stated repository cannot be shown to be dormant, only to be unmeasured.
 
 
 With project vectors present, `/api/v1/similar/project` becomes the intent router the note asks for, and the remaining work is the
