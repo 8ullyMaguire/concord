@@ -6,6 +6,28 @@ follows is a critique of the design the port inherited and faithfully reproduced
 
 Every claim below is a measurement, and the command that produced it is in the sentence. Where I am guessing, it says so.
 
+## Work log — what of this is now done (updated 2026-11-14)
+
+| # | item | state | commit | gate |
+|---|---|---|---|---|
+| 4 | the cutover did not move the writers | **done** | `ba134b4` | `is-enabled` → rs enabled, Go unit + both Go timers disabled; rollback still one `start` away |
+| 1 | 18 repository identities only in the Go database | **done** | `b5f91a2` | `psql` 5 → 23 rows; `/api/v1/projects` {sprout 28, seed 45}; `dormancysweep` 5 → 23 considered |
+| 2 | migrations + `schema_version` | **done** | `c590240` | 4 scratch scenarios: empty → 81 tables; legacy → adopted; ahead → refused by version; live adopted at boot |
+| 3 | health ingest | **done, with a correction** | `eba381d` | the `--fetch` code existed; the unit was misconfigured and disabled. Hourly timer live: `synced 16, deferred 7, failed 0`; 23/23 measured |
+| 6 | a route that edits a feature's body/impact/effort | **done** | `70890ab` | owner 200 with a field-by-field audit row; `{}` 400; impact 11 → 400; stranger 403; anonymous 401 |
+| 7 | `make gate` + CI | **done** | `70890ab` | `scripts/gate.sh` three layers + `.github/workflows/gate.yml` |
+| 2 | one renderer per page | **open** | — | see below |
+| 8 | lifecycle as (measured stage) + (acts) | **open** — `archived` is a column, a route, an audit row and a badge | — | step 5's pool needs it |
+| 9 | the frontend's 13k lines | **open** (not urgent; extract the fetch/escape helpers first) | — | — |
+| 10 | docs describing the dead lineage | **partly done**: `concord-spec-r4`, `PLAN-r4`, `REMAINING` carry historical banners; `port-context.md` still says "3 rows open" | — | — |
+
+**Two things this pass learned about its own documents.** First, decision 5 as written was wrong — `healthsync --fetch` had existed since the port and I
+wrote "nothing produces that file" from a `--from` signature and a Go-era note; the section is corrected in place. Second, the migration gate
+found that the baseline file carries its own `BEGIN`/`COMMIT`, so wrapping it in a transaction produces two `sqlx` notices and no error: the
+outer transaction wins, the file's own `COMMIT` ends it, and the version row is written after. It works, it is subtle, and it is written down
+here so nobody "fixes" it into an outage.
+
+
 ## Evidence base
 
 | fact | value | how |

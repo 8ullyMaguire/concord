@@ -5,7 +5,9 @@ a wish list: every idea from the "Rethinking GitHub for the Age of AI" note is p
 actually do today, with the file or route that proves it. An idea that already ships is not refiled; an idea that ships *partly* says
 which half is missing.
 
-> **Status 2026-11-14:** steps 1, 2a, 2b, 3, 3b, 3c, 4 **done**; step 5 built (sweep + timer) with its **pool blocked on 68 unstated
+> **Status 2026-11-14 (second pass):** the review's engineering items 1, 2, 3, 4 (boot/timers), 6 (feature edit) and 7 (gate + CI) are
+> **done** — see the work log at the top of `docs/reviews/2026-11-14-from-scratch-review.md`. Still open there: the server-rendered project
+> page, `archived` as a declaration, the frontend split, and `port-context.md`'s stale header. Roadmap: steps 1, 2a, 2b, 3, 3b, 3c, 4 **done**; step 5 built (sweep + timer) with its **pool blocked on 68 unstated
 > repositories**. Rows open: 1. Blocked: 1. Nothing in this file is "complete" while that number is above zero.
 > A critical review of the product as it now stands, with what I would do differently, is `docs/reviews/2026-11-14-from-scratch-review.md`.
 
