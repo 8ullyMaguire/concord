@@ -46,7 +46,7 @@ gate ran and its output is quoted — not when it was removed from a list. The h
 | 9b | S3 arena and solutions | **Done 2026-11-13** (`345b132`) — `probe_s3b_arena.py` 20/20 (was 5/20), the negative control at 19/20, corpus still 2 disagreed of 14, ranking oracle green with 10 arena rows |
 | 10 | S4 moderation, comments, inbox | **Done 2026-11-13** (`b969b26`): four probes 26/26, 27/27, 40/40, 39/39; `e2e.sh` 29 passed; gates 22 and 45 green (`CHECK inbox` exit 0, `CHECK authz` 10/10); `polaris-comments` and `polaris-authz` adopted |
 | 11 | S5 stats, feeds, admin binaries | **Done 2026-11-14** (`3ac7f5e`) — corpus `0 shape(s) disagreed of 16 checked, 5 skipped`; `probe_s5_stats` 16/16; `probe_admin_binaries` **69/69** with four controls; three `concord-rs-*` timers declared in `scheduled.toml` (`active = false` until cutover); `CHECK feed-routes: 8 arm(s) passed, 0 failed`. **Dated correction 2026-11-14:** "feed parse" moves to row 12 — the feeds are page routes returning XML, not JSON routes, and `probe_s5_feeds` is that row's gate. Gates 4 and 5 are red for `media.polarisocial.xyz` and not for concord (recorded in the row-11 body below). |
-| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **In progress 2026-11-14** — 17 of the Go's **44** page routes answered (`/`, `/projects`, `/projects/{slug}`, `/badge/{slug}.svg` and the 13 feeds), 27 remain; part 66 opened the crate and corrected the count from 10 to 44. Gate unchanged: every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
+| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **In progress 2026-11-14** — 23 of the Go's **44** page routes answered (`/`, `/projects`, `/projects/{slug}`, `/badge/{slug}.svg` and the 13 feeds, plus six project sub-pages), 21 remain; part 66 opened the crate and corrected the count from 10 to 44. Gate unchanged: every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
 | 13 | P7 cutover | `concord.polarisocial.xyz/api/v1/version` served by the Rust binary, and estate gate 17 green for `concord` with NO `reason` |
 
 **Row 8 (S2) — the failing probe, pasted before any code** (2026-11-13):
@@ -4143,7 +4143,9 @@ failure — reports two services as differing because one refused to answer, whi
 `every go JSON route is answered`. Regressions: `concord-db` lib 38 passed, `concord-scout` 22 passed.
 **Commit:** `9274bea`. **Files:** `crates/db/src/scout_reads.rs` (new: `catalog`, `candidates`, `state_counts`, `ids_of`, `pain`, `mutant`),
 `crates/app/src/lib.rs` (`scout_report`, `apply_coverage`, 1 route, 2 startup seams), `scripts/parity/probe_scout.py` (new, 55 checks),
-`scripts/parity/purge_fixtures.py` (new).### Part 67 — twelve feeds that had never been observed working (2026-11-14)
+`scripts/parity/purge_fixtures.py` (new).
+
+### Part 67 — twelve feeds that had never been observed working (2026-11-14)
 
 **Before:**
 ```
@@ -4185,6 +4187,39 @@ lacked rather than documents it serves.
 **Commit:** `31fa726`. **Files:** `crates/cli/src/lib.rs` (boot warning), `scripts/parity/probe_s5_feeds.py` (origin from the
 service's configuration), `scripts/parity/routes.py` (any `*.xml` route is a document).
 
+
+### Part 68 — six project pages behind one tab strip (2026-11-14)
+
+**Before:** `GET /projects/suki/board` → `404`; `routes.py` `missing: 27 (0 json, 27 page)`.
+**After:** `probe_pages.py` **75/75 ok**; `routes.py` `missing: 21 (0 json, 21 page)`.
+
+Board, Roadmap, Consensus, Documents, Criteria, Audit — one shell, one tab strip, six pages reading the same store functions the JSON
+routes read. Browser-verified over a tunnel: board **9 columns / 329 rows**, documents **175 rows**, audit **100 rows**, roadmap
+"This project has no milestones", and every page marking its own tab `aria-current="page"`.
+
+**Decision (dated 2026-11-14) — the strip offers only the pages that exist.** The Go's strip has nine tabs; `Requests`, `Lists` and
+`Settings` are not ported. A tab is a promise that its address answers, and a strip that offers a 404 is a navigation that lies. The
+strip grows by one tab in each commit that lands its page, and this entry names the three that are absent so their absence is a
+record rather than an oversight.
+
+**Decision (dated 2026-11-14) — nothing renders a zero that is not a measured zero.** A milestone with no target date prints `—`; a
+consensus call closed without a verdict prints "No verdict recorded."; an inactive criterion still appears (deleting it would lose the
+history of what was once judged); an empty section says so in its own words instead of drawing an empty table.
+
+**Two findings from the live database, both now stated on the page rather than hidden by it.**
+
+* **`suki` has 329 placed board cards and not one carries a feature title.** Measured: `curl … /api/v1/projects/suki/board` → `329
+  cards; 0 with a title`. The reference explains it — its `deriveBoardCards` reads `COALESCE(title,'')` from `features` for DERIVED
+  cards, while a placed card comes from `board_cards` and the query joins nothing. So the page labels a card by its identifier
+  (`#1793`), which a reader can act on; `(untitled feature)` 329 times would be a page that gave up. Parity of the board API is row
+  11's property, not this row's.
+* **`suki` has 175 documents, 329 board cards, 0 criteria and 0 milestones** — two of these six pages are legitimately empty on the
+  instance the port replaces, which is exactly why the empty sentences are asserted rather than the row counts.
+
+**Gate:** `probe_pages.py` **75/75 ok**; `routes.py` `missing: 21 (0 json, 21 page)`; `cargo build --release -p concord-cli` clean;
+browser check of four of the six pages as quoted above.
+**Commit:** `97c348a`. **Files:** `crates/web/src/project.rs` (new), `crates/web/src/lib.rs` (module, `date`/`datetime`, six routes),
+`crates/web/Cargo.toml` (chrono), `scripts/parity/probe_pages.py` (41 more checks).
 
 ### Part 66 — the first pages, and an inventory that was under-reporting this row by four (2026-11-14)
 
