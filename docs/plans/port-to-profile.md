@@ -2686,6 +2686,31 @@ and says why.
 **Two negative controls**: overwrite instead of bump → `FAIL the second write is revision 2: got 1 want 2` (45/46); delete not
 scoped → `FAIL another project's document cannot be deleted under this URL: got 200 want 404` (44/46).
 
+### Row 11 — part 55a: the finder engine (2026-11-14, `6932904`)
+
+```
+gate (before): crates/ had app, cli, db, domain, embed, governance, parity, ranking — no engine;
+               /api/v1/finder/* is 6 of the 45 missing JSON routes, the largest cluster left
+gate (after):  cargo test -p concord-finder -> 11 passed; 0 failed
+```
+
+`crates/finder` (`concord-finder`): `gain`, `counts_by_value`, `build_dimension`, `classify`, `next_question`, `all_dimensions`,
+`should_stop`, `gaps`, `apply`, `score`, `weight_report`, plus the contribution feed's vocabulary (`contribute_questions`,
+`minutes_bucket`, `difficulty_word`, `item_key`/`item_id_from_key`, `work_item_candidate`, `order_work_items`).
+
+Eleven tests, one per rule: constant dimension never asked; unknown is not no (kept, not removed); skip never filters; a full
+match scores `1 - penalty × coverage` = 0.975 rather than 0.15 (the renormalised denominator); positive `no` = 0.0 and a
+different known value = 0.5, with partial ranking above no; a decide-later preference actually reorders (my first version of
+that assertion passed against an engine that ignored preferences); the stop rule needs a margin (six-way tie is not a finding);
+gaps report unknown data; work items inherit project dimensions and bucket 20 minutes to "60"; an unstated budget leaves the
+attribute absent while `needs_mentor=false` is written as a fact; an unmeasured project never outranks a measured one.
+
+**Decision, dated:** the answer type is `AnswerOption`, not `Option` — the Go's name shadows `std::option::Option` in every
+signature below it. The JSON (`id`/`label`/`impact`) is unchanged.
+
+**Not done (part 55b):** the 6 routes, the candidate loader, the session store, and the differential probe that drives the same
+answers into the live Go service and this port and compares questions and ranking.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
