@@ -3654,3 +3654,65 @@ Each moves exactly the check it names and nothing else, which is the property a 
 `concord-db` lib 38 passed; `routes.py` go 216 / port 193 / missing 25 (15 json, 10 page).
 **Commit:** `af6e9ae`. **Files:** `crates/db/src/feed_reads.rs` (new), `crates/app/src/lib.rs` (4 routes + 5 handlers),
 `crates/app/src/finder.rs` (`seed_projects` reachable), `scripts/parity/probe_contribute.py` (new, 46 checks).
+
+### Part 59 — §4.7's write half: the report and the reply (2026-11-14)
+
+**Before** (`probe_fieldreports_write.py` against the deployed port — the route existed only as a GET, so every write was a 405):
+```
+FAIL filing anonymously is 401: got 405 want 401
+FAIL a report from a non-member is accepted — §4.7's rate is not a poll of people who already joined: got 405 want 201
+```
+
+**After:**
+```
+33/33 ok
+```
+
+**The frame that made the checks fall out.** The read half has been routed since the port began, which means the project page's "No
+field reports yet" was not a state the instance happened to be in — it was the state the code *guaranteed*. That is the whole
+argument for §4.7's write half: a rate nobody can contribute to is not a measurement of zero, it is a measurement of nothing.
+
+**What the probe establishes:**
+
+1. *`outcome` is required, and one of four.* A free-text outcome would BE the rant §4.7 exists to replace — "works fine mostly"
+   parses, reads as evidence and cannot be aggregated. A missing outcome names the field; an unknown one lists the four.
+2. *`migrated-away` must name `migrated_to`* — §4.7 asks "migrated away (to what?)", and the successor is the most useful thing in
+   that report: it is a second candidate for whoever asked the question.
+3. *Author and project come from the token and the URL.* `NewReport` has no field to put them in, which is stronger than
+   validating them: the probe sends another user's id and another project's id in the body and reads back the real ones.
+4. *A non-member may file AND reply.* §4.7's sentence is "worked for 83 % of reporters"; a rate computed from members only would be
+   a poll of people who already joined — exactly the people most likely to have made it work.
+5. *`is_owner` is read from the membership table at write time, never from the request.* The probe sends `is_owner: true` as a
+   bystander and reads back `false`; a maintainer's reply reads back `true`; the audit detail carries `is_owner=false`.
+6. *Auth before project.* Anonymous to a real project and anonymous to a nonexistent one both answer 401 — a different status for
+   the second would enumerate the instance's slugs.
+7. *Report ids are global behind a project-scoped URL*, so the project is in the WHERE clause: the same report id under another
+   project's URL is 404.
+8. *A removed report takes no new replies and answers 404, not 403* — the report is not there for the caller, and a distinct
+   refusal would confirm it exists to somebody who cannot see it. Removal is a flag and never a delete: §4.7's abusive reports are
+   removed by quorum *with appeal*, and the appeal is conducted on the record. The probe asserts the row still exists and the
+   earlier replies survive.
+
+**Two schema facts the port learned by failing, not by reading:**
+- `field_reports.removed` is `bigint`, not boolean — `coalesce(r.removed,false)` fails to type-check, and reading the column as
+  `i64` after coercing it to a boolean fails to decode (`COALESCE types bigint and boolean cannot be matched`, then `SQL type
+  BOOL is not compatible with i64`). The query coerces, the struct holds a bool.
+- `field_report_responses.is_owner` is also `bigint`. Postgres rejected the boolean bind outright, which is why a bystander's reply
+  was a 500 for two builds.
+
+**Decision (dated 2026-11-14): the row is read by column NAME, not as a positional tuple.** This table has seventeen columns and
+`sqlx`'s tuple impls stop at sixteen; a name is also the thing a reader can check against the schema. `select _ from _` with
+`try_get("x")` is the shape for wide rows in this port from now on.
+
+**Controls** (`CONCORD_MUTANT=owner-from-request|replies-after-removal`, same startup seam as part 58, no rebuild):
+```
+control owner-from-request:    31/33 — FAIL is_owner is FALSE ... got True; FAIL the audit detail says is_owner=true
+control replies-after-removal: 31/33 — FAIL a removed report takes no new replies ... got 201; FAIL replies survive, got 3
+```
+The first attempt at control A was **a no-op** — it forced `is_owner=false`, which is what a bystander already gets. A control has
+to move the value in the direction the defect would, or it proves nothing while looking green. Fixed to force `true`.
+
+**Gate:** `probe_fieldreports_write.py` 33/33; read half `probe_s5_fieldreports.py` 14/14 (no regression); `probe_contribute.py`
+46/46; `concord-db` lib 38 passed; `routes.py` go 216 / port 195 / missing 23 (13 json, 10 page).
+**Commit:** `3241e3c`. **Files:** `crates/db/src/field_report_writes.rs` (new), `crates/app/src/lib.rs` (2 routes + 2 handlers),
+`scripts/parity/probe_fieldreports_write.py` (new, 33 checks).
