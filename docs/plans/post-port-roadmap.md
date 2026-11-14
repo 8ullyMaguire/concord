@@ -345,7 +345,21 @@ Gate: `ai_declaration_e2e.py` 7 passed (four rendering, three API: declare-and-w
 refused). One fixture trap cost a round and is worth the line: the harness's token must be hashed `base64 RawStd` — **no padding** — or
 every authenticated request answers 401, which reads as a permissions bug and is an encoding one.
 
-### Step 5 — the sweep is built and scheduled; the POOL is blocked on 68 unstated repositories
+### Step 5 — the sweep, the POOL and the claim are built; the CANDIDATES are blocked on unstated repositories
+
+**2026-11-15 — the pool page and the claim act are live** (`0d8d5dc`). `GET /adopt` lists what the lifecycle has already measured dormant,
+sorted by silence, server-rendered; `POST /api/v1/projects/{slug}/claim` refuses on the measurement rather than on the person (401 anonymous,
+400 not dormant / never measured / declared archived) and on success makes the claimant a maintainer with an audit row carrying the number.
+
+The live answer is the honest one, and it is a measurement rather than a promise:
+
+```
+$ curl -s https://concord.polarisocial.xyz/adopt | grep -o 'Nothing is dormant right now[^<]*'
+Nothing is dormant right now. 23 of 97 projects have a measured commit history, and the longest measured silence is 74.6 days.
+```
+
+So the page exists and the claim works, and the pool has **no candidates because nothing measured is past ninety days**. What still blocks
+candidates is the same thing that always did — the repositories nobody has stated:
 
 Measured, not assumed: `embedbackfill` was easy because a project's text is in the database. Dormancy needs commit age, and commit age needs
 a repository. **Zero projects in PostgreSQL have a `repo_url`**, and the Go tree's seed file — the only place the mapping ever lived — says

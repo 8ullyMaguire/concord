@@ -45,6 +45,11 @@ here so nobody "fixes" it into an outage.
 
 ## The ten things I would do differently
 
+**What the gate has now proven, and what it still has not.** Layers 2 and 3 are green against the deployed instance: `routes: all 13
+answered`, `probe_pages 136/136`, `probe_project_segments 86/86`, five suites 62 tests. Layer 1 (the unit tests) had never passed with a
+scratch database — it failed on `relation "users" does not exist` because a scratch database is empty and the store tests are not a schema.
+The gate applies its shipped migrations before asserting now (`0d8d5dc`); the full pass is the next thing to read, not a thing to assume.
+
 **A lesson the gate taught about running gates.** The first two gate runs died for two different environmental reasons and both looked like
 "the suite is red": one was killed with the shell that started it, and one read `crates/web/src/lib.rs` while I was still writing it, so it
 compiled a half-edited file and reported `expected ';', found body` at a line that was correct thirty seconds later. A gate that runs
