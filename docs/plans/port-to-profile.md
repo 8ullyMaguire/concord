@@ -46,7 +46,7 @@ gate ran and its output is quoted — not when it was removed from a list. The h
 | 9b | S3 arena and solutions | **Done 2026-11-13** (`345b132`) — `probe_s3b_arena.py` 20/20 (was 5/20), the negative control at 19/20, corpus still 2 disagreed of 14, ranking oracle green with 10 arena rows |
 | 10 | S4 moderation, comments, inbox | **Done 2026-11-13** (`b969b26`): four probes 26/26, 27/27, 40/40, 39/39; `e2e.sh` 29 passed; gates 22 and 45 green (`CHECK inbox` exit 0, `CHECK authz` 10/10); `polaris-comments` and `polaris-authz` adopted |
 | 11 | S5 stats, feeds, admin binaries | **Done 2026-11-14** (`3ac7f5e`) — corpus `0 shape(s) disagreed of 16 checked, 5 skipped`; `probe_s5_stats` 16/16; `probe_admin_binaries` **69/69** with four controls; three `concord-rs-*` timers declared in `scheduled.toml` (`active = false` until cutover); `CHECK feed-routes: 8 arm(s) passed, 0 failed`. **Dated correction 2026-11-14:** "feed parse" moves to row 12 — the feeds are page routes returning XML, not JSON routes, and `probe_s5_feeds` is that row's gate. Gates 4 and 5 are red for `media.polarisocial.xyz` and not for concord (recorded in the row-11 body below). |
-| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **In progress 2026-11-14** — 27 of the Go's **44** page routes answered (`/`, `/projects`, `/projects/{slug}`, `/badge/{slug}.svg` and the 13 feeds, plus six project sub-pages and four instance pages), 17 remain; part 66 opened the crate and corrected the count from 10 to 44. Gate unchanged: every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
+| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **In progress 2026-11-14** — 36 of the Go's **44** page routes answered (`/`, `/projects`, `/projects/{slug}`, `/badge/{slug}.svg` and the 13 feeds, plus six project sub-pages, four instance pages and nine row pages), 8 remain; part 66 opened the crate and corrected the count from 10 to 44. Gate unchanged: every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
 | 13 | P7 cutover | `concord.polarisocial.xyz/api/v1/version` served by the Rust binary, and estate gate 17 green for `concord` with NO `reason` |
 
 **Row 8 (S2) — the failing probe, pasted before any code** (2026-11-13):
@@ -4187,6 +4187,44 @@ lacked rather than documents it serves.
 **Commit:** `31fa726`. **Files:** `crates/cli/src/lib.rs` (boot warning), `scripts/parity/probe_s5_feeds.py` (origin from the
 service's configuration), `scripts/parity/routes.py` (any `*.xml` route is a document).
 
+
+### Part 70 — the nine row pages, and two links that 404'd behind themselves (2026-11-14)
+
+**Before:** `GET /projects/suki/features/1793` → `404`; `routes.py` `missing: 17 (0 json, 17 page)`.
+**After:** `probe_pages.py` **117/117 ok**; `routes.py` `missing: 8 (0 json, 8 page)`.
+
+Requests, one request, lists, one list, a milestone, a feature, a complaint, the merge queue, settings. Every one is fetched twice by
+the probe: once for a real row, once for an id belonging to another project — which must be a **404 document**, not a 200 carrying
+someone else's row. That second half found two links the pages printed and then refused.
+
+**Two scoping decisions, both forced by a link the page itself had just drawn:**
+
+* **An instance-wide list is reachable from every project that lists it.** `criteria::lists` deliberately includes `project_id IS NULL`
+  rows on each project's page, so a strict `project_id = mine` guard 404'd `/projects/suki/lists/99` — a link printed two lines above
+  it. Another PROJECT's list is still a 404; a list belonging to no project is not.
+* **An instance-wide request answers under any project URL**, for the same reason: `requests::by_project` never lists one, but a URL
+  copied off the instance board must not 404 behind a working link.
+
+**Absent facts stay absent.** A request with no accepted answer says "none", and the label is "Accepted by the author" because §17
+makes that badge a display and not an override. A milestone with no target date prints `—`, and its `seeded` / `unshipped` counts
+appear only when non-zero — they count features whose EVENTS are missing, which is the number a milestone's honesty rests on. A
+complaint that is not merged shows no pointer at all rather than a link to complaint 0. A list entry with no category draws no chip.
+
+`/settings` prints the charter's numbers — quorum ratio and floor, support, consent, override, vote window, merge quorum, reviewer
+approval, WIP limits — instead of a JSON blob; a reader arrives there to learn the quorum. `accepted_fit_overrides_ranking` is
+deliberately absent because the product does not have that rule.
+
+**Finding — the board could carry titles and does not.** The feature page renders "Idea 3: Quick-start taste: ten pairwise picks at
+signup", so `features.title` is populated. But `board_by_slug` does not join it, and **neither does the reference**: its placed-card
+query reads `board_cards` alone, while only `deriveBoardCards` selects `features.title`. The port reproduces that faithfully, so a
+placed card is labelled `#1793`. Adding the join would be a product change — and the port does not make product changes. Recorded here
+for after the cutover, with the measurement that would justify it.
+
+**Gate:** `probe_pages.py` **117/117 ok**; `routes.py` `missing: 8 (0 json, 8 page)`; `cargo build --release -p concord-cli` clean;
+browser-verified: board → `/projects/suki/features/1793` renders its title and its facts; `/requests` and `/merge` say they are empty
+on an instance that has neither; `/settings` shows "20% of eligible, at least 3"; a list row opens "Good resources".
+**Commit:** `b03db53`. **Files:** `crates/web/src/detail.rs` (new), `crates/web/src/lib.rs` (nine routes), `crates/web/src/project.rs`
+(the strip grows to ten tabs; cards and milestones become links), `scripts/parity/probe_pages.py` (24 more checks).
 
 ### Part 69 — the four instance pages (2026-11-14)
 
