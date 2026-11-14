@@ -48,7 +48,11 @@ def _consented_request(*args, **kwargs):
 urllib.request.Request = _consented_request
 
 BASE = os.environ.get("CANDIDATE", "http://127.0.0.1:8108")
-SITE = os.environ.get("SITE_BASE", "https://concord.polarisocial.xyz")
+# The origin the SERVICE was told it lives at, not the origin the probe wishes it lived at. A feed's `<guid>` and `<id>` are
+# absolute because a reader keeps them across moves, so they come from the service's own configuration (`CONCORD_BASE_URL`) — and
+# asserting a different host than the one it was configured with tests the probe's opinion instead of the service. `SITE_BASE`
+# overrides for a deliberate cross-check.
+SITE = os.environ.get("SITE_BASE") or os.environ.get("CONCORD_BASE_URL", "https://concord.polarisocial.xyz")
 
 ATOM = "{http://www.w3.org/2005/Atom}"
 

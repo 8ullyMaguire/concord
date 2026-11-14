@@ -125,6 +125,16 @@ pub async fn run() -> anyhow::Result<()> {
                 pool,
                 embedder: concord_app::embedder_from_env(),
             };
+            // A configuration variable whose absence only shows up as a 503 on twelve routes is a variable nobody will set.
+            // `CONCORD_BASE_URL` is what every feed builds its absolute `<id>` and `<guid>` from, and the feeds refuse to invent
+            // one — so the operator reads the consequence HERE, at boot, rather than from a reader that silently shows nothing.
+            // Not fatal: everything except the feeds works without it, and a service that will not start over a feed is worse.
+            if std::env::var("CONCORD_BASE_URL").unwrap_or_default().is_empty() {
+                eprintln!(
+                    "WARNING: CONCORD_BASE_URL is unset — all 13 feed routes will answer 503. \
+                     Set it to this site's public origin (e.g. https://concord.polarisocial.xyz)."
+                );
+            }
             let listener = tokio::net::TcpListener::bind(&addr).await?;
             tracing::info!(addr = %addr, "serving");
             axum::serve(

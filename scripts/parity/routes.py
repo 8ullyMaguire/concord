@@ -202,7 +202,13 @@ def rust_routes():
                 index += 1
             handlers = source[match.end():index]
             shape = normalise(path_text)
-            is_page = relative in PAGE_SOURCES or shape in PAGE_PATHS
+            # A feed is a document: `feed.xml`, `rss.xml`, `atom.xml`. They are registered in `lib.rs` beside the API but they
+            # answer XML, and leaving them on the API side reported six routes the port has been answering as missing work.
+            is_page = (
+                relative in PAGE_SOURCES
+                or shape in PAGE_PATHS
+                or shape.endswith(("feed.xml", "rss.xml", "atom.xml"))
+            )
             for method in ("get", "post", "put", "delete", "patch"):
                 if re.search(rf"\b{method}\(", handlers) or re.search(rf"axum::routing::{method}\b", handlers):
                     # The key goes into the set for ITS kind only: a shape can be both (the port answers the page
