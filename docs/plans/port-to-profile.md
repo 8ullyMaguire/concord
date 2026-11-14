@@ -3592,3 +3592,65 @@ frontend too: a status the page shows and the API does not return is a lie.
    corrected; gate 17 green for a true reason.
 5. Archive, never delete: Go binary as `.bak`, `concord.db` to
    `/mnt/disk-important/archive/concord-sqlite-2026.db`, kept a month.
+
+### Part 58 — the contribution feed, and the two reads it stands on (2026-11-14)
+
+**Clustered on purpose.** Four routes, one probe, one commit — `/contribute/next`, `/projects/{}/work-items`, `/projects/{}/join`,
+`/projects/{}/votes/next`. They are one piece of plumbing: the feed ranks work ITEMS with `concord-finder`'s own engine,
+`/votes/next` is the project's closest-rated unjudged pair, and both enrol or refuse a caller through one membership rule. Batching
+by shared plumbing rather than by route is the change the last turn recommended; it cost one context window for four routes
+instead of four.
+
+**Before** (`probe_contribute.py` against the deployed port):
+```
+FAIL anyone may read a public project's work items: got 404 want 200
+FAIL it lists every item, claimed or not: got 1 want 4
+```
+
+**After:**
+```
+46/46 ok
+```
+
+**What the probe establishes, and why each one is not free:**
+
+1. *A claimed item is never offered.* Offering a newcomer work somebody is already doing is the single most discouraging thing a
+   feed can do, and it is invisible unless the fixture has one claimed and one unclaimed item. **This is also where the port
+   learned `claimed_by` is not a column**: a claim is an unreleased row in `work_item_claims`, which is what makes the history of
+   who held a task survive the release. First build returned `column f.claimed_by does not exist`; the probe saw 500.
+2. *Health OMITS the field when unmeasured*, like the reference's `omitempty` — absent is not null and never zero. A client reading
+   a missing score as 0 % would render every unmeasured project as the unhealthiest in the catalogue. The probe distinguishes all
+   three cases (`0.9`, field absent, and the label), which is why the first version of the check — `.get("health")` returning
+   `None` for both absent and null — had to be rewritten.
+3. *Constraints are refused, not dropped.* `minutes` and `difficulty` are REQUIRED answers; `mentor=no` is a preference
+   (`MODE_DECIDE_LATER`), because declining a mentor does not make a mentored task impossible, only less attractive. An unknown
+   value is a 400 naming the parameter — a URL that says "filtered" must not return the unfiltered feed.
+4. *`/votes/next` enrols the caller before showing a pair.* Asking someone to compare two features and then refusing their vote
+   is an invitation followed by a refusal; it is also why `/join` exists as a route of its own, so a page can enrol without
+   asking for a pair. `join` is `on conflict do nothing`, not a read-then-write.
+5. *`TooFewFeatures` and `AllCompared` are different 409s* — one means "stop asking", the other "wait for more features". Both
+   were 500s in the reference's own known-issues ("Could not load a comparison — retry", a button that fails identically forever).
+6. *The pair is the closest-rated unjudged one*, `abs(r_a − r_b)`, which is where one vote carries the most information. The probe
+   gives every fixture feature an explicit rating so the intended pair is unique; on the first run three features shared the
+   default 1500 and the nearest pair was an accident (`got {6806, 6807} want {6808, 6807}`).
+7. *The judged pair disappears*, and it is judged **through the API**, not by inserting a row: a vote is three writes in this
+   schema (vote, arena, entries) and a hand-written row leaves the arena untouched — the next pair would then be chosen from a
+   state the product cannot reach.
+
+**Decision (dated 2026-11-14): the health score is read, not recomputed.** `project_metrics.health_score` is what every other
+surface shows; recomputing it in the feed from the same inputs would be a second implementation of `ranking::health` that could
+disagree with the stored number at the same instant. An unmeasured project is therefore `None`, not a fresh computation.
+
+**Decision (dated 2026-11-14): mutants as a startup seam.** `CONCORD_MUTANT=offer-claimed|health-ignored`, read once at boot, set
+by nothing in the product. Two controls used to cost two 35-second rebuilds each; now they cost a restart. Both were run:
+
+```
+control A (offer-claimed):  44/46 — FAIL the claimed item is never offered
+control B (health-ignored): 45/46 — FAIL health breaks a tie
+```
+Each moves exactly the check it names and nothing else, which is the property a seam has to have to be worth having.
+
+**Gate:** `probe_contribute.py` 46/46; `probe_s6_finder_diff.py` 35/35 (no regression from the shared candidate loader);
+`concord-db` lib 38 passed; `routes.py` go 216 / port 193 / missing 25 (15 json, 10 page).
+**Commit:** `af6e9ae`. **Files:** `crates/db/src/feed_reads.rs` (new), `crates/app/src/lib.rs` (4 routes + 5 handlers),
+`crates/app/src/finder.rs` (`seed_projects` reachable), `scripts/parity/probe_contribute.py` (new, 46 checks).
