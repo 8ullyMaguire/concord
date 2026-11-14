@@ -125,7 +125,12 @@ pub struct ProjectList {
     pub project_id: Option<i64>,
     /// A stable slug.
     pub slug: String,
-    /// The title.
+    /// The title — serialised as `name`, which is what the reference emits.
+    ///
+    /// The reference's column is `title` and its JSON key is `name` (its Go struct maps the column onto a field called `Name`).
+    /// This port answered `title` until the reference was probed directly, and the port's own probe had been written to the port's
+    /// shape — which is the failure mode a self-consistent test suite hides. The column stays `title`; only the wire name changes.
+    #[serde(rename = "name")]
     pub title: String,
     /// The description.
     pub description: String,

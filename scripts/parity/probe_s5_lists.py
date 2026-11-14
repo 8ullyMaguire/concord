@@ -136,7 +136,9 @@ def main():
 
     status, body = call("GET", f"/api/v1/projects/{public}/lists/{listed}")
     check("the list answers", status, 200)
-    check("with its title", (body or {}).get("title"), "reading")
+    # `name`, not `title`: the reference maps its `title` COLUMN to a JSON `name` for lists. This probe asserted `title` — the
+    # port's own key — which is how a self-consistent suite hides a shape divergence.
+    check("with its name", (body or {}).get("name"), "reading")
     check("and its project", (body or {}).get("project_id"), public)
 
     status, body = call("GET", f"/api/v1/projects/{public}/lists/{listed}/entries")
