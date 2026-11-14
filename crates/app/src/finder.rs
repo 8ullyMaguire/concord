@@ -103,7 +103,7 @@ fn no_session() -> ApiError {
 /// A candidate set built from a private project would leak it through the Finder even though every other surface respects the
 /// four visibility levels. An explicit id list that names a project the caller cannot see is a 404, not a 403: "a project you
 /// cannot see" and "a project that does not exist" must be indistinguishable, or Finder becomes an enumeration oracle.
-async fn seed_projects(
+pub(crate) async fn seed_projects(
     state: &AppState,
     headers: &HeaderMap,
     text: &str,
