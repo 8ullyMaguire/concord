@@ -31,6 +31,15 @@ pub struct Project {
     pub health_score: Option<f64>,
     pub newcomer_response_hours: Option<f64>,
     pub newcomer_sample: i64,
+    /// Where the project is in its life — `seed`, `sprout`, `mature`, `dormant` or `unknown`.
+    ///
+    /// COMPUTED at read time from the columns beside it, never stored: `concord_ranking::lifecycle` is a pure reading of measurements
+    /// this query already selects, and a stored copy would be a second truth that goes stale the moment the sweep runs
+    /// (`docs/plans/post-port-roadmap.md`, step 2).
+    pub stage: String,
+    /// The sentence that justifies the stage. A label with no reason is one a reader can only take on faith, and the sweep that marks
+    /// projects dormant has to be able to say why it did.
+    pub stage_because: String,
 }
 
 /// Go writes these timestamps as `float64` unix seconds, and `encoding/json` prints a whole value
@@ -50,11 +59,24 @@ pub(crate) const PROJECT_COLUMNS: &str = "p.id, p.slug, p.name, coalesce(p.descr
     p.governance_model, coalesce(p.license, ''), coalesce(p.visibility, 'public'), \
     p.intake_mode, extract(epoch from p.created_at)::double precision, \
     extract(epoch from p.updated_at)::double precision, m.health_score, \
-    m.newcomer_response_hours, coalesce(m.newcomer_sample, 0)";
+    m.newcomer_response_hours, coalesce(m.newcomer_sample, 0), \
+    (p.repo_url is not null and p.repo_url <> ''), \
+    (select count(*) from features f where f.project_id = p.id and f.status = 'shipped'), \
+    case when m.last_commit_at is null then null \
+         else extract(epoch from (now() - m.last_commit_at))::double precision / 86400.0 end, \
+    extract(epoch from (now() - p.created_at))::double precision / 86400.0";
 
 pub(crate) fn project_from_row(row: &sqlx::postgres::PgRow) -> Result<Project, sqlx::Error> {
     use sqlx::Row;
     let license: String = row.try_get(5)?;
+    // The stage is derived here, from the same row, so a page, the badge, the API and the sweep cannot disagree about it.
+    let verdict = concord_ranking::lifecycle::stage(concord_ranking::lifecycle::Signals {
+        has_repository: row.try_get(13)?,
+        last_commit_age_days: row.try_get(15)?,
+        health_score: row.try_get(10)?,
+        features_shipped: row.try_get(14)?,
+        age_days: row.try_get(16)?,
+    });
     Ok(Project {
         id: row.try_get(0)?,
         slug: row.try_get(1)?,
@@ -71,6 +93,8 @@ pub(crate) fn project_from_row(row: &sqlx::postgres::PgRow) -> Result<Project, s
         health_score: row.try_get(10)?,
         newcomer_response_hours: row.try_get(11)?,
         newcomer_sample: row.try_get(12)?,
+        stage: verdict.stage.as_str().to_string(),
+        stage_because: verdict.because.to_string(),
     })
 }
 
