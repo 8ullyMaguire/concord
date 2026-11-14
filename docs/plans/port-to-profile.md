@@ -4274,6 +4274,20 @@ the loopback and the public host answer `concord-rs 0.0.0+530ce8f`. The stamp na
 thing it can honestly name — the ledger commit that follows it moves HEAD without changing the binary, and re-stamping for a docs commit
 would be theatre.
 
+**The deployed artefact was then run through the gates itself, not a rebuild of it** — `CONCORD_E2E_CANDIDATE=/home/alvaro/concord-deploy/concord-rs`,
+the exact file systemd starts:
+
+```
+feature_e2e          15 passed in 29.52s
+milestones_e2e        5 passed in 13.64s
+rank_links_e2e        4 passed in 4.89s
+audit_e2e            11 passed in 6.00s
+consensus_e2e        15 passed in 18.96s
+project_panels_e2e   26 passed in 28.76s          (76 tests)
+```
+
+A green suite against a binary that is not the one serving is the ordinary way a cutover "passes" and then misbehaves.
+
 **Row 13: Done.**
 
 ### Part 76 — row 12 closed: six suites, nine mutants, and a private project that was a 200 to a stranger (2026-11-14)
