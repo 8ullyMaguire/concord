@@ -366,11 +366,33 @@ pub async fn triage_latency(pool: &PgPool) -> Result<Latency, sqlx::Error> {
 /// # Errors
 /// `sqlx::Error`.
 pub async fn delivery_latency(pool: &PgPool) -> Result<Latency, sqlx::Error> {
+    latency_for(pool, None).await
+}
+
+/// The same measurement, restricted to one project's features.
+///
+/// The restriction is on the audit row's `project_id`, which is why the badge for a project and the instance badge can disagree by
+/// construction: a feature moved between projects contributes to both histories, and the row remembers where it was at the time.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn delivery_latency_for_project(
+    pool: &PgPool,
+    project_id: i64,
+) -> Result<Latency, sqlx::Error> {
+    latency_for(pool, Some(project_id)).await
+}
+
+/// `None` for the instance, `Some` for one project — one query, because two copies of this episode rule would eventually disagree
+/// about the same log.
+async fn latency_for(pool: &PgPool, project_id: Option<i64>) -> Result<Latency, sqlx::Error> {
     let rows = sqlx::query(
         "select entity_id, detail, extract(epoch from created_at)::double precision \
            from audit_log where action = 'set_feature_status' and entity = 'feature' \
+             and ($1::bigint is null or project_id = $1) \
           order by entity_id, created_at",
     )
+    .bind(project_id)
     .fetch_all(pool)
     .await?;
     let mut by_feature: std::collections::BTreeMap<i64, Vec<(f64, String)>> = Default::default();
@@ -736,4 +758,41 @@ pub async fn responsiveness_leaderboard(pool: &PgPool) -> Result<Vec<Responsiven
         });
     }
     Ok(out)
+}
+
+
+/// How many distinct features entered `shipped` since a moment — the badge's third number.
+///
+/// **Distinct FEATURES, not rows.** A feature that shipped, was reopened and shipped again is one shipped feature; counting rows
+/// would let a developer who re-ships twice inflate a count that a README states as a fact.
+///
+/// `None` for the instance, `Some` for one project.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn shipped_since(
+    pool: &PgPool,
+    project_id: Option<i64>,
+    since: f64,
+) -> Result<i64, sqlx::Error> {
+    let rows = sqlx::query(
+        "select distinct entity_id, detail from audit_log
+          where action = 'set_feature_status' and entity = 'feature'
+            and created_at >= to_timestamp($1::double precision)
+            and ($2::bigint is null or project_id = $2)",
+    )
+    .bind(since)
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+    let mut seen = std::collections::HashSet::new();
+    for row in &rows {
+        use sqlx::Row;
+        let id: i64 = row.try_get("entity_id")?;
+        let detail: Option<String> = row.try_get("detail")?;
+        if parse_transition_target(detail.as_deref().unwrap_or("")) == Some("shipped".to_string()) {
+            seen.insert(id);
+        }
+    }
+    Ok(seen.len() as i64)
 }
