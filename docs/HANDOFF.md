@@ -1,5 +1,20 @@
 # Concord — handoff
 
+**READ THIS FIRST — the port is the work now (updated 2026-11-14).** The product has not changed; it is being moved onto the
+estate profile (Rust/Axum + PostgreSQL + SvelteKit + the family's crates) as a strangler while the Go service keeps serving
+`concord.polarisocial.xyz`. The only state list is the ledger: **`docs/plans/port-to-profile.md`**. The compressed situation,
+the reading guide for what remains, and the traps already paid for are in **`docs/plans/port-context.md`** — read it before
+anything in this file, which describes the Go product as it stood before the port began.
+
+Where the port stands: rows **11, 12 and 13 open, none blocked**. Row 11 has landed 57 parts and 189 of 216 routes
+(`python3 scripts/parity/routes.py` is the count); 19 JSON routes remain, clustered as rows A–E in `docs/plans/port-context.md`
+§13 and §22. Row 12 is the SvelteKit frontend plus eleven browser suites. Row 13 is the cutover.
+
+Everything below this paragraph is the pre-port handoff for the Go product, kept because it is still the best description of
+what the product does and why. Do not plan from it — plan from the ledger.
+
+---
+
 For the implementing agent taking over from here. Read this, then
 `docs/PLAN-r4.md`, then `docs/concord-spec-r4.md` (§2, §4, §5, §6, §8, §15–§17),
 then `docs/ARCHITECTURE.md`. `docs/PLAN.md` covers the pre-r4 milestones (all
