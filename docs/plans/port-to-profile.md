@@ -46,7 +46,7 @@ gate ran and its output is quoted — not when it was removed from a list. The h
 | 9b | S3 arena and solutions | **Done 2026-11-13** (`345b132`) — `probe_s3b_arena.py` 20/20 (was 5/20), the negative control at 19/20, corpus still 2 disagreed of 14, ranking oracle green with 10 arena rows |
 | 10 | S4 moderation, comments, inbox | **Done 2026-11-13** (`b969b26`): four probes 26/26, 27/27, 40/40, 39/39; `e2e.sh` 29 passed; gates 22 and 45 green (`CHECK inbox` exit 0, `CHECK authz` 10/10); `polaris-comments` and `polaris-authz` adopted |
 | 11 | S5 stats, feeds, admin binaries | **Done 2026-11-14** (`3ac7f5e`) — corpus `0 shape(s) disagreed of 16 checked, 5 skipped`; `probe_s5_stats` 16/16; `probe_admin_binaries` **69/69** with four controls; three `concord-rs-*` timers declared in `scheduled.toml` (`active = false` until cutover); `CHECK feed-routes: 8 arm(s) passed, 0 failed`. **Dated correction 2026-11-14:** "feed parse" moves to row 12 — the feeds are page routes returning XML, not JSON routes, and `probe_s5_feeds` is that row's gate. Gates 4 and 5 are red for `media.polarisocial.xyz` and not for concord (recorded in the row-11 body below). |
-| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **In progress 2026-11-14** — 36 of the Go's **44** page routes answered (`/`, `/projects`, `/projects/{slug}`, `/badge/{slug}.svg` and the 13 feeds, plus six project sub-pages, four instance pages and nine row pages), 8 remain; part 66 opened the crate and corrected the count from 10 to 44. Gate unchanged: every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
+| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **In progress 2026-11-14** — **44 of 44** page routes answered (`routes.py missing: 0`), `probe_pages.py` 148/148; the row's remaining gate is the six inherited e2e suites, which now run against the candidate on a scratch database (`/`, `/projects`, `/projects/{slug}`, `/badge/{slug}.svg` and the 13 feeds, plus six project sub-pages, four instance pages ), 0 remain but the suites do not pass; part 66 opened the crate and corrected the count from 10 to 44. Gate unchanged: every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
 | 13 | P7 cutover | `concord.polarisocial.xyz/api/v1/version` served by the Rust binary, and estate gate 17 green for `concord` with NO `reason` |
 
 **Row 8 (S2) — the failing probe, pasted before any code** (2026-11-13):
@@ -4187,6 +4187,63 @@ lacked rather than documents it serves.
 **Commit:** `31fa726`. **Files:** `crates/cli/src/lib.rs` (boot warning), `scripts/parity/probe_s5_feeds.py` (origin from the
 service's configuration), `scripts/parity/routes.py` (any `*.xml` route is a document).
 
+
+### Part 71 — the last nine pages, and the e2e harness turned on the candidate (2026-11-14)
+
+**Before:** `GET /projects/suki/ranking` → `404`; `routes.py` `missing: 8 (0 json, 8 page)`.
+**After:**
+```
+go routes: 215 (191 json, 44 page)   port answers: 215   missing: 0 (0 json, 0 page)
+probe_pages.py 148/148 ok
+```
+`/projects/{s}/rank`, `/ranking`, `/contribute`, `/curation`, `/notifications`, `/login`, `/register`, `/finder`. **Every route the Go
+registers is now answered.**
+
+**The two ranking halves, and why both are easy to get wrong while looking right.** The reference wrote the contract in its own tests
+and it survives translation:
+
+* `/rank` offers a PAIR and **five** outcomes, from `feed_reads::next_pair` with voter 0 — "the reader who has judged nothing", which is
+  exactly what an anonymous reader is. Voting needs a session, so the form posts to the API's own route and the page says "Sign in to
+  record a judgement" rather than letting a reader spend a judgement on a 401.
+* `/ranking` presents the order `priorities::feature_priorities` returned and **does not re-sort** — the score already folds in pain,
+  strategic weight and the theme's μ, so a client-side sort by rating would show an order the forge never concluded. It prints the
+  components *and* the uncertainty (`elo ± rd`) and the vote counts, because a rating with no judgement behind it invites trust it has
+  not earned. `data-order="api"` is asserted by the probe, and the probe compares the page's first row against the API's first entry
+  rather than against a sort it recomputed itself.
+
+**Smaller decisions, each with a reason:** `/login?next=` accepts only a **path** — `https://evil.example/steal` becomes `/`, and the
+probe asserts it, because an unvalidated `next` is an open redirect wearing a convenience's clothes. `/curation` prints "at least this
+many, and whether another page follows" because `curation::list` is cursor-paginated and cannot answer a total; inventing one would be a
+number the read never returned. `/finder` reads the same attribute map the session uses and, when no dimension is measured, says so
+instead of asking a question whose answer it already knows.
+
+**The unlock: the e2e harness now runs against the candidate.** `tests/e2e/harness.py` needed no change — `CONCORD_E2E_CANDIDATE` and
+`CONCORD_E2E_DSN` already pointed it at the Rust binary and PostgreSQL. What was missing was a machine that could run it, and three
+obstacles, each measured rather than assumed:
+
+1. **pytest and playwright were on neither host** (`ModuleNotFoundError: No module named 'pytest'`).
+2. **a venv created inside the repo cannot execute** — the checkout lives on a network mount and `.venv-e2e/bin/python` answers
+   `Operation not permitted` (noexec). The venvs therefore live in `~/.venvs/concord-e2e` on **both** hosts, with `playwright install
+   chromium` (125.7 MiB; thinkcentre reports "OS is not officially supported by Playwright; downloading fallback build").
+3. **no scratch database existed.** `concord_test` on **55450** is now created from `crates/db/sql/0001_baseline.sql` with `0 projects`,
+   never production.
+
+First run against the scratch database:
+```
+FAILED tests/e2e/feature_e2e.py::test_the_feature_card_on_the_project_is_a_working_link
+  - main:
+    - heading "Feature Demo" [level=1]
+    - term: Governance / definition: collective
+    - term: Visibility / definition: public
+  (no feature list, so there is no card to link)
+```
+**That is a real gap the suite names and my own probe missed:** `/projects/{slug}` renders the project's facts and not its features. A
+probe asserts what somebody thought to assert; a suite written against the reference asserts what a reader can reach.
+
+**Gate:** `probe_pages.py` **148/148 ok**; `routes.py` `missing: 0 (0 json, 0 page)`; `feature_e2e.py` runs against the candidate on a
+scratch database and fails at the first real gap, quoted above.
+**Commit:** `6639d8e`. **Files:** `crates/web/src/misc.rs` (new, nine pages), `crates/web/src/lib.rs` (eight routes + `/finder`),
+`crates/web/src/detail.rs` (`fact_public`), `scripts/parity/probe_pages.py` (31 more checks).
 
 ### Part 70 — the nine row pages, and two links that 404'd behind themselves (2026-11-14)
 
