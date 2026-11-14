@@ -38,6 +38,7 @@ pub mod proposals;
 pub mod snapshot;
 pub mod search;
 pub mod capabilities;
+pub mod field_report_writes;
 pub mod field_reports;
 pub mod criteria;
 /// §4.10's criteria writes.
