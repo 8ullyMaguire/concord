@@ -4016,3 +4016,56 @@ and the byte-for-byte comparison initially ran against the *fixture* project, wh
 **Commit:** `94eff41`. **Files:** `crates/db/src/stats.rs` (`latency_for`, `delivery_latency_for_project`, `shipped_since`),
 `crates/app/src/lib.rs` (`badge_svg`, `badge_svg_text`, `escape_xml`, `advance`, `latency_value`, 1 route),
 `scripts/parity/probe_badge.py` (new, 21 checks).
+
+### Part 65a — scout's engine, as its own crate (2026-11-14)
+
+`GET /api/v1/scout` is the last JSON route in row 11, and it is the only one whose answer is a *judgement* rather than a row. It is split
+in two: the engine here (no pool, no database), the store reads and the route in part 65b.
+
+**Before:** `crates/scout` did not exist. `grep -rn "scout" crates/` found nothing but a comment.
+
+**After:**
+```
+running 22 tests
+test result: ok. 22 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out
+```
+
+**What was ported.** `decompose` (verbatim key → label word → hyphenated-token proposal, whole-word matching, cross-phase dedupe seeded
+with the verbatim keys, duplicate-label collapse, in-catalogue-first ordering) and `classify` (licence veto → abandonment on KNOWN
+metrics → uncontested lead → subset → complete → dead-but-instructive → unclassified).
+
+**Three defects in the reference, found by porting it, recorded rather than copied silently:**
+
+1. **The tie branch is dead in the Go.** `applyVerdict` reads `tiedNames(v.Signals)` *before* `Classify` appends the tie signals, so
+   `signals` is empty at that moment and the branch can never fire — a tie falls through to `adopt`/`complete`. Both of the reference's
+   own comments say a tie is a fork request rather than a base, and `scout-spec.md §3` says the same. **Decision (dated 2026-11-14):
+   intent over code — the tie is passed into `apply_verdict`**, so tied candidates are `extend` and both names appear in the signals. This
+   is the second time this port has had to choose the comment over the statement (part 51: "enrol after the vote is recorded"); the rule
+   is the same and it is written into the ledger each time it is applied.
+2. **`inspire` is nearly unreachable.** Every path out of the scoring has a branch above it, and the only route left is an idea that names
+   NO catalogue capability at all — while the branch's comment calls it "still the closest thing in the catalog". Kept, because the verdict
+   is part of the API and a client stores it; the test states the contradiction rather than hiding it.
+3. **A tie is global, not per capability.** `fit`, `coverage` and `matched` are per project, so "tied on one axis, ahead on another" cannot
+   be expressed by this scoring at all. The Go's per-capability loop *looks* like it supports that; it cannot.
+
+**Also kept deliberately:** `fit` and `evidence_coverage` are the same number (`matched / total`). The reference's comment describes
+coverage as "the share of those that had any evidence", which is the same figure when every satisfied capability is evidence. Kept
+identical rather than corrected: the two are reported side by side, and inventing a second denominator here would make the port disagree
+with the service it replaces on a page whose whole purpose is comparison.
+
+**Mutation controls** (five, each killed by the test that guards it):
+```
+mutant no-known-check              → a_missing_attribute_is_unknown_and_a_no_is_evidence, a_proposal_carries_no_weight (3 failed)
+mutant no-licence-veto             → a_licence_constraint_beats_a_healthy_lead, +2 (3 failed)
+mutant tie-not-passed              → a_tie_awards_nobody_the_lead, a_missing_attribute… (2 failed)
+mutant fit-always-one              → a_missing_attribute…, a_tie_awards_nobody_the_lead (2 failed)
+mutant unmeasured-signal-dropped   → SURVIVED the first run (22 passed)
+```
+The survivor is the finding worth keeping: dropping `health_unmeasured` from the **complete** branch broke nothing, because the only test
+for that signal used a *subset* match. The reference's own comment documents that exact bug ("A first version put it on `subset:` alone")
+— so the port had reproduced the bug in its test suite rather than in its code. A test was added and the mutant now dies
+(`a_complete_match_still_says_its_health_is_unmeasured`).
+
+**Gate:** `cargo test -p concord-scout` → 22 passed; five mutants, five kills after the survivor was repaired.
+**Commit:** `a8bc2c9`. **Files:** `crates/scout/Cargo.toml`, `crates/scout/src/lib.rs` (types, `classify`, `apply_verdict`,
+`lead_counts`, `score`), `crates/scout/src/decompose.rs`, `crates/scout/tests/rules.rs` (22 tests), workspace `Cargo.toml`.
