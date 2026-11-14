@@ -123,9 +123,54 @@ test result: ok. 40 passed; 0 failed        (+ 3 golden, + 2 health golden)
 The gate was proved able to fail rather than assumed: `age >= DORMANT_AFTER_DAYS` mutated to `age >= 1e9` (dormancy unreachable)
 turned the suite red on `ninety_days_without_a_commit_is_dormant` and the file was restored byte-identical.
 
-### Step 2 — NEXT
+### Step 2a — DONE 2026-11-14 (the wire)
 
-The stage on the wire: `GET /api/v1/projects` and `/{slug}` carry it, `/projects` and the project page print it, and the badge says
-it. Read side only in `concord_db` — one query that joins `project_metrics` to what already exists, and the stage computed, never
-stored. The parity corpus has to be re-recorded in the same commit, because a new field on a recorded shape is exactly what the
-replay tool exists to report.
+`GET /api/v1/projects`, `/{slug}` and every route that embeds a project now carry `stage` and `stage_because`. Read side only: the
+three columns it needs were added to `PROJECT_COLUMNS` and the stage is computed in `project_from_row`, so there is no write path and no
+column to go stale.
+
+```
+$ curl -s https://concord.polarisocial.xyz/api/v1/projects | python3 -c '…'
+73 projects  Counter({'seed': 61, 'sprout': 12})
+```
+
+**The distribution is the finding, not the feature.** Twelve is exactly the number of projects with a shipped feature
+(`select count(distinct project_id) from features where status='shipped'` → 12), so the twelve are `sprout` and everything else is
+`seed`. **`mature` and `dormant` are unreachable on this instance because no project in PostgreSQL has a `repo_url`** — the repository
+identities still live in the Go's `seed/forge_repos.json`, which is the same gap that leaves every `health_score` unmeasured. A stage
+that cannot be reached is not a bug in the stage; it is a measurement this instance does not take yet, and that is now step 5's
+prerequisite rather than its surprise.
+
+Two PostgreSQL details, each a round of debugging: `extract(epoch …)` is NUMERIC in this baseline, so it needs `::double precision`
+before sqlx will decode it into `f64` ("Rust type f64 is not compatible with SQL type NUMERIC"), and repo identity is
+`repo_url is not null and repo_url <> ''` because an empty string is not a repository.
+
+**The corpus had to be re-recorded, and the replay tool caught the change before a reader could.** Replaying the *old* recording against
+the new binary reported exactly the three shapes that carry a project:
+
+```
+/api/v1/projects: 2 difference(s)   .stage: unexpected, .stage_because: unexpected
+/api/v1/projects/concord: 2 …
+/api/v1/search?q=arena: 6 …         (two results, each with both fields)
+3 shape(s) disagreed of 21 checked
+```
+
+Then a re-record. **A recording made with `--previous` pointing at the existing corpus marks every changed shape `unstable`, and
+`unstable` shapes are SKIPPED by the replay** — six of them here, including `/api/v1/version`, which is the fastest way to end up with a
+corpus that checks three quarters of itself and reports green. Recording against a nonexistent previous (`--previous /tmp/no-such.json`)
+gives a clean baseline: 21 shapes, 0 unstable, `0 shape(s) disagreed of 21 checked, 0 skipped`.
+
+Gates, all against the deployed file: `probe_pages.py` 132/132, `probe_project_segments.py` 86/86, six browser suites 76/76.
+
+### Step 2b — NEXT (the page)
+
+`/projects` prints the stage next to the slug badge and the project page states it, so a reader can tell an idea from a project that
+ships without reading the JSON. `projects.js`'s `card()` already renders `p.slug` as a badge next to the name; the change is a second
+badge with a class per stage and a warning style for `dormant` (never for `unknown`, which is a statement about our measuring and not
+about the project).
+
+The gate is a **new browser suite**, not a probe: `probe_pages.py` asserts the mount contract because the pages are client-rendered, so
+content assertions live in `tests/e2e/`. `lifecycle_e2e.py` seeds three projects that differ only in the signals that decide the stage
+(one with shipped features and a fresh `created_at`, one with none and no `repo_url`, one with a `repo_url` and a `last_commit_at` 120
+days old), asserts each card carries its own stage word, and asserts the dormant one carries the warning class while the others do not.
+A suite that seeds from the API's own fixtures would be asserting the data, not the rendering.
