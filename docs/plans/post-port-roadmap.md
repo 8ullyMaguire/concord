@@ -339,7 +339,30 @@ Gate: `ai_declaration_e2e.py` 7 passed (four rendering, three API: declare-and-w
 refused). One fixture trap cost a round and is worth the line: the harness's token must be hashed `base64 RawStd` — **no padding** — or
 every authenticated request answers 401, which reads as a permissions bug and is an encoding one.
 
-### Step 5 — NEXT (dormant → adoption pool)
+### Step 5 — BLOCKED on repository identity for 69 of 73 projects
+
+Measured, not assumed: `embedbackfill` was easy because a project's text is in the database. Dormancy needs commit age, and commit age needs
+a repository. **Zero projects in PostgreSQL have a `repo_url`**, and the Go tree's seed file — the only place the mapping ever lived — says
+why:
+
+```
+$ python3 -c "…json.load(open('seed/forge_repos.json'))"
+rows 74
+with repo_url 5
+{'slug': 'ao3', 'skip': True, 'reason': 'not stated (Q5)'}
+```
+
+Five stated, sixty-nine skipped with `not stated (Q5)`. So `healthsync` can measure at most five projects, and `mature` / `dormant` stay
+unreachable for the rest — which means the adoption pool (mark dormant after 90 days, list for takeover, notify) would launch with a pool
+of at most five candidates and a false "everything else is fine".
+
+**This is a decision, not work.** Stating a project's upstream is somebody saying where its code lives, and a guess would put a stranger's
+repository on a project's page. What blocks it: **the owner stating the remaining 69 repository URLs** (or stating that some have none,
+which is also an answer). What is not blocked: copying `seed/forge_repos.json` into this tree and running `forgeseed` for the five, which
+is a prerequisite for the sweep and proves the ingest path on the Rust side.
+
+Until then the honest state on the page is what it is now: every project renders `seed` or `sprout`, no project claims `mature`, and no
+project claims `dormant` — because nothing about the forge has been measured.
 
 
 With project vectors present, `/api/v1/similar/project` becomes the intent router the note asks for, and the remaining work is the
