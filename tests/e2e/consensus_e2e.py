@@ -12,7 +12,6 @@ already fixed in the server. So every test here that touches the tally checks BO
 and checks that they differ.
 """
 
-import sqlite3
 import tempfile
 import time
 
@@ -38,7 +37,7 @@ def seed(db):
     """A project with an open call carrying the 4/3/0 split, plus a private one."""
     project_panels_e2e.seed(db)
 
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     cur = con.cursor()
     now = time.time()
 
@@ -136,7 +135,7 @@ def make_eligible(db, slug, username):
     enough -- §8.2 is a conjunction, and the test that proves the gate is the one that
     tries both halves (see TestAPositionNeedsBothHalvesOfEligibility).
     """
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     try:
         now = time.time()
         pid = con.execute("SELECT id FROM projects WHERE slug = ?", (slug,)).fetchone()[0]
@@ -214,7 +213,7 @@ def grant_maintainer(db, slug, username):
 
 def grant_role(db, slug, username, role):
     """Give `username` `role` on `slug`, creating the user if needed."""
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     try:
         now = time.time()
         row = con.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()
@@ -494,7 +493,7 @@ def seed_closable_call(server, slug=SLUG):
     BLOCKED (§6.6's conditions end with "No unresolved block"), which is also the state
     §6.6's override window opens on.
     """
-    con = sqlite3.connect(server["db"])
+    con = harness.connect(server["db"])
     try:
         now = time.time()
         pid = con.execute("SELECT id FROM projects WHERE slug = ?", (slug,)).fetchone()[0]
@@ -535,7 +534,7 @@ def seed_blocked_call(server):
     resolved by a maintainer. That pair is what the objection-states test needs: one
     still open beside one already resolved, on a call that is no longer running.
     """
-    con = sqlite3.connect(server["db"])
+    con = harness.connect(server["db"])
     try:
         now = time.time()
         pid = con.execute("SELECT id FROM projects WHERE slug = ?", (SLUG,)).fetchone()[0]
@@ -805,7 +804,7 @@ def seed_extra_open_call(db):
     reason -- it asserts the tally is absent, which a closed call also satisfies once
     the fixture data has been closed.
     """
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     try:
         cur = con.cursor()
         now = time.time()
@@ -850,7 +849,7 @@ def seed_solution_call(server, slug=SLUG):
     ratings are chosen so the conservative score (r - 2*rd) orders them unambiguously.
     """
     db = server["db"]
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     try:
         cur = con.cursor()
         now = time.time()
@@ -1012,7 +1011,7 @@ def test_a_suspended_call_says_so_and_resolves_nothing(browser, server):
     """
     call, _ = seed_solution_call(server)
     token = closer_token(server)
-    con = sqlite3.connect(server["db"])
+    con = harness.connect(server["db"])
     try:
         now = time.time()
         owner = con.execute(

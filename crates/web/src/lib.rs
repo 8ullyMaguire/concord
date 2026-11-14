@@ -322,6 +322,28 @@ pub(crate) fn render(headers: &HeaderMap, page: Page<'_>, body: String) -> Respo
 }
 
 /// A 404 that is a document, not a JSON error: a reader arrived here with a link.
+/// The reader a browser NAVIGATION is, from the `concord_nav` cookie.
+///
+/// The reference's nav cookie carries the session token itself, and it is accepted only on a GET that is not under `/api/` — which is
+/// exactly what a page render is. The web crate had no session at all, so `/ranking` could not answer the one question its page script
+/// asks of the server: `data-can-moderate`, the attribute `ranking.js` reads to decide whether to emit a "Moderate" link. A token-only
+/// client renders anonymous, and that is the safe direction — no control is offered that the API would refuse.
+pub(crate) async fn nav_user(pool: &sqlx::PgPool, headers: &HeaderMap) -> Option<concord_db::auth::User> {
+    let token = headers
+        .get(axum::http::header::COOKIE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|cookies| {
+            cookies.split(';').find_map(|cookie| {
+                let mut parts = cookie.trim().splitn(2, '=');
+                match (parts.next(), parts.next()) {
+                    (Some("concord_nav"), Some(value)) if !value.is_empty() => Some(value.to_string()),
+                    _ => None,
+                }
+            })
+        })?;
+    concord_db::auth::user_for_token(pool, &token).await.ok().flatten()
+}
+
 pub(crate) fn not_found(headers: &HeaderMap) -> Response {
     let mut body = Html::new();
     body.open("h1", &[]).text("Not found").close("h1")

@@ -34,6 +34,31 @@ REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)
 # whatever `python3` is on PATH.
 PYTHON = os.environ.get("E2E_PYTHON") or sys.executable
 
+# THE CANDIDATE MODE, and why it is a mode rather than a second runner: the mutation gate is about the PAGE, so the two
+# implementations that serve a page need the same eleven rules and only their build step differs. In the Go tree the asset
+# is embedded by `go build -o bin/concord`; in the port it is embedded by `cargo build` through `include_bytes!`, and the
+# binary the suites run is a COPY at `CONCORD_E2E_CANDIDATE`. A mutant that is written to the asset and not compiled into
+# that copy is not a surviving mutant — it is a mutant nobody served, which would read as "killed" if the suite happened to
+# fail for another reason and as "survived" if it passed. So the build is `cargo build --release -p concord-cli` and the
+# install is a copy, both inside the loop.
+CANDIDATE = os.environ.get("CONCORD_E2E_CANDIDATE", "")
+CANDIDATE_STAGE = os.environ.get("CONCORD_E2E_CANDIDATE_BUILD",
+                                 os.path.expanduser("~/.cache/cargo-target/release/concord-cli"))
+
+
+def _build(js_rel):
+    """Compile the mutated asset into whatever the suites will run. Returns True on success."""
+    if not CANDIDATE:
+        result = run(["go", "build", "-o", "bin/concord", "./cmd/concord"], 400)
+        return result.returncode == 0
+    result = run(["cargo", "build", "--release", "-p", "concord-cli"], 900)
+    if result.returncode != 0:
+        sys.stderr.write(result.stderr[-2000:])
+        return False
+    shutil.copy(CANDIDATE_STAGE, CANDIDATE)
+    os.chmod(CANDIDATE, 0o755)
+    return True
+
 
 def run(cmd, timeout):
     return subprocess.run(cmd, cwd=REPO, capture_output=True, text=True, timeout=timeout)
@@ -96,15 +121,19 @@ def run_mutants(js_rel, suite_rel, mutants, label):
                 continue
             open(js, "w").write(mutated)
             try:
-                build = run(["go", "build", "-o", "bin/concord", "./cmd/concord"], 400)
-                if build.returncode != 0:
+                if not _build(js_rel):
                     survived.append(name)
                     print(f"  BUILD-RED    {name}")
                     continue
                 # The binary embeds the JS, so a stale bin is not a flake, it is a false
                 # PASS. Rebuilt every time above for exactly that reason.
-                res = run([PYTHON, "-m", "pytest", "-p", "no:cacheprovider",
-                           suite_rel, "-q", "--no-header"], 900)
+                if CANDIDATE:
+                    # `e2e_candidate.sh` recreates the scratch database, sets the candidate and its DSN, and runs
+                    # the suite — the same wrapper a hand-run uses, so a mutant is judged by the same command.
+                    res = run(["bash", "scripts/parity/e2e_candidate.sh", suite_rel, "-q"], 1200)
+                else:
+                    res = run([PYTHON, "-m", "pytest", "-p", "no:cacheprovider",
+                               suite_rel, "-q", "--no-header"], 900)
                 tail = [l for l in res.stdout.strip().split("\n") if l.strip()]
                 last = tail[-1] if tail else ""
                 if not _pytest_ran(res.stdout, res.stderr):
@@ -121,7 +150,7 @@ def run_mutants(js_rel, suite_rel, mutants, label):
                 open(js, "w").write(original)
 
         # The real binary from the real source, and a byte-compared restore.
-        run(["go", "build", "-o", "bin/concord", "./cmd/concord"], 400)
+        _build(js_rel)
         restored = open(js).read() == open(backup).read() == original
         print(f"\n  source restored byte-identical: {restored}")
         print(f"[{label}] ---- {len(killed)}/{len(mutants)} killed, {len(survived)} survived, "

@@ -21,7 +21,6 @@ reads as a broken page rather than as a throttle.
 """
 
 import itertools
-import sqlite3
 import urllib.error
 import tempfile
 import time
@@ -46,7 +45,7 @@ _ips = itertools.count(1)
 
 def seed(db):
     """Three projects: one with a mixed log, one private, one with no log."""
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     cur = con.cursor()
     now = time.time()
 

@@ -111,6 +111,50 @@ def translate_upserts(sql):
     return "INSERT " + tail + " ON CONFLICT DO NOTHING"
 
 
+def rewrite_boolean_literals(sql, table_types, columns, expression, span):
+    """Turn `0`/`1` LITERALS in boolean columns into `false`/`true`.
+
+    `_coerce` handles the parameters, but a fixture that writes the value inline — `VALUES ('feature-priority',
+    ... ,0,0,NULL,?)` — never passes through it, and PostgreSQL refuses the row outright:
+    `column "is_baseline" is of type boolean but expression is of type integer`. SQLite accepted it, so the
+    suite's SQL is right in its own dialect and wrong in the candidate's, which is a translation problem and not a
+    fixture bug. Rewriting the literal is safe where it is applied — only a bare `0`/`1` token sitting in a column
+    the schema declares boolean — and a suite that meant an integer there would be writing to a boolean column
+    anyway.
+
+    `span` is the (open, close) paren positions of the VALUES list, so the substitution lands in the tuple that
+    VALUES opens and not in a subquery.
+    """
+    if expression is None or span[0] is None:
+        return sql
+    open_at, close_at = span
+    tokens, depth, current = [], 0, ""
+    for char in expression:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        if char == "," and depth == 0:
+            tokens.append(current)
+            current = ""
+        else:
+            current += char
+    tokens.append(current)
+    changed = False
+    for position, token in enumerate(tokens):
+        column = columns[position] if position < len(columns) else None
+        if column is None or table_types.get(column) != "boolean":
+            continue
+        bare = token.strip()
+        if bare in ("0", "1"):
+            tokens[position] = token.replace(bare, "false" if bare == "0" else "true")
+            changed = True
+    if not changed:
+        return sql
+    rebuilt = ",".join(tokens)
+    return sql[:open_at + 1] + rebuilt + sql[close_at:]
+
+
 class PgSeed:
     """The slice of the sqlite3 API the suites use, over psycopg2.
 
@@ -276,6 +320,8 @@ class PgSeed:
                     open_at, close_at = span
                     translated = translated[:close_at].rstrip() + ", %s" + translated[close_at:]
                     expression = expression.rstrip() + ", %s"
+            translated = rewrite_boolean_literals(
+                translated, self._column_types(table), columns, expression, span)
             params = self._convert(table, columns, params, expression or "")
         # `INSERT ... SELECT` also gets a `RETURNING id`, which fails: the select's own columns are
         # what RETURNING sees, and `INSERT INTO members (...) SELECT project_id, ... FROM members`

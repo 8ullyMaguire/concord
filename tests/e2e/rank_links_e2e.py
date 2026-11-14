@@ -128,15 +128,23 @@ def seed(db):
                 " created_at, updated_at) VALUES (?,?,?,'a body','M','discussion',?,?)",
                 (pid, author, title, now, now)).lastrowid, title))
 
+        # `feature_id` is NULL, not 0. The column is a foreign key to `features` and the suite's original
+        # SQLite database did not enforce it, so `0` stood for "this arena is the project's, not one
+        # feature's" and meant nothing else. PostgreSQL rejects the row outright
+        # (`Key (feature_id)=(0) is not present in table "features"`), and NULL is what the schema says
+        # "no feature" with — the fixture's INTENT, in the dialect the candidate runs on.
         arena = con.execute(
             "INSERT INTO arenas (type, project_id, feature_id, question, use_case, created_at)"
-            " VALUES ('feature-priority',?,0,'Which idea should we build next?','fixture',?)",
+            " VALUES ('feature-priority',?,NULL,'Which idea should we build next?','fixture',?)",
             (pid, now)).lastrowid
         for fid, _ in FEATURES:
             con.execute(
                 "INSERT INTO arena_entries (arena_id, entity_type, entity_id, r, rd, sigma,"
                 " games, is_baseline, parent_entry_id, updated_at)"
-                " VALUES (?,'feature',?,1500.0,350.0,0.06,0,0,NULL,?)",
+                # `is_baseline` is a LITERAL, so the adapter cannot coerce it: PostgreSQL wants
+                # `false` where SQLite accepted `0` and the row was refused outright
+                # (`column "is_baseline" is of type boolean but expression is of type integer`).
+                " VALUES (?,'feature',?,1500.0,350.0,0.06,0,false,NULL,?)",
                 (arena, fid, now))
         con.commit()
     finally:

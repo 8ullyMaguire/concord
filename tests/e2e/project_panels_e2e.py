@@ -27,7 +27,6 @@ assertion "the panel is empty" would pass.
 """
 
 import os
-import sqlite3
 import tempfile
 import time
 
@@ -104,7 +103,7 @@ def seed(db):
     capability, because the pair is the whole distinction: two rows that both
     need to be visible and must not be confusable.
     """
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     cur = con.cursor()
     now = time.time()
 
@@ -707,7 +706,7 @@ def test_an_instance_with_no_capability_catalog_says_so_distinctly(page, server)
     change every later test in the run.
     """
     import sqlite3
-    con = sqlite3.connect(server["db"])
+    con = harness.connect(server["db"])
     try:
         con.execute("DELETE FROM capabilities")
         con.commit()
@@ -773,7 +772,7 @@ def _mint_token(db, username):
     import base64
     import hashlib
     raw = "clt_panels-" + username
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     uid = con.execute("SELECT id FROM users WHERE username = ?", (username,)).fetchone()[0]
     digest = hashlib.sha256(raw.encode()).digest()
     con.execute(
@@ -896,7 +895,7 @@ def seed_verdicts(db):
     action" -- and `panel-verdicts-stranger` is a registered account with no membership
     row, which is the distinction the old actor-only gate could not make.
     """
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     cur = con.cursor()
     now = time.time()
 

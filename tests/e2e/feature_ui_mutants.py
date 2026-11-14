@@ -61,7 +61,9 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from ui_mutants import run_mutants
 
-JS = "internal/httpapi/assets/js/feature.js"
+# The asset the candidate SERVES, not the Go tree's copy: since the port embeds `crates/web/assets`, mutating
+# `internal/httpapi/assets/js/feature.js` would change a file nothing in the candidate reads.
+JS = os.environ.get("CONCORD_UI_JS", "crates/web/assets/js/feature.js")
 SUITE = "tests/e2e/feature_e2e.py"
 DETACH_SUITE = "tests/e2e/milestones_e2e.py"
 

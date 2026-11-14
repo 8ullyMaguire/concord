@@ -213,46 +213,44 @@ async fn criteria_body(pool: &PgPool, project: &Project) -> Result<(String, serd
 
 project_page!(criteria, "/criteria", "Criteria", criteria_body);
 
-/// `/projects/{slug}/audit` — what happened, in the order it happened.
-async fn audit_body(pool: &PgPool, project: &Project) -> Result<(String, serde_json::Value), String> {
-    let filter = concord_db::audit::Filter { project_id: project.id, limit: 100, ..Default::default() };
-    let page = concord_db::audit::list(pool, &filter)
-        .await
-        .map_err(|error| format!("the audit log could not be read: {error}"))?;
-    if page.entries.is_empty() {
-        return Ok((empty("Nothing has been recorded for this project."), serde_json::json!({"entries": [], "total": 0})));
+/// `/projects/{slug}/audit` — the reference's audit mount.
+///
+/// `audit.js` fetches `/api/v1/projects/{slug}/audit` with the filters in the address and draws the table, the count and the empty state.
+/// The suite asserts the CLIENT's answers — the count is the FILTERED total, a filter matching nothing says so, a `%` in the search box is
+/// matched literally rather than as a wildcard, and a detail containing HTML is escaped — and a server-rendered table satisfies none of them.
+pub async fn audit(State(pool): State<PgPool>, Path(slug): Path<String>, headers: HeaderMap) -> Response {
+    let Ok(project) = resolve(&pool, &slug).await else { return crate::not_found(&headers) };
+    if project.visibility != "public" {
+        return crate::not_found(&headers);
     }
-    let mut body = Html::new();
-    body.open("p", &[("class", "muted")])
-        .text(&format!("{} of {} entries", page.entries.len(), page.total))
-        .close("p")
-        .open("table", &[("class", "table")])
-        .open("thead", &[]).open("tr", &[]);
-    for heading in ["When", "Actor", "Action", "Detail"] {
-        body.open("th", &[("scope", "col")]).text(heading).close("th");
-    }
-    body.close("tr").close("thead").open("tbody", &[]);
-    for entry in &page.entries {
-        body.open("tr", &[])
-            .open("td", &[]).text(&crate::datetime(entry.created_at)).close("td")
-            // The display name, never the email: `audit.rs` resolves it for exactly this reason, and a page is a place an
-            // email becomes permanent.
-            .open("td", &[]).text(entry.actor_display_name.as_deref().unwrap_or("(system)")).close("td")
-            .open("td", &[]).text(&entry.action).close("td")
-            .open("td", &[]).text(&entry.detail).close("td")
-            .close("tr");
-    }
-    body.close("tbody").close("table");
-    let bootstrap = serde_json::json!({
-        "total": page.total,
-        "entries": page.entries.iter().map(|entry| serde_json::json!({
-            "action": entry.action, "actor": entry.actor_display_name, "detail": entry.detail,
-        })).collect::<Vec<_>>(),
-    });
-    Ok((body.finish(), bootstrap))
+    let body = format!(
+        r#"<div class="page-head">
+  <div>
+    <p class="breadcrumb"><a href="/projects">Projects</a> / <a href="/projects/{slug}">{slug}</a> / <span>Audit log</span></p>
+    <h1>Audit log &middot; <span data-slug>{slug}</span></h1>
+    <p class="lede">Everything privileged that happened here, in order, newest first. Reading it needs no account; the actions in it
+      do.</p>
+  </div>
+</div>
+<div id="audit-root" aria-busy="true">
+<script src="{skeleton}"></script>
+<script>(function(){{var b=document.getElementById("audit-root");if(b&&window.ConcordSkeleton){{b.innerHTML=window.ConcordSkeleton.rows(8);}}}})();</script>
+  <div class="empty-state"><p class="empty-state-title">Loading the audit log&hellip;</p></div>
+</div>
+<script src="{audit_js}"></script>
+"#,
+        slug = project.slug,
+        skeleton = crate::shell::asset("/assets/js/skeleton.js"),
+        audit_js = crate::shell::asset("/assets/js/audit.js"),
+    );
+    let title = format!("{}: audit log", project.name);
+    render(&headers, Page {
+        title: &title,
+        path: &format!("/projects/{}/audit", project.slug),
+        description: &format!("The audit log of {}, on Concord.", project.name),
+        bootstrap: serde_json::json!({"route": format!("/projects/{}/audit", project.slug), "mount": "audit-root"}),
+    }, body)
 }
-
-project_page!(audit, "/audit", "Audit log", audit_body);
 
 // ── the two pages the reference renders in the browser ───────────────────────────────────────────────────────────────────────────────
 //

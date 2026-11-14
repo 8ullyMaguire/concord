@@ -39,149 +39,113 @@ pub async fn rank(
     Path(slug): Path<String>,
     headers: HeaderMap,
 ) -> Response {
-    let Some(project) = concord_db::projects::project_by_slug(&pool, &slug).await.ok().flatten() else {
-        return crate::not_found(&headers);
-    };
-    // Voter 0 is "the reader who has judged nothing": the store's `next_pair` picks by closeness with the voter's own history removed,
-    // and an anonymous reader has no history. Voting itself needs a session, which the page says below rather than pretending the
-    // buttons work — a form that posts to a 401 is a form that wastes a reader's judgement.
-    let pair = match concord_db::feed_reads::next_pair(&pool, project.id, 0).await {
-        Ok(Ok((first, second))) => Some((first, second)),
-        _ => None,
-    };
-    let mut body = Html::new();
-    body.open("p", &[("class", "muted")])
-        .text("The forge asks for one pairwise judgement at a time. A pair is chosen because its two features are close \
-               enough that a judgement between them carries the most information.")
-        .close("p")
-        .open("p", &[]).open("a", &[("href", &format!("/projects/{slug}/ranking"))])
-        .text("See the ranking this feeds").close("a").close("p");
-
-    match pair.as_ref() {
-        // `next_vote_pair` answers `None` when the project has judged every pair it has. That is a FINISHED state, not an error, and
-        // the page says which of the two it is.
-        None => {
-            body.open("p", &[("class", "empty")])
-                .text("Every pair the forge could offer has been judged. Nothing is waiting for you here.")
-                .close("p");
-        }
-        Some((first, second)) => {
-            body.open("div", &[("class", "pair"), ("data-pair", &format!("{}-{}", first.id, second.id))])
-                .open("article", &[("class", "option"), ("data-option", "a")])
-                .open("h3", &[]).text(&first.title).close("h3")
-                .open("p", &[("class", "muted")])
-                .text(&format!("rating {:.0} ± {:.0}", first.elo_r, first.elo_rd)).close("p")
-                .close("article")
-                .open("article", &[("class", "option"), ("data-option", "b")])
-                .open("h3", &[]).text(&second.title).close("h3")
-                .open("p", &[("class", "muted")])
-                .text(&format!("rating {:.0} ± {:.0}", second.elo_r, second.elo_rd)).close("p")
-                .close("article")
-                .close("div")
-                // The five outcomes, as the store records them. The form posts to the API's own vote route, which requires a session —
-                // so the page names that requirement here instead of letting a reader spend a judgement on a 401.
-                .open("form", &[("method", "post"),
-                                ("action", &format!("/api/v1/projects/{slug}/features/{}/vote", first.id))])
-                .void("input", &[("type", "hidden"), ("name", "feature_b"), ("value", &second.id.to_string())]);
-            for (value, label) in OUTCOMES {
-                body.open("button", &[("type", "submit"), ("name", "outcome"), ("value", value)])
-                    .text(label)
-                    .close("button");
-            }
-            body.close("form")
-                .open("p", &[("class", "muted")])
-                .open("a", &[("href", &format!("/login?next=/projects/{slug}/rank"))])
-                .text("Sign in to record a judgement")
-                .close("a")
-                .close("p");
-        }
-    }
-    let bootstrap = serde_json::json!({
-        "route": format!("/projects/{slug}/rank"),
-        "pair": pair.as_ref().map(|(first, second)| serde_json::json!({
-            "a": {"id": first.id, "title": first.title, "elo_r": first.elo_r},
-            "b": {"id": second.id, "title": second.title, "elo_r": second.elo_r},
-        })),
-        "outcomes": OUTCOMES.iter().map(|(value, label)| serde_json::json!({"value": value, "label": label}))
-            .collect::<Vec<_>>(),
-    });
+    let Some(project) = readable_project(&pool, &slug).await else { return crate::not_found(&headers) };
+    // `rank.js` fetches a pair and draws `.rank-card`s; the suite asserts two of them, that each card's link names THAT card's feature id,
+    // and that a vote posted from beside the link still records. None of that is visible to a server-rendered page, and the server-rendered
+    // version this replaces passed `probe_pages.py` while every one of those assertions failed.
+    let body = format!(
+        r#"<div class="page-head">
+  <div>
+    <p class="breadcrumb"><a href="/projects">Projects</a> / <span data-slug>{slug}</span></p>
+    <h1>Rank features &middot; <span data-slug>{slug}</span></h1>
+    <p class="lede">One pair at a time. Comparing three or more at once is a different and much worse question &mdash; people can hold a
+      preference between two things and have no meaningful ordering among seven.</p>
+  </div>
+  <a class="btn" href="/projects/{slug}/ranking">See the ranking</a>
+</div>
+<div id="rank-root" aria-busy="true">
+<script src="{skeleton}"></script>
+<script>(function(){{var b=document.getElementById("rank-root");if(b&&window.ConcordSkeleton){{b.innerHTML=window.ConcordSkeleton.rows(1);}}}})();</script>
+  <div class="empty-state"><p class="empty-state-title">Loading a comparison&hellip;</p></div>
+</div>
+<div id="rank-progress" class="rank-progress" hidden>
+  <p><strong data-cast>0</strong> comparisons cast. <span data-remaining></span></p>
+</div>
+<script src="{rank_js}"></script>
+"#,
+        slug = project.slug,
+        skeleton = crate::shell::asset("/assets/js/skeleton.js"),
+        rank_js = crate::shell::asset("/assets/js/rank.js"),
+    );
+    let title = format!("{}: rank features", project.name);
     render(&headers, Page {
-        title: &format!("{}: Rank", project.name),
-        path: &format!("/projects/{slug}/rank"),
-        description: &format!("Judge a pair of features in {}, on Concord.", project.name),
-        bootstrap,
-    }, body.finish())
+        title: &title,
+        path: &format!("/projects/{}/rank", project.slug),
+        description: &format!("Compare features of {}, one pair at a time.", project.name),
+        bootstrap: serde_json::json!({"route": format!("/projects/{}/rank", project.slug), "mount": "rank-root"}),
+    }, body)
 }
 
-/// `/projects/{slug}/ranking` — the order the forge concluded, in the API's order and with its components.
+/// `/projects/{slug}/ranking` — the reference's ranking mount, with standing decided on the SERVER.
+///
+/// `data-can-moderate` is the whole reason this page needs a session: `ranking.js` emits a "Moderate" link only when the attribute says
+/// true, and the suite asserts both directions (an anonymous reader gets no control, a reviewer gets one on every row). Deciding it here
+/// from the same pair of axes the routes enforce — instance trust OR the project's reviewer role — is what keeps the page from offering a
+/// control the API would refuse.
 pub async fn ranking(
     State(pool): State<PgPool>,
     Path(slug): Path<String>,
     headers: HeaderMap,
 ) -> Response {
-    let Some(project) = concord_db::projects::project_by_slug(&pool, &slug).await.ok().flatten() else {
-        return crate::not_found(&headers);
+    let Some(project) = readable_project(&pool, &slug).await else { return crate::not_found(&headers) };
+    let can_moderate = match crate::nav_user(&pool, &headers).await {
+        Some(user) => concord_db::moderation::may_moderate(&pool, project.id, user.id, moderation_trust_min())
+            .await
+            .unwrap_or(false),
+        None => false,
     };
-    let priorities = match concord_db::priorities::feature_priorities(&pool, project.id).await {
-        Ok(rows) => rows,
-        Err(error) => return crate::error_page(&headers, "the ranking could not be read", &error.to_string()),
-    };
-    // Participation is a separate read on purpose: a rating shown without the number of judgements behind it invites a reader to trust
-    // a number nobody voted for.
-    let tallies = concord_db::tallies::tallies(&pool, project.id).await.ok().flatten().unwrap_or_default();
-    let mut body = Html::new();
-    body.open("p", &[]).open("a", &[("href", &format!("/projects/{slug}/rank"))])
-        .text("Judge a pair").close("a").close("p");
-    if priorities.is_empty() {
-        body.open("p", &[("class", "empty")]).text("This project has no features to rank.").close("p");
-    } else {
-        body.open("table", &[("class", "table"), ("data-order", "api")])
-            .open("thead", &[]).open("tr", &[]);
-        for heading in ["#", "Feature", "Priority", "Pain", "Strategic weight", "Rating", "Votes"] {
-            body.open("th", &[("scope", "col")]).text(heading).close("th");
-        }
-        body.close("tr").close("thead").open("tbody", &[]);
-        for (position, row) in priorities.iter().enumerate() {
-            let tally = tallies.iter().find(|tally| tally.feature_id == row.id);
-            body.open("tr", &[])
-                .open("td", &[]).text(&(position + 1).to_string()).close("td")
-                .open("td", &[]).open("a", &[("href", &format!("/projects/{slug}/features/{}", row.id))])
-                .text(&row.title).close("a").close("td")
-                .open("td", &[]).text(&format!("{:.3}", row.priority_score)).close("td")
-                .open("td", &[]).text(&format!("{:.3}", row.pain_score)).close("td")
-                .open("td", &[]).text(&format!("{:.3}", row.strategic_weight)).close("td")
-                // The uncertainty travels with the rating: `±0` is a settled number and `±200` is a guess, and they look identical
-                // when only the rating is printed.
-                .open("td", &[]).text(&format!("{:.0} ± {:.0}", row.elo_r, row.elo_rd)).close("td");
-            match tally {
-                Some(tally) => body.open("td", &[])
-                    .text(&format!("{}W {}L {}S", tally.wins, tally.losses, tally.skips)).close("td"),
-                None => body.open("td", &[("class", "unmeasured")]).text("—").close("td"),
-            };
-            body.close("tr");
-        }
-        body.close("tbody").close("table");
-        body.open("p", &[("class", "muted")])
-            .text("Ordered by the API, which already folds pain, strategic weight and the theme's μ into the score. This page does \
-                   not re-sort.")
-            .close("p");
-    }
-    let bootstrap = serde_json::json!({
-        "route": format!("/projects/{slug}/ranking"),
-        "order": "api",
-        "priorities": priorities.iter().map(|row| serde_json::json!({
-            "id": row.id, "title": row.title, "priority_score": row.priority_score,
-            "pain_score": row.pain_score, "strategic_weight": row.strategic_weight,
-            "elo_r": row.elo_r, "elo_rd": row.elo_rd,
-        })).collect::<Vec<_>>(),
-    });
+    let body = format!(
+        r#"<div class="page-head">
+  <div>
+    <p class="breadcrumb"><a href="/projects">Projects</a> / <span data-slug>{slug}</span></p>
+    <h1>Ranking &middot; <span data-slug>{slug}</span></h1>
+    <p class="lede">The order below is what the forge concluded, and it is public. Reading it needs no account; casting the votes that
+      produced it does.</p>
+  </div>
+  <a class="btn btn-primary" href="/projects/{slug}/rank">Cast more votes</a>
+</div>
+<div id="ranking-root" aria-busy="true" data-can-moderate="{can_moderate}">
+<script src="{skeleton}"></script>
+<script>(function(){{var b=document.getElementById("ranking-root");if(b&&window.ConcordSkeleton){{b.innerHTML=window.ConcordSkeleton.rows(6);}}}})();</script>
+  <div class="empty-state"><p class="empty-state-title">Loading the ranking&hellip;</p></div>
+</div>
+<script src="{ranking_js}"></script>
+"#,
+        slug = project.slug,
+        can_moderate = if can_moderate { "true" } else { "false" },
+        skeleton = crate::shell::asset("/assets/js/skeleton.js"),
+        ranking_js = crate::shell::asset("/assets/js/ranking.js"),
+    );
+    let title = format!("{}: ranking", project.name);
     render(&headers, Page {
-        title: &format!("{}: Ranking", project.name),
-        path: &format!("/projects/{slug}/ranking"),
-        description: &format!("What {} should build next, and why it ranks there.", project.name),
-        bootstrap,
-    }, body.finish())
+        title: &title,
+        path: &format!("/projects/{}/ranking", project.slug),
+        description: &format!("The feature ranking of {}, on Concord.", project.name),
+        bootstrap: serde_json::json!({
+            "route": format!("/projects/{}/ranking", project.slug),
+            "mount": "ranking-root",
+            "can_moderate": can_moderate,
+        }),
+    }, body)
 }
+
+/// The project a page may show: public, or nothing.
+async fn readable_project(pool: &PgPool, slug: &str) -> Option<concord_db::projects::Project> {
+    let project = concord_db::projects::project_by_slug(pool, slug).await.ok().flatten()?;
+    if project.visibility != "public" {
+        return None;
+    }
+    Some(project)
+}
+
+/// `CONCORD_MOD_TRUST_MIN`, default 1 — the same threshold the API's moderation routes read.
+fn moderation_trust_min() -> i32 {
+    std::env::var("CONCORD_MOD_TRUST_MIN")
+        .ok()
+        .and_then(|raw| raw.parse().ok())
+        .unwrap_or(1)
+}
+
 
 /// `/contribute` — the work somebody could pick up.
 pub async fn contribute(State(pool): State<PgPool>, headers: HeaderMap) -> Response {
