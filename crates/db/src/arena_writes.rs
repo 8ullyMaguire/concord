@@ -253,3 +253,64 @@ async fn apply_game(
     }
     Ok(())
 }
+
+
+/// A deliberate defect reachable only by environment variable, so a probe's control does not cost a rebuild.
+fn mutant(name: &str) -> bool {
+    std::env::var("CONCORD_MUTANT")
+        .unwrap_or_default()
+        .split(',')
+        .any(|candidate| candidate.trim() == name)
+}
+
+/// Rewrite an arena's stored ratings from its vote log, and mirror them where the product reads them.
+///
+/// `replay` is the log's answer and `verify` says how the stored entries disagree with it; `recompute` is the write that
+/// reconciles them. It exists because votes are applied incrementally, and an incremental application of a rating system has an
+/// unbounded list of ways to drift: a failed request between the game and the entry update, a manual fix, a bug that was shipped for
+/// an afternoon. Without a replay there is no answer to "are these numbers right", only "these numbers are what the code did".
+///
+/// Two properties:
+///
+/// * **the log wins, wholesale.** Entries whose entity has no votes are rewritten to the default; that is the log's opinion too.
+/// * **a feature arena mirrors into `features.elo_r`/`elo_rd`/`elo_vol`.** Features keep their own columns for the priority endpoint,
+///   so a recompute that only fixed `arena_entries` would leave two numbers disagreeing, and the disagreement is invisible from the
+///   arena side.
+///
+/// Returns the entries as they now stand.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn recompute(pool: &PgPool, arena_id: i64) -> Result<Vec<crate::arena::Entry>, sqlx::Error> {
+    let replayed = crate::arena::replay(pool, arena_id).await?;
+    let mut transaction = pool.begin().await?;
+    for entry in &replayed {
+        sqlx::query(
+            "update arena_entries set r = $1, rd = $2, sigma = $3, games = $4,
+                    updated_at = now()
+              where arena_id = $5 and entity_type = $6 and entity_id = $7",
+        )
+        .bind(entry.r)
+        .bind(entry.rd)
+        .bind(entry.sigma)
+        .bind(entry.games)
+        .bind(arena_id)
+        .bind(&entry.entity_type)
+        .bind(entry.entity_id)
+        .execute(&mut *transaction)
+        .await?;
+        if entry.entity_type == "feature" && !mutant("recompute-no-mirror") {
+            sqlx::query(
+                "update features set elo_r = $1, elo_rd = $2, elo_vol = $3 where id = $4",
+            )
+            .bind(entry.r)
+            .bind(entry.rd)
+            .bind(entry.sigma)
+            .bind(entry.entity_id)
+            .execute(&mut *transaction)
+            .await?;
+        }
+    }
+    transaction.commit().await?;
+    crate::arena::entries(pool, arena_id).await
+}

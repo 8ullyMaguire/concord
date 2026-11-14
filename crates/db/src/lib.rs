@@ -28,6 +28,7 @@ pub mod feed_reads;
 pub mod finder_reads;
 pub mod features;
 pub mod holds;
+pub mod forge_events;
 pub mod identity;
 pub mod invite_writes;
 pub mod list_writes;

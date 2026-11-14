@@ -18,6 +18,7 @@ concord-db = { path = "../db" }
 concord-ranking = { path = "../ranking" }
 polaris-core.workspace = true
 serde.workspace = true
+sha2 = "0.10"
 serde_json.workspace = true
 sqlx.workspace = true
 tokio.workspace = true

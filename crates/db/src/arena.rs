@@ -30,7 +30,7 @@ pub const DEFAULT_SOLUTION_KAPPA: f64 = 200.0;
 pub const ACTIVITY_WINDOW_DAYS: f64 = 365.0;
 
 /// One row of `arena_entries`, in the arena's own vocabulary.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize)]
 pub struct Entry {
     /// What the entry ranks: a solution.
     pub entity_id: i64,
@@ -1456,4 +1456,36 @@ pub async fn list_coverage(pool: &PgPool, solution_id: i64) -> Result<Vec<Soluti
             },
         )
         .collect())
+}
+
+
+/// Every entry in an arena, ordered by rating. Unlike the leaderboard this is not windowed: a recompute reports what it wrote, and a
+/// window would let an entry it repaired be reported as unchanged by omission.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn entries(pool: &PgPool, arena_id: i64) -> Result<Vec<Entry>, sqlx::Error> {
+    let rows = sqlx::query(
+        "select entity_id, r, rd, coalesce(sigma, 0.06) as sigma, games,
+                coalesce(is_baseline, false) as is_baseline,
+                coalesce(extract(epoch from updated_at)::double precision, 0) as updated_at
+           from arena_entries where arena_id = $1 order by r desc, entity_id",
+    )
+    .bind(arena_id)
+    .fetch_all(pool)
+    .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in &rows {
+        use sqlx::Row;
+        out.push(Entry {
+            entity_id: row.try_get("entity_id")?,
+            r: row.try_get("r")?,
+            rd: row.try_get("rd")?,
+            sigma: row.try_get("sigma")?,
+            games: row.try_get("games")?,
+            is_baseline: row.try_get("is_baseline")?,
+            updated_at: row.try_get("updated_at")?,
+        });
+    }
+    Ok(out)
 }
