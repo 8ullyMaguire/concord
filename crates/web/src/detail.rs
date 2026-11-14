@@ -19,9 +19,20 @@ use sqlx::PgPool;
 use crate::html::Html;
 use crate::{render, Page};
 
-/// The project and the row's id, or the 404.
+/// The project the reader may see, or the 404.
+///
+/// **Visibility is checked here and not in the API layer.** The API answers a private project with a 404 for a reader without access, and
+/// the pages had no equivalent check: `/projects/{private}` rendered its mount and answered `200`, which told an anonymous reader that the
+/// slug exists. The suite asserts the opposite in the strongest form it has — the 404 body must not contain the slug at all — so the
+/// projection is "public, or nothing". A reader WITH a session is a case the web crate cannot see (it does not read tokens), and the reason
+/// that is acceptable is that a private project's page leaks nothing a public one does not: the client's own `/api/v1` calls are refused,
+/// so the mount fills with the same "no such project" the API gave it.
 async fn project_of(pool: &PgPool, slug: &str) -> Option<Project> {
-    concord_db::projects::project_by_slug(pool, slug).await.ok().flatten()
+    let project = concord_db::projects::project_by_slug(pool, slug).await.ok().flatten()?;
+    if project.visibility != "public" {
+        return None;
+    }
+    Some(project)
 }
 
 /// A labelled fact, for the modules that build the same `<dl>` shape.
@@ -290,99 +301,119 @@ pub async fn milestone(
     }, body.finish())
 }
 
-/// `/projects/{slug}/features/{id}` — one feature, its ratings and the complaints it answers.
+/// `/projects/{slug}/features/{id}` — the reference's mount point, moderation panel and comment thread.
+///
+/// The reference builds this page in the browser from `/api/v1/projects/{slug}/features/{id}` and its neighbours; the suite asserts the
+/// DOM that yields (`#feature-root h1`, a rating bar whose width differs between a settled and an uncertain feature, "not yet compared"
+/// for a feature nobody has voted on). So the port renders the same mount, the same panel ids and the same scripts.
 pub async fn feature(
     State(pool): State<PgPool>,
     Path((slug, id)): Path<(String, i64)>,
     headers: HeaderMap,
 ) -> Response {
     let Some(project) = project_of(&pool, &slug).await else { return crate::not_found(&headers) };
-    let row = match concord_db::features::feature(&pool, id).await {
-        Ok(Some(row)) if row.project_id == project.id => row,
-        Ok(_) => return crate::not_found(&headers),
-        Err(error) => return crate::error_page(&headers, "the feature could not be read", &error.to_string()),
-    };
-    let complaints = concord_db::complaints::feature_complaints(&pool, id).await.unwrap_or_default();
-    let mut body = Html::new();
-    body.open("h3", &[]).text(&row.title).close("h3");
-    if !row.body.is_empty() {
-        body.open("p", &[]).text(&row.body).close("p");
-    }
-    body.open("dl", &[("class", "facts")]);
-    fact(&mut body, "Status", &row.status);
-    fact(&mut body, "Effort", if row.effort.is_empty() { "—" } else { &row.effort });
-    // An unmeasured ratio is absent, and its absence is printed: `impact_ratio` is `Option` because a ratio over no scale is not 0.
-    match row.impact_ratio {
-        Some(ratio) => fact(&mut body, "Impact / effort", &format!("{ratio:.2}")),
-        None => fact(&mut body, "Impact / effort", "—"),
-    }
-    fact(&mut body, "Rating", &format!("{:.0} ± {:.0}", row.elo_r, row.elo_rd));
-    body.close("dl").open("h3", &[]).text(&format!("{} linked complaint(s)", complaints.len())).close("h3");
-    if complaints.is_empty() {
-        body.open("p", &[("class", "empty")]).text("This feature answers no complaint.").close("p");
-    } else {
-        body.open("ul", &[("class", "rows")]);
-        for complaint in &complaints {
-            body.open("li", &[])
-                .open("a", &[("href", &format!("/projects/{slug}/complaints/{}", complaint.id))])
-                .text(&complaint.title)
-                .close("a")
-                .open("span", &[("class", "muted")])
-                .text(&format!(" · severity {}", complaint.severity))
-                .close("span")
-                .close("li");
-        }
-        body.close("ul");
-    }
-    let bootstrap = serde_json::json!({
-        "feature": {"id": row.id, "title": row.title, "status": row.status,
-                    "elo_r": row.elo_r, "impact_ratio": row.impact_ratio},
-        "complaints": complaints.iter().map(|c| serde_json::json!({"id": c.id, "title": c.title}))
-            .collect::<Vec<_>>(),
-    });
+    // The page does NOT look the feature up, and that is the reference's contract rather than an omission: its handler renders the mount
+    // for any id and lets `feature.js` report "No such feature", which is the only place the suite can see the difference between a
+    // skeleton that never clears and a page that says why. A server-side 404 here would be a *different product behaviour* — and the probe
+    // for it lives in the page script, not in this function.
+    let body = format!(
+        r#"<div class="page-head">
+  <div>
+    <p class="breadcrumb"><a href="/projects">Projects</a> / <a href="/projects/{slug}">{slug}</a> / <span>Feature</span></p>
+    <h1>Feature &middot; <span data-slug>{slug}</span></h1>
+    <p class="lede">The unit the ranking sorts on. Impact against effort, with the uncertainty shown rather than hidden &mdash; a new
+      feature with no votes yet is <em>unsure</em>, not <em>low</em>.</p>
+  </div>
+</div>
+<div id="feature-root" aria-busy="true">
+<script src="{skeleton}"></script>
+<script>(function(){{var b=document.getElementById("feature-root");if(b&&window.ConcordSkeleton){{b.innerHTML=window.ConcordSkeleton.rows(4);}}}})();</script>
+  <div class="empty-state"><p class="empty-state-title">Loading the feature&hellip;</p></div>
+</div>
+<section id="moderation-panel" class="moderation-panel" data-project="{slug}" data-feature="{id}" hidden>
+  <h2>Moderation</h2>
+  <form id="moderation-form">
+    <label for="moderation-reason">Reason</label>
+    <textarea id="moderation-reason" name="reason" rows="2" maxlength="500"></textarea>
+    <p class="note">A reason is required, and it is published in the modlog beside the act.</p>
+    <div id="moderation-confirm" hidden>
+      <p class="note">Remove this idea from the arena? It stops competing and its status becomes rejected &mdash; the idea itself is
+        kept, and the act can be undone.</p>
+      <button type="button" class="btn btn-secondary" id="moderation-cancel">Cancel</button>
+    </div>
+    <button type="submit" class="btn btn-secondary" id="moderation-remove">Remove from the arena</button>
+  </form>
+  <div id="moderation-undo" hidden><button type="button" class="btn btn-secondary" id="moderation-undo-btn">Undo</button></div>
+  <p class="note" id="moderation-status" hidden></p>
+</section>
+<script src="{moderation}"></script>
+<section id="comment-thread" class="comment-thread" data-thread-kind="feature" data-thread-id="{id}" aria-live="polite">
+  <h2>Discussion</h2>
+  <p class="note">Loading comments&hellip;</p>
+</section>
+<script src="{comments}"></script>
+<script src="{feature_js}"></script>
+"#,
+        slug = project.slug,
+        id = id,
+        skeleton = crate::shell::asset("/assets/js/skeleton.js"),
+        moderation = crate::shell::asset("/assets/js/moderation.js"),
+        comments = crate::shell::asset("/assets/js/comments.js"),
+        feature_js = crate::shell::asset("/assets/js/feature.js"),
+    );
     render(&headers, Page {
-        title: &format!("{}: {}", project.name, row.title),
+        title: &format!("{}: feature {}", project.name, id),
         path: &format!("/projects/{slug}/features/{id}"),
-        description: &row.body.chars().take(160).collect::<String>(),
-        bootstrap,
-    }, body.finish())
+        description: &format!("A feature of {}, on Concord.", project.name),
+        bootstrap: serde_json::json!({"route": format!("/projects/{slug}/features/{id}"), "mount": "feature-root"}),
+    }, body)
 }
 
-/// `/projects/{slug}/complaints/{id}` — one complaint.
+/// `/projects/{slug}/complaints/{id}` — the reference's mount, its comment thread and `complaint.js`.
+///
+/// The complaint page's requirements are "impact meter, linked features, status", and each has a way of being wrong that looks right: the
+/// meter must show its ARITHMETIC (severity and frequency are not on one scale), the linked features come from an endpoint of their own
+/// (`/complaints/{id}` does not carry them), and an unvalidated complaint must SAY it is not validated because §6.2 makes validation
+/// load-bearing. All three are the script's job, so the port renders the mount and serves the script.
 pub async fn complaint(
     State(pool): State<PgPool>,
     Path((slug, id)): Path<(String, i64)>,
     headers: HeaderMap,
 ) -> Response {
     let Some(project) = project_of(&pool, &slug).await else { return crate::not_found(&headers) };
-    let row = match concord_db::complaints::complaint(&pool, id).await {
-        Ok(Some(row)) if row.project_id == project.id => row,
-        Ok(_) => return crate::not_found(&headers),
-        Err(error) => return crate::error_page(&headers, "the complaint could not be read", &error.to_string()),
-    };
-    let mut body = Html::new();
-    body.open("h3", &[]).text(&row.title).close("h3")
-        .open("p", &[]).text(&row.body).close("p")
-        .open("dl", &[("class", "facts")]);
-    fact(&mut body, "Status", &row.status);
-    fact(&mut body, "Severity", &row.severity.to_string());
-    fact(&mut body, "Frequency", &format!("{:.2}", row.frequency));
-    fact(&mut body, "Strategic multiplier", &format!("{:.2}", row.strategic_multiplier));
-    // `merged_into` is absent when the complaint is not merged — a pointer to complaint 0 would be a link to nothing.
-    if let Some(target) = row.merged_into {
-        fact(&mut body, "Merged into", &format!("complaint {target}"));
-    }
-    body.close("dl");
-    let bootstrap = serde_json::json!({
-        "complaint": {"id": row.id, "title": row.title, "status": row.status,
-                      "severity": row.severity, "merged_into": row.merged_into},
-    });
+    let body = format!(
+        r#"<div class="page-head">
+  <div>
+    <p class="breadcrumb"><a href="/projects">Projects</a> / <a href="/projects/{slug}">{slug}</a> / <span>Complaint</span></p>
+    <h1>Complaint &middot; <span data-slug>{slug}</span></h1>
+    <p class="lede">A validated complaint is the only thing a feature may be built from. This is that evidence &mdash; the reported pain,
+      how much of it there is, and which work answers it.</p>
+  </div>
+</div>
+<div id="complaint-root" aria-busy="true">
+<script src="{skeleton}"></script>
+<script>(function(){{var b=document.getElementById("complaint-root");if(b&&window.ConcordSkeleton){{b.innerHTML=window.ConcordSkeleton.rows(4);}}}})();</script>
+  <div class="empty-state"><p class="empty-state-title">Loading the complaint&hellip;</p></div>
+</div>
+<section id="comment-thread" class="comment-thread" data-thread-kind="complaint" data-thread-id="{id}" aria-live="polite">
+  <h2>Discussion</h2>
+  <p class="note">Loading comments&hellip;</p>
+</section>
+<script src="{comments}"></script>
+<script src="{complaint_js}"></script>
+"#,
+        slug = project.slug,
+        id = id,
+        skeleton = crate::shell::asset("/assets/js/skeleton.js"),
+        comments = crate::shell::asset("/assets/js/comments.js"),
+        complaint_js = crate::shell::asset("/assets/js/complaint.js"),
+    );
     render(&headers, Page {
-        title: &format!("{}: {}", project.name, row.title),
+        title: &format!("{}: complaint {}", project.name, id),
         path: &format!("/projects/{slug}/complaints/{id}"),
-        description: &row.body.chars().take(160).collect::<String>(),
-        bootstrap,
-    }, body.finish())
+        description: &format!("A complaint against {}, on Concord.", project.name),
+        bootstrap: serde_json::json!({"route": format!("/projects/{slug}/complaints/{id}"), "mount": "complaint-root"}),
+    }, body)
 }
 
 /// `/projects/{slug}/merge` — the merge queue, with the gate each request is at.

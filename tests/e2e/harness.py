@@ -91,6 +91,26 @@ def placeholder_sql(sql):
     return "".join(out)
 
 
+def translate_upserts(sql):
+    """`INSERT OR REPLACE|IGNORE INTO ...` -> `INSERT INTO ... ON CONFLICT DO NOTHING`.
+
+    The `RETURNING id` the caller appends lands AFTER the conflict clause, which is the order PostgreSQL
+    requires, so this runs before that append and leaves the tail alone.
+    """
+    lowered = sql.lstrip().lower()
+    if not lowered.startswith("insert or "):
+        return sql
+    head = sql.lstrip()
+    rest = head[len("insert or "):]
+    space = rest.find(" ")
+    if space == -1:
+        return sql
+    # `rest` still carries its own `INTO`, so the replacement prefix is `INSERT`, not `INSERT INTO` — prepending the
+    # latter produced `INSERT INTO INTO api_tokens`, which PostgreSQL rejected on the very next run.
+    tail = rest[space + 1:].rstrip().rstrip(";")
+    return "INSERT " + tail + " ON CONFLICT DO NOTHING"
+
+
 class PgSeed:
     """The slice of the sqlite3 API the suites use, over psycopg2.
 
@@ -104,7 +124,14 @@ class PgSeed:
         column's type is read from `information_schema`, not guessed from the value: a 1500 elo and
         a 1794563868 unix second are both numbers, and only one of them is a time;
       * an `INSERT` without `RETURNING` gets `RETURNING id` appended, because `lastrowid` is how a
-        suite carries a freshly inserted id into the next statement.
+        suite carries a freshly inserted id into the next statement;
+      * `INSERT OR REPLACE` / `INSERT OR IGNORE` become `INSERT ... ON CONFLICT DO NOTHING`. SQLite's
+        upsert clauses have no PostgreSQL spelling that can be produced without knowing the conflict
+        target, and a fixture running against a database the harness just created cannot be replacing
+        a row it never inserted — the only effect DO NOTHING can have here is "the row is there", which
+        is what the suite wanted. If a suite ever seeds twice into a dirty database, this is the line
+        that has to grow a conflict target, and the failure will be a stale value rather than a syntax
+        error — recorded so the next reader knows where to look.
     """
 
     def __init__(self, dsn):
@@ -190,7 +217,12 @@ class PgSeed:
         import re
         import uuid
         cur = self._con.cursor()
-        translated = placeholder_sql(sql)
+        # BEFORE the column parse, not after it: the parse matches `insert into <table> (<cols>)`, so an
+        # `INSERT OR REPLACE` still carrying its `OR REPLACE` matched nothing, `columns` came back empty, and
+        # the type conversion below never ran — which surfaced as `column "created_at" is of type timestamp
+        # with time zone but expression is of type double precision` on values the adapter is supposed to
+        # convert.
+        translated = translate_upserts(placeholder_sql(sql))
         params = list(params or ())
         match = re.match(r"\s*insert\s+into\s+([\w\"]+)\s*\(([^)]*)\)", translated,
                          re.IGNORECASE)

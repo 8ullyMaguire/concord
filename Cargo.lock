@@ -348,7 +348,9 @@ name = "concord-web"
 version = "0.0.0"
 dependencies = [
  "axum",
+ "chrono",
  "concord-db",
+ "serde",
  "serde_json",
  "sqlx",
 ]

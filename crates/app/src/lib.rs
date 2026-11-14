@@ -1453,15 +1453,32 @@ async fn project_for(
 ///
 /// A separate function from `project_for` on purpose: the Go router mounts some collections on the slug and
 /// others on the id, and a route that quietly accepted either would hide a client calling the wrong one.
+/// A project from a path segment that may be an **id or a slug**.
+///
+/// The reference's own page scripts build every one of these URLs from the SLUG — `comments.js` asks for
+/// `/api/v1/projects/{slug}/threads/{kind}/{id}` — and the reference answers it: probed against the live instance
+/// (`/api/v1/projects/suki/threads/project/1` → `200 []`). The port answered `400 project id must be an integer`, which turned every
+/// thread on every project page into "Comments could not be loaded" without any route being missing. That is what an inventory cannot
+/// see: the route existed, the shape of its argument did not.
+///
+/// A non-numeric segment is therefore looked up as a slug, and a numeric one as an id first and then a slug — a project whose slug is
+/// `2024` is not something to fail over.
 async fn project_by_id(
     state: &AppState,
     raw: &str,
 ) -> Result<concord_db::projects::Project, ApiError> {
-    let id = parse_id(raw, "project id")?;
-    concord_db::projects::project_by_id(&state.pool, id)
+    if let Ok(id) = raw.parse::<i64>() {
+        if let Some(project) = concord_db::projects::project_by_id(&state.pool, id).await.map_err(internal)? {
+            return Ok(project);
+        }
+    }
+    if let Some(project) = concord_db::projects::project_by_slug(&state.pool, raw)
         .await
         .map_err(internal)?
-        .ok_or_else(|| ApiError::not_found(format!("project {id}")))
+    {
+        return Ok(project);
+    }
+    Err(ApiError::not_found(format!("project {raw}")))
 }
 
 /// Parse a path id, naming the segment that was wrong.
@@ -3358,16 +3375,14 @@ async fn get_complaint(
     Path((project_id, complaint)): Path<(String, String)>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    // A non-numeric project segment is a 404 and not a 400: the Go's `requireProjectID` maps a parse failure to
-    // ErrNotFound, and an unknown project must not answer differently from a malformed one — both are "no such
-    // project" to a caller who cannot see the catalogue.
-    let Ok(project_numeric) = project_id.parse::<i64>() else {
-        return Err(ApiError::not_found("no such project"));
-    };
-    let project = concord_db::projects::project_by_id(&state.pool, project_numeric)
+    // A non-numeric project segment is a 404 and not a 400, and the segment may be an id OR a slug: `complaint.js` asks for
+    // `/api/v1/projects/{slug}/complaints/{id}` and the reference answers it, while every page script builds its URLs from the slug. This
+    // handler was the last one still parsing the segment as an integer, so the complaint page rendered "No such complaint" for a complaint
+    // that exists — the third route in this family to fail that way, and the reason `project_by_id` now resolves both forms instead of
+    // each handler deciding for itself.
+    let project = project_by_id(&state, &project_id)
         .await
-        .map_err(internal)?
-        .ok_or_else(|| ApiError::not_found("no such project"))?;
+        .map_err(|_| ApiError::not_found("no such project"))?;
     let user = bearer_user(&state, &headers).await?;
     if !readable(&state, &project, user.as_ref()).await? {
         return Err(ApiError::not_found("no such project"));
@@ -3425,22 +3440,23 @@ async fn feature_complaints(
     Ok(Json(serde_json::json!(rows)))
 }
 
-/// A project by NUMERIC id, readable by the caller, refused with a 404 the caller cannot use to enumerate.
+/// A project from a path segment that may be an **id or a slug**, readable by the caller, refused with a 404 the caller cannot use to
+/// enumerate.
 ///
-/// A non-numeric segment is a 404 and not a 400: `requireProjectID` maps a parse failure to `ErrNotFound`, and an
-/// unknown project must not answer differently from a malformed one.
+/// The doc here used to say "NUMERIC id" and justify it from the reference's `requireProjectID`, which maps a parse failure to
+/// `ErrNotFound`. **Measured otherwise**: the live reference answers `/api/v1/projects/suki/features/2128/complaints` with `200` and the
+/// same path with `74` in place of `suki` with `404 No such API route.` — the slug is the accepted form, because the page scripts build
+/// every one of these URLs from the slug. Requiring an integer turned the feature page's complaint list into a permanent 404 while every
+/// route in the inventory was answered. A non-numeric segment is still a 404 and not a 400 — an unknown project must not answer
+/// differently from a malformed one — but it is now looked up before it is refused.
 async fn numeric_project(
     state: &AppState,
     segment: &str,
     headers: &HeaderMap,
 ) -> Result<concord_db::projects::Project, ApiError> {
-    let Ok(id) = segment.parse::<i64>() else {
-        return Err(ApiError::not_found("no such project"));
-    };
-    let project = concord_db::projects::project_by_id(&state.pool, id)
+    let project = project_by_id(state, segment)
         .await
-        .map_err(internal)?
-        .ok_or_else(|| ApiError::not_found("no such project"))?;
+        .map_err(|_| ApiError::not_found("no such project"))?;
     let user = bearer_user(state, headers).await?;
     if !readable(state, &project, user.as_ref()).await? {
         return Err(ApiError::not_found("no such project"));

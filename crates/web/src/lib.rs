@@ -18,6 +18,8 @@ pub mod project;
 pub mod top;
 pub mod detail;
 pub mod misc;
+pub mod shell;
+pub mod assets;
 
 use axum::{
     extract::{Path, State},
@@ -130,7 +132,7 @@ pub fn document(host: &str, page: &Page<'_>, body: &str) -> String {
 ///
 /// The two escapes that matter: `<` (so `</script>` and `<!--` cannot appear) and U+2028/U+2029 (which are line terminators in JavaScript
 /// and would break the literal in an older parser). Escaped as `\uXXXX`, which is the same string to every JSON reader.
-fn script_json(value: &serde_json::Value) -> String {
+pub(crate) fn script_json(value: &serde_json::Value) -> String {
     let text = serde_json::to_string(value).unwrap_or_else(|_| "null".to_string());
     text.replace('<', "\\u003c")
         .replace('>', "\\u003e")
@@ -253,63 +255,70 @@ async fn project_index(State(pool): State<PgPool>, headers: HeaderMap) -> Respon
     }, body.finish())
 }
 
-/// One project's overview.
+/// One project's overview — the reference's mount point.
+///
+/// The reference renders this page **in the browser**: `project.js` fetches `/api/v1/projects/{slug}` (and the sub-resources it needs) and
+/// builds the cards. The suite asserts what the script produced — `#project-detail` losing its `aria-busy`, every feature title being a
+/// `<a href="/projects/{slug}/features/{id}">` — so the port renders the same mount and serves the same script. A server-rendered body here
+/// would be a second implementation of the same page that the suite does not look at, and two implementations that disagree is the failure
+/// mode this port exists to avoid.
 async fn project_overview(
     State(pool): State<PgPool>,
     Path(slug): Path<String>,
     headers: HeaderMap,
 ) -> Response {
+    // The 404 is decided on the SERVER: a mount point that renders "loading" and then a client-side "not found" is a page that answered
+    // 200 for a project that does not exist, which is the one thing a 404 is for.
     let project = match concord_db::projects::project_by_slug(&pool, &slug).await {
         Ok(Some(project)) => project,
         Ok(None) => return not_found(&headers),
         Err(error) => return error_page(&headers, "the project could not be read", &error.to_string()),
     };
-    let mut body = Html::new();
-    body.open("h1", &[]).text(&project.name).close("h1");
-    if !project.description.is_empty() {
-        body.open("p", &[]).text(&project.description).close("p");
-    }
-    body.open("dl", &[("class", "facts")])
-        .open("dt", &[]).text("Governance").close("dt")
-        .open("dd", &[]).text(&project.governance_model).close("dd")
-        .open("dt", &[]).text("Visibility").close("dt")
-        .open("dd", &[]).text(&project.visibility).close("dd");
-    // Health is shown only when it was MEASURED: a `0.00` for a project nobody has measured is a number a reader will believe, and the
-    // API answers `null` for exactly this reason.
-    if let Some(score) = project.health_score {
-        body.open("dt", &[]).text("Health").close("dt")
-            .open("dd", &[]).text(&format!("{score:.2}")).close("dd");
-    }
-    body.close("dl");
-    let bootstrap = serde_json::json!({
-        "route": format!("/projects/{slug}"),
-        "project": {
-            "slug": project.slug,
-            "name": project.name,
-            "description": project.description,
-            "governance_model": project.governance_model,
-            "visibility": project.visibility,
-            "health_score": project.health_score,
-        },
-    });
-    let title = project.name.clone();
+    let body = format!(
+        r#"<div id="project-detail" aria-busy="true"></div>
+<script src="{}"></script>
+<script>(function(){{var b=document.getElementById("project-detail");if(b&&window.ConcordSkeleton){{b.innerHTML='<div class="card mb-6">'+window.ConcordSkeleton.title()+window.ConcordSkeleton.text(3)+'</div>'+window.ConcordSkeleton.rows(4);}}}})();</script>
+<script src="{}"></script>
+"#,
+        shell::asset("/assets/js/skeleton.js"),
+        shell::asset("/assets/js/project.js"),
+    );
     let description = if project.description.is_empty() {
         format!("{} on Concord.", project.name)
     } else {
         project.description.clone()
     };
     render(&headers, Page {
-        title: &title,
+        title: &project.name,
         path: &format!("/projects/{slug}"),
         description: &description,
-        bootstrap,
-    }, body.finish())
+        // No bootstrap payload: this page's data arrives from `/api/v1`, and a second copy in the document would be a second source of
+        // truth for the same numbers.
+        bootstrap: serde_json::json!({"route": format!("/projects/{slug}"), "mount": "project-detail"}),
+    }, body)
 }
 
 /// Render a page as HTML, with the content type a document needs.
+///
+/// Goes through the shell, which is the reference's `base.html` contract: `data-consent` on the body, the notice rendered by the server
+/// from the reader's own cookie, the nav hooks `session.js` needs, and the project tabs driven by the path.
 pub(crate) fn render(headers: &HeaderMap, page: Page<'_>, body: String) -> Response {
     let host = host_of(headers);
-    HtmlResponse(document(&host, &page, &body)).into_response()
+    let accepted = shell::consent_accepted(headers);
+    let version = std::env::var("CONCORD_VERSION").unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string());
+    let document = shell::document(
+        &host,
+        &shell::Shell {
+            title: page.title,
+            path: page.path,
+            description: page.description,
+            body: &body,
+        },
+        accepted,
+        &version,
+        Some(&page.bootstrap),
+    );
+    HtmlResponse(document).into_response()
 }
 
 /// A 404 that is a document, not a JSON error: a reader arrived here with a link.
@@ -381,6 +390,7 @@ where
         .route("/login", get(misc::login))
         .route("/register", get(misc::register))
         .route("/finder", get(misc::finder))
+        .route("/assets/{*path}", get(assets::serve))
         .route("/stats", get(top::stats))
         .route("/taxonomy", get(top::taxonomy))
         .route("/scout", get(top::scout))
