@@ -46,7 +46,7 @@ gate ran and its output is quoted — not when it was removed from a list. The h
 | 9b | S3 arena and solutions | **Done 2026-11-13** (`345b132`) — `probe_s3b_arena.py` 20/20 (was 5/20), the negative control at 19/20, corpus still 2 disagreed of 14, ranking oracle green with 10 arena rows |
 | 10 | S4 moderation, comments, inbox | **Done 2026-11-13** (`b969b26`): four probes 26/26, 27/27, 40/40, 39/39; `e2e.sh` 29 passed; gates 22 and 45 green (`CHECK inbox` exit 0, `CHECK authz` 10/10); `polaris-comments` and `polaris-authz` adopted |
 | 11 | S5 stats, feeds, admin binaries | **Done 2026-11-14** (`3ac7f5e`) — corpus `0 shape(s) disagreed of 16 checked, 5 skipped`; `probe_s5_stats` 16/16; `probe_admin_binaries` **69/69** with four controls; three `concord-rs-*` timers declared in `scheduled.toml` (`active = false` until cutover); `CHECK feed-routes: 8 arm(s) passed, 0 failed`. **Dated correction 2026-11-14:** "feed parse" moves to row 12 — the feeds are page routes returning XML, not JSON routes, and `probe_s5_feeds` is that row's gate. Gates 4 and 5 are red for `media.polarisocial.xyz` and not for concord (recorded in the row-11 body below). |
-| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
+| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **In progress 2026-11-14** — 5 of the Go's **44** page routes answered (`/`, `/projects`, `/projects/{slug}`, `/atom.xml`, `/badge/{slug}.svg`), 39 remain; part 66 opened the crate and corrected the count from 10 to 44. Gate unchanged: every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
 | 13 | P7 cutover | `concord.polarisocial.xyz/api/v1/version` served by the Rust binary, and estate gate 17 green for `concord` with NO `reason` |
 
 **Row 8 (S2) — the failing probe, pasted before any code** (2026-11-13):
@@ -4144,6 +4144,72 @@ failure — reports two services as differing because one refused to answer, whi
 **Commit:** `9274bea`. **Files:** `crates/db/src/scout_reads.rs` (new: `catalog`, `candidates`, `state_counts`, `ids_of`, `pain`, `mutant`),
 `crates/app/src/lib.rs` (`scout_report`, `apply_coverage`, 1 route, 2 startup seams), `scripts/parity/probe_scout.py` (new, 55 checks),
 `scripts/parity/purge_fixtures.py` (new).
+### Part 66 — the first pages, and an inventory that was under-reporting this row by four (2026-11-14)
+
+**Before:**
+```
+candidate / 404          (the reference answers 200 with a document)
+routes.py -> go routes: 215   port routes: 207   missing: 10 (0 json, 10 page)
+```
+
+**After:**
+```
+go routes: 215 (191 json, 44 page)   port answers: 206   missing: 39 (0 json, 39 page)
+probe_pages.py 34/34 ok
+browser: title 'Projects — Concord', canonical 'https://127.0.0.1:18109/', 76 links / 76 bootstrap entries
+```
+
+**What the document is.** `crates/web` renders one document per page: `title`, `meta[name=description]`, an **absolute** canonical
+built from the request's own host, the four `og:*` tags, JSON-LD, the nav, the server-rendered body, `<div id="app">` for the
+SvelteKit bundle to hydrate into, and `#concord-bootstrap` carrying the first paint's payload. The HTML builder is **darkhold's rule
+adopted, not re-invented** (`crates/app/src/html.rs` in that repo): everything is escaped unless it is inserted with `raw`, so the
+trust decision is one visible call site instead of a judgement repeated per page. The probe proves it with a fixture project named
+`Probe </script><b>bold</b> & "quoted"`: escaped in the body, `\u003c` inside the bootstrap JSON, raw sequence absent from the
+document.
+
+**Decision (dated 2026-11-14) — `@polaris/ui` does not exist, and this row does not wait for it.** The plan names the package and
+the estate's registry has only `packages/inbox-client`; no repo in the family depends on `@polaris/ui`, and ADR 0005 itself records
+that suki does not import it. So the shell ships **plain semantic markup, no stylesheet**, and styling arrives when the token package
+does. The row's gate is "renders from the API with the server-rendered head, in a browser" — a look is not in it, and a row blocked on
+a package nobody has built is a row that stands still. The markup is written so that adopting the tokens later is a class-name change
+(`container`, `site-header`, `project-list`, `facts`) rather than a rewrite.
+
+**Decision (dated 2026-11-14) — canonical and `og:` on every page, though the reference has none.** `grep -rn 'og:image\|rel="canonical"'`
+over the Go tree returns **nothing**: the reference emits a title and a description and stops there. The plan's P6 asks `crates/web` to
+render "title, canonical, `og:image`", so the port is the first place they exist. Recorded as a deviation, not smuggled in: the probe
+compares only the title and description the reference actually carries, and every one of the port's extras is asserted on its own.
+
+**The measurement that mattered more than the pages.** `routes.py` reported "missing: 10 page routes" for three rows. The truth is
+**44**. `normalise` strips `/api/v1` so a port route and its Go registration compare equal — and the Go registers **both** a page at
+`/projects/{slug}/board` and its API at `/api/v1/projects/{slug}/board`, which after stripping are one key with two handlers. The
+classifier asked `any(answers_json(...))`, answered "yes, JSON", and the page disappeared from the missing list. Every remaining page
+route whose path also exists as an API route was invisible: `/projects/{slug}/board`, `/documents`, `/consensus`, `/criteria`,
+`/audit`, `/complaints/{id}`, `/settings`, `/rank`, `/ranking`, `/requests/{id}`, plus the seven per-slice feeds.
+
+Three rewrites fixed it, each because the previous one de-collided only one side:
+
+1. split the Go side by registered path (`/api/` in the full path) — still wrong, because `normalise` had already stripped the prefix
+   before the key was built, so the flag had to be captured at registration time;
+2. tag each Go registration with `(handler, is_api)` and let **both** kinds claim the shape — a path can be a page and an API at once,
+   and picking one kind per key hides the other;
+3. do the same on the port's side: `crates/web` and `feeds.rs` are page sources, `/atom.xml` and `/badge/{}` are documents the app
+   already answered, and `/healthz` is **not** one — putting it in the page list made the port look as if it had dropped the Go's
+   health endpoint.
+
+The number this row is actually worth: **39 pages**, not 10. `probe_pages.py` is the first of them.
+
+**Also landed:** `crates/web` is a workspace member; `concord_web::router::<AppState>()` is merged into the application router **before**
+`interaction_gate`, so a reader who has not accepted the consent notice can still read (the gate refuses mutations, not reads);
+`AppState` hands the pages its pool through `FromRef` rather than growing a second state type.
+
+**Gate:** `probe_pages.py` **34/34 ok**; `cargo test -p concord-web` 3 passed; `cargo build --release -p concord-cli` clean;
+`routes.py` `go routes: 215 (191 json, 44 page) … missing: 39 (0 json, 39 page)`; and the browser check the row asks for, over an SSH
+tunnel to the live candidate: `title 'Projects — Concord'`, `canonical 'https://127.0.0.1:18109/'`, 76 project links against 76
+bootstrap entries, `/projects/suki` rendering `maintainer_led` / `public`, and a missing slug rendering "Not found" with a 404.
+**Commit:** `d238898`. **Files:** `crates/web/src/lib.rs` (new), `crates/web/src/html.rs` (new), `crates/web/Cargo.toml` (new),
+`crates/app/src/lib.rs` (merge + `FromRef`), `Cargo.toml`, `scripts/parity/probe_pages.py` (new, 34 checks),
+`scripts/parity/routes.py` (page/API de-collision, 4× undercount fixed).
+
 
 ### Part 65c — the four admin binaries, and three timers the registry could not see (2026-11-14)
 
