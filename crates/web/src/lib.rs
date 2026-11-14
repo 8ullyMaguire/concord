@@ -190,8 +190,9 @@ async fn home(State(pool): State<PgPool>, headers: HeaderMap) -> Response {
             .close("a")
             .open("span", &[("class", "muted")])
             .text(&format!(" {}", project.governance_model))
-            .close("span")
-            .close("li");
+            .close("span");
+        stage_badge(&mut body, project);
+        body.close("li");
     }
     body.close("ul");
     let bootstrap = serde_json::json!({
@@ -210,6 +211,26 @@ async fn home(State(pool): State<PgPool>, headers: HeaderMap) -> Response {
         description: DESCRIPTION,
         bootstrap,
     }, body.finish())
+}
+
+
+/// The lifecycle stage as a badge, or nothing at all.
+///
+/// `None` for `unknown`, deliberately: that stage says this instance has not measured the project, which is our gap rather than a fact
+/// about somebody's project, and a warning about our own gap teaches a reader to ignore the warning that matters. `dormant` takes the
+/// warning colour because it is the one stage a reader should act on, and the reason travels as the `title` so the badge is not a label
+/// to be taken on faith. Shared by both server-rendered lists so they cannot say different words.
+fn stage_badge(body: &mut Html, project: &concord_db::projects::Project) {
+    // `unknown` writes NOTHING and returns: see the comment above.
+    if project.stage == "unknown" {
+        return;
+    }
+    let class = if project.stage == "dormant" { "badge badge-amber" } else { "badge badge-slate" };
+    // The tooltip is the REASON alone. Prefixing it with the stage said "dormant: measured: no commit for ninety days or more", which
+    // repeats the word already on the badge and buries the sentence a reader wanted.
+    body.open("span", &[("class", class), ("title", &project.stage_because)])
+        .text(&format!(" {}", project.stage))
+        .close("span");
 }
 
 /// The project list, as a page of its own.
@@ -231,8 +252,9 @@ async fn project_index(State(pool): State<PgPool>, headers: HeaderMap) -> Respon
             .close("a")
             .open("span", &[("class", "muted")])
             .text(&format!(" — {}", project.description))
-            .close("span")
-            .close("li");
+            .close("span");
+        stage_badge(&mut body, project);
+        body.close("li");
     }
     body.close("ul");
     let bootstrap = serde_json::json!({

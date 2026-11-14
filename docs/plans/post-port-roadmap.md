@@ -162,15 +162,41 @@ gives a clean baseline: 21 shapes, 0 unstable, `0 shape(s) disagreed of 21 check
 
 Gates, all against the deployed file: `probe_pages.py` 132/132, `probe_project_segments.py` 86/86, six browser suites 76/76.
 
-### Step 2b — NEXT (the page)
+### Step 2b — DONE 2026-11-14 (the page)
 
-`/projects` prints the stage next to the slug badge and the project page states it, so a reader can tell an idea from a project that
-ships without reading the JSON. `projects.js`'s `card()` already renders `p.slug` as a badge next to the name; the change is a second
-badge with a class per stage and a warning style for `dormant` (never for `unknown`, which is a statement about our measuring and not
-about the project).
+`/projects` and `/` print the stage beside the project name, and the project page states it in its title. The tooltip is the reason
+(`stage_because`), so the badge is not a label a reader has to take on faith, and `dormant` takes the warning colour while `unknown`
+renders **nothing**.
 
-The gate is a **new browser suite**, not a probe: `probe_pages.py` asserts the mount contract because the pages are client-rendered, so
-content assertions live in `tests/e2e/`. `lifecycle_e2e.py` seeds three projects that differ only in the signals that decide the stage
-(one with shipped features and a fresh `created_at`, one with none and no `repo_url`, one with a `repo_url` and a `last_commit_at` 120
-days old), asserts each card carries its own stage word, and asserts the dormant one carries the warning class while the others do not.
-A suite that seeds from the API's own fixtures would be asserting the data, not the rendering.
+Two things this step taught, both recorded because the next person will meet them:
+
+**`/projects` is the one catalogue page still rendered on the server.** The first implementation added a `stageBadge()` to
+`crates/web/assets/js/projects.js` — a file with a `card()` function that renders exactly the markup the suite looked for — and seven
+tests failed against a correct page, because that script does not run on `/projects`. The badge belongs in `stage_badge()` in
+`crates/web/src/lib.rs`, shared by both server-rendered lists so they cannot say different words; the asset edit was reverted rather
+than left in place. A selector written from the source instead of from the DOM believes in dead code.
+
+**The tooltip was the stage repeated.** `format!("{}: {}", stage, because)` produced `dormant: measured: no commit for ninety days or
+more` — the badge already says the word, and the prefix buried the sentence a reader wanted. The title is the reason alone.
+
+Gate — the new suite is `tests/e2e/lifecycle_e2e.py` (8 tests, port 8521), which seeds five projects differing only in the signals that
+decide the stage, and asserts the rendered word, the warning class on the dormant one and on nothing else, the tooltip, and — the
+assertion worth the fixture — that the unmeasured project renders **no stage at all**:
+
+```
+lifecycle_e2e        8 passed in 2.94s
+feature_e2e         15 passed · milestones_e2e 5 · rank_links_e2e 4 · audit_e2e 11
+consensus_e2e       15 passed · project_panels_e2e 26
+probe_pages.py (live) 132/132 · probe_project_segments.py (live) 86/86
+concord-parity       0 shape(s) disagreed of 21 checked, 0 skipped
+```
+
+Proved able to fail: `if project.stage == "unknown" { return; }` mutated to `"__never__"` — which renders `unknown` as a badge — turns
+`test_an_unmeasured_project_renders_no_stage_at_all` red (`1 failed, 7 deselected`), and the source was restored byte-identical
+(`diff -q` → clean).
+
+### Step 3 — NEXT
+
+Intent-first creation: at `/projects/new`, ask what the person is trying to build and answer with `concord-finder` before the blank
+form. The gate is a differential probe — the same question asked of the create page and of `/api/v1/finder` must return the same
+projects, in the same order, because two callers deriving one answer is how they disagree.
