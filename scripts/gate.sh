@@ -45,8 +45,16 @@ cleanup() {
 trap cleanup EXIT
 
 # A scratch database, because the store tests write, and a gate must never empty the database it was pointed at.
-if [ -n "${DATABASE_URL:-}" ] && [ "${SKIP_SMOKE:-0}" != "1" ]; then
-  if psql "$DATABASE_URL" -q -c "create database $DBNAME" 2>/dev/null; then
+# The application role usually cannot CREATE DATABASE, and a gate that skips its own smoke layer because of a privilege is a gate that
+# reports PASS while testing half of itself. So: direct create first, then the cluster owner with the app role as owner of the new
+# database. Both are ordinary moves; the failure they replace read as "the suite is red" for a reason that had nothing to do with code.
+# Note: the scratch database is created even under SKIP_SMOKE, because the store tests need one either way and the fallback below
+# points CONCORD_TEST_DSN at DATABASE_URL — which would run a writing test suite against whatever database the operator exported.
+if [ -n "${DATABASE_URL:-}" ]; then
+  PG_PORT=$(psql "$DATABASE_URL" -tAc "select current_setting('port')" 2>/dev/null)
+  PG_USER=$(psql "$DATABASE_URL" -tAc "select current_user" 2>/dev/null)
+  if psql "$DATABASE_URL" -q -c "create database $DBNAME" 2>/dev/null \
+     || sudo -n -u postgres psql -p "${PG_PORT:-5432}" -q -c "create database $DBNAME owner \"$PG_USER\"" 2>/dev/null; then
     CREATED_DB=1
     DSN=$(python3 - "$DATABASE_URL" "$DBNAME" <<'PY'
 import sys, urllib.parse

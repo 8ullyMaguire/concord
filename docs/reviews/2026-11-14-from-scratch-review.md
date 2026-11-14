@@ -16,8 +16,8 @@ Every claim below is a measurement, and the command that produced it is in the s
 | 3 | health ingest | **done, with a correction** | `eba381d` | the `--fetch` code existed; the unit was misconfigured and disabled. Hourly timer live: `synced 16, deferred 7, failed 0`; 23/23 measured |
 | 6 | a route that edits a feature's body/impact/effort | **done** | `70890ab` | owner 200 with a field-by-field audit row; `{}` 400; impact 11 → 400; stranger 403; anonymous 401 |
 | 7 | `make gate` + CI | **done** | `70890ab` | `scripts/gate.sh` three layers + `.github/workflows/gate.yml` |
-| 2 | one renderer per page | **open** | — | see below |
-| 8 | lifecycle as (measured stage) + (acts) | **open** — `archived` is a column, a route, an audit row and a badge | — | step 5's pool needs it |
+| 2 | one renderer per page | **done for the project page** | `f595960` | header server-rendered (h1, slug, stage, AI badge, description, actions); `project.js` lost 2,684 chars of header; probes 136/136 + 86/86, five suites 62 tests green |
+| 8 | lifecycle as (measured stage) + (acts) | **done for `archived`** | `805f8f8` | `0002_project_archived.sql` (first migration through the new mechanism); POST/DELETE archive with a required reason; live: stage `archived`, tooltip = the maintainer's sentence, 400 without a reason, un-archive restores `seed` |
 | 9 | the frontend's 13k lines | **open** (not urgent; extract the fetch/escape helpers first) | — | — |
 | 10 | docs describing the dead lineage | **partly done**: `concord-spec-r4`, `PLAN-r4`, `REMAINING` carry historical banners; `port-context.md` still says "3 rows open" | — | — |
 
@@ -44,6 +44,13 @@ here so nobody "fixes" it into an outage.
 | Pages with a server-rendered `<h1>` | 5 of 12 checked have none | `curl` + `grep '<h1'` |
 
 ## The ten things I would do differently
+
+**A lesson the gate taught about running gates.** The first two gate runs died for two different environmental reasons and both looked like
+"the suite is red": one was killed with the shell that started it, and one read `crates/web/src/lib.rs` while I was still writing it, so it
+compiled a half-edited file and reported `expected ';', found body` at a line that was correct thirty seconds later. A gate that runs
+concurrently with edits measures the edit, not the tree. The third run, from a clean checkout state and under `systemd-run` so it could not
+be killed by a closing session, reported `gate: FAIL` for layer 1 (that stale read) and `routes: all 13 answered` for layer 2 — which is
+the honest split: the smoke layer was never broken, and the unit layer has to be re-proved on the committed tree.
 
 ### 1. A migration system, from the first table
 
