@@ -1479,43 +1479,10 @@ function apiAuth(extra) {
         '</div>';
     }).join('');
 
-    return '<div class="detail-header">' +
-      '<div><h1 class="page-title">' + esc(p.name) + ' <span class="badge badge-slate" style="vertical-align:middle;">' + esc(p.slug) + '</span>' +
-      // Same field as the catalogue card, same two rules: dormant warns, unknown says nothing (see projects.js's stageBadge).
-      (p.stage && p.stage !== 'unknown'
-        ? ' <span class="badge ' + (p.stage === 'dormant' ? 'badge-amber' : 'badge-slate') + '" style="vertical-align:middle;"' +
-          (p.stage_because ? ' title="' + esc(p.stage_because) + '"' : '') + '>' + esc(p.stage) + '</span>'
-        : '') +
-      // The AI-involvement declaration, same rule as the stage badge: a value renders, `null` renders nothing at all. `generated` takes
-      // the amber colour because it is the one value a reader should weigh before relying on the code, not because it is a fault.
-      (p.ai_involvement
-        ? ' <span class="badge ' + (p.ai_involvement === 'generated' ? 'badge-amber' : (p.ai_involvement === 'audited' ? 'badge-green' : 'badge-slate')) +
-          '" style="vertical-align:middle;" title="AI involvement, declared by the maintainers: ' + esc(p.ai_involvement) + '">' +
-          esc(p.ai_involvement) + '</span>'
-        : '') + '</h1>' +
-      '<p class="page-subtitle">' + esc(p.description || 'No description yet.') + '</p></div>' +
-      // The sub-page tab bar is rendered by templates/base.html, not here.
-      //
-      // It was here first, which made it wrong: each sub-page is a separate
-      // template loading its own bundle, so a tab bar built in project.js appeared
-      // on the overview and nowhere else, turning every other sub-page into a
-      // dead end. The layout sees the request path and can put it on all of them.
-      // See the comment on the tab bar in base.html.
-      '<div class="detail-actions">' +
-      // The join control, and until now there was NONE: POST
-      // /projects/{id}/join has existed with a handler, an audit row and a 200
-      // for any signed-in account, and nothing in the browser could reach it.
-      // "Participate" was a route with no door.
-      //
-      // Hidden until this page knows there is a session, because a join is
-      // attributed to an account: a signed-out visitor gets the same
-      // "sign in" prompt every other action on this page uses, rather than a
-      // button that can only fail.
-      '<button type="button" class="btn" id="project-join" hidden>Join this project</button>' +
-      '<a class="btn btn-primary" href="/projects/' + esc(p.slug) + '/board">Open board</a>' +
-      '<a class="btn btn-secondary" href="/projects">All projects</a>' +
-      '</div></div>' +
-      '<div class="card mb-6">' + badges + healthBar(p.health_score) + newcomerLine(p) + meta + '</div>' +
+    // The header (name, slug, stage, AI declaration, description, actions) is SERVER-RENDERED since 2026-11-14: it rendered here
+    // first, which made the page an empty box to anything that does not run JavaScript. What is left below is the pills — numbers the
+    // page asks the API for — because those are interactions with data, not the identity of the document.
+    return '<div class="card mb-6">' + badges + healthBar(p.health_score) + newcomerLine(p) + meta + '</div>' +
       nextCard +
       '<div class="section-head"><h2 class="section-title" style="font-size:1.25rem;">Complaints</h2>' +
       '<p class="section-sub">The problems being solved. ' +

@@ -311,13 +311,18 @@ async fn project_index(State(pool): State<PgPool>, headers: HeaderMap) -> Respon
     }, body.finish())
 }
 
-/// One project's overview — the reference's mount point.
+/// One project's overview: a server-rendered HEADER, and a mount for the pills that need the API.
 ///
-/// The reference renders this page **in the browser**: `project.js` fetches `/api/v1/projects/{slug}` (and the sub-resources it needs) and
-/// builds the cards. The suite asserts what the script produced — `#project-detail` losing its `aria-busy`, every feature title being a
-/// `<a href="/projects/{slug}/features/{id}">` — so the port renders the same mount and serves the same script. A server-rendered body here
-/// would be a second implementation of the same page that the suite does not look at, and two implementations that disagree is the failure
-/// mode this port exists to avoid.
+/// The port first rendered this whole page in the browser, and the comment here argued for it ("a server-rendered body would be a second
+/// implementation"). That argument was right about the panels and wrong about the document: `/projects/{slug}` answered 5.5 KB of
+/// `aria-busy` to anything that does not run JavaScript, so a crawler, a link preview and a reader on a bad connection saw an empty box
+/// where the project was (review decision 2). Splitting is the answer the review asked for and it keeps the argument:
+///
+/// * **Here, on the server**: the `<h1>`, the slug, the stage and AI badges, the description, and the three actions. None of that needs a
+///   second request, and all of it is what a document is for. It is the same `stage_badge`/`ai_badge` the lists use, so the two surfaces
+///   cannot disagree about what a badge says.
+/// * **In the mount**: the pills that are aggregations over other tables — complaints, features, health, the join button — which the page's
+///   own script fetches. Those stay, because they are interactions with numbers, not the identity of the page.
 async fn project_overview(
     State(pool): State<PgPool>,
     Path(slug): Path<String>,
@@ -339,12 +344,41 @@ async fn project_overview(
         Ok(false) => return not_found(&headers),
         Err(error) => return error_page(&headers, "the project could not be read", &error.to_string()),
     }
+    // The header, server-rendered. `stage_badge` and `ai_badge` are the SAME functions `/` and `/projects` use, so a badge cannot mean
+    // one thing in the catalogue and another on the page it opens.
+    let mut header = Html::new();
+    header.open("header", &[("class", "detail-header")]);
+    header.open("div", &[]);
+    header.open("h1", &[("class", "page-title")]).text(&project.name);
+    header.open("span", &[("class", "badge badge-slate"), ("style", "vertical-align:middle;")])
+        .text(&format!(" {}", project.slug))
+        .close("span");
+    stage_badge(&mut header, &project);
+    ai_badge(&mut header, &project);
+    header.close("h1");
+    let subtitle = if project.description.trim().is_empty() { "No description yet." } else { project.description.as_str() };
+    header.open("p", &[("class", "page-subtitle")]).text(subtitle).close("p");
+    header.close("div");
+    header.open("div", &[("class", "detail-actions")]);
+    // The join control stays hidden until the page knows there is a session: a join is attributed to an account, and a button that can
+    // only fail is worse than no button.
+    header.open("button", &[("type", "button"), ("class", "btn"), ("id", "project-join"), ("hidden", "hidden")])
+        .text("Join this project")
+        .close("button");
+    header.open("a", &[("class", "btn btn-primary"), ("href", &format!("/projects/{}/board", project.slug))])
+        .text("Open board")
+        .close("a");
+    header.open("a", &[("class", "btn btn-secondary"), ("href", "/projects")]).text("All projects").close("a");
+    header.close("div");
+    header.close("header");
+
     let body = format!(
-        r#"<div id="project-detail" aria-busy="true"></div>
+        r#"{}<div id="project-detail" aria-busy="true"></div>
 <script src="{}"></script>
 <script>(function(){{var b=document.getElementById("project-detail");if(b&&window.ConcordSkeleton){{b.innerHTML='<div class="card mb-6">'+window.ConcordSkeleton.title()+window.ConcordSkeleton.text(3)+'</div>'+window.ConcordSkeleton.rows(4);}}}})();</script>
 <script src="{}"></script>
 "#,
+        header.finish(),
         shell::asset("/assets/js/skeleton.js"),
         shell::asset("/assets/js/project.js"),
     );
