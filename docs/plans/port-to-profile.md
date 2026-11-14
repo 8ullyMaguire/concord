@@ -46,7 +46,7 @@ gate ran and its output is quoted — not when it was removed from a list. The h
 | 9b | S3 arena and solutions | **Done 2026-11-13** (`345b132`) — `probe_s3b_arena.py` 20/20 (was 5/20), the negative control at 19/20, corpus still 2 disagreed of 14, ranking oracle green with 10 arena rows |
 | 10 | S4 moderation, comments, inbox | **Done 2026-11-13** (`b969b26`): four probes 26/26, 27/27, 40/40, 39/39; `e2e.sh` 29 passed; gates 22 and 45 green (`CHECK inbox` exit 0, `CHECK authz` 10/10); `polaris-comments` and `polaris-authz` adopted |
 | 11 | S5 stats, feeds, admin binaries | **Done 2026-11-14** (`3ac7f5e`) — corpus `0 shape(s) disagreed of 16 checked, 5 skipped`; `probe_s5_stats` 16/16; `probe_admin_binaries` **69/69** with four controls; three `concord-rs-*` timers declared in `scheduled.toml` (`active = false` until cutover); `CHECK feed-routes: 8 arm(s) passed, 0 failed`. **Dated correction 2026-11-14:** "feed parse" moves to row 12 — the feeds are page routes returning XML, not JSON routes, and `probe_s5_feeds` is that row's gate. Gates 4 and 5 are red for `media.polarisocial.xyz` and not for concord (recorded in the row-11 body below). |
-| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **In progress 2026-11-14** — 5 of the Go's **44** page routes answered (`/`, `/projects`, `/projects/{slug}`, `/atom.xml`, `/badge/{slug}.svg`), 39 remain; part 66 opened the crate and corrected the count from 10 to 44. Gate unchanged: every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
+| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **In progress 2026-11-14** — 17 of the Go's **44** page routes answered (`/`, `/projects`, `/projects/{slug}`, `/badge/{slug}.svg` and the 13 feeds), 27 remain; part 66 opened the crate and corrected the count from 10 to 44. Gate unchanged: every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
 | 13 | P7 cutover | `concord.polarisocial.xyz/api/v1/version` served by the Rust binary, and estate gate 17 green for `concord` with NO `reason` |
 
 **Row 8 (S2) — the failing probe, pasted before any code** (2026-11-13):
@@ -4143,7 +4143,49 @@ failure — reports two services as differing because one refused to answer, whi
 `every go JSON route is answered`. Regressions: `concord-db` lib 38 passed, `concord-scout` 22 passed.
 **Commit:** `9274bea`. **Files:** `crates/db/src/scout_reads.rs` (new: `catalog`, `candidates`, `state_counts`, `ids_of`, `pain`, `mutant`),
 `crates/app/src/lib.rs` (`scout_report`, `apply_coverage`, 1 route, 2 startup seams), `scripts/parity/probe_scout.py` (new, 55 checks),
-`scripts/parity/purge_fixtures.py` (new).
+`scripts/parity/purge_fixtures.py` (new).### Part 67 — twelve feeds that had never been observed working (2026-11-14)
+
+**Before:**
+```
+/feed.xml                     503 text/plain  Feeds are disabled. Set CONCORD_BASE_URL to this site's public origin …
+/projects/suki/board/atom.xml  503 text/plain  Feeds are disabled. Set CONCORD_BASE_URL …
+probe_s5_feeds.py             ParseError: syntax error: line 1, column 0   (parsing a 503 body as XML)
+```
+
+**After:** `probe_s5_feeds.py` **60/60 ok**, and the same routes answering `200 application/rss+xml` / `application/atom+xml`.
+
+**The finding.** The ledger carried `probe_s5_feeds` as "RED by design — feeds at `/projects/{}/feed.xml`, row 12's work" for
+three rows. It was not waiting on a page route. Every feed handler — projects, project, board, milestones, consensus, documents —
+was already registered and already correct; every one of them answered **503** because the candidate had no `CONCORD_BASE_URL`, and
+the feeds refuse to invent an origin for the absolute `<id>`/`<guid>` a reader keeps across moves. A 503 that says "feeds are
+disabled" reads, to anyone scanning a probe output, exactly like "not ported yet". Nothing changed in the feed code to make the gate
+go green; the service was told where it lives.
+
+This is the estate's own rule with a bill attached: **wired is not observed.** Twelve routes, one configuration variable, three
+turns of "by design".
+
+**Two consequences, both recorded rather than papered over.**
+
+1. **The probe was testing its own opinion.** It asserted `<guid>` started with a `SITE` constant of
+   `https://concord.polarisocial.xyz` — the origin the probe wishes the service lived at. A feed's ids come from the service's own
+   configured origin, so the probe now compares against `CONCORD_BASE_URL` (with `SITE_BASE` kept for a deliberate cross-check).
+   Otherwise a correct service on a staging origin fails a gate for being in the wrong place.
+2. **`CONCORD_BASE_URL` unset was silent until a reader noticed.** `serve` now prints at boot:
+   `WARNING: CONCORD_BASE_URL is unset — all 13 feed routes will answer 503. Set it to this site's public origin …`. Verified by
+   starting the binary with the variable removed and reading the line back. **Not fatal by decision (dated 2026-11-14):** everything
+   but the feeds works without it, and a service that refuses to start over a feed is worse than one that says so — but a cutover
+   that forgets it must not be discoverable only from a feed reader showing an error.
+
+The 13 count is from the router, not from prose: the Go registers `/feed.xml`, `/rss.xml`, `/atom.xml`, and for each project
+`feed/rss/atom` plus `board/{feed,atom}`, `milestones/feed`, `consensus/{feed,atom}`, `documents/{feed,atom}`.
+
+**Gate:** `probe_s5_feeds.py` **60/60 ok** (before: `ParseError` on a 503); the boot warning observed with the variable unset;
+`routes.py` `missing: 27 (0 json, 27 page)` — down from 39, because the feed registrations were being counted as API routes the port
+lacked rather than documents it serves.
+**Commit:** `31fa726`. **Files:** `crates/cli/src/lib.rs` (boot warning), `scripts/parity/probe_s5_feeds.py` (origin from the
+service's configuration), `scripts/parity/routes.py` (any `*.xml` route is a document).
+
+
 ### Part 66 — the first pages, and an inventory that was under-reporting this row by four (2026-11-14)
 
 **Before:**
