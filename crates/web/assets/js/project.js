@@ -1480,7 +1480,12 @@ function apiAuth(extra) {
     }).join('');
 
     return '<div class="detail-header">' +
-      '<div><h1 class="page-title">' + esc(p.name) + ' <span class="badge badge-slate" style="vertical-align:middle;">' + esc(p.slug) + '</span></h1>' +
+      '<div><h1 class="page-title">' + esc(p.name) + ' <span class="badge badge-slate" style="vertical-align:middle;">' + esc(p.slug) + '</span>' +
+      // Same field as the catalogue card, same two rules: dormant warns, unknown says nothing (see projects.js's stageBadge).
+      (p.stage && p.stage !== 'unknown'
+        ? ' <span class="badge ' + (p.stage === 'dormant' ? 'badge-amber' : 'badge-slate') + '" style="vertical-align:middle;"' +
+          (p.stage_because ? ' title="' + esc(p.stage_because) + '"' : '') + '>' + esc(p.stage) + '</span>'
+        : '') + '</h1>' +
       '<p class="page-subtitle">' + esc(p.description || 'No description yet.') + '</p></div>' +
       // The sub-page tab bar is rendered by templates/base.html, not here.
       //

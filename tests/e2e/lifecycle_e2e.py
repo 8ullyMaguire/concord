@@ -18,6 +18,7 @@ stages would pass against a version that printed "unknown" as a warning label.
 """
 
 import itertools
+import re
 import tempfile
 
 import pytest
@@ -88,21 +89,21 @@ def seed(db):
             (NOW,),
         ).lastrowid
 
-        seed_pid = _project(con, "lc-seed", "Lifecycle Seed", 10)
+        seed_pid = _project(con, "lc-seed", "Fixture Alpha", 10)
         _shipped_row = None  # nothing shipped, no repository
 
-        sprout_pid = _project(con, "lc-sprout", "Lifecycle Sprout", 30)
+        sprout_pid = _project(con, "lc-sprout", "Fixture Beta", 30)
         _shipped(con, sprout_pid, author, "First thing that works")
 
-        mature_pid = _project(con, "lc-mature", "Lifecycle Mature", 400)
+        mature_pid = _project(con, "lc-mature", "Fixture Gamma", 400)
         _shipped(con, mature_pid, author, "Long shipped thing")
         _metrics(con, mature_pid, "https://example.invalid/mature.git", 0.8, 5)
 
-        dormant_pid = _project(con, "lc-dormant", "Lifecycle Dormant", 400)
+        dormant_pid = _project(con, "lc-dormant", "Fixture Delta", 400)
         _shipped(con, dormant_pid, author, "Shipped before the silence")
         _metrics(con, dormant_pid, "https://example.invalid/dormant.git", 0.7, 120)
 
-        unmeasured_pid = _project(con, "lc-unmeasured", "Lifecycle Unmeasured", 400)
+        unmeasured_pid = _project(con, "lc-unmeasured", "Fixture Epsilon", 400)
         # A repository identity with NO metrics row: the stage is `unknown`, and that is a fact about this instance, not the project.
         con.execute("UPDATE projects SET repo_url = ? WHERE id = ?",
                     ("https://example.invalid/unmeasured.git", unmeasured_pid))
@@ -137,6 +138,18 @@ def page(browser):
     ctx.close()
 
 
+def badge(scope, word):
+    """The stage badge whose TEXT IS exactly `word`.
+
+    Exact, because substring matching on a badge list finds the slug badge: `lc-dormant` contains "dormant", so
+    `filter(has_text="dormant")` matched the slug badge and reported two elements on a page that rendered no stage at all. A badge
+    assertion has to be anchored at both ends.
+    """
+    # Whitespace-tolerant: the server writes the badge as `format!(" {}", stage)` for the gap after the name, so the element's text is
+    # " seed" and `^seed$` matches nothing. Anchored but not space-blind.
+    return scope.locator("span.badge").filter(has_text=re.compile(rf"^\s*{re.escape(word)}\s*$"))
+
+
 def card(page, slug):
     """The catalogue ROW for one project, addressed by its own href.
 
@@ -152,22 +165,22 @@ def card(page, slug):
 def test_the_catalogue_lists_a_seed(page, server):
     page.goto(f"{BASE}/projects")
     expect(card(page, "lc-seed")).to_be_visible()
-    expect(card(page, "lc-seed")).to_contain_text("seed")
+    expect(badge(card(page, "lc-seed"), "seed")).to_have_count(1)
 
 
 def test_a_young_project_that_ships_is_a_sprout(page, server):
     page.goto(f"{BASE}/projects")
-    expect(card(page, "lc-sprout")).to_contain_text("sprout")
+    expect(badge(card(page, "lc-sprout"), "sprout")).to_have_count(1)
 
 
 def test_an_old_measured_project_is_mature(page, server):
     page.goto(f"{BASE}/projects")
-    expect(card(page, "lc-mature")).to_contain_text("mature")
+    expect(badge(card(page, "lc-mature"), "mature")).to_have_count(1)
 
 
 def test_a_project_with_no_commit_for_120_days_is_dormant(page, server):
     page.goto(f"{BASE}/projects")
-    expect(card(page, "lc-dormant")).to_contain_text("dormant")
+    expect(badge(card(page, "lc-dormant"), "dormant")).to_have_count(1)
 
 
 def test_only_the_dormant_one_warns(page, server):
@@ -177,9 +190,9 @@ def test_only_the_dormant_one_warns(page, server):
     diluted by a warning about our own measuring.
     """
     page.goto(f"{BASE}/projects")
-    expect(card(page, "lc-dormant").locator(".badge.badge-amber")).to_have_count(1)
+    expect(card(page, "lc-dormant").locator("span.badge.badge-amber")).to_have_count(1)
     for slug in ("lc-seed", "lc-sprout", "lc-mature"):
-        expect(card(page, slug).locator(".badge.badge-amber")).to_have_count(0)
+        expect(card(page, slug).locator("span.badge.badge-amber")).to_have_count(0)
 
 
 def test_an_unmeasured_project_renders_no_stage_at_all(page, server):
@@ -192,8 +205,10 @@ def test_an_unmeasured_project_renders_no_stage_at_all(page, server):
     target = card(page, "lc-unmeasured")
     expect(target).to_be_visible()
     expect(target).not_to_contain_text("unknown")
+    # Every stage word absent as an ELEMENT: the row keeps its other badges (the governance model), so the claim is about the stage
+    # badge specifically and not about the row being badge-free.
     for word in ("seed", "sprout", "mature", "dormant"):
-        expect(target.locator(".badge", has_text=word)).to_have_count(0)
+        expect(badge(target, word)).to_have_count(0)
 
 
 def test_the_project_page_states_the_stage_too(page, server):
@@ -204,11 +219,14 @@ def test_the_project_page_states_the_stage_too(page, server):
     """
     page.goto(f"{BASE}/projects/lc-dormant")
     expect(page.locator("#project-detail")).to_be_visible()
-    expect(page.locator("h1.page-title")).to_contain_text("dormant")
+    # `h1` also holds the project NAME and its slug. `to_contain_text("dormant")` passed against a page that rendered no stage at all,
+    # because the fixture used to be called "Lifecycle Dormant" — the assertion has to name the badge.
+    expect(badge(page.locator("h1.page-title"), "dormant")).to_have_count(1)
 
 
 def test_the_reason_travels_with_the_badge(page, server):
     """The stage is not a label a reader has to take on faith: `stage_because` is the tooltip."""
     page.goto(f"{BASE}/projects")
-    badge = card(page, "lc-dormant").locator(".badge.badge-amber").first
-    expect(badge).to_have_attribute("title", "measured: no commit for ninety days or more")
+    expect(card(page, "lc-dormant").locator("span.badge.badge-amber")).to_have_attribute(
+        "title", "measured: no commit for ninety days or more"
+    )

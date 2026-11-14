@@ -195,7 +195,48 @@ Proved able to fail: `if project.stage == "unknown" { return; }` mutated to `"__
 `test_an_unmeasured_project_renders_no_stage_at_all` red (`1 failed, 7 deselected`), and the source was restored byte-identical
 (`diff -q` → clean).
 
-### Step 3 — NEXT
+### Step 3 — the engine already existed, and its index was empty (2026-11-14)
+
+I planned an intent check, wrote it (`crates/db/src/intent.rs`: term decomposition, any-term scoring, the terms reported back), and
+the compiler refused the route name — which is how I found `GET /api/v1/similar/{kind}`, shipped since the port, with an embedder,
+per-model score bands and a `has_duplicate` flag. **The module was deleted, not shipped beside it.** Two implementations of one answer
+is exactly what this repo has already paid for twice (the finder, the arena ranking).
+
+Then the measurement, which is the real state of step 3:
+
+```
+$ curl -s -G https://concord.polarisocial.xyz/api/v1/similar/project \
+       --data-urlencode "text=booru image board" --data-urlencode limit=3
+available True  model nomic:nomic-embed-text:latest  dup False
+  (no rows)
+
+$ ssh thinkcentre psql "$DATABASE_URL" -tAc "select kind, count(*) from embeddings group by 1"
+feature|5342
+```
+
+**The route answers, and it cannot answer: `embeddings` holds features only — zero rows of `kind='project'`.** A project lookup therefore
+returns an empty `similar` array with `available: true`, which reads as "nothing like this exists" for every intent, including intents
+whose project is on the page. Coverage, from the binary's own report:
+
+```
+$ concord-rs embedbackfill --kind project --status
+project        0.0%  INCOMPLETE -- duplicate detection will miss rows (73 rows)
+```
+
+The fix is a backfill, not code — and the first attempt at it was wrong in the way the command's own comment predicts: run bare, it
+reported `embedder hashed-v1 (2048 dims)` while the service runs `nomic` (768), so it would have written vectors no reader uses and left
+two models in one table. Run with the service's own `CONCORD_EMBED_URL`/`MODEL` (read from `systemctl --user show concord-rs -p
+Environment`, not from memory), it reports `embedder nomic:nomic-embed-text:latest (768 dims)` and fills the index.
+
+### Step 3b — NEXT (after the backfill finishes)
+
+With project vectors present, `/api/v1/similar/project` becomes the intent router the note asks for, and the remaining work is the
+creation surface, which does not exist yet either: there is no `/projects/new` page at all — `POST /api/v1/projects` is the only way to
+start one, so "intent first" currently has no form to sit in front of. That page asks the intent, calls the existing route, and shows
+`N projects match; the closest is X` before the slug and name fields, with the empty answer stated as "nothing here is described this way"
+rather than as a suggestion nobody can act on.
+
+### Step 4 — AI-transparency declaration
 
 Intent-first creation: at `/projects/new`, ask what the person is trying to build and answer with `concord-finder` before the blank
 form. The gate is a differential probe — the same question asked of the create page and of `/api/v1/finder` must return the same
