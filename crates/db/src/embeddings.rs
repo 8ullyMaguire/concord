@@ -272,6 +272,14 @@ pub async fn hydrate(
                    left join projects p on p.id = r.project_id where r.id = $1",
                 "/projects/{slug}/requests/{id}",
             ),
+            // A PROJECT is its own row: the name plays the part of the title, the visibility the part of the status, and the URL is
+            // the project page — no `{id}` segment, because `/projects/{slug}` is how a project is addressed. Without this arm a
+            // project match arrived with `title: ""` and no URL, which is what made an intent answer name a numeric id (measured on
+            // the live route after the index was filled: `{"entity_id": 74, "title": "", "status": ""}`).
+            KIND_PROJECT => (
+                "select p.name, coalesce(p.visibility, 'public'), p.slug from projects p where p.id = $1",
+                "/projects/{slug}",
+            ),
             // A kind with no hydration table: returned with its score so the caller still learns a match exists.
             _ => {
                 out.push(sim);
