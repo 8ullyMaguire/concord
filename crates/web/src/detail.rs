@@ -24,6 +24,11 @@ async fn project_of(pool: &PgPool, slug: &str) -> Option<Project> {
     concord_db::projects::project_by_slug(pool, slug).await.ok().flatten()
 }
 
+/// A labelled fact, for the modules that build the same `<dl>` shape.
+pub(crate) fn fact_public(body: &mut Html, label: &str, value: &str) {
+    fact(body, label, value);
+}
+
 /// A labelled fact, the shape most of these pages are made of.
 fn fact(body: &mut Html, label: &str, value: &str) {
     body.open("dt", &[]).text(label).close("dt")

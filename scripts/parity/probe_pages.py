@@ -324,6 +324,79 @@ def main():
     check("the settings page prints the charter's quorum", "Quorum" in settings_page, True)
     check("  and the vote window", "Vote window" in settings_page, True)
 
+
+    # ── the last eight pages ───────────────────────────────────────────────────────────────────────────────────────────────────────
+    # The two ranking halves have a contract the reference wrote down in its own tests: /rank offers a pair and FIVE outcomes and can
+    # reach /ranking; /ranking presents the order the API ALREADY returned and shows the components plus the uncertainty. A client-side
+    # re-sort would discard the pain and strategic weight the score already folds in, so the probe checks the page's first row against
+    # the API's first entry rather than against a sort it recomputed itself.
+    status, _content_type, rank_page = get("/projects/suki/rank")
+    check("GET /projects/suki/rank is a document", status, 200)
+    check("  and it links to the ranking", f'href="/projects/suki/ranking"' in rank_page, True)
+    buttons = re.findall(r'<button type="submit" name="outcome" value="(\w+)"', rank_page)
+    check("  and offers exactly five outcomes", sorted(buttons), ["a", "b", "both", "neither", "skip"])
+    note("  and either shows a pair or says every pair has been judged",
+         'class="pair"' in rank_page or "Every pair the forge could offer has been judged" in rank_page, "")
+
+    status, _content_type, ranking_page = get("/projects/suki/ranking")
+    check("GET /projects/suki/ranking is a document", status, 200)
+    check("  and it links back to rank", f'href="/projects/suki/rank"' in ranking_page, True)
+    for heading in ["Priority", "Pain", "Strategic weight", "Rating"]:
+        check(f"  and shows {heading}", f"<th scope=\"col\">{heading}</th>" in ranking_page, True)
+    check("  and does not re-sort", 'data-order="api"' in ranking_page, True)
+    status, _, priorities_api = get("/api/v1/projects/suki/priorities")
+    if status == 200:
+        priorities = json.loads(priorities_api)
+        priorities = priorities.get("priorities") if isinstance(priorities, dict) else priorities
+        priorities = priorities or []
+        note("  the priorities API answers for comparison", True, f"{len(priorities)} row(s)")
+        if priorities:
+            first_api = priorities[0].get("id")
+            first_page = re.search(r'href="/projects/suki/features/(\d+)"', ranking_page)
+            check("  and its first row is the API's first entry",
+                  int(first_page.group(1)) if first_page else None, first_api)
+
+    status, _content_type, contribute_page = get("/contribute")
+    check("GET /contribute is a document", status, 200)
+    note("  and either offers work or says none is on offer",
+         'class="rows"' in contribute_page or "No project is offering work right now" in contribute_page, "")
+
+    status, _content_type, curation_page = get("/curation")
+    check("GET /curation is a document", status, 200)
+    check("  and prints the queue's size or says it is empty",
+          "waiting for a curator" in curation_page or "Nothing is waiting for review" in curation_page, True)
+
+    status, _content_type, notifications_page = get("/notifications")
+    check("GET /notifications is a document", status, 200)
+    check("  and asks for a session instead of pretending to be an empty inbox",
+          "signed-in reader" in notifications_page, True)
+
+    status, _content_type, login_page = get("/login")
+    check("GET /login is a document", status, 200)
+    check("  and posts to the API's own login", 'action="/api/v1/auth/login"' in login_page, True)
+    check("  and says why the failure message is vague",
+          "same message" in login_page, True)
+    _, _, login_next = get("/login?next=/projects/suki/board")
+    check("  and carries a path back", 'name="next" value="/projects/suki/board"' in login_next, True)
+    # An open redirect: a page that puts any caller-supplied string in `next` will send a reader to someone else's site after login.
+    _, _, login_evil = get("/login?next=https%3A%2F%2Fevil.example%2Fsteal")
+    check("  and refuses a next that leaves the site", 'value="https://evil.example' in login_evil, False)
+
+    status, _content_type, register_page = get("/register")
+    check("GET /register is a document", status, 200)
+    check("  and posts to the API's own register", 'action="/api/v1/auth/register"' in register_page, True)
+    check("  and says that registering keeps a guest's identity",
+          "keeps your identity" in register_page, True)
+
+
+    status, _content_type, finder_page = get("/finder")
+    check("GET /finder is a document", status, 200)
+    check("  and names the projects it can narrow", "Projects it can narrow" in finder_page, True)
+    check("  and either lists its dimensions or says none are measured",
+          'class="tags"' in finder_page or "No dimension has been measured" in finder_page, True)
+    check("  and says the interactive flow needs a session",
+          "needs a session" in finder_page or "interactive flow arrives" in finder_page, True)
+
     # ── a project that does not exist is a 404 on every sub-page too ─────────────────────────────────────────────────────────
     status, _content_type, _body = get(f"/projects/no-such-{STAMP}/audit")
     check("a missing project's audit page is 404", status, 404)

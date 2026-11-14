@@ -17,6 +17,7 @@ pub mod html;
 pub mod project;
 pub mod top;
 pub mod detail;
+pub mod misc;
 
 use axum::{
     extract::{Path, State},
@@ -372,6 +373,14 @@ where
         .route("/projects/{slug}/complaints/{id}", get(detail::complaint))
         .route("/projects/{slug}/merge", get(detail::merge))
         .route("/projects/{slug}/settings", get(detail::settings))
+        .route("/projects/{slug}/rank", get(misc::rank))
+        .route("/projects/{slug}/ranking", get(misc::ranking))
+        .route("/contribute", get(misc::contribute))
+        .route("/curation", get(misc::curation))
+        .route("/notifications", get(misc::notifications))
+        .route("/login", get(misc::login))
+        .route("/register", get(misc::register))
+        .route("/finder", get(misc::finder))
         .route("/stats", get(top::stats))
         .route("/taxonomy", get(top::taxonomy))
         .route("/scout", get(top::scout))
