@@ -46,7 +46,7 @@ gate ran and its output is quoted — not when it was removed from a list. The h
 | 9b | S3 arena and solutions | **Done 2026-11-13** (`345b132`) — `probe_s3b_arena.py` 20/20 (was 5/20), the negative control at 19/20, corpus still 2 disagreed of 14, ranking oracle green with 10 arena rows |
 | 10 | S4 moderation, comments, inbox | **Done 2026-11-13** (`b969b26`): four probes 26/26, 27/27, 40/40, 39/39; `e2e.sh` 29 passed; gates 22 and 45 green (`CHECK inbox` exit 0, `CHECK authz` 10/10); `polaris-comments` and `polaris-authz` adopted |
 | 11 | S5 stats, feeds, admin binaries | **Done 2026-11-14** (`3ac7f5e`) — corpus `0 shape(s) disagreed of 16 checked, 5 skipped`; `probe_s5_stats` 16/16; `probe_admin_binaries` **69/69** with four controls; three `concord-rs-*` timers declared in `scheduled.toml` (`active = false` until cutover); `CHECK feed-routes: 8 arm(s) passed, 0 failed`. **Dated correction 2026-11-14:** "feed parse" moves to row 12 — the feeds are page routes returning XML, not JSON routes, and `probe_s5_feeds` is that row's gate. Gates 4 and 5 are red for `media.polarisocial.xyz` and not for concord (recorded in the row-11 body below). |
-| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **In progress 2026-11-14** — **44 of 44** page routes answered (`routes.py missing: 0`), `probe_pages.py` 148/148; the row's remaining gate is the six inherited e2e suites, which now run against the candidate on a scratch database (`/`, `/projects`, `/projects/{slug}`, `/badge/{slug}.svg` and the 13 feeds, plus six project sub-pages, four instance pages ), 0 remain but the suites do not pass; part 66 opened the crate and corrected the count from 10 to 44. Gate unchanged: every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
+| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **In progress 2026-11-14** — **44 of 44** page routes answered (`routes.py missing: 0`), `probe_pages.py` 148/148; the row's remaining gate is the six inherited e2e suites — **`feature_e2e` 15/15 green 2026-11-14 (`d15ceba`)**, the other five run against the candidate on a scratch database and do not pass (`/`, `/projects`, `/projects/{slug}`, `/badge/{slug}.svg` and the 13 feeds, plus six project sub-pages, four instance pages ), 0 remain but the suites do not pass; part 66 opened the crate and corrected the count from 10 to 44. Gate unchanged: every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
 | 13 | P7 cutover | `concord.polarisocial.xyz/api/v1/version` served by the Rust binary, and estate gate 17 green for `concord` with NO `reason` |
 
 **Row 8 (S2) — the failing probe, pasted before any code** (2026-11-13):
@@ -4187,6 +4187,65 @@ lacked rather than documents it serves.
 **Commit:** `31fa726`. **Files:** `crates/cli/src/lib.rs` (boot warning), `scripts/parity/probe_s5_feeds.py` (origin from the
 service's configuration), `scripts/parity/routes.py` (any `*.xml` route is a document).
 
+
+### Part 72 — the page contract, and three routes that were the right shape and the wrong argument (2026-11-14)
+
+**Before:** `scripts/parity/e2e_candidate.sh tests/e2e/feature_e2e.py` → `2 passed, 13 failed`.
+**After:**
+```
+tests/e2e/feature_e2e.py ...............                                  [100%]
+15 passed in 17.41s
+```
+**The row's real gap was not a page, it was a contract.** The port had server-rendered bodies that answered every route and satisfied
+`probe_pages.py` at 148/148 — and every suite failed, because the reference renders its pages **in the browser**: `project.js` fetches
+`/api/v1/projects/{slug}` and builds the cards, and the suites assert what the script produced (`#project-detail` losing `aria-busy`,
+each feature title being a link, a rating bar whose width differs between a settled and an uncertain feature). A server-rendered page is a
+second implementation of the same page that the tests do not look at. **Decision (2026-11-14): the port adopts the reference's page
+scripts and its mount-div contract**, kept verbatim in `crates/web/assets/` with their provenance in the module doc; the server-rendered
+head stays (that was part 66's decision and nothing here contradicts it), and the *body* becomes the mount. The suites are the row's gate,
+so rewriting them to the port's DOM would be rewriting the thing under test.
+
+**What the mount contract forced into being:**
+* `build.rs` walks `assets/` into an `include_bytes!` table. A script added to the disk and not to the table is a page that loads a 404 —
+  the exact bug the suites exist to catch — so the table cannot be hand-maintained.
+* `shell.rs` is `base.html`: `data-consent` on the body, the cookie notice rendered **by the server** from the reader's own cookie (right
+  in the first paint), the nav hooks `session.js` needs, and the tab bar derived from the request **path**, so it cannot disagree with the
+  page it is on.
+
+**Three routes that were the right shape and the wrong argument** — invisible to `routes.py`, which compares patterns and not values:
+
+| path | reference | port before | cause |
+|---|---|---|---|
+| `/api/v1/projects/suki/threads/project/1` | `200 []` | `400 project id must be an integer` | `project_by_id` required an integer |
+| `/api/v1/projects/suki/features/2128/complaints` | `200` | `404 no such project` | handler used `numeric_project` |
+| `/api/v1/projects/feat-demo/complaints/2` | `200` | `404 no such project` | handler parsed the segment itself |
+
+Every page script builds these URLs from the **slug**; the port required an **id**. Measured on the live instance, the integer form of the
+same path answers `404 No such API route.` — so the slug is the accepted form, and `project_by_id` now resolves both (id first, then slug)
+instead of each handler deciding for itself. Symptom this produced, in the reader's words: "Comments could not be loaded" on every page,
+with no route missing.
+
+**Two more decisions, dated 2026-11-14:**
+* **The feature page does not look the feature up.** The reference renders the mount for any id and lets `feature.js` say "No such
+  feature"; a server-side 404 is a different product behaviour and the suite rejects it. The *project* is still resolved server-side (a
+  mount for a project that does not exist would be a 200 for nothing), and the overview still decides its own 404 on the server.
+* **Page visibility is checked in `project_of`.** `/projects/{private}` answered `200` with its mount, telling an anonymous reader the slug
+  exists; the suite asserts the 404 body does not contain the slug at all. The web crate cannot see a session, so the projection is
+  "public, or nothing" — a private project's client calls are refused by the API it then asks, so the mount fills with the same answer.
+
+**The harness had two defects of its own,** both found by running it rather than reading it:
+* the suites seed fixed usernames, so a second run against the same database died on `duplicate key value violates unique constraint
+  "uniq_users_username"` — which reads as a broken fixture and is a dirty database. `e2e_candidate.sh` now recreates `concord_test` from
+  `0001_baseline.sql` and refuses to run if `projects` is not 0 afterwards.
+* `INSERT OR REPLACE` is SQLite syntax PostgreSQL rejects outright, and the translation has to happen **before** the column parse: after
+  it, no column matched, the adapter's type conversion never ran, and `created_at` arrived as a double for a `timestamptz` column.
+
+**Gate:** `tests/e2e/feature_e2e.py` → **15 passed in 17.41s** (was 2 passed / 13 failed).
+**Commit:** `d15ceba` (forgejo + github `port-rust`). **Files:** `crates/web/assets/**` (new, 36 files), `crates/web/build.rs` (new),
+`crates/web/src/assets.rs` (new), `crates/web/src/shell.rs` (new), `crates/web/src/lib.rs` (shell + `/assets` route),
+`crates/web/src/detail.rs` (feature and complaint mounts, `project_of` visibility), `crates/app/src/lib.rs`
+(`project_by_id` + `numeric_project` id-or-slug, `get_complaint`), `scripts/parity/e2e_candidate.sh` (new),
+`scripts/parity/e2e_server.sh` (new), `tests/e2e/harness.py` (`translate_upserts`).
 
 ### Part 71 — the last nine pages, and the e2e harness turned on the candidate (2026-11-14)
 
