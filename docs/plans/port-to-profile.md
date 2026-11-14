@@ -47,7 +47,7 @@ gate ran and its output is quoted — not when it was removed from a list. The h
 | 10 | S4 moderation, comments, inbox | **Done 2026-11-13** (`b969b26`): four probes 26/26, 27/27, 40/40, 39/39; `e2e.sh` 29 passed; gates 22 and 45 green (`CHECK inbox` exit 0, `CHECK authz` 10/10); `polaris-comments` and `polaris-authz` adopted |
 | 11 | S5 stats, feeds, admin binaries | **Done 2026-11-14** (`3ac7f5e`) — corpus `0 shape(s) disagreed of 16 checked, 5 skipped`; `probe_s5_stats` 16/16; `probe_admin_binaries` **69/69** with four controls; three `concord-rs-*` timers declared in `scheduled.toml` (`active = false` until cutover); `CHECK feed-routes: 8 arm(s) passed, 0 failed`. **Dated correction 2026-11-14:** "feed parse" moves to row 12 — the feeds are page routes returning XML, not JSON routes, and `probe_s5_feeds` is that row's gate. Gates 4 and 5 are red for `media.polarisocial.xyz` and not for concord (recorded in the row-11 body below). |
 | 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **Done 2026-11-14** — 215/215 routes answered, 44/44 page routes, six browser suites **76/76 in one run** (`feature_e2e` 15, `milestones_e2e` 5, `rank_links_e2e` 4, `audit_e2e` 11, `consensus_e2e` 15, `project_panels_e2e` 26), `probe_pages.py` **132/132**, `probe_project_segments.py` **86/86**, `feature_ui_mutants` **9/9 killed** with a byte-identical restore. Parts 66–76. `d238898`, `31fa726`, `97c348a`, `09f909c`, `b03db53`, `6639d8e`, `d15ceba`, `6081f27`, `a5db6e7`, `942daa8`, `9f6cee5`, `92d8a40` |
-| 13 | P7 cutover | `concord.polarisocial.xyz/api/v1/version` served by the Rust binary, and estate gate 17 green for `concord` with NO `reason` |
+| 13 | P7 cutover | **Done 2026-11-14** — `concord.polarisocial.xyz/api/v1/version` = `{"version":"concord-rs 0.0.0+fc8e535"}` served by the Rust binary under `concord-rs.service`; estate gate 17 `24/24` with concord `reference rust rust ok` and **no `reason`**; `probe_pages.py` 132/132 and `probe_project_segments.py` 86/86 against the live host; PostgreSQL reconciled with the Go's SQLite first (`1114` litter rows deleted, `the two databases agree on every compared table`). Part 77. `deploy/concord-rs.service`, `scripts/parity/reconcile_production.py` |
 
 **Row 8 (S2) — the failing probe, pasted before any code** (2026-11-13):
 
@@ -4187,6 +4187,82 @@ lacked rather than documents it serves.
 **Commit:** `31fa726`. **Files:** `crates/cli/src/lib.rs` (boot warning), `scripts/parity/probe_s5_feeds.py` (origin from the
 service's configuration), `scripts/parity/routes.py` (any `*.xml` route is a document).
 
+
+### Part 77 — row 13: the cutover (2026-11-14)
+
+**Before** (`2026-11-14`, from the host that serves it):
+```
+$ curl -s https://concord.polarisocial.xyz/api/v1/version
+{"version":"dev"}
+$ cat ~/.config/systemd/user/concord.service | grep ExecStart
+ExecStart=/home/alvaro/concord-deploy/concord        # the Go binary, SQLite, 127.0.0.1:8006
+```
+**After:**
+```
+$ curl -s https://concord.polarisocial.xyz/api/v1/version
+{"version":"concord-rs 0.0.0+fc8e535"}
+$ bash scripts/check-stack.sh                     # estate gate 17
+CHECK stack: 24/24 sites declare a profile their repo matches
+$ python3 tools/estate.py stack | grep concord
+concord      reference  rust     rust      ok
+$ probe_pages.py       CANDIDATE=https://concord.polarisocial.xyz    132/132 ok
+$ probe_project_segments.py            CANDIDATE=https://concord.polarisocial.xyz     86/86 answered
+```
+
+**A cutover is a data question before it is a binary question, and I did not assume the copy was current — I measured it:**
+
+```
+table           postgres    sqlite   delta
+projects              80        73       7
+users                638        88     550
+features            5760      5760       0
+complaints          2406      2402       4
+comments              10        10       0
+projects only in sqlite (NOT deletable, NOT inventable): 0
+users only in sqlite: 0
+```
+
+Every SQLite row already existed in PostgreSQL; the extra rows were all probe litter — seven `probe-…` projects and five hundred and fifty
+accounts named like `stdauth98278092`, created by eight months of probes that ran against the production database because that is where the
+interesting data was. `scripts/parity/reconcile_production.py` deletes only what exists in PostgreSQL and not in the live database, by
+walking the foreign-key graph from those roots (`purge_fixtures.purge`, lifted out of its `main()` in the same commit rather than written a
+second time), in one transaction, and prints the table both before and after:
+
+```
+deleted 1114 rows across 8 tables
+  api_tokens 527 · capability_assertions 3 · complaints 4 · lists 9 · projects 7 · requests 8 · trust_grants 6 · users 550
+table           postgres    sqlite   delta
+projects              73        73       0
+users                 88        88       0
+features            5760      5760       0
+complaints          2402      2402       0
+comments              10        10       0
+the two databases agree on every compared table
+```
+
+**It refuses to invent.** A row that exists only in SQLite is a row the copy missed, and it prints that as drift and exits 1 rather than
+writing anything: publishing it needs a re-copy, which is a decision about the Go's data, not a script's. Here the count was zero, which is
+the only reason this cutover could be one switch.
+
+**Gate 17 could not fail, and finding that out cost the cutover's most useful hour.** `estate.toml` declared concord's repo as
+`/personal/documents/code/projects/concord` — a path that has not existed since the port moved the tree — and `tools/estate.py` accepted
+`unknown` as consistent with any declared runtime, so the row read `ok` while describing a directory nobody could look at. The check now
+fails on a declared repo that is not on disk (`declared repo … does not exist`), which immediately turned up the same defect on eight other
+sites when run from the wrong host, and exactly one on the host that owns them: concord. Then the entry became true: `repo` points at
+`/personal/documents/code/rust/concord`, `runtime = "rust"`, and the reason is gone because a single-runtime claim needs no explanation.
+
+**The version string had to start identifying something.** `{"version":"concord-rs 0.0.0"}` is what every crate in the workspace says, so it
+cannot answer the one question the route exists for: which build is serving. `CONCORD_VERSION` is now baked at compile time
+(`concord-rs 0.0.0+fc8e535`) with an explicit `(unstamped build)` fallback, so a binary that was not stamped says so rather than pretending.
+
+**What was NOT done, and why:** the Go service's unit is **stopped, not deleted**, and `/home/alvaro/.local/share/concord/concord.db` is kept
+untouched — that pair is the rollback, and it costs a `systemctl --user start concord.service` to use. Deleting it is a decision for after
+the port has run in production for a while; it is not part of this row and nothing here depends on it.
+
+**Gate:** `/api/v1/version` = `concord-rs 0.0.0+fc8e535` on the public host; `check-stack` 24/24 with concord `reference rust rust ok` and no
+`reason`; `probe_pages.py` 132/132 and `probe_project_segments.py` 86/86 **against `https://concord.polarisocial.xyz`**, not the staging
+port; `x-estate-version: concord@2026.11.3` still reported (that header is nginx's, so the swap cannot break it and did not).
+**Row 13: Done.**
 
 ### Part 76 — row 12 closed: six suites, nine mutants, and a private project that was a 200 to a stranger (2026-11-14)
 

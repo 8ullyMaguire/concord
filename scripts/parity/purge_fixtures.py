@@ -29,6 +29,114 @@ import psycopg2
 DEFAULT_PATTERN = "%probe%"
 
 
+def load_graph(cur):
+    """The foreign-key graph and the set of tables with an `id`, read from the catalog once."""
+    cur.execute(
+        """
+        select con.conrelid::regclass::text,
+               (select att.attname::text from pg_attribute att
+                 where att.attrelid = con.conrelid and att.attnum = con.conkey[1]),
+               con.confrelid::regclass::text,
+               (select att.attname::text from pg_attribute att
+                 where att.attrelid = con.confrelid and att.attnum = con.confkey[1])
+          from pg_constraint con
+          join pg_namespace ns on ns.oid = con.connamespace
+         where con.contype = 'f'
+           and ns.nspname = 'public'
+           and array_length(con.conkey, 1) = 1
+        """
+    )
+    graph = cur.fetchall()
+    cur.execute(
+        "select table_name from information_schema.columns"
+        " where table_schema = 'public' and column_name = 'id'"
+    )
+    has_id = {row[0] for row in cur.fetchall()}
+    return graph, has_id
+
+
+def purge(cur, roots, graph=None, has_id=None, dry_run=False):
+    """Delete `roots` (a {table: [ids]}) and everything that references them, transitively.
+
+    Returns the per-table row counts deleted. The walk and the delete are `purge_fixtures`' original machinery, lifted out of `main()`
+    so the cutover's reconciliation can use the same one — two deletion routines over the same schema is how one of them forgets a table.
+    """
+    if graph is None or has_id is None:
+        graph, has_id = load_graph(cur)
+
+    own = {table: set(ids) for table, ids in roots.items() if ids}
+    predicates = {}
+    pending = set(own)
+    rounds = 0
+    while pending:
+        rounds += 1
+        if rounds > 12:
+            raise SystemExit("collection did not converge")
+        next_pending = set()
+        for child, child_col, parent, parent_col in graph:
+            if parent not in pending:
+                continue
+            parents = own.get(parent)
+            if not parents:
+                continue
+            cur.execute(
+                f"select distinct {child_col} from {child} where {child_col} = any(%s)",
+                (list(parents),),
+            )
+            found = {row[0] for row in cur.fetchall()}
+            if not found:
+                continue
+            predicates.setdefault((child, child_col), set()).update(found)
+            if child in has_id:
+                cur.execute(
+                    f"select distinct id from {child} where {child_col} = any(%s)",
+                    (list(found),),
+                )
+                ids = {row[0] for row in cur.fetchall()}
+                bucket = own.setdefault(child, set())
+                if ids - bucket:
+                    bucket |= ids
+                    next_pending.add(child)
+        pending = next_pending
+
+    plan = {}
+    for table, ids in own.items():
+        if table in has_id:
+            plan[(table, "id")] = set(ids)
+    for (table, column), ids in predicates.items():
+        if (table, "id") in plan and column != "id":
+            continue
+        plan.setdefault((table, column), set()).update(ids)
+
+    counts = {}
+    if dry_run:
+        for (table, column), values in plan.items():
+            counts[table] = counts.get(table, 0) + len(values)
+        return counts
+
+    total = 0
+    stuck = 0
+    while plan:
+        progress = 0
+        for (table, column), values in list(plan.items()):
+            cur.execute("savepoint purge_row")
+            try:
+                cur.execute(f"delete from {table} where {column} = any(%s)", (list(values),))
+            except psycopg2.errors.ForeignKeyViolation:
+                cur.execute("rollback to savepoint purge_row")
+                continue
+            rowcount = cur.rowcount
+            cur.execute("release savepoint purge_row")
+            plan.pop((table, column), None)
+            total += rowcount
+            counts[table] = counts.get(table, 0) + rowcount
+            progress += 1
+        stuck = 0 if progress else stuck + 1
+        if stuck >= 3:
+            raise SystemExit(f"stuck with {len(plan)} sets: {sorted(plan)[:4]}")
+    return counts
+
+
 def main():
     pattern = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_PATTERN
     pool = psycopg2.connect(os.environ["DATABASE_URL"])
@@ -38,98 +146,10 @@ def main():
         print(f"fixture projects: {len(roots)}", flush=True)
         if not roots:
             return 0
-
-        cur.execute(
-            """
-            select con.conrelid::regclass::text,
-                   (select att.attname::text from pg_attribute att
-                     where att.attrelid = con.conrelid and att.attnum = con.conkey[1]),
-                   con.confrelid::regclass::text,
-                   (select att.attname::text from pg_attribute att
-                     where att.attrelid = con.confrelid and att.attnum = con.confkey[1])
-              from pg_constraint con
-              join pg_namespace ns on ns.oid = con.connamespace
-             where con.contype = 'f'
-               and ns.nspname = 'public'
-               and array_length(con.conkey, 1) = 1
-            """
-        )
-        graph = cur.fetchall()
-        cur.execute(
-            "select table_name from information_schema.columns"
-            " where table_schema = 'public' and column_name = 'id'"
-        )
-        has_id = {row[0] for row in cur.fetchall()}
-
-        # ── Phase 1: collect every table's own ids, and every predicate a table without an id needs ────────────────────────────────
-        own = {"projects": set(roots)}
-        predicates = {}
-        pending = {"projects"}
-        rounds = 0
-        while pending:
-            rounds += 1
-            if rounds > 12:
-                raise SystemExit("collection did not converge")
-            next_pending = set()
-            for child, child_col, parent, parent_col in graph:
-                if parent not in pending:
-                    continue
-                parents = own.get(parent)
-                if not parents:
-                    continue
-                cur.execute(
-                    f"select distinct {child_col} from {child} where {child_col} = any(%s)",
-                    (list(parents),),
-                )
-                found = {row[0] for row in cur.fetchall()}
-                if not found:
-                    continue
-                predicates.setdefault((child, child_col), set()).update(found)
-                if child in has_id:
-                    cur.execute(
-                        f"select distinct id from {child} where {child_col} = any(%s)",
-                        (list(found),),
-                    )
-                    ids = {row[0] for row in cur.fetchall()}
-                    bucket = own.setdefault(child, set())
-                    if ids - bucket:
-                        bucket |= ids
-                        next_pending.add(child)
-            pending = next_pending
-
-        print(f"collected {len(own)} tables", flush=True)
-
-        # ── Phase 2: delete, retrying whatever a foreign key blocks ──────────────────────────────────────────────────────────────
-        plan = {}
-        for table, ids in own.items():
-            if table in has_id:
-                plan[(table, "id")] = set(ids)
-        for (table, column), ids in predicates.items():
-            if (table, "id") in plan and column != "id":
-                continue
-            plan.setdefault((table, column), set()).update(ids)
-
-        total = 0
-        stuck = 0
-        while plan:
-            progress = 0
-            for (table, column), values in list(plan.items()):
-                cur.execute("savepoint purge_row")
-                try:
-                    cur.execute(f"delete from {table} where {column} = any(%s)", (list(values),))
-                except psycopg2.errors.ForeignKeyViolation:
-                    cur.execute("rollback to savepoint purge_row")
-                    continue
-                rowcount = cur.rowcount
-                cur.execute("release savepoint purge_row")
-                plan.pop((table, column), None)
-                total += rowcount
-                progress += 1
-            stuck = 0 if progress else stuck + 1
-            if stuck >= 3:
-                raise SystemExit(f"stuck with {len(plan)} sets: {sorted(plan)[:4]}")
+        graph, has_id = load_graph(cur)
+        counts = purge(cur, {"projects": roots}, graph, has_id)
         pool.commit()
-        print(f"deleted {total} rows; fixtures removed", flush=True)
+        print(f"deleted {sum(counts.values())} rows; fixtures removed", flush=True)
     return 0
 
 

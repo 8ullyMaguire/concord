@@ -34,6 +34,8 @@ ROOT = os.path.dirname(os.path.dirname(HERE))
 sys.path.insert(0, os.path.join(ROOT, "tests", "e2e"))
 
 BASE = os.environ.get("CANDIDATE", "http://127.0.0.1:8108")
+# The host this probe is talking to, without its scheme — see the canonical check below for why the scheme is not part of it.
+ADDRESS = BASE.split("//", 1)[1]
 REFERENCE = os.environ.get("REFERENCE", "https://concord.polarisocial.xyz")
 UA = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36"
 STAMP = int(time.time() * 1000) % 100000000
@@ -111,11 +113,18 @@ def main():
     check("and says so in the content type", content_type.split(";")[0], "text/html")
     check("and has a title", "<title>Projects — Concord</title>" in page, True)
     check("and a description", '<meta name="description"' in page, True)
+    # The canonical is built from the REQUEST's host, so the expected value is the host this probe is talking to — hard-coding
+    # `https://127.0.0.1:8108/` is why three checks failed the first time this probe ran against the live site after the cutover: the
+    # page was right and the probe was describing the staging host.
+    # The page emits `https://<request host>` — always https, because every deployment of this service sits behind a proxy that
+    # terminates TLS (a local http:// request gets an https canonical, which is a wart this probe records rather than asserts away:
+    # it is the right answer on the internet and the wrong one for `curl http://127.0.0.1`). The check is therefore the ADDRESS, not
+    # the scheme.
     check("and an absolute canonical for this address",
-          '<link rel="canonical" href="https://127.0.0.1:8108/">' in page, True)
+          f'<link rel="canonical" href="https://{ADDRESS}/">' in page, True)
     for tag in ["og:title", "og:description", "og:url", "og:image"]:
         check(f"and {tag}", f'property="{tag}"' in page, True)
-    check("og:image is absolute", 'property="og:image" content="https://127.0.0.1:8108/' in page, True)
+    check("og:image is absolute", f'property="og:image" content="https://{ADDRESS}/' in page, True)
 
     structured = jsonld(page)
     check("the JSON-LD block parses", structured.get("@type"), "WebSite")
@@ -147,7 +156,7 @@ def main():
     check("a project page is a document", status, 200)
     check("with the project's name as its title", f"<title>{'Probe &lt;/script&gt;&lt;b&gt;bold&lt;/b&gt; &amp; &quot;quoted&quot;'} — Concord</title>" in project_page, True)
     check("and a canonical for that project",
-          f'<link rel="canonical" href="https://127.0.0.1:8108/projects/{slug}">' in project_page, True)
+          f'<link rel="canonical" href="https://{ADDRESS}/projects/{slug}">' in project_page, True)
     check("and a description with angle brackets is escaped",
           "a description with an &amp; and a &lt;tag&gt;" in project_page, True)
     # The body is the reference's mount, filled by `project.js` from `/api/v1/projects/{slug}`. The escaping assertion above still

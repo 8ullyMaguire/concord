@@ -1,0 +1,25 @@
+[Unit]
+Description=Concord (Rust port) — complaint-driven, consensus-based forge
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+# The port's binary, at a path of its own: the Go service stays installed and startable until this one has proved itself, and the two
+# must never share an inode (`cp` over a running binary is ETXTBSY).
+ExecStart=/home/alvaro/concord-deploy/concord-rs serve --addr 127.0.0.1:8006
+EnvironmentFile=/home/alvaro/.config/concord/.env
+# The feeds build absolute URLs from this; without it every feed answers 503 (part 67 measured that on the staging instance).
+Environment=CONCORD_BASE_URL=https://concord.polarisocial.xyz
+# Carried over from the Go unit verbatim: these were set BY HAND on this host and were missing from the repository copy, so a unit that
+# does not carry them drops embedding for search, the finder and the contribution feed.
+Environment=CONCORD_EMBED_URL=http://127.0.0.1:11434
+Environment=CONCORD_EMBED_MODEL=nomic-embed-text:latest
+Environment=CONCORD_EMBED_TIMEOUT_MS=8000
+EnvironmentFile=-/home/alvaro/.config/concord/forge-webhook.env
+WorkingDirectory=/home/alvaro/concord-deploy
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=default.target
