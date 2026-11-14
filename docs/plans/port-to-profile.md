@@ -47,7 +47,7 @@ gate ran and its output is quoted — not when it was removed from a list. The h
 | 10 | S4 moderation, comments, inbox | **Done 2026-11-13** (`b969b26`): four probes 26/26, 27/27, 40/40, 39/39; `e2e.sh` 29 passed; gates 22 and 45 green (`CHECK inbox` exit 0, `CHECK authz` 10/10); `polaris-comments` and `polaris-authz` adopted |
 | 11 | S5 stats, feeds, admin binaries | **Done 2026-11-14** (`3ac7f5e`) — corpus `0 shape(s) disagreed of 16 checked, 5 skipped`; `probe_s5_stats` 16/16; `probe_admin_binaries` **69/69** with four controls; three `concord-rs-*` timers declared in `scheduled.toml` (`active = false` until cutover); `CHECK feed-routes: 8 arm(s) passed, 0 failed`. **Dated correction 2026-11-14:** "feed parse" moves to row 12 — the feeds are page routes returning XML, not JSON routes, and `probe_s5_feeds` is that row's gate. Gates 4 and 5 are red for `media.polarisocial.xyz` and not for concord (recorded in the row-11 body below). |
 | 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **Done 2026-11-14** — 215/215 routes answered, 44/44 page routes, six browser suites **76/76 in one run** (`feature_e2e` 15, `milestones_e2e` 5, `rank_links_e2e` 4, `audit_e2e` 11, `consensus_e2e` 15, `project_panels_e2e` 26), `probe_pages.py` **132/132**, `probe_project_segments.py` **86/86**, `feature_ui_mutants` **9/9 killed** with a byte-identical restore. Parts 66–76. `d238898`, `31fa726`, `97c348a`, `09f909c`, `b03db53`, `6639d8e`, `d15ceba`, `6081f27`, `a5db6e7`, `942daa8`, `9f6cee5`, `92d8a40` |
-| 13 | P7 cutover | **Done 2026-11-14** — `concord.polarisocial.xyz/api/v1/version` = `{"version":"concord-rs 0.0.0+fc8e535"}` served by the Rust binary under `concord-rs.service`; estate gate 17 `24/24` with concord `reference rust rust ok` and **no `reason`**; `probe_pages.py` 132/132 and `probe_project_segments.py` 86/86 against the live host; PostgreSQL reconciled with the Go's SQLite first (`1114` litter rows deleted, `the two databases agree on every compared table`). Part 77. `deploy/concord-rs.service`, `scripts/parity/reconcile_production.py` |
+| 13 | P7 cutover | **Done 2026-11-14** — `concord.polarisocial.xyz/api/v1/version` = `{"version":"concord-rs 0.0.0+530ce8f"}` served by the Rust binary under `concord-rs.service`; estate gate 17 `24/24` with concord `reference rust rust ok` and **no `reason`**; `probe_pages.py` 132/132 and `probe_project_segments.py` 86/86 against the live host; PostgreSQL reconciled with the Go's SQLite first (`1114` litter rows deleted, `the two databases agree on every compared table`). Part 77. `deploy/concord-rs.service`, `scripts/parity/reconcile_production.py` |
 
 **Row 8 (S2) — the failing probe, pasted before any code** (2026-11-13):
 
@@ -4200,7 +4200,7 @@ ExecStart=/home/alvaro/concord-deploy/concord        # the Go binary, SQLite, 12
 **After:**
 ```
 $ curl -s https://concord.polarisocial.xyz/api/v1/version
-{"version":"concord-rs 0.0.0+fc8e535"}
+{"version":"concord-rs 0.0.0+530ce8f"}
 $ bash scripts/check-stack.sh                     # estate gate 17
 CHECK stack: 24/24 sites declare a profile their repo matches
 $ python3 tools/estate.py stack | grep concord
@@ -4253,15 +4253,20 @@ sites when run from the wrong host, and exactly one on the host that owns them: 
 
 **The version string had to start identifying something.** `{"version":"concord-rs 0.0.0"}` is what every crate in the workspace says, so it
 cannot answer the one question the route exists for: which build is serving. `CONCORD_VERSION` is now baked at compile time
-(`concord-rs 0.0.0+fc8e535`) with an explicit `(unstamped build)` fallback, so a binary that was not stamped says so rather than pretending.
+(`concord-rs 0.0.0+530ce8f`) with an explicit `(unstamped build)` fallback, so a binary that was not stamped says so rather than pretending.
 
 **What was NOT done, and why:** the Go service's unit is **stopped, not deleted**, and `/home/alvaro/.local/share/concord/concord.db` is kept
 untouched — that pair is the rollback, and it costs a `systemctl --user start concord.service` to use. Deleting it is a decision for after
 the port has run in production for a while; it is not part of this row and nothing here depends on it.
 
-**Gate:** `/api/v1/version` = `concord-rs 0.0.0+fc8e535` on the public host; `check-stack` 24/24 with concord `reference rust rust ok` and no
+**Gate:** `/api/v1/version` = `concord-rs 0.0.0+530ce8f` on the public host; `check-stack` 24/24 with concord `reference rust rust ok` and no
 `reason`; `probe_pages.py` 132/132 and `probe_project_segments.py` 86/86 **against `https://concord.polarisocial.xyz`**, not the staging
 port; `x-estate-version: concord@2026.11.3` still reported (that header is nginx's, so the swap cannot break it and did not).
+**The stamp was wrong once, and that is worth recording.** The first deployed binary answered `+fc8e535` — the commit *before* the version
+change — because it was built after the edit but before the commit. A stamp that names a commit the binary is not is worse than no stamp:
+it is a claim, and the next reader would have checked out `fc8e535` to find the change missing. Rebuilt at `530ce8f` and redeployed; both
+the loopback and the public host now answer `concord-rs 0.0.0+530ce8f`, which is `git rev-parse --short HEAD`.
+
 **Row 13: Done.**
 
 ### Part 76 — row 12 closed: six suites, nine mutants, and a private project that was a 200 to a stranger (2026-11-14)
