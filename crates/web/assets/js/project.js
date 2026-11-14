@@ -1485,6 +1485,13 @@ function apiAuth(extra) {
       (p.stage && p.stage !== 'unknown'
         ? ' <span class="badge ' + (p.stage === 'dormant' ? 'badge-amber' : 'badge-slate') + '" style="vertical-align:middle;"' +
           (p.stage_because ? ' title="' + esc(p.stage_because) + '"' : '') + '>' + esc(p.stage) + '</span>'
+        : '') +
+      // The AI-involvement declaration, same rule as the stage badge: a value renders, `null` renders nothing at all. `generated` takes
+      // the amber colour because it is the one value a reader should weigh before relying on the code, not because it is a fault.
+      (p.ai_involvement
+        ? ' <span class="badge ' + (p.ai_involvement === 'generated' ? 'badge-amber' : (p.ai_involvement === 'audited' ? 'badge-green' : 'badge-slate')) +
+          '" style="vertical-align:middle;" title="AI involvement, declared by the maintainers: ' + esc(p.ai_involvement) + '">' +
+          esc(p.ai_involvement) + '</span>'
         : '') + '</h1>' +
       '<p class="page-subtitle">' + esc(p.description || 'No description yet.') + '</p></div>' +
       // The sub-page tab bar is rendered by templates/base.html, not here.

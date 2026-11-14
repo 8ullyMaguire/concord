@@ -310,7 +310,36 @@ Gates at the end of step 3: `probe_pages.py` 136/136 (four new contract checks f
 `concord-parity` 0 disagreed of 21 checked 0 skipped, eight browser suites 90 tests (feature 15, milestones 5, rank_links 4, audit 11,
 consensus 15, project_panels 26, lifecycle 8, new_project 6), deployed as `concord-rs 0.0.0+80f5155`.
 
-### Step 4 — the AI-transparency declaration
+### Step 4 — DONE 2026-11-14 (the AI declaration, and the state that is not a value)
+
+`projects.ai_involvement` — `human` / `assisted` / `generated` / `audited`, or `NULL`. Declared through
+`PUT /api/v1/projects/{slug}/ai-involvement` by an `owner` or `maintainer` (the store reads `feed_reads::role_for`, so the role ladder is
+asked rather than re-derived), rendered as a badge beside the stage on `/` and `/projects` and in the project page's title, and **never
+inferred** — not from commit metadata, not from the project's age, not from a model's guess.
+
+**`NULL` is a state, not a gap to fill.** It renders no badge at all, and that is the test the feature is built around: a badge there
+would be this instance asserting something about somebody's code that nobody asserted, which is worse than the silence the note complains
+about. A mutation that renders `unknown` for it turns `test_an_undeclared_project_renders_nothing` red (`1 failed, 6 deselected`), source
+restored byte-identical.
+
+Withdrawal is a legitimate request — `{"value": null}` — because a label a maintainer regrets has to be removable without a database
+session. A stranger gets **403**, not 404: the project is public here, and a 404 would be a different lie. A value outside the four is a
+400 that names them, refused in the store rather than left to the `CHECK`, so the caller reads a sentence instead of a constraint name.
+
+Schema, in this tree's shape: `0001_baseline.sql` is the only schema file and there is no migration runner, so the column was added to the
+baseline **and** applied to the live database with `alter table … add column if not exists`. That is an operational step this repo has not
+automated, and it is named here rather than assumed: a release that only edits the baseline works on a fresh database and fails on the
+running one with `column "ai_involvement" does not exist`.
+
+The wire changed additively, and the corpus said so before a reader could: replaying the old recording reported
+`.ai_involvement: unexpected` on the three project-carrying shapes (`3 shape(s) disagreed of 21 checked`), then a clean re-record gives
+`0 disagreed of 21 checked, 0 skipped`.
+
+Gate: `ai_declaration_e2e.py` 7 passed (four rendering, three API: declare-and-withdraw, stranger refused, value outside the four
+refused). One fixture trap cost a round and is worth the line: the harness's token must be hashed `base64 RawStd` — **no padding** — or
+every authenticated request answers 401, which reads as a permissions bug and is an encoding one.
+
+### Step 5 — NEXT (dormant → adoption pool)
 
 
 With project vectors present, `/api/v1/similar/project` becomes the intent router the note asks for, and the remaining work is the

@@ -729,6 +729,10 @@ create table projects (
     repo_host text,
     intake_mode text DEFAULT 'complaint_first' NOT NULL,
     public_id text NOT NULL UNIQUE,
+    -- What the project says about AI involvement in its own code. NULL is "not declared", which is a state in its own right: the
+    -- badge renders nothing rather than guessing, because a declaration is a claim by a person and an inference would put words in
+    -- their mouth (docs/plans/post-port-roadmap.md, step 4).
+    ai_involvement text CHECK (ai_involvement is null or ai_involvement in ('human', 'assisted', 'generated', 'audited')),
     search_tsv tsvector GENERATED ALWAYS AS (to_tsvector('simple', coalesce(name, '') || ' ' || coalesce(description, ''))) STORED
 );
 create index idx_projects_visibility on projects (visibility);

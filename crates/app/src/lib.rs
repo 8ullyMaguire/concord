@@ -347,6 +347,8 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/projects/{slug}/board", get(get_board))
         .route("/api/v1/auth/register", post(register))
         .route("/api/v1/projects", post(create_project))
+        // The AI-involvement declaration (roadmap step 4): a claim by a person with a role, never an inference.
+        .route("/api/v1/projects/{slug}/ai-involvement", put(declare_ai_involvement))
         .route(
             "/api/v1/projects/{slug}/consensus",
             get(list_consensus),
@@ -900,6 +902,46 @@ struct CreateProjectRequest {
     governance_model: String,
     #[serde(default)]
     license: String,
+}
+
+
+/// `PUT /api/v1/projects/{slug}/ai-involvement` — declare, or withdraw, what a project says about AI in its code.
+///
+/// The body is `{"value": "human"|"assisted"|"generated"|"audited"}`; `{"value": null}` withdraws a declaration, which is a real request
+/// and not an error (a label somebody regrets must be removable). Anything else is a 400 that names the four.
+///
+/// Authorisation is the project's own role ladder, read through the store: a declaration speaks for the project, so it takes somebody who
+/// speaks for it. A stranger gets 403 — not 404 — because the project is public here and hiding it would be a different lie.
+async fn declare_ai_involvement(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    use concord_db::projects::DeclareRefusal;
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("sign in to declare a project's AI involvement"))?;
+    if concord_db::identity::is_guest(&state.pool, user.id).await.map_err(internal)? {
+        return Err(ApiError::forbidden("a project's declaration needs an account, not a guest session"));
+    }
+    let value = match body.get("value") {
+        None => return Err(ApiError::invalid_request("value is required: one of human, assisted, generated, audited, or null to withdraw")),
+        Some(serde_json::Value::Null) => None,
+        Some(serde_json::Value::String(text)) => Some(text.as_str()),
+        Some(_) => return Err(ApiError::invalid_request("value must be a string or null")),
+    };
+    match concord_db::projects::set_ai_involvement(&state.pool, &slug, user.id, value).await {
+        Ok(stored) => Ok(Json(serde_json::json!({ "ai_involvement": stored }))),
+        Err(DeclareRefusal::NotAValue(bad)) => Err(ApiError::invalid_request(format!(
+            "{bad:?} is not a declaration: want one of human, assisted, generated, audited"
+        ))),
+        Err(DeclareRefusal::NotMaintainer) => {
+            Err(ApiError::forbidden("only a project's owner or maintainer may declare its AI involvement"))
+        }
+        Err(DeclareRefusal::Missing) => Err(ApiError::not_found(format!("no project {slug:?}"))),
+        Err(DeclareRefusal::Database(error)) => Err(internal(error)),
+    }
 }
 
 /// `POST /api/v1/projects` — a namespace with a slug, a charter and a board.

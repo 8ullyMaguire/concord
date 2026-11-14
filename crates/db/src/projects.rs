@@ -40,6 +40,13 @@ pub struct Project {
     /// The sentence that justifies the stage. A label with no reason is one a reader can only take on faith, and the sweep that marks
     /// projects dormant has to be able to say why it did.
     pub stage_because: String,
+    /// What the project DECLARES about AI involvement in its own code: `human`, `assisted`, `generated`, `audited`, or `None` for
+    /// "not declared".
+    ///
+    /// `None` is not "no AI" and it is not "unknown-but-probably-fine": it is the absence of a claim, and the badge renders nothing for it.
+    /// The declaration is written by a person with a role in the project — never inferred from commit metadata, a model's guess, or the
+    /// project's age — because the whole value of the label is that somebody stood behind it.
+    pub ai_involvement: Option<String>,
 }
 
 /// Go writes these timestamps as `float64` unix seconds, and `encoding/json` prints a whole value
@@ -64,7 +71,8 @@ pub(crate) const PROJECT_COLUMNS: &str = "p.id, p.slug, p.name, coalesce(p.descr
     (select count(*) from features f where f.project_id = p.id and f.status = 'shipped'), \
     case when m.last_commit_at is null then null \
          else extract(epoch from (now() - m.last_commit_at))::double precision / 86400.0 end, \
-    extract(epoch from (now() - p.created_at))::double precision / 86400.0";
+    extract(epoch from (now() - p.created_at))::double precision / 86400.0, \
+    p.ai_involvement";
 
 pub(crate) fn project_from_row(row: &sqlx::postgres::PgRow) -> Result<Project, sqlx::Error> {
     use sqlx::Row;
@@ -95,6 +103,7 @@ pub(crate) fn project_from_row(row: &sqlx::postgres::PgRow) -> Result<Project, s
         newcomer_sample: row.try_get(12)?,
         stage: verdict.stage.as_str().to_string(),
         stage_because: verdict.because.to_string(),
+        ai_involvement: row.try_get(17)?,
     })
 }
 
@@ -953,4 +962,61 @@ pub async fn set_visibility(
         .await?
         .ok_or_else(|| sqlx::Error::RowNotFound)?;
     Ok(Ok(project))
+}
+
+/// Why a declaration was refused.
+#[derive(Debug)]
+pub enum DeclareRefusal {
+    /// The actor has no role in the project. A declaration speaks for the project, so only somebody who does may make one.
+    NotMaintainer,
+    /// The value is not one of the four the schema allows. Refused here rather than left to the CHECK, so the caller gets a sentence
+    /// instead of a constraint name.
+    NotAValue(String),
+    /// No such project.
+    Missing,
+    /// The database said no.
+    Database(sqlx::Error),
+}
+
+impl From<sqlx::Error> for DeclareRefusal {
+    fn from(error: sqlx::Error) -> Self {
+        DeclareRefusal::Database(error)
+    }
+}
+
+/// The four values, in the order the page offers them. Kept beside the writer so a new value cannot be added to one and not the other.
+pub const AI_INVOLVEMENT_VALUES: [&str; 4] = ["human", "assisted", "generated", "audited"];
+
+/// Declare (or withdraw) a project's AI involvement.
+///
+/// `None` WITHDRAWS a declaration and is a legitimate request: a maintainer who declared "assisted" and later decides the label is wrong
+/// must be able to take it back without a database session. What is not legitimate is a value outside the four, which is refused with the
+/// list rather than silently dropped.
+///
+/// The role check asks [`governance_roles`]: `owner` and `maintainer` may speak for the project; `contributor`, `reviewer`, `member` and
+/// a stranger may not. The predicate is read, not re-derived from the role strings here, so a change to the ladder reaches this writer.
+pub async fn set_ai_involvement(
+    pool: &PgPool,
+    slug: &str,
+    actor_id: i64,
+    value: Option<&str>,
+) -> Result<Option<String>, DeclareRefusal> {
+    if let Some(value) = value {
+        if !AI_INVOLVEMENT_VALUES.contains(&value) {
+            return Err(DeclareRefusal::NotAValue(value.to_string()));
+        }
+    }
+    let Some(project) = project_by_slug(pool, slug).await? else {
+        return Err(DeclareRefusal::Missing);
+    };
+    let role = crate::feed_reads::role_for(pool, project.id, actor_id).await?;
+    if !matches!(role.as_deref(), Some("owner") | Some("maintainer")) {
+        return Err(DeclareRefusal::NotMaintainer);
+    }
+    sqlx::query("update projects set ai_involvement = $2, updated_at = now() where id = $1")
+        .bind(project.id)
+        .bind(value)
+        .execute(pool)
+        .await?;
+    Ok(value.map(str::to_string))
 }

@@ -192,6 +192,7 @@ async fn home(State(pool): State<PgPool>, headers: HeaderMap) -> Response {
             .text(&format!(" {}", project.governance_model))
             .close("span");
         stage_badge(&mut body, project);
+        ai_badge(&mut body, project);
         body.close("li");
     }
     body.close("ul");
@@ -220,6 +221,30 @@ async fn home(State(pool): State<PgPool>, headers: HeaderMap) -> Response {
 /// about somebody's project, and a warning about our own gap teaches a reader to ignore the warning that matters. `dormant` takes the
 /// warning colour because it is the one stage a reader should act on, and the reason travels as the `title` so the badge is not a label
 /// to be taken on faith. Shared by both server-rendered lists so they cannot say different words.
+/// The AI-involvement declaration, as a badge, or nothing at all.
+///
+/// Nothing for `None`, and that is the point of the feature rather than an omission: `None` is "not declared", not "no AI". A badge
+/// rendered for an undeclared project would be this instance asserting something about somebody's code that nobody asserted, which is
+/// worse than the silence the note complains about.
+///
+/// The word is the declaration itself (`assisted`), not a sentence about it: the badge sits beside the stage badge and has to read at a
+/// glance, and the four values are a closed vocabulary the page can teach in one line.
+fn ai_badge(body: &mut Html, project: &concord_db::projects::Project) {
+    let Some(value) = project.ai_involvement.as_deref() else {
+        return;
+    };
+    let class = match value {
+        // Generated code reads as a caution, not a defect: the colour is the same amber the dormant stage uses for "read this before you
+        // rely on it", and nothing here judges the choice.
+        "generated" => "badge badge-amber",
+        "audited" => "badge badge-green",
+        _ => "badge badge-slate",
+    };
+    body.open("span", &[("class", class), ("title", &format!("AI involvement, declared by the maintainers: {value}"))])
+        .text(&format!(" {value}"))
+        .close("span");
+}
+
 fn stage_badge(body: &mut Html, project: &concord_db::projects::Project) {
     // `unknown` writes NOTHING and returns: see the comment above.
     if project.stage == "unknown" {
@@ -254,6 +279,7 @@ async fn project_index(State(pool): State<PgPool>, headers: HeaderMap) -> Respon
             .text(&format!(" — {}", project.description))
             .close("span");
         stage_badge(&mut body, project);
+        ai_badge(&mut body, project);
         body.close("li");
     }
     body.close("ul");
