@@ -121,6 +121,15 @@ pub async fn run() -> anyhow::Result<()> {
 
     match args.command.as_str() {
         "serve" => {
+            // Migrations run HERE, before the state exists and before a socket is opened: a server that boots on a schema it does not
+            // understand answers with wrong facts, which is worse than not answering at all.
+            let migrated = concord_db::migrate::apply(&pool).await?;
+            if migrated.adopted {
+                eprintln!("migrate: existing database recorded as baseline (adopted, not applied)");
+            }
+            for version in &migrated.applied {
+                eprintln!("migrate: applied {version}");
+            }
             let state = concord_app::AppState {
                 pool,
                 embedder: concord_app::embedder_from_env(),
@@ -154,6 +163,7 @@ pub async fn run() -> anyhow::Result<()> {
         "statsnapshot" => statsnapshot(&pool, &args).await,
         "proposalsweep" => proposalsweep(&pool, &args).await,
         "dormancysweep" => dormancysweep(&pool, &args).await,
+        "migrate" => migrate(&pool, &args).await,
         "granttrust" => granttrust(&pool, &args).await,
         "capableseed" => capableseed(&pool, &args).await,
         "forgeseed" => forgeseed(&pool, &args).await,
@@ -241,6 +251,39 @@ async fn proposalsweep(pool: &sqlx::PgPool, args: &Args) -> anyhow::Result<()> {
     Ok(())
 }
 
+
+
+/// `migrate [--status]` — apply the schema this binary carries, or say what is recorded (review decision 1).
+///
+/// The same call `serve` makes at boot, exposed so an operator can see it without restarting anything. `--status` prints the recorded
+/// versions and the highest this binary knows; a database ahead of the binary is reported, not silently tolerated.
+async fn migrate(pool: &sqlx::PgPool, args: &Args) -> anyhow::Result<()> {
+    if args.flag("status") {
+        let (recorded, known) = concord_db::migrate::status(pool).await?;
+        for (version, name, adopted) in &recorded {
+            println!("{version:>4}  {name}{}", if *adopted { " (adopted)" } else { "" });
+        }
+        println!("recorded {} of {} known (highest known: {known})", recorded.len(), concord_db::migrate::MIGRATIONS.len());
+        if let Some(ahead) = concord_db::migrate::unknown_ahead(
+            &recorded.iter().map(|(v, _, _)| *v).collect::<Vec<_>>(),
+            &concord_db::migrate::MIGRATIONS.iter().map(|m| m.version).collect::<Vec<_>>(),
+        ) {
+            anyhow::bail!("the database is at schema version {ahead}, which this binary does not know");
+        }
+        return Ok(());
+    }
+    let report = concord_db::migrate::apply(pool).await?;
+    for version in &report.applied {
+        println!("applied {version}");
+    }
+    println!(
+        "migrate: {} applied, {} adopted as baseline, {} already recorded",
+        report.applied.len(),
+        if report.adopted { 1 } else { 0 },
+        concord_db::migrate::MIGRATIONS.len() - report.applied.len() - if report.adopted { 1 } else { 0 }
+    );
+    Ok(())
+}
 
 /// `dormancysweep` — mark projects that have not moved in a season (roadmap step 5).
 ///
