@@ -275,6 +275,92 @@ pub async fn update_feature_status(
 /// # Errors
 /// [`WriteError::Invalid`] when the complaint is not validated; [`WriteError::NotFound`] when it does
 /// not exist.
+
+/// An edit to a feature's prose and its two scores — the write §42.6 recorded as missing ("No route edits a feature's body, impact or
+/// effort"), which is why that pass had to reach for `psql` and hand-write an audit row to correct its own wording.
+///
+/// Every field is optional and **`None` means "leave it"**, not "blank it": a caller that wants to empty a body sends `Some("")`, and the
+/// two intents must not share a representation. That distinction is the same one this tree keeps between unmeasured and zero.
+#[derive(Debug, Default, Clone)]
+pub struct FeatureEdit {
+    pub title: Option<String>,
+    pub body: Option<String>,
+    pub impact: Option<i64>,
+    pub effort_score: Option<i64>,
+}
+
+impl FeatureEdit {
+    /// Whether this edit would change anything at all. A request that changes nothing is refused by the route rather than answered 200 —
+    /// a 200 that wrote nothing is the same lie as a gate that reports "not applicable".
+    pub fn is_empty(&self) -> bool {
+        self.title.is_none() && self.body.is_none() && self.impact.is_none() && self.effort_score.is_none()
+    }
+}
+
+/// Validate a score. The ideas catalogue scores out of ten and costs in weeks; anything outside that is a caller bug, not a value.
+fn check_score(label: &str, value: i64) -> Result<(), WriteError> {
+    if !(0..=10).contains(&value) {
+        return Err(WriteError::Invalid(format!(
+            "{label} must be between 0 and 10 (the ideas catalogue's scale), got {value}"
+        )));
+    }
+    Ok(())
+}
+
+/// Apply an edit, returning the feature as it now is.
+///
+/// Refusals, in the order a caller meets them: an empty title (a feature with no name is not addressable in a board), a score outside
+/// 0..=10, an empty edit, an unknown id.
+pub async fn update_feature_content(
+    pool: &PgPool,
+    id: i64,
+    edit: &FeatureEdit,
+) -> Result<crate::features::Feature, WriteError> {
+    if edit.is_empty() {
+        return Err(WriteError::Invalid(
+            "nothing to change: send title, body, impact or effort_score".to_string(),
+        ));
+    }
+    if let Some(title) = &edit.title {
+        if title.trim().is_empty() {
+            return Err(WriteError::Invalid("title cannot be empty".to_string()));
+        }
+    }
+    if let Some(impact) = edit.impact {
+        check_score("impact", impact)?;
+    }
+    if let Some(effort_score) = edit.effort_score {
+        check_score("effort_score", effort_score)?;
+    }
+
+    let affected = sqlx::query(
+        "update features set \
+           title = coalesce($2, title), \
+           body = coalesce($3, body), \
+           impact = coalesce($4, impact), \
+           effort_score = coalesce($5, effort_score), \
+           updated_at = now() \
+         where id = $1",
+    )
+    .bind(id)
+    .bind(edit.title.as_deref())
+    .bind(edit.body.as_deref())
+    .bind(edit.impact)
+    .bind(edit.effort_score)
+    .execute(pool)
+    .await
+    .map_err(WriteError::Database)?
+    .rows_affected();
+
+    if affected == 0 {
+        return Err(WriteError::Invalid(format!("feature {id} does not exist")));
+    }
+    crate::features::feature(pool, id)
+        .await
+        .map_err(WriteError::Database)?
+        .ok_or_else(|| WriteError::Invalid(format!("feature {id} disappeared while being edited")))
+}
+
 pub async fn link_complaint(
     pool: &PgPool,
     feature_id: i64,

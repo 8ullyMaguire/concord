@@ -519,7 +519,7 @@ pub fn router(state: AppState) -> Router {
         )
         .route(
             "/api/v1/projects/{slug}/features/{feature}",
-            get(get_feature),
+            get(get_feature).put(edit_feature),
         )
         .route(
             "/api/v1/projects/{slug}/features/{feature}/status",
@@ -1253,6 +1253,119 @@ async fn set_feature_status(
     )
     .await;
     Ok(Json(json!({"status": "ok", "from": from, "to": body.status})))
+}
+
+
+#[derive(Debug, Deserialize)]
+struct EditFeatureRequest {
+    // `Option<Option<T>>` would be the honest type for "leave it" vs "blank it", and serde gives it to us for free with this shape: a
+    // field that is absent stays `None`, and `{"body": ""}` arrives as `Some("")`.
+    title: Option<String>,
+    body: Option<String>,
+    impact: Option<i64>,
+    effort_score: Option<i64>,
+}
+
+/// `PUT /api/v1/projects/{slug}/features/{id}` — edit a feature's prose and its two scores.
+///
+/// This is §42.6's "no route edits a feature's body, impact or effort", the gap that forced a raw `UPDATE` plus a hand-written audit row
+/// when an ideas pass had to correct its own wording. It is not a status move: `PUT .../status` keeps its own gates (evidence,
+/// dependencies), and nothing here can change a status.
+///
+/// Authority is owner or maintainer, through the same `role_for` the panels use — a contributor may file and argue, but rewriting the
+/// text somebody else's board is organised around is a maintainer's act. A guest is refused for the same reason a guest cannot create a
+/// project: the record must name somebody.
+///
+/// The audit row carries the CHANGE, field by field ("body: 120 chars -> 98 chars"), because an audit row that says only "edited" makes
+/// the reader reconstruct the difference from timestamps.
+async fn edit_feature(
+    State(state): State<AppState>,
+    Path((slug, feature)): Path<(String, String)>,
+    headers: HeaderMap,
+    Json(body): Json<EditFeatureRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("sign in to edit a feature"))?;
+    if concord_db::identity::is_guest(&state.pool, user.id).await.map_err(internal)? {
+        return Err(ApiError::forbidden(
+            "a guest cannot edit a feature: the record must name somebody",
+        ));
+    }
+    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
+    let Ok(id) = feature.parse::<i64>() else {
+        return Err(ApiError::invalid_request("feature id must be an integer"));
+    };
+    let role = concord_db::feed_reads::role_for(&state.pool, project.id, user.id)
+        .await
+        .map_err(internal)?;
+    if !matches!(role.as_deref(), Some("owner") | Some("maintainer")) {
+        return Err(ApiError::forbidden(
+            "only the project's owner or a maintainer may edit this feature",
+        ));
+    }
+    let before = concord_db::features::feature(&state.pool, id)
+        .await
+        .map_err(internal)?
+        .filter(|row| row.project_id == project.id)
+        .ok_or_else(|| ApiError::not_found(format!("feature {id}")))?;
+
+    let edit = concord_db::feature_writes::FeatureEdit {
+        title: body.title.clone(),
+        body: body.body.clone(),
+        impact: body.impact,
+        effort_score: body.effort_score,
+    };
+    let after = concord_db::feature_writes::update_feature_content(&state.pool, id, &edit)
+        .await
+        .map_err(write_error)?;
+
+    let mut changed: Vec<String> = Vec::new();
+    if before.title != after.title {
+        changed.push(format!("title: {:?} -> {:?}", before.title, after.title));
+    }
+    if before.body != after.body {
+        changed.push(format!(
+            "body: {} chars -> {} chars",
+            before.body.chars().count(),
+            after.body.chars().count()
+        ));
+    }
+    // `Option` printed with `{:?}` writes `Some(7)` into an audit row a person reads; "none -> 7" is the sentence.
+    let score = |value: Option<i64>| match value {
+        Some(number) => number.to_string(),
+        None => "none".to_string(),
+    };
+    if before.impact != after.impact {
+        changed.push(format!(
+            "impact: {} -> {}",
+            score(before.impact),
+            score(after.impact)
+        ));
+    }
+    if before.effort_score != after.effort_score {
+        changed.push(format!(
+            "effort_score: {} -> {}",
+            score(before.effort_score),
+            score(after.effort_score)
+        ));
+    }
+    concord_db::feature_writes::add_audit(
+        &state.pool,
+        project.id,
+        user.id,
+        "edit_feature",
+        "feature",
+        id,
+        &changed.join("; "),
+    )
+    .await
+    .map_err(write_error)?;
+
+    Ok(Json(json!({"status": "ok", "changed": changed, "feature": after})))
 }
 
 #[derive(Debug, Deserialize)]
