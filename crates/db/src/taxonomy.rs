@@ -256,9 +256,12 @@ pub async fn consent(
     .await
     .map_err(inside)?;
 
-    let after: i64 = sqlx::query_scalar(
-        "select count(*) from taxonomy_consents where proposal_id = $1",
-    )
+    let after: i64 = sqlx::query_scalar(if mutant("taxonomy-double-consent") {
+        // Control: the tally counts CLICKS rather than voters.
+        "select count(*) + 1 from taxonomy_consents where proposal_id = $1"
+    } else {
+        "select count(*) from taxonomy_consents where proposal_id = $1"
+    })
     .bind(proposal_id)
     .fetch_one(pool)
     .await
@@ -784,4 +787,292 @@ pub async fn remove_feature_tag(
         .execute(pool)
         .await?;
     Ok(Ok(()))
+}
+
+
+// ── The four routes: the tag list, the proposal list, proposing, consenting ───────────────────────────────────────
+
+/// The namespaces a tag may carry. A namespace outside this set is refused rather than minted by use: the whole point of
+/// §4.3 is that the vocabulary does not grow by being mentioned.
+pub const KNOWN_NAMESPACES: [&str; 7] = ["topic", "domain", "platform", "lang", "role", "deploy", "audience"];
+
+/// The six operations that go through quorum.
+pub const ACTIONS: [&str; 6] = ["create", "rename", "alias", "merge", "reparent", "delete"];
+
+/// One tag, as the suggestion UI and the `tag:` facets need it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct Tag {
+    /// The row.
+    pub id: i64,
+    /// `0` for the global namespace.
+    pub project_id: i64,
+    /// The bare name.
+    pub name: String,
+    /// Its namespace, empty for none.
+    pub namespace: String,
+    /// The parent tag, `0` for none.
+    pub parent_id: i64,
+    /// How it relates to the parent.
+    pub relation: String,
+    /// Whether nobody has ratified it yet.
+    pub suggested: bool,
+    /// Aliases that also resolve to it.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
+}
+
+/// One proposal plus the two counts a reader needs to judge whether their consent is the one that decides it.
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct ProposalView {
+    /// The proposal.
+    #[serde(flatten)]
+    pub proposal: Proposal,
+    /// Consents recorded.
+    pub consent_count: i64,
+    /// The eligible set they are measured against.
+    pub eligible_count: i64,
+}
+
+/// Every tag, optionally narrowed to one namespace.
+///
+/// `include_suggested` is **opt-in**: a suggested tag is a hint nobody has ratified, and listing it by default would let the
+/// vocabulary grow by being mentioned — the exact behaviour §4.3 replaced with proposals.
+///
+/// Aliases are attached in a second query rather than with a join, because a join would multiply the tag rows and the caller would
+/// have to de-duplicate a list that is conceptually a set.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn tags(
+    pool: &PgPool,
+    namespace: Option<&str>,
+    include_suggested: bool,
+) -> Result<Vec<Tag>, sqlx::Error> {
+    let rows = sqlx::query(
+        "select id, coalesce(project_id, 0) as project_id, name, coalesce(namespace, '') as namespace,
+                coalesce(parent_id, 0) as parent_id, coalesce(relation, '') as relation,
+                coalesce(suggested, false) as suggested
+           from tags
+          where ($1::text is null or namespace = $1)
+            and ($2 or not coalesce(suggested, false))
+          order by coalesce(namespace, ''), name",
+    )
+    .bind(namespace.filter(|value| !value.is_empty()))
+    .bind(include_suggested)
+    .fetch_all(pool)
+    .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    let mut ids = Vec::with_capacity(rows.len());
+    for row in &rows {
+        use sqlx::Row;
+        out.push(Tag {
+            id: row.try_get("id")?,
+            project_id: row.try_get("project_id")?,
+            name: row.try_get("name")?,
+            namespace: row.try_get("namespace")?,
+            parent_id: row.try_get("parent_id")?,
+            relation: row.try_get("relation")?,
+            suggested: row.try_get("suggested")?,
+            aliases: Vec::new(),
+        });
+        ids.push(out.last().expect("just pushed").id);
+    }
+    if ids.is_empty() {
+        return Ok(out);
+    }
+    let alias_rows: Vec<(i64, String)> =
+        sqlx::query_as("select tag_id, alias from tag_aliases where tag_id = any($1) order by alias")
+            .bind(&ids)
+            .fetch_all(pool)
+            .await?;
+    let mut by_tag: std::collections::HashMap<i64, Vec<String>> = std::collections::HashMap::new();
+    for (tag_id, alias) in alias_rows {
+        by_tag.entry(tag_id).or_default().push(alias);
+    }
+    for tag in &mut out {
+        if let Some(aliases) = by_tag.remove(&tag.id) {
+            tag.aliases = aliases;
+        }
+    }
+    Ok(out)
+}
+
+/// The proposals for a project, `None` for every proposal including the instance-wide ones.
+///
+/// Pending first: a reader arrives here to vote, and a decided proposal cannot be voted on. The eligible count is the project's
+/// members with `contributor` or above — the tractable approximation of §4.3's "users with reputation in the tag's namespace",
+/// documented rather than pretended: no per-namespace reputation table exists.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn list(pool: &PgPool, project_id: Option<i64>) -> Result<Vec<ProposalView>, sqlx::Error> {
+    let rows = sqlx::query(
+        "select p.id, coalesce(p.project_id, 0) as project_id, p.proposed_by, p.action, p.target_tag,
+                coalesce(p.value, '') as value, coalesce(p.rationale, '') as rationale, p.status,
+                extract(epoch from p.created_at)::double precision as created_at,
+                coalesce(extract(epoch from p.decided_at)::double precision, 0) as decided_at,
+                (select count(*) from taxonomy_consents c where c.proposal_id = p.id) as consent_count,
+                (select count(distinct m.user_id) from members m
+                  where m.role in ('contributor', 'reviewer', 'maintainer', 'owner')
+                    and (p.project_id is null or m.project_id = p.project_id)) as eligible_count
+           from taxonomy_proposals p
+          where p.project_id is null or p.project_id = $1
+          order by (p.status = 'pending') desc, p.created_at desc",
+    )
+    .bind(project_id)
+    .fetch_all(pool)
+    .await?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in &rows {
+        use sqlx::Row;
+        out.push(ProposalView {
+            proposal: Proposal {
+                id: row.try_get("id")?,
+                project_id: row.try_get("project_id")?,
+                proposed_by: row.try_get("proposed_by")?,
+                action: row.try_get("action")?,
+                target_tag: row.try_get("target_tag")?,
+                value: row.try_get("value")?,
+                rationale: row.try_get("rationale")?,
+                status: row.try_get("status")?,
+                created_at: row.try_get("created_at")?,
+                decided_at: row.try_get("decided_at")?,
+            },
+            consent_count: row.try_get("consent_count")?,
+            eligible_count: row.try_get("eligible_count")?,
+        });
+    }
+    Ok(out)
+}
+
+/// A deliberate defect reachable only by environment variable, so a probe's control does not cost a rebuild.
+fn mutant(name: &str) -> bool {
+    std::env::var("CONCORD_MUTANT")
+        .unwrap_or_default()
+        .split(',')
+        .any(|candidate| candidate.trim() == name)
+}
+
+/// Why a proposal was refused.
+#[derive(Debug, Clone)]
+pub enum ProposeRefused {
+    /// The caller's input; the message names the field.
+    Invalid(String),
+    /// An identical proposal is already pending.
+    Duplicate,
+}
+
+/// Validate and store one proposal.
+///
+/// Six rules, each of which was once a way the vocabulary could be changed without a vote:
+///
+/// * the action is one of [`ACTIONS`] — an unknown verb must not reach a row nobody renders;
+/// * `create` and `delete` take only a target, while the other four require a value: requiring one from a create would make every
+///   create invalid;
+/// * a rename whose VALUE equals the target's bare form is a no-op — `topic:thing` and `thing` are the same tag, so comparing the
+///   raw strings lets it through;
+/// * a namespace outside [`KNOWN_NAMESPACES`] is refused, with the list in the message;
+/// * a rationale is required: a change to shared vocabulary with no reason cannot be argued with later;
+/// * an identical pending proposal is a duplicate, so a double submit cannot stack two voices for one change.
+///
+/// # Errors
+/// `sqlx::Error`.
+pub async fn propose(
+    pool: &PgPool,
+    project_id: i64,
+    user_id: i64,
+    action: &str,
+    target: &str,
+    value: &str,
+    rationale: &str,
+) -> Result<Result<Proposal, ProposeRefused>, sqlx::Error> {
+    let action = action.trim();
+    if !ACTIONS.contains(&action) {
+        return Ok(Err(ProposeRefused::Invalid(format!(
+            "unknown taxonomy action {action:?} (known: {})",
+            ACTIONS.join(", ")
+        ))));
+    }
+    let target = normalize_tag(target);
+    if target.is_empty() {
+        return Ok(Err(ProposeRefused::Invalid(
+            "a taxonomy proposal needs a target tag".to_string(),
+        )));
+    }
+    let value = normalize_tag(value);
+    if !matches!(action, "create" | "delete") {
+        if value.is_empty() {
+            return Ok(Err(ProposeRefused::Invalid(format!(
+                "taxonomy action {action:?} needs a value"
+            ))));
+        }
+        if split_tag(&target).1 == value && !mutant("taxonomy-noop-allowed") {
+            return Ok(Err(ProposeRefused::Invalid(format!(
+                "taxonomy action {action:?} would be a no-op"
+            ))));
+        }
+    }
+    let (namespace, _) = split_tag(&target);
+    if !namespace.is_empty()
+        && !KNOWN_NAMESPACES.contains(&namespace.as_str())
+        && !mutant("taxonomy-any-namespace")
+    {
+        return Ok(Err(ProposeRefused::Invalid(format!(
+            "unknown namespace {namespace:?} (known: {})",
+            KNOWN_NAMESPACES.join(", ")
+        ))));
+    }
+    let rationale = rationale.trim();
+    if rationale.is_empty() {
+        return Ok(Err(ProposeRefused::Invalid(
+            "a taxonomy change needs a rationale".to_string(),
+        )));
+    }
+
+    let existing: Option<i64> = sqlx::query_scalar(
+        "select id from taxonomy_proposals
+          where status = 'pending' and action = $1 and target_tag = $2 and coalesce(value, '') = $3
+            and coalesce(project_id, 0) = $4",
+    )
+    .bind(action)
+    .bind(&target)
+    .bind(&value)
+    .bind(project_id)
+    .fetch_optional(pool)
+    .await?;
+    if existing.is_some() {
+        return Ok(Err(ProposeRefused::Duplicate));
+    }
+
+    let id: i64 = sqlx::query_scalar(
+        "insert into taxonomy_proposals
+             (project_id, proposed_by, action, target_tag, value, rationale, status, created_at)
+         values ($1, $2, $3, $4, $5, $6, 'pending', now())
+         returning id",
+    )
+    // `0` means instance-wide, and the column is NULLABLE: storing 0 would make an instance-wide proposal look like project `0`.
+    .bind(if project_id > 0 { Some(project_id) } else { None })
+    .bind(user_id)
+    .bind(action)
+    .bind(&target)
+    .bind(&value)
+    .bind(rationale)
+    .fetch_one(pool)
+    .await?;
+    let scope = if project_id > 0 {
+        format!("project {project_id}")
+    } else {
+        "instance".to_string()
+    };
+    sqlx::query(
+        "insert into audit_log (project_id, actor_id, action, entity, entity_id, detail, created_at)
+         values ($1, $2, 'propose_taxonomy_change', 'tag', $3, $4, now())",
+    )
+    .bind(if project_id > 0 { Some(project_id) } else { None })
+    .bind(user_id)
+    .bind(id)
+    .bind(format!("{action} {target}={value} ({scope} scope)"))
+    .execute(pool)
+    .await?;
+    Ok(Ok(crate::taxonomy::proposal(pool, id).await?.ok_or_else(|| sqlx::Error::RowNotFound)?))
 }
