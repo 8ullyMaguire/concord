@@ -3828,3 +3828,67 @@ release route's body. Fixed by capturing it.
 / missing 18 (8 json, 10 page).
 **Commit:** `d78ab4b`. **Files:** `crates/db/src/holds.rs` (`release`), `crates/app/src/lib.rs` (1 route + 1 handler),
 `scripts/parity/routes.py` (2 parse fixes), `scripts/parity/probe_ops_writes.py` (new, 31 checks).
+
+### Part 62 — the global taxonomy: four routes, one rule (2026-11-14)
+
+**Before** (`probe_taxonomy.py` against the deployed port):
+```
+FAIL the tag list is public: got 404 want 200
+FAIL and it is a list, never null: got False want True
+```
+
+**After:**
+```
+48/48 ok
+```
+
+**Routes:** `GET /taxonomy/tags`, `GET /taxonomy/proposals`, `POST /taxonomy/proposals`,
+`POST /taxonomy/proposals/{id}/consent`. The consent **store** function already existed (from an earlier part); what was missing was
+every route around it, so a proposal could be consented to and never proposed.
+
+**The rule the cluster enforces:** *maintainers hold no unilateral taxonomy power.* Tagging used to auto-create a tag on use, which
+gave every project editor instance-wide vocabulary control; the fix was proposals decided by the eligible set. Each assertion below
+is one way that stops being true.
+
+1. *`include_suggested` is opt-in.* A suggested tag is a hint nobody has ratified; listing it by default is exactly how the
+   vocabulary grew by being mentioned.
+2. *The action is a closed set*, and the refusal names it. `create`/`delete` take no operand while the other four require one —
+   requiring a value from a create would make every create invalid.
+3. *A rename whose value equals the target's **bare** form is a no-op even when the spellings differ.* `topic:thing` and `thing` are
+   the same tag, so comparing the raw strings lets it through. The control that removes this check moves exactly two observations.
+4. *An unknown namespace is refused with the known list in the message*, rather than minted by use.
+5. *A rationale is required*, and *a duplicate pending proposal is 409*: a double submit cannot stack two voices for one change.
+6. *Instance-wide proposals need `contributor` somewhere* — one query over the highest role, not a loop over projects, which is the
+   same query N times — and project proposals need it in that project. Both refusals are 403: authenticated, and the rule says "not
+   you".
+7. *Below the threshold is 202, carrying the proposal as it now stands.* The first consent is an ordinary state of a consensus
+   process; answering it as a failure makes the first voter think they broke something. A repeated consent adds no voice and answers
+   the same 202, because the caller's intent is already satisfied.
+8. *The eligible set is the denominator*, and a stranger's consent is refused rather than counted — the probe asserts the consent
+   row count is 0 after the refusal.
+9. *`[]`, never `null`,* on both list routes.
+
+**Decision (dated 2026-11-14): the eligible set stays the project's members with `contributor` or above.** §4.3 says "users with
+reputation in the tag's namespace", and no per-namespace reputation table exists. Counting project members is the tractable
+approximation, and it is written down in the module rather than pretended — a smaller denominator is the failure mode, because it
+makes a change easier to ratify than the section intends.
+
+**Controls** (startup seam, no rebuild):
+```
+control taxonomy-noop-allowed:     46/48 — FAIL a rename that only drops the namespace is a no-op got 201
+control taxonomy-any-namespace:    46/48 — FAIL an unknown namespace is 400 got 201
+control taxonomy-double-consent:   43/48 — FAIL the proposal comes back pending got 'ratified'; FAIL answers 202 got 409;
+                                             FAIL pending proposls sort first got 'ratified'
+```
+The third is instructive: counting CLICKS instead of voters made the second consent meet the threshold, so the proposal ratified and
+was APPLIED — the whole point of the rule, visible in five observations.
+
+**Probe bug found while writing this:** the harness translates `?` to a driver placeholder, so a literal `'%taxonomy%'` inside the
+SQL was read as a format specifier and demanded an argument that was not there. Cleanup queries now list actions explicitly instead
+of pattern-matching them. Also cleaned ten leftover `probe-*` tags from runs whose cleanup died on the `tag_aliases` FK — children
+first, always.
+
+**Gate:** `probe_taxonomy.py` 48/48; `probe_s5_taxonomy.py` 18/18; `concord-db` lib 38 passed; `routes.py` go 215 / port 203 /
+missing 14 (4 json, 10 page). The JSON remainder is now four routes: badge, scout, arena recompute, Forgejo webhook.
+**Commit:** `ae70634`. **Files:** `crates/db/src/taxonomy.rs` (`tags`, `list`, `propose`, `ProposeRefused`, `KNOWN_NAMESPACES`),
+`crates/app/src/lib.rs` (4 routes + 4 handlers + `contributor_somewhere`), `scripts/parity/probe_taxonomy.py` (new, 48 checks).
