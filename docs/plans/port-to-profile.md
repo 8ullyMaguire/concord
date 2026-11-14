@@ -2623,6 +2623,37 @@ the 404 was the cap working and the assertion was the bug; and the probe now ass
 base64url, no `+` or `/`), not just its presence, because a 32-character standard-base64 token works everywhere except the one
 place these get pasted.
 
+### Row 11 — part 53: B6b, merge requests (2026-11-14, `6e8f8dd`)
+
+```
+gate (before): GET/POST /projects/{}/merge -> 404, PUT /merge/{}/approve|execute|reject -> 404
+gate (after):
+  probe_s5_merge.py -> 37/37 ok
+  invites 32/32, featurevote 20/20, coverage 22/22, solutionvote 21/21, solutionwrites 24/24, solutioncall 24/24,
+  workitems 44/44, featurewrites 37/37, listwrites 41/41, criteriawrites 45/45, projsettings 28/28,
+  milestonewrites 41/41, complaintwrites 40/40, requestwrites 43/43, filing 31/31, requests 23/23, accept 15/15
+  routes.py -> go 216 / port 169   missing: 49 (39 json, 10 page)
+  concord-parity -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-db --lib -> 38 passed
+  cargo test -p concord-governance -> 9 passed (+ 3 golden)
+```
+
+`crates/db/src/merge_writes.rs` (new): `get`, `list`, `create`, `approve`, `gate`, `gate_for`, `execute`, `reject`. The role
+ladder got a `Role::parse` in `concord-governance` rather than a second rank table in the app.
+
+`execute` closes the request, marks the feature `shipped` and closes every complaint linked to it — one transaction. Three
+guards beside it: the request belongs to the caller's project (404, never 403); it is still `open`; §5.7's gate passes via
+`governance::check_merge_gate`. An approval counts only from a non-author who is *still eligible*, decided when counting.
+
+**Three negative controls**: no `open` guard → `got (409, False) want (409, True)` (36/37); gate not consulted → 6 observations
+move (31/37); approvals counted as rows → `got (1, 1) want (1, 0)` (36/37).
+
+**Decision, dated.** My first control A passed 37/37 and I nearly recorded it as "the guard is redundant". The cause is that
+merging makes the request's author eligible (a merged merge request is itself a qualifying contribution), so the quorum rises
+from 1-of-1 to 1-of-2 and a second `execute` is refused by the *gate* — same status, a message that tells the reader to collect
+a confirmation that does not exist. **A status-only assertion cannot tell "you cannot" from "you may, later"**, so the probe now
+asserts the reason string. The accidental rising quorum stays as it is: it is a defence, not a rule, and the ledger says so.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
