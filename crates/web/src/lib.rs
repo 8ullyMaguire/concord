@@ -274,6 +274,15 @@ async fn project_overview(
         Ok(None) => return not_found(&headers),
         Err(error) => return error_page(&headers, "the project could not be read", &error.to_string()),
     };
+    // A private or protected project is a 404 PAGE to a stranger, not a 200 page whose panels fail to load: the second form leaks the
+    // project's name, description and canonical URL, and tells the reader it exists. Same predicate the JSON API asks (the store's
+    // `projects::readable_for`), asked here with the reader the `concord_nav` cookie names.
+    let reader = nav_user(&pool, &headers).await;
+    match concord_db::projects::readable_for(&pool, &project, reader.map(|user| user.id)).await {
+        Ok(true) => {}
+        Ok(false) => return not_found(&headers),
+        Err(error) => return error_page(&headers, "the project could not be read", &error.to_string()),
+    }
     let body = format!(
         r#"<div id="project-detail" aria-busy="true"></div>
 <script src="{}"></script>

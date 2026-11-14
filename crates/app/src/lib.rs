@@ -3104,24 +3104,11 @@ pub(crate) async fn readable(
     project: &concord_db::projects::Project,
     user: Option<&concord_db::auth::User>,
 ) -> Result<bool, ApiError> {
-    match project.visibility.as_str() {
-        "public" | "unlisted" => Ok(true),
-        "private" | "protected" => {
-            let Some(user) = user else {
-                return Ok(false);
-            };
-            let count: i64 = sqlx::query_scalar(
-                "select count(*) from members where project_id = $1 and user_id = $2",
-            )
-            .bind(project.id)
-            .bind(user.id)
-            .fetch_one(&state.pool)
-            .await
-            .map_err(internal)?;
-            Ok(count > 0)
-        }
-        _ => Ok(false),
-    }
+    // One implementation, in the store: `projects::readable_for` is also what the page asks before it renders a 200, and two copies of a
+    // visibility rule is how the page and the API come to disagree about whether a private project exists.
+    concord_db::projects::readable_for(&state.pool, project, user.map(|user| user.id))
+        .await
+        .map_err(internal)
 }
 
 /// `GET /api/v1/auth/me` — the caller, by id: the token carries only an id, so the name is looked up here.

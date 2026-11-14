@@ -362,6 +362,16 @@ class PgSeed:
         cur.execute(placeholder_sql(script))
         return self
 
+    @property
+    def description(self):
+        """`sqlite3.Cursor.description` — the column names of the last SELECT.
+
+        Part of the shim because a suite that snapshots a table it did not create (`SELECT * FROM capabilities`) reads the column
+        names off the cursor rather than listing them, and the first version of that snapshot died with `'PgSeed' object has no
+        attribute 'description'` on PostgreSQL while passing on SQLite.
+        """
+        return self._cursor.description if self._cursor else None
+
     def fetchone(self):
         return self._cursor.fetchone() if self._cursor else None
 

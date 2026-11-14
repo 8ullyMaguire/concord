@@ -862,6 +862,41 @@ pub async fn set_intake_mode(
 /// §4.1's four visibilities, in the order the refusal lists them.
 pub const VISIBILITIES: [&str; 4] = ["public", "unlisted", "protected", "private"];
 
+/// May this reader see this project at all?
+///
+/// # Why this lives in the store
+///
+/// Part 47 moved the readiness gate into the store for the same reason: two callers existed — the JSON API and the page — and the second
+/// one re-deriving the rule is how a private project's NAME ends up in a page's `<title>` while its rows are refused. It did: the page
+/// 404'd only when the slug did not exist, so `/projects/panels-private` answered 200 with the project's name, description, canonical URL
+/// and a panel of failed reads, while `/api/v1/projects/panels-private` answered 404. The browser suite caught it.
+///
+/// `public` and `unlisted` are readable by anyone (unlisted means "not in the catalogue", not "not by link"); `protected` and `private`
+/// need membership, and an unknown value is refused rather than guessed at.
+pub async fn readable_for(
+    pool: &PgPool,
+    project: &Project,
+    user_id: Option<i64>,
+) -> Result<bool, sqlx::Error> {
+    match project.visibility.as_str() {
+        "public" | "unlisted" => Ok(true),
+        "private" | "protected" => {
+            let Some(user_id) = user_id else {
+                return Ok(false);
+            };
+            let count: i64 = sqlx::query_scalar(
+                "select count(*) from members where project_id = $1 and user_id = $2",
+            )
+            .bind(project.id)
+            .bind(user_id)
+            .fetch_one(pool)
+            .await?;
+            Ok(count > 0)
+        }
+        _ => Ok(false),
+    }
+}
+
 /// Change a project's visibility, returning the project as it now stands.
 ///
 /// An unknown word is refused **with the valid set in the message**, because the settings panel offers a fixed list and a

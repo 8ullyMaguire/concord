@@ -707,8 +707,25 @@ def test_an_instance_with_no_capability_catalog_says_so_distinctly(page, server)
     """
     import sqlite3
     con = harness.connect(server["db"])
+    # The CHILD table first, and both restored from a snapshot rather than from a literal re-insert. On SQLite a bare
+    # `DELETE FROM capabilities` succeeded because the fixture connection did not enforce foreign keys; PostgreSQL refused it with
+    # `violates foreign key constraint "fk_capability_assertions_capability" ... still referenced from table "capability_assertions"`,
+    # and the assertion that failed named the DELETE rather than the state the test is about. A snapshot also restores columns this
+    # test does not know about, where the literal INSERT restored only the six it happened to list.
+    def snapshot(table):
+        cursor = con.execute(f"SELECT * FROM {table}")
+        columns = [description[0] for description in cursor.description]
+        return columns, [tuple(row) for row in cursor.fetchall()]
+
+    # Child to parent, in the order `pg_constraint` gives for these three tables, measured rather than guessed:
+    #   capability_assertions -> capabilities, capability_confirmations -> capability_assertions
+    # (a query on the live database, not an assumption about the schema). Deleting only `capabilities` failed on the first
+    # constraint; deleting assertions first then failed on the second, which is why this is a list and not two statements.
+    fan_out = ["capability_confirmations", "capability_assertions", "capabilities"]
+    snapshots = {table: snapshot(table) for table in fan_out}
     try:
-        con.execute("DELETE FROM capabilities")
+        for table in fan_out:
+            con.execute(f"DELETE FROM {table}")
         con.commit()
         open_project(page, "panels-empty")
         # This test mutates the instance's capability catalog, which is
@@ -721,15 +738,28 @@ def test_an_instance_with_no_capability_catalog_says_so_distinctly(page, server)
         # Restored in a finally, not after the assertions. A leaked DELETE would
         # make every test that runs after this one in the same session see an
         # empty catalog, and the failure would point at the panels.
-        now = time.time()
-        con.executemany(
-            'INSERT INTO capabilities (key, label, category, kind, "values",'
-            ' created_at) VALUES (?,?,?,\'boolean\',?,?)',
-            [(k, label, cat, '["yes","partial","no","unknown"]', now)
-             for k, label, cat in [
-                 ("wip-limits", "WIP limits", "features"),
-                 ("offline", "Offline use", "features"),
-                 ("self-hosted", "Self-hosted", "deployment")]])
+        # Parents first on the way back in, which is the reverse of the delete order.
+        for table in reversed(fan_out):
+            columns, rows = snapshots[table]
+            if not rows:
+                continue
+            quoted = ",".join(f'"{column}"' for column in columns)
+            placeholders = ",".join("?" * len(columns))
+            # `capability_confirmations.id` is GENERATED ALWAYS, so putting the original id back needs OVERRIDING SYSTEM VALUE —
+            # without it PostgreSQL refuses with `cannot insert a non-DEFAULT value into column "id"` and the restore that runs in a
+            # `finally` throws over the top of the test's real result. Asked of the catalog rather than assumed, and harmless on
+            # SQLite (which has no information_schema and no identity columns, so no clause).
+            overriding = ""
+            try:
+                con.execute(
+                    "SELECT 1 FROM information_schema.columns"
+                    " WHERE table_name = ? AND is_identity = 'YES'", (table,))
+                if con.fetchone():
+                    overriding = " OVERRIDING SYSTEM VALUE"
+            except Exception:  # noqa: BLE001 — SQLite: no such catalog, no such problem
+                pass
+            con.executemany(
+                f"INSERT INTO {table} ({quoted}){overriding} VALUES ({placeholders})", rows)
         con.commit()
         con.close()
 
