@@ -8,11 +8,12 @@
 //! are three different facts, and a table that renders all three as `0` is a table nobody can act on.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::HeaderMap,
     response::Response,
 };
 use concord_db::projects::{self, Project};
+use serde::Deserialize;
 use sqlx::PgPool;
 
 use crate::html::Html;
@@ -116,37 +117,52 @@ macro_rules! project_page {
     };
 }
 
-/// `/projects/{slug}/consensus` — the calls, newest first, with the verdict where there is one.
-async fn consensus_body(pool: &PgPool, project: &Project) -> Result<(String, serde_json::Value), String> {
-    let calls = concord_db::consensus::list_calls(pool, project.id, 50)
-        .await
-        .map_err(|error| format!("the consensus calls could not be read: {error}"))?;
-    if calls.is_empty() {
-        return Ok((empty("No consensus call has been opened for this project."), serde_json::json!({"calls": []})));
+/// `/projects/{slug}/consensus` — the reference's template, rendered.
+///
+/// This page is the one the port renders from the reference's own TEMPLATE rather than re-typing as a mount: `consensus.html` is two
+/// hundred lines of markup whose ids the suite reads (`#consensus-index`, `#consensus-call`, `#tally-support`, `#consensus-hold`,
+/// the four position buttons and the override window), and a transcription into Rust string literals would escape every brace in its own
+/// script comments. `shell::template` substitutes the three constructs it uses and refuses anything else, so a reference page that grows an
+/// `{{if}}` fails loudly instead of rendering half a page.
+///
+/// A call is named by `?call={id}` rather than by a path segment, because the links to a call carry an id and base.html's tab strip has no
+/// query — so "no call named" is a state the page must render (the calls index), not an error.
+pub async fn consensus(
+    State(pool): State<PgPool>,
+    Path(slug): Path<String>,
+    Query(query): Query<ConsensusQuery>,
+    headers: HeaderMap,
+) -> Response {
+    let Ok(project) = resolve(&pool, &slug).await else { return crate::not_found(&headers) };
+    if project.visibility != "public" {
+        return crate::not_found(&headers);
     }
-    let mut body = Html::new();
-    body.open("ul", &[("class", "calls")]);
-    for call in &calls {
-        body.open("li", &[])
-            .text(call.question.as_deref().unwrap_or("(untitled call)"))
-            .open("span", &[("class", "badge")]).text(&call.status).close("span");
-        // A call that closed without a verdict is not a call that decided "nothing": the absence is printed.
-        match call.result.as_deref() {
-            Some(result) => body.open("p", &[]).text(result).close("p"),
-            None => body.open("p", &[("class", "muted")]).text("No verdict recorded.").close("p"),
-        };
-        body.close("li");
-    }
-    body.close("ul");
-    let bootstrap = serde_json::json!({
-        "calls": calls.iter().map(|call| serde_json::json!({
-            "id": call.id, "question": call.question, "status": call.status, "result": call.result,
-        })).collect::<Vec<_>>(),
-    });
-    Ok((body.finish(), bootstrap))
+    let call = query.call.unwrap_or_default();
+    let body = match crate::shell::template("consensus.html", &[("Slug", &project.slug), ("CallID", &call)]) {
+        Ok(body) => body,
+        Err(error) => {
+            return crate::error_page(&headers, "the consensus page could not be rendered", &error);
+        }
+    };
+    let title = format!("{}: consensus", project.name);
+    render(&headers, Page {
+        title: &title,
+        path: &format!("/projects/{}/consensus", project.slug),
+        description: &format!("Consensus calls for {}, on Concord.", project.name),
+        bootstrap: serde_json::json!({
+            "route": format!("/projects/{}/consensus", project.slug),
+            "mount": "consensus-root",
+            "call": if call.is_empty() { serde_json::Value::Null } else { serde_json::json!(call) },
+        }),
+    }, body)
 }
 
-project_page!(consensus, "/consensus", "Consensus", consensus_body);
+/// `?call=` on the consensus page. A string, because it is passed through to the script and an unparseable id is the script's to report.
+#[derive(Debug, Deserialize, Default)]
+pub struct ConsensusQuery {
+    #[serde(default)]
+    call: Option<String>,
+}
 
 /// `/projects/{slug}/documents` — the charter and everything else the project keeps in prose.
 async fn documents_body(pool: &PgPool, project: &Project) -> Result<(String, serde_json::Value), String> {

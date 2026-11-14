@@ -225,3 +225,79 @@ fn tabs(slug: &str, sub: &str) -> String {
 pub fn asset(path: &str) -> String {
     format!("{path}?v={}", env!("CARGO_PKG_VERSION"))
 }
+
+// The page templates, compiled in. Same reason as the assets: a page whose template is missing is a page that does not render, and one
+// binary is the deployment.
+include!(concat!(env!("OUT_DIR"), "/template_table.rs"));
+
+/// A page template rendered for one request.
+///
+/// # Why a substitution and not a template engine
+///
+/// The reference's templates are Go's `text/template`, and the constructs in the ones the port needs are exactly three: `{{define
+/// "content"}}...{{end}}` around the body, a dotted field (`.Slug`, `.CallID`) and `asset "path"`. Everything else in `consensus.html` is
+/// static markup, including script comments full of braces. A hand transcription into a Rust string literal would escape every one of
+/// those braces by hand, and every future edit of the reference's page would have to re-escape them — so the file is kept as the file.
+///
+/// # What it refuses
+///
+/// After substitution, a `{{` left in the output means the template uses a construct this function does not implement (`if`, `range`,
+/// `with`, a nested template). Returning the document with a literal `{{range .Calls}}` on the page would be a page that renders wrong and
+/// says nothing; instead the placeholder is replaced by a visible marker AND an error is returned, so the caller answers 500 and the log
+/// names the page.
+///
+/// # Escaping
+///
+/// Values are HTML-escaped, because they are slugs and ids from the request. The template's own markup is not touched.
+pub fn template(name: &str, values: &[(&str, &str)]) -> Result<String, String> {
+    let Some((_, source)) = TEMPLATES.iter().find(|(file, _)| *file == name) else {
+        return Err(format!("no template named {name:?}"));
+    };
+    // The body: everything between `{{define "content"}}` and its closing `{{end}}`.
+    let mut text = source.replace("{{define \"content\"}}", "");
+    if let Some(end) = text.rfind("{{end}}") {
+        text.truncate(end);
+        text.push_str(&text_after(source));
+    }
+    // `asset "..."` becomes the path with the build's own version query, so a template cannot serve a stale script.
+    let mut rendered = String::with_capacity(text.len() + 256);
+    let mut rest = text.as_str();
+    while let Some(at) = rest.find("{{") {
+        rendered.push_str(&rest[..at]);
+        let tail = &rest[at + 2..];
+        let Some(close) = tail.find("}}") else {
+            rendered.push_str("{{");
+            rest = tail;
+            continue;
+        };
+        let construct = tail[..close].trim();
+        rest = &tail[close + 2..];
+        if let Some(path) = construct.strip_prefix("asset ") {
+            rendered.push_str(&asset(path.trim().trim_matches('"')));
+        } else if let Some(field) = construct.strip_prefix('.') {
+            match values.iter().find(|(key, _)| *key == field) {
+                Some((_, value)) => rendered.push_str(&escape(value)),
+                None => {
+                    return Err(format!(
+                        "template {name:?} asks for `{field}`, which this page did not pass"
+                    ))
+                }
+            }
+        } else {
+            return Err(format!(
+                "template {name:?} uses the construct `{construct}`, which the port does not implement"
+            ));
+        }
+    }
+    rendered.push_str(rest);
+    Ok(rendered)
+}
+
+/// Whatever the reference's template had outside the single `content` definition — nothing, in every template it ships, and kept separate
+/// so a template that grows a second block fails loudly here rather than rendering half a page.
+fn text_after(source: &str) -> &str {
+    match source.rfind("{{end}}") {
+        Some(at) => &source[at + "{{end}}".len()..],
+        None => "",
+    }
+}

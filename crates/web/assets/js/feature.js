@@ -630,7 +630,7 @@
 
     // The tags section, always rendered: a feature with no tags scores with no theme at
     // all, and that is the answer to "why does this not move with the theme we ratified?".
-    var tagList = (res[4] && res[4].tags) || [];
+    var tagList = [];
     html += section('Tags (' + tagList.length + ')',
       (tagList.length
         ? '<ul class="tag-list" data-feature-tags>' + tagList.map(function (tg) {

@@ -610,6 +610,8 @@ pub fn router(state: AppState) -> Router {
             interaction_gate,
         ))
         .fallback(not_found)
+        // LAST, so it sees the body every layer above produced — including the gate's own refusals.
+        .layer(axum::middleware::map_response(flatten_error_bodies))
         .with_state(state)
 }
 
@@ -1788,12 +1790,16 @@ struct OverridePositionRequest {
 }
 
 /// `POST /api/v1/projects/{slug}/consensus/{call_id}/override/position` — a stance in the second window.
+///
+/// **201, not 200.** The reference answers `writeJSON(w, http.StatusCreated, pos)` here, and its script treats anything else as a
+/// failure; the port answered 200 with a status sentence, so a vote that was recorded correctly reported itself as refused. The body is
+/// the stance, as the reference sends it, rather than a `{"status": "ok"}` envelope the client has no use for.
 async fn cast_override_position(
     State(state): State<AppState>,
     Path((slug, call)): Path<(String, String)>,
     headers: HeaderMap,
     Json(body): Json<OverridePositionRequest>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<(axum::http::StatusCode, Json<Value>), ApiError> {
     let user = bearer_user(&state, &headers)
         .await?
         .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
@@ -1808,7 +1814,10 @@ async fn cast_override_position(
     )
     .await
     .map_err(write_error)?;
-    Ok(Json(json!({"status": "ok", "position": body.position})))
+    Ok((
+        axum::http::StatusCode::CREATED,
+        Json(json!({"position": body.position, "reason": body.reason})),
+    ))
 }
 
 #[derive(Debug, Deserialize)]
@@ -7679,6 +7688,53 @@ async fn acting_user(
             concord_db::auth::AuthError::Database(error) => internal(error),
             other => internal(format!("{other:?}")),
         })
+}
+
+
+/// The reference's error body shape, restored at the boundary.
+///
+/// The estate's `polaris_core::ApiError` answers `{"error": {"code": ..., "message": ...}}`. The Go service this port replaces answers
+/// `{"error": "a sentence"}`, and its own page scripts read exactly that: `consensus.js` does
+/// `throw new Error(data.error || ('HTTP ' + r.status))`, so a nested body renders as `[object Object]` in the alert a reader is supposed
+/// to act on. Three browser suites were failing on that literal string.
+///
+/// The fix is here rather than in `polaris_core` because that crate is the ESTATE's contract — every other site on the profile answers the
+/// nested shape, and re-shaping it for one port would break the thing the port exists to conform to. It is here rather than in each handler
+/// because a hundred call sites is a hundred chances to forget, and the transformation is mechanical: an error status with a JSON body of
+/// exactly `{"error": {"code", "message"}}` becomes `{"error": "message", "code": "code"}`, which is what the reference's `mapError` and its
+/// hand-written `coded` refusals both emit. A body that does not match that shape is passed through untouched — including a successful one,
+/// and including an error whose body is a plain sentence already.
+async fn flatten_error_bodies(response: axum::response::Response) -> axum::response::Response {
+    use axum::body::Body;
+    use axum::response::IntoResponse;
+
+    if !response.status().is_client_error() && !response.status().is_server_error() {
+        return response;
+    }
+    let is_json = response
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.starts_with("application/json"));
+    if !is_json {
+        return response;
+    }
+    let (parts, body) = response.into_parts();
+    let Ok(bytes) = axum::body::to_bytes(body, 64 * 1024).await else {
+        return axum::response::Response::from_parts(parts, Body::empty());
+    };
+    let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) else {
+        return axum::response::Response::from_parts(parts, Body::from(bytes));
+    };
+    let flattened = match value.get("error") {
+        Some(serde_json::Value::Object(inner)) => {
+            let message = inner.get("message").cloned().unwrap_or(serde_json::Value::Null);
+            let code = inner.get("code").cloned().unwrap_or(serde_json::Value::Null);
+            serde_json::json!({ "error": message, "code": code })
+        }
+        _ => value,
+    };
+    (parts, axum::Json(flattened)).into_response()
 }
 
 /// A refusal with a `code` a client can switch on and a sentence a person can read.

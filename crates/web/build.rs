@@ -30,6 +30,8 @@ fn walk(directory: &Path, prefix: &str, out: &mut Vec<(String, PathBuf)>) {
 }
 
 fn main() {
+    // Assets first, then the page templates — two directories, one table each, because they are read by two different
+    // call sites and a template is never served directly.
     let assets = Path::new("assets");
     println!("cargo:rerun-if-changed=assets");
     let mut files: Vec<(String, PathBuf)> = Vec::new();
@@ -46,7 +48,28 @@ fn main() {
     }
     source.push_str("];\n");
 
+    // The page templates, verbatim from the reference. `consensus.html` is 200 lines of static markup with `{{.Slug}}`
+    // and `{{ asset "..." }}` in it; transcribing that into Rust string literals means escaping every brace in the
+    // embedded script comments and re-escaping them whenever the reference changes. The file is kept as the file and
+    // substituted at request time — see `shell::template`.
+    println!("cargo:rerun-if-changed=templates");
+    let mut templates: Vec<(String, PathBuf)> = Vec::new();
+    walk(Path::new("templates"), "", &mut templates);
+    templates.sort_by(|left, right| left.0.cmp(&right.0));
+    let mut table = String::from("/// Every page template, by file name.\n");
+    table.push_str("pub static TEMPLATES: &[(&str, &str)] = &[\n");
+    for (key, path) in &templates {
+        let absolute = path.canonicalize().unwrap_or_else(|_| path.clone());
+        table.push_str(&format!(
+            "    ({key:?}, include_str!({:?})),\n",
+            absolute.display().to_string()
+        ));
+    }
+    table.push_str("];\n");
+
     let out_dir = std::env::var("OUT_DIR").expect("OUT_DIR is set by cargo");
+    let template_path = Path::new(&out_dir).join("template_table.rs");
+    fs::write(&template_path, table).expect("write the generated template table");
     let destination = Path::new(&out_dir).join("asset_table.rs");
     fs::write(&destination, source).expect("write the generated asset table");
     println!("cargo:rerun-if-changed=build.rs");

@@ -358,7 +358,11 @@ async fn write_decision_record(
         }
     }
 
-    let slug = format!("decision-call-{call_id}");
+    // `call-{id}`, not `decision-call-{id}`: the reference writes the decision record at `adr/call-{id}`
+    // (`consensus_solutions.go`, `fmt.Sprintf("call-%d", call.ID)`), and the suite reads the slug back to prove the record is
+    // a project DOCUMENT and not a private row. The port's prefix was invented and the extra word made the record unfindable
+    // by the name the reference gives it.
+    let slug = format!("call-{call_id}");
     // `on conflict ... do update`: re-recording (which the guard makes impossible) or a retried write must
     // not fail the whole outcome on a unique collision.
     sqlx::query(

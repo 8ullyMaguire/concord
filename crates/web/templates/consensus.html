@@ -1,0 +1,264 @@
+{{define "content"}}
+<div class="page-head">
+  <div>
+    <p class="breadcrumb"><a href="/projects">Projects</a> / <span data-slug>{{.Slug}}</span> / <span>Consensus</span></p>
+    <h1>Consensus · <span data-slug>{{.Slug}}</span></h1>
+    <p class="lede">A formal decision, one question at a time. Everyone eligible can
+      record a position, and the tally shows reservations separately from
+      opposition — because they are not the same thing.</p>
+  </div>
+</div>
+
+<!--
+  One call per page, and an INDEX when none is named.
+
+  The page reads `?call={id}` rather than taking a path segment, because a call is
+  opened from a feature or a solution and that link carries the id. But base.html's
+  project tabs link Consensus with NO query at all, so "no call named" has to be a
+  state this page renders -- C6 of the page spec, the calls index
+  (GET /api/v1/projects/{slug}/consensus). Before it existed the script asked for
+  `/consensus/` with an empty id, the router answered 405, and the tab showed
+  "Could not load this call. HTTP 405" for every project.
+
+  The index carries no counts: §6.6 hides the running tally until a call closes,
+  and the server is where that is enforced -- the list is built from the same store
+  method as the project's consensus feed, which is tally-free by design.
+
+  The two measures below are shown SEPARATELY and labelled, and the client never
+  derives either one. §6.6 requires two ratios with different denominators:
+
+    support  = consent / (consent + stand_aside + block)   "how many went along,
+                                                           with reservations"
+    decisive = consent / (consent + block)                  "how many took a side
+                                                           against each other"
+
+  4 consent / 3 stand-aside / 0 block is support 0.57 and decisive 1.00. Rendering
+  one of them displays a bug §6.3 already fixed server-side, and a client that
+  recomputes them can be wrong about what consent means without anything looking
+  broken. Both arrive in the response's `tally`; `consensus.js` only formats them.
+-->
+<div id="consensus-root" aria-busy="true" data-project="{{.Slug}}" data-call="{{.CallID}}">
+<script src="{{ asset "/assets/js/skeleton.js" }}"></script>
+<script>
+(function(){var b=document.getElementById("consensus-root");
+if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(4);}})();
+</script>
+
+  <div id="consensus-error" class="error-state" hidden>
+    <p class="error-state-title" id="consensus-error-title"></p>
+    <p class="error-state-description" id="consensus-error-detail"></p>
+    <button type="button" class="btn btn-secondary" id="consensus-retry">Try again</button>
+  </div>
+
+  <!--
+    The calls index. Shown only when the URL names no call, which is how the
+    project page's Consensus tab arrives. It is a LIST OF LINKS, never a tally:
+    an open call's counts are hidden (§6.6) and the server sends none here.
+  -->
+  <section id="consensus-index" hidden>
+    <h2 class="section-head">Calls in this project</h2>
+    <ul class="consensus-index-list" id="consensus-index-list"></ul>
+    <p class="consensus-index-empty" id="consensus-index-empty" hidden>
+      No consensus call has been opened in this project yet. A call is opened from a
+      feature's solution arena — open a feature from the
+      <a href="/projects/{{.Slug}}">project page</a> to see whether one is ready.
+    </p>
+  </section>
+
+  <article id="consensus-call" hidden>
+    <h2 class="consensus-question" id="consensus-question"></h2>
+    <p class="consensus-meta" id="consensus-meta"></p>
+
+    <!-- Quorum progress: participants against the threshold, before any ratios. -->
+    <p class="consensus-quorum" id="consensus-quorum"></p>
+
+    <!--
+      §6.6's hidden tally. The two measures below are hidden until the call closes
+      and the note is shown instead; `tally_visible` from the response decides which,
+      and the page never decides for itself.
+    -->
+    <p class="consensus-tally-hidden" id="consensus-tally-hidden" hidden></p>
+
+    <div class="consensus-tally" id="consensus-tally">
+      <div class="tally-measure">
+        <span class="tally-label">Support</span>
+        <span class="tally-value" id="tally-support"></span>
+        <span class="tally-detail" id="tally-support-detail"></span>
+      </div>
+      <div class="tally-measure">
+        <span class="tally-label">Decisive</span>
+        <span class="tally-value" id="tally-decisive"></span>
+        <span class="tally-detail" id="tally-decisive-detail"></span>
+      </div>
+    </div>
+
+    <!--
+      Four positions, not three. The `positions` CHECK constraint permits consent,
+      abstain, stand_aside and block, and they are not interchangeable: abstain is
+      neutral in BOTH ratios, stand-aside only in one. Collapsing them loses a
+      distinction the tally is built on.
+
+      Each is a real button as well as a key. The shortcuts are accelerators, never
+      the only route.
+    -->
+    <div class="consensus-positions" id="consensus-positions" hidden>
+      <p class="field-label" id="positions-label">Your position</p>
+      <div class="position-buttons" role="group" aria-labelledby="positions-label">
+        <button type="button" class="btn position-btn" data-position="consent"
+                id="pos-consent">Consent</button>
+        <button type="button" class="btn position-btn" data-position="abstain"
+                id="pos-abstain">Abstain</button>
+        <button type="button" class="btn position-btn" data-position="stand_aside"
+                id="pos-stand-aside">Stand aside</button>
+        <button type="button" class="btn position-btn" data-position="block"
+                id="pos-block">Block</button>
+      </div>
+      <p class="hint" id="positions-hint">Keys: c, a, s, b. Enter records it.</p>
+      <p class="consensus-saved" id="consensus-saved" hidden></p>
+    </div>
+
+    <p class="consensus-signed-out" id="consensus-signed-out" hidden>
+      <a href="/login">Sign in</a> to record a position. You can read this call
+      without an account.
+    </p>
+
+    <section class="consensus-objections" id="consensus-objections" hidden>
+      <h3>Objections</h3>
+      <ul id="objection-list" class="objection-list"></ul>
+    </section>
+
+    <!--
+      §6.8 puts "call and close consensus" in the maintainer's column, and §6.6 needs
+      one thing from whoever closes: when a call is accepted OVER an open block the
+      override is recorded "with the objector's remedy answered in writing". This note
+      is where that answer goes.
+
+      Offered to anyone signed in, not only to maintainers: the page cannot know who is
+      a maintainer, and a client-side role check would be a claim it has no way to
+      check. The server decides, and says so in its refusal. Empty is the normal case --
+      a call with no open block has no remedy to answer.
+    -->
+    <section class="consensus-close" id="consensus-close" hidden>
+      <h3>Close this call</h3>
+      <p class="hint">Closing fixes the result, and the result is written down. An open block
+        is not something a close decides: §6.6's pass conditions end with “no unresolved
+        block”, so a call with one standing closes <strong>blocked</strong> and the block
+        stays on the record. Answering it is the override window's job.</p>
+      <button type="button" class="btn btn-primary" id="consensus-close-submit">Close the call</button>
+      <p class="consensus-close-error" id="consensus-close-error" role="alert" hidden></p>
+      <p class="consensus-close-done" id="consensus-close-done" hidden></p>
+    </section>
+
+    <!-- §6.6's second window. Shown only for a call that closed blocked, because that is
+      the only call an override has anything to say about. Which halves of it are visible
+      is the WINDOW's state (no window / open / closed); who may open or close it is the
+      server's answer, and the page never decides it -- it cannot know who is a maintainer
+      any more than it can know the charter's override ratio. -->
+    <section class="consensus-override" id="consensus-override" hidden>
+      <h3>Override window</h3>
+      <p class="hint">§6.6's second window: a separate ballot on whether the block should
+        stand. An override carries at 80% of non-abstain participants — everyone who took
+        a position, reservations included — with the objector's remedy answered in
+        writing.</p>
+
+      <div id="consensus-override-none" hidden>
+        <button type="button" class="btn" id="consensus-override-open">Open an override window</button>
+      </div>
+
+      <div id="consensus-override-live" hidden>
+        <p class="consensus-override-progress" id="consensus-override-progress"></p>
+        <div class="consensus-override-positions" id="consensus-override-positions">
+          <button type="button" class="btn" data-override-position="consent">Override the block</button>
+          <button type="button" class="btn" data-override-position="stand_aside">Reservations, won’t block</button>
+          <button type="button" class="btn" data-override-position="abstain">Neutral</button>
+          <button type="button" class="btn btn-danger" data-override-position="block">Uphold the block</button>
+        </div>
+        <label class="field-label" for="consensus-override-note">How the objection was answered</label>
+        <textarea id="consensus-override-note" rows="2"></textarea>
+        <button type="button" class="btn btn-primary" id="consensus-override-close-submit">Close the window</button>
+      </div>
+
+      <p class="consensus-override-result" id="consensus-override-result" hidden></p>
+      <p class="consensus-override-error" id="consensus-override-error" role="alert" hidden></p>
+      <p class="consensus-override-done" id="consensus-override-done" hidden></p>
+    </section>
+    <!--
+      §6.6's emergency hold: a call can be suspended, and a suspended call resolves
+      nothing -- the close, the window and an outcome are all refused while it is in
+      force. Read from the server rather than inferred: a page that looks ordinary
+      while every write is refused is the worst version of this, and the page cannot
+      know from the call alone.
+    -->
+    <p class="consensus-hold" id="consensus-hold" role="status" hidden></p>
+
+    <!--
+      §6.5's fallback chain, BEFORE the decision.
+
+      "The ranking is the fallback chain. If the call stalls or a block is upheld,
+      the next-ranked solution is the pre-agreed fallback." Pre-agreed is the whole
+      word: a chain shown only after a call stalls is a chain nobody agreed to. So
+      this is read while the call is open, from the same route a close would consult.
+    -->
+    <section class="consensus-fallback" id="consensus-fallback" hidden>
+      <h3>If this call stalls or is blocked</h3>
+      <p class="hint">§6.5: the ranking is the fallback chain, so this is where the
+        call goes next — strongest first, with the baseline last. Adopting the next
+        one down needs no second vote.</p>
+      <ol class="fallback-chain" id="fallback-chain"></ol>
+    </section>
+
+    <!--
+      §6.5's decision, and the record of it.
+
+      A close (§6.8) writes the VERDICT on the call; this records what the call
+      decided about the SOLUTION — accepted, amended, fallen back, rejected or sent
+      back — and writes the decision record attached to the feature. The two are
+      different facts: a call can pass and still fall back to #2, and the record is
+      where "why this and not the runner-up" is written down.
+
+      Offered to anyone signed in, like the close and for the same reason: the page
+      cannot know who a maintainer is, so the server decides and says so.
+    -->
+    <section class="consensus-outcome" id="consensus-outcome" hidden>
+      <h3>Record the decision</h3>
+      <p class="hint">§6.5: the record carries the outcome, the positions, the
+        objections, the remedies and the ranking it was decided against. It is
+        written when you record one, and it cannot be recorded twice.</p>
+      <div class="outcome-buttons" id="outcome-buttons" role="group" aria-label="Outcome">
+        <button type="button" class="btn outcome-btn" data-outcome="accepted">Accepted</button>
+        <button type="button" class="btn outcome-btn" data-outcome="accepted-with-amendments">Accepted with amendments</button>
+        <button type="button" class="btn outcome-btn" data-outcome="fall-back">Fall back to the next solution</button>
+        <button type="button" class="btn outcome-btn" data-outcome="rejected">Rejected</button>
+        <button type="button" class="btn outcome-btn" data-outcome="sent-back">Sent back</button>
+      </div>
+      <label class="field-label" for="consensus-outcome-summary">Why (the record keeps it)</label>
+      <textarea id="consensus-outcome-summary" rows="2"></textarea>
+
+      <div id="consensus-outcome-fallback" hidden>
+        <label class="field-label" for="consensus-outcome-fallback-select">Falls back to</label>
+        <select id="consensus-outcome-fallback-select"></select>
+        <p class="hint">The baseline is not in this list: rejecting the proposal is
+          “Rejected”, which is §6.5's “the baseline wins”.</p>
+      </div>
+
+      <div id="consensus-outcome-amend" hidden>
+        <label class="field-label" for="consensus-outcome-amend-title">The amended solution's title</label>
+        <input type="text" id="consensus-outcome-amend-title">
+        <label class="field-label" for="consensus-outcome-amend-body">What it now says</label>
+        <textarea id="consensus-outcome-amend-body" rows="3"></textarea>
+      </div>
+
+      <button type="button" class="btn btn-primary" id="consensus-outcome-submit">Record the decision</button>
+      <p class="consensus-outcome-error" id="consensus-outcome-error" role="alert" hidden></p>
+    </section>
+
+    <!-- Outside the section on purpose. The panel hides itself once the call carries an
+      outcome (a second decision is refused), so a confirmation kept inside it would be
+      hidden the moment it was written -- the record's name is the one thing that has to
+      survive the re-read. -->
+    <p class="consensus-outcome-done" id="consensus-outcome-done" hidden></p>
+  </article>
+</div>
+
+<script src="{{ asset "/assets/js/consensus.js" }}"></script>
+{{end}}

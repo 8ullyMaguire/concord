@@ -4188,6 +4188,70 @@ lacked rather than documents it serves.
 service's configuration), `scripts/parity/routes.py` (any `*.xml` route is a document).
 
 
+### Part 73 — four suites green, and a probe that was asserting a page nobody serves (2026-11-14)
+
+**Before:** `milestones_e2e` `2 passed / 3 failed`; `rank_links_e2e` `4 errors in setup` (`no such table: projects`); `audit_e2e`
+`11 errors in setup`; `consensus_e2e` `15 errors in setup`.
+**After:**
+```
+tests/e2e/milestones_e2e.py .....                                        [100%]
+5 passed in 3.03s
+tests/e2e/rank_links_e2e.py ....                                         [100%]
+4 passed in 9.36s
+tests/e2e/audit_e2e.py ...........                                       [100%]
+11 passed in 6.07s
+```
+Four of the six inherited suites now pass against the candidate. The two that do not are `consensus_e2e` (running) and
+`feature_ui_mutants` (a script, not a suite — see below).
+
+**Every remaining failure was one of two things, and neither was a missing page.**
+
+1. **A page rendered on the server that the suite reads from the client.** Board, roadmap, milestone, rank, ranking and audit were
+   server-rendered, satisfied `probe_pages.py`, and failed their suites — because the suites read `.ms-counts`, `#ms-title`, `.rank-card`,
+   `#ranking-root[data-can-moderate]` and the audit table, all of which the reference's scripts draw. Part 72's decision applies unchanged;
+   these are the pages it had not reached yet.
+
+2. **A suite whose seeding predated the shared harness.** `consensus_e2e`, `audit_e2e` and `project_panels_e2e` (which the first imports)
+   called `sqlite3.connect` directly, so against the candidate every test died in setup with `no such table: capabilities`. The ledger
+   said these two "FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`"; that is now done, and `harness.connect`
+   was already the abstraction — nothing new was invented for it.
+
+**Two dialiect defects in the harness itself, both found by running it:**
+* `INSERT OR REPLACE` is SQLite syntax PostgreSQL rejects, and the rewrite must happen **before** the column parse: after it, no column
+  matched, `_coerce` never ran, and `created_at` arrived as a double for a `timestamptz` column.
+* `_coerce` only sees PARAMETERS. A fixture writing `VALUES (...,0,0,NULL,?)` puts `is_baseline`'s `0` inline, and PostgreSQL refuses
+  the row: `column "is_baseline" is of type boolean but expression is of type integer`. `rewrite_boolean_literals` rewrites a bare
+  `0`/`1` token in a column the schema declares boolean, inside the VALUES tuple that paren-matching found — never inside a subquery.
+  Two fixtures also seeded `feature_id` with `0` for "no feature"; that column is a foreign key and NULL is what the schema says it with.
+
+**`data-can-moderate` is the page's one server-side fact, and it needed a session the web crate did not have.** `ranking.js` emits its
+"Moderate" link only when that attribute says true, and the suite asserts BOTH directions (anonymous: no control; reviewer: one on every
+row). The reference's `concord_nav` cookie carries the session token and is accepted only on a page GET — never on `/api/` — so
+`crates/web/src/lib.rs::nav_user` reads it and asks `moderation::may_moderate` with the same pair of axes the routes enforce (instance
+trust OR the project's reviewer role). A browser carrying only a token renders anonymous, which is the safe direction: no link offered
+that the API would refuse.
+
+**`feature_ui_mutants` is a script, not a suite** (`no tests ran` under pytest): it mutates a page's JavaScript, rebuilds, and requires the
+suite to die. The port embeds its assets through `include_bytes!`, so the build step had to become `cargo build` plus an install of the
+binary the suites run — a mutant written to the asset and never compiled is a mutant nobody served, which reads as "killed" or "survived"
+depending on unrelated luck. `run_mutants` now has that candidate mode and judges each mutant through `e2e_candidate.sh`, which also
+recreates the scratch database per run (a mutant judged on a dirty database is a mutant judged by a fixture collision).
+
+**Honest state of the page gate:** `probe_pages.py` was 148/148 against the server-rendered pages and now reads **81/132**, because ~40 of
+its assertions describe content a MOUNT page does not carry — board columns, `.rank-card`s, the ranking's score components, the tab
+strip's `aria-current`. And one is a genuine change worth naming: it asserts a cross-project feature id is a 404, which was the port's
+stricter behaviour; the reference's handler deliberately does not look the feature up, so the page answers 200 and the API refuses.
+Rewriting those assertions to the mount contract (mount id, `aria-busy`, the script actually served, and the API behind it answering) is
+the next part of this row, and it is a rewrite of the gate rather than of the product — recorded here so the number is not mistaken for a
+regression.
+
+**Gate:** `milestones_e2e` 5/5, `rank_links_e2e` 4/4, `audit_e2e` 11/11, `feature_e2e` 15/15 (part 72).
+**Commits:** `78b5569` (board/roadmap/milestone + `?milestone=`), `6081f27` (rank/ranking/audit, harness dialects, mutant runner).
+**Files:** `crates/web/src/project.rs` (board, roadmap, audit mounts), `crates/web/src/misc.rs` (rank, ranking, `readable_project`),
+`crates/web/src/lib.rs` (`nav_user`), `crates/app/src/lib.rs` (`get_board` filter, `BoardQuery`), `crates/db/src/projects.rs`
+(`feature_milestones`), `tests/e2e/{consensus_e2e,audit_e2e,project_panels_e2e,harness,ui_mutants,feature_ui_mutants}.py`,
+`scripts/parity/{e2e_candidate,e2e_server,restart_8108}.sh`.
+
 ### Part 72 — the page contract, and three routes that were the right shape and the wrong argument (2026-11-14)
 
 **Before:** `scripts/parity/e2e_candidate.sh tests/e2e/feature_e2e.py` → `2 passed, 13 failed`.

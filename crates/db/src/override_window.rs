@@ -353,6 +353,19 @@ pub async fn close(
             .bind(call_id)
             .execute(&mut *tx)
             .await?;
+        // AND the objection stops being open. The reference writes both in one transaction
+        // (`UPDATE objections SET status='overridden', resolution=? WHERE call_id=? AND status='open'`), and the page reads the
+        // objection's own status: an override that moved the call and left the block reading "open" is a record that contradicts
+        // itself — the call says the block was set aside, the block says it is still standing. The suite caught exactly that
+        // (`.objection-status` was "open" after the window closed), which is the one place the two facts are compared.
+        sqlx::query(
+            "update objections set status = 'overridden', resolution = $1 \
+             where call_id = $2 and status = 'open'",
+        )
+        .bind(trimmed)
+        .bind(call_id)
+        .execute(&mut *tx)
+        .await?;
     }
     tx.commit().await?;
 
