@@ -1,0 +1,14 @@
+[package]
+name = "concord-scout"
+description = "Concord scout: free text to catalog capabilities, and a verdict for every project in the catalog"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace = true
+
+[dev-dependencies]
+serde_json.workspace = true

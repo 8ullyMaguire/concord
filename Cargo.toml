@@ -6,6 +6,7 @@ members = [
     "crates/ranking",
     "crates/governance",
     "crates/finder",
+    "crates/scout",
     "crates/db",
     "crates/app",
     "crates/parity",
@@ -22,6 +23,7 @@ repository = "https://git.polarisocial.xyz/concord/concord"
 [workspace.dependencies]
 concord-embed = { path = "crates/embed" }
 concord-finder = { path = "crates/finder" }
+concord-scout = { path = "crates/scout" }
 anyhow = "1"
 axum = { version = "0.8", default-features = false, features = ["http1", "json", "query", "tokio", "matched-path"] }
 chrono = { version = "0.4", features = ["serde"] }
