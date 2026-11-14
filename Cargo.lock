@@ -301,6 +301,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "concord-finder"
+version = "0.0.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "concord-governance"
 version = "0.0.0"
 
