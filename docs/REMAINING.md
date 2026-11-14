@@ -1,5 +1,7 @@
 # Concord — what is left, and what "done" means here
 
+**Historical from 2026-11-14: an as-built record of the Go passes. The Rust port's record is `docs/plans/port-to-profile.md`.**
+
 Written 2026-10-05, revised 2026-10-06. Every number below is measured, not remembered.
 The doc-number gate (`scripts/check_doc_numbers.py`, in `make verify`) fails when any of
 the schema/runtime numbers goes stale, and the e2e numbers are gated by

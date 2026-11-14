@@ -1,5 +1,7 @@
 # Concord — r4 implementation plan
 
+**Historical from 2026-11-14: the milestone table below tracks the Go implementation. The live state list is `docs/plans/post-port-roadmap.md`.**
+
 Derived from `docs/concord-spec-r4.md` (recovered 2026-10-02 from the session
 transcript; it had never been written to disk). M0–M12 in `docs/PLAN.md` are
 complete. This plan covers what revision 4 adds.

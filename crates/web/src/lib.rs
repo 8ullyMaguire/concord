@@ -270,6 +270,14 @@ async fn project_index(State(pool): State<PgPool>, headers: HeaderMap) -> Respon
         .text(&format!("{} project(s) in the catalogue", projects.len()))
         .close("p")
         .open("ul", &[("class", "project-list")]);
+    // The create page was reachable only by typing its URL, which is a page that does not exist. The link is here because this is
+    // where a reader who has just finished looking at what is already here decides to start something.
+    body.open("p", &[("class", "muted")])
+        .open("a", &[("href", "/projects/new")])
+        .text("Start a project")
+        .close("a")
+        .text(" — after this page has shown you what already exists.")
+        .close("p");
     for project in &projects {
         body.open("li", &[])
             .open("a", &[("href", &format!("/projects/{}", project.slug))])

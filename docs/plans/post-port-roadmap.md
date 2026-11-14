@@ -5,6 +5,10 @@ a wish list: every idea from the "Rethinking GitHub for the Age of AI" note is p
 actually do today, with the file or route that proves it. An idea that already ships is not refiled; an idea that ships *partly* says
 which half is missing.
 
+> **Status 2026-11-14:** steps 1, 2a, 2b, 3, 3b, 3c, 4 **done**; step 5 built (sweep + timer) with its **pool blocked on 68 unstated
+> repositories**. Rows open: 1. Blocked: 1. Nothing in this file is "complete" while that number is above zero.
+> A critical review of the product as it now stands, with what I would do differently, is `docs/reviews/2026-11-14-from-scratch-review.md`.
+
 Status vocabulary, and nothing else: **SHIPPED** (a reader can use it today), **PARTIAL** (the engine exists, the surface does not, or
 the reverse — the missing half is named), **NEW** (nothing in the tree), **REFUSED** (concord should not do this, with the reason).
 
@@ -389,7 +393,6 @@ start one, so "intent first" currently has no form to sit in front of. That page
 `N projects match; the closest is X` before the slug and name fields, with the empty answer stated as "nothing here is described this way"
 rather than as a suggestion nobody can act on.
 
-### Step 4 — AI-transparency declaration
 
 Intent-first creation: at `/projects/new`, ask what the person is trying to build and answer with `concord-finder` before the blank
 form. The gate is a differential probe — the same question asked of the create page and of `/api/v1/finder` must return the same

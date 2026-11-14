@@ -1,5 +1,87 @@
 # Concord — handoff
 
+**Updated 2026-11-14, after the cutover.** Read this page in this order, and stop when you have what you need:
+
+| if you want | read |
+|---|---|
+| what is live, and how to prove it | this page, below |
+| what is left, and in what order | `docs/plans/post-port-roadmap.md` |
+| what would be done differently | `docs/reviews/2026-11-14-from-scratch-review.md` |
+| how the move onto the estate profile went | `docs/plans/port-to-profile.md` (ledger, rows 1–13, all Done) |
+| the Go product as it stood before the port | the rest of this file, which is **historical** from the marker below |
+
+## The state of the instance
+
+**The Rust binary serves `concord.polarisocial.xyz`.** `concord-rs 0.0.0+<sha>`, unit `concord-rs.service` (user unit),
+binary `/home/alvaro/concord-deploy/concord-rs`, source `/personal/documents/code/rust/concord` (branch `port-rust`),
+PostgreSQL. Confirm in one command, never from memory:
+
+```sh
+curl -s https://concord.polarisocial.xyz/api/v1/version    # "concord-rs 0.0.0+<sha>"
+systemctl --user status concord-rs.service --no-pager | head -3
+```
+
+**The Go service is stopped, not removed.** `concord.service` plus `~/.local/share/concord/concord.db` is the rollback, one
+`systemctl --user start concord.service` away. **Two of its timers are still ENABLED and still write to that database**
+(`concord-healthsync.timer`, `concord-proposalsweep.timer`) — see the review, decision 4. Until they are disabled the rollback is a
+diverging copy rather than a snapshot, and the Go database currently knows more than the live one does about repository identity
+(23 projects with a `repo_url` against 5 in PostgreSQL).
+
+## What landed after the cutover (all 2026-11-14)
+
+| commit | what |
+|---|---|
+| `03c38ef` | `concord_ranking::lifecycle` — stage derived from measurements, twelve tests |
+| `0e63f90` | `stage` / `stage_because` on every project shape |
+| `99de031` | the stage on `/`, `/projects` and the project page |
+| `7e116ea` | three vacuous assertions replaced; `project.js` committed (it was deployed and uncommitted) |
+| `0ef6305` | `/projects/new` — intent first, form second — **and the guest who could create projects (403 now)** |
+| `80f5155` | `hydrate` fills a project's name and URL, so an intent answer is usable |
+| `1b0dd9c` | `projects.ai_involvement` declaration (`human`/`assisted`/`generated`/`audited`/NULL), badge, `PUT …/ai-involvement` |
+| `f44eee4` | `seed/forge_repos.json` in this tree, applied with `forgeseed` (5 of 73) |
+| `a169293` | `dormancysweep` + weekly timer, idempotent, marks the act not a column |
+
+## How to verify anything on this page
+
+```sh
+cd /personal/documents/code/rust/concord      # on thinkcentre; ~/code on the workstation is the same tree over sshfs
+cargo test -p concord-db --lib                # 42 passed
+cargo test -p concord-ranking -p concord-finder -p concord-scout
+python3 scripts/parity/routes.py              # every Go route answered
+python3 scripts/parity/probe_pages.py         # 136/136, against CANDIDATE=https://concord.polarisocial.xyz
+python3 scripts/parity/probe_project_segments.py   # 86/86
+CONCORD_E2E_CANDIDATE=/home/alvaro/concord-deploy/concord-rs \
+  scripts/parity/e2e_candidate.sh tests/e2e/<suite>.py -q
+cargo run --release -p concord-parity -- --corpus crates/parity/corpus.json   # 0 disagreed of 21
+```
+
+Nine browser suites are expected green: `feature_e2e` 15, `milestones_e2e` 5, `rank_links_e2e` 4, `audit_e2e` 11,
+`consensus_e2e` 15, `project_panels_e2e` 26, `lifecycle_e2e` 8, `new_project_e2e` 6, `ai_declaration_e2e` 7.
+
+## The three things that will bite the next session
+
+1. **There are no migrations.** `crates/db/sql/0001_baseline.sql` is the schema and there is no runner; this session added a column to
+   the baseline *and* to the live database by hand. A change that only edits the baseline works on a fresh database and fails on the
+   running one. This is the first thing to build.
+2. **Health is frozen.** `concord-rs healthsync` needs `--from <measurements.json>` and nothing produces it, so every health number, the
+   `mature` stage and the scout's `avoid` rule read a stale value. The Go binary used to scrape the forges; the port moved the scraping
+   out and left the slot empty.
+3. **68 of 73 projects state no repository**, so no project can be shown dormant and none can be shown mature. 23 are already stated in
+   the Go database and have never been copied forward — that is mechanical work, not a decision.
+
+## Blocked, and on whom
+
+- **68 project upstream URLs** — on the owner (or a statement that some projects have none, which is also an answer). Everything else in
+  `docs/plans/post-port-roadmap.md` step 5 waits on it except the sweep, which is built and scheduled.
+
+---
+
+## The Go implementation, as it stood before the port (historical)
+
+Everything below this line describes `internal/…`, chi, SQLite, `make verify` and the Go deployment. It is kept because the rollback
+binary is that code, and because the spec below is still the best description of *what the product is*. Do not read it as the state of
+the running service.
+
 **READ THIS FIRST — the port is the work now (updated 2026-11-14).** The product has not changed; it is being moved onto the
 estate profile (Rust/Axum + PostgreSQL + SvelteKit + the family's crates) as a strangler while the Go service keeps serving
 `concord.polarisocial.xyz`. The only state list is the ledger: **`docs/plans/port-to-profile.md`**. The compressed situation,

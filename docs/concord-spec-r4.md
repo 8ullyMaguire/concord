@@ -1,5 +1,7 @@
 # Concord: Decide What to Build, Find What Already Exists
 
+**Historical from 2026-11-14: this spec describes the Go implementation. The Rust binary serves production; the product spec in this file is still the best statement of what the product IS, but the `§` numbers and the code they cite are the Go tree's.**
+
 > A forge and discovery engine in one. Real complaints drive development. Competing solutions are ranked head-to-head. Decisions come from rough consensus among collaborators. The same community-ranked catalog helps you find, compare, and choose any project when you're about to use or build something.
 
 **Status:** concept spec, nothing built yet.
