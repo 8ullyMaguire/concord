@@ -228,6 +228,26 @@ reported `embedder hashed-v1 (2048 dims)` while the service runs `nomic` (768), 
 two models in one table. Run with the service's own `CONCORD_EMBED_URL`/`MODEL` (read from `systemctl --user show concord-rs -p
 Environment`, not from memory), it reports `embedder nomic:nomic-embed-text:latest (768 dims)` and fills the index.
 
+**An interrupted backfill is invisible in the row count.** The first attempt ran under a 600-second `timeout`, which killed it after 40 of
+73 projects; nothing printed (the command reports per kind, at the end), and the table then held 80 rows — a number that looks like
+progress and reads like completion. Only the coverage mode says otherwise:
+
+```
+$ concord-rs embedbackfill --kind project --status
+project       54.8%  INCOMPLETE -- duplicate detection will miss rows (73 rows)
+$ psql -tAc "select field, count(*) from embeddings where kind='project' group by 1"
+full|40
+title|40
+```
+
+At ~15 s per project (two fields, ollama `nomic`, local) the full run is about eighteen minutes, so it is a background job with the
+status command as its proof — never a foreground command with a timeout.
+
+What the partial index already established, since a half-filled index is enough to show the route works:
+`/similar/project?text=a federated social platform in rust` → `lemmy` (0.682), `l2-adrenaline-scripts`, `penny-dreadful-tools`, which
+are plausibly the semantic neighbours; `text=booru image board` still returns nothing, because the project that would match is one of the
+33 not yet indexed.
+
 ### Step 3b — NEXT (after the backfill finishes)
 
 With project vectors present, `/api/v1/similar/project` becomes the intent router the note asks for, and the remaining work is the
