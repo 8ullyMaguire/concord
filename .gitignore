@@ -21,3 +21,7 @@ docs/zz_gate_probe.md
 
 # Rust build output, added with the port (M0.1).
 /target/
+
+# `harness.connect("unused")` creates a local file of that name when CONCORD_E2E_DSN is unset; it is a probe's accident, not a
+# repository file.
+unused
