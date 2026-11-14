@@ -16,6 +16,7 @@
 
 pub mod composite;
 pub mod health;
+pub mod lifecycle;
 
 use std::f64::consts::PI;
 
