@@ -284,10 +284,31 @@ Gates: `new_project_e2e.py` 6 passed (the guest arm asserts the STATUS CODE, bec
 refusal); mutation `if false && is_guest(…)` turns `test_creating_without_an_account_says_so` red with the source restored
 byte-identical; `probe_pages.py` grew four contract checks for the new route.
 
-### Step 3c — NEXT (the remaining half)
+### Step 3c — DONE 2026-11-14 (the index, and why a filled index still answered badly)
 
-The page reaches the route; the route still answers from a half-filled index. Finish `embedbackfill --kind project` to 100% (54.8% as of
-this writing), then the semantic answer covers the catalogue rather than 40 of 73 projects. That is a job, not a feature.
+The backfill finished: `project 100.0% OK (73 rows)`, 146 vectors (title and full text per project). And the route then answered with the
+score right and the answer unusable:
+
+```json
+{"entity_id": 74, "score": 0.659, "title": "", "status": ""}
+```
+
+`embeddings::hydrate` — the function that fills title, status and URL so a match is actionable — had arms for complaint, feature and
+request, and a catch-all that returned the row as scored. **`project` was in the catch-all**, so every project match came back nameless
+and linkless, and the create page could only have rendered a numeric id. The project arm now reads `name` as the title, `visibility` as
+the status and builds `/projects/{slug}` — no `{id}` segment, because that is how a project is addressed.
+
+The intent router now answers:
+
+```
+GET /api/v1/similar/project?text=booru image board&limit=2
+0.659  Suki     /projects/suki
+0.626  Tessera  /projects/tessera
+```
+
+Gates at the end of step 3: `probe_pages.py` 136/136 (four new contract checks for `/projects/new`), `probe_project_segments.py` 86/86,
+`concord-parity` 0 disagreed of 21 checked 0 skipped, eight browser suites 90 tests (feature 15, milestones 5, rank_links 4, audit 11,
+consensus 15, project_panels 26, lifecycle 8, new_project 6), deployed as `concord-rs 0.0.0+80f5155`.
 
 ### Step 4 — the AI-transparency declaration
 
