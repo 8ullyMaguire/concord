@@ -14,6 +14,7 @@
 //!   the API does not return is a lie, and the only way to keep them equal is for both to call one function.
 
 pub mod html;
+pub mod project;
 
 use axum::{
     extract::{Path, State},
@@ -132,6 +133,25 @@ fn script_json(value: &serde_json::Value) -> String {
         .replace('>', "\\u003e")
         .replace('\u{2028}', "\\u2028")
         .replace('\u{2029}', "\\u2029")
+}
+
+/// A date, for a page. Unix seconds in, `YYYY-MM-DD` out — a reader needs the day, and a timestamp to the second in a table is noise
+/// wearing precision.
+#[must_use]
+pub(crate) fn date(epoch: f64) -> String {
+    match chrono::DateTime::from_timestamp(epoch as i64, 0) {
+        Some(moment) => moment.format("%Y-%m-%d").to_string(),
+        None => "—".to_string(),
+    }
+}
+
+/// A date and time, for a log. An audit row's whole value is the order, so the time is part of it.
+#[must_use]
+pub(crate) fn datetime(epoch: f64) -> String {
+    match chrono::DateTime::from_timestamp(epoch as i64, 0) {
+        Some(moment) => moment.format("%Y-%m-%d %H:%M").to_string(),
+        None => "—".to_string(),
+    }
 }
 
 /// The host the reader used, from `Host`/`X-Forwarded-Host`, falling back to the public name.
@@ -284,13 +304,13 @@ async fn project_overview(
 }
 
 /// Render a page as HTML, with the content type a document needs.
-fn render(headers: &HeaderMap, page: Page<'_>, body: String) -> Response {
+pub(crate) fn render(headers: &HeaderMap, page: Page<'_>, body: String) -> Response {
     let host = host_of(headers);
     HtmlResponse(document(&host, &page, &body)).into_response()
 }
 
 /// A 404 that is a document, not a JSON error: a reader arrived here with a link.
-fn not_found(headers: &HeaderMap) -> Response {
+pub(crate) fn not_found(headers: &HeaderMap) -> Response {
     let mut body = Html::new();
     body.open("h1", &[]).text("Not found").close("h1")
         .open("p", &[]).text("There is no project at this address.").close("p")
@@ -334,4 +354,10 @@ where
         .route("/", get(home))
         .route("/projects", get(project_index))
         .route("/projects/{slug}", get(project_overview))
+        .route("/projects/{slug}/board", get(project::board))
+        .route("/projects/{slug}/roadmap", get(project::roadmap))
+        .route("/projects/{slug}/consensus", get(project::consensus))
+        .route("/projects/{slug}/documents", get(project::documents))
+        .route("/projects/{slug}/criteria", get(project::criteria))
+        .route("/projects/{slug}/audit", get(project::audit))
 }

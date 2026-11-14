@@ -47,6 +47,11 @@ def get(path, base=BASE):
         return error.code, error.headers.get("Content-Type", ""), error.read().decode("utf-8", "replace")
 
 
+def escape_html(text):
+    return (text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+            .replace('"', "&quot;").replace("'", "&#39;"))
+
+
 def bootstrap(document):
     marker = '<script type="application/json" id="concord-bootstrap">'
     start = document.index(marker) + len(marker)
@@ -145,6 +150,53 @@ def main():
     check("and it is a document", content_type.split(";")[0], "text/html")
     check("with a sentence a reader can act on", "There is no project at this address." in missing, True)
     note("and it does not echo the slug", f"no-such-{STAMP}" not in missing, "")
+
+
+    # ── the six project sub-pages ─────────────────────────────────────────────────────────────────────────────────────────────
+    # Each is asserted on three things: that it is a document, that its tab strip marks ITSELF as current (a navigation that
+    # never says where you are is a navigation that lies by omission), and that what it prints came from the same read the API
+    # uses. `suki` carries a board, documents and an audit log on the live database; the others are allowed to be empty and must
+    # then SAY they are empty rather than render an empty table.
+    for suffix, section, empty_sentence in [
+        ("/board", "Board", "This project has no board columns yet."),
+        ("/roadmap", "Roadmap", "This project has no milestones."),
+        ("/consensus", "Consensus", "No consensus call has been opened for this project."),
+        ("/documents", "Documents", "This project has no documents."),
+        ("/criteria", "Criteria", "This project has no criteria."),
+        ("/audit", "Audit log", "Nothing has been recorded for this project."),
+    ]:
+        status, content_type, body = get(f"/projects/suki{suffix}")
+        check(f"GET /projects/suki{suffix} is a document", status, 200)
+        check(f"  and it is HTML", content_type.split(";")[0], "text/html")
+        check(f"  and its title names the section", f"<title>Suki: {section} — Concord</title>" in body, True)
+        check(f"  and the strip marks this tab current",
+              f'<a href="/projects/suki{suffix}" aria-current="page">{section.split()[0]}</a>' in body or
+              f'aria-current="page">{section}</a>' in body, True)
+        # Rows, or an honest sentence. "Rows" is table-, list- or section-shaped, because the pages are not all tables: the board is
+        # a set of `<section>`s, documents are a `<ul>`, and a probe that only accepts `<tbody>` invents a layout requirement.
+        note("  and it either shows rows or says it is empty",
+             "<tbody>" in body or "<li>" in body or "board-column" in body or empty_sentence in body, "")
+
+    # The board is the one page with a structural claim worth testing on real data: every card the API returns appears in the
+    # column the API says it is in.
+    status, _, board_api = get("/api/v1/projects/suki/board")
+    if status == 200:
+        board = json.loads(board_api)
+        columns = board.get("columns") or []
+        cards = board.get("cards") or []
+        note("the board API answers for comparison", True, f"{len(columns)} column(s), {len(cards)} card(s)")
+        _, _, board_page = get("/projects/suki/board")
+        for column in columns:
+            check(f"  the page renders the column {column['name']!r}", f'<h3>{column["name"]}</h3>' in board_page, True)
+        if cards:
+            named = [card for card in cards if card.get("title")]
+            if named:
+                check("  and a card's title appears on the page",
+                      escape_html(named[0]["title"]) in board_page, True)
+
+    # ── a project that does not exist is a 404 on every sub-page too ─────────────────────────────────────────────────────────
+    status, _content_type, _body = get(f"/projects/no-such-{STAMP}/audit")
+    check("a missing project's audit page is 404", status, 404)
 
     # ── the same page as the reference serves ─────────────────────────────────────────────────────────────────────────────────
     # The reference is rate limited from this egress, so its absence is a note rather than a failure; the shape contract above is the
