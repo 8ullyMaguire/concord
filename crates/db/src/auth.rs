@@ -47,6 +47,13 @@ pub enum AuthError {
     Invalid(String),
     /// `ErrDuplicate`: the username is taken.
     Duplicate(String),
+    /// `ErrAuth`: invalid credentials. The message NEVER says which half was wrong, because a client that can tell
+    /// "no such user" from "wrong password" holds a list of valid usernames to attack.
+    Credentials(String),
+    /// `ErrAuth: ErrNoCredential` — the identity exists but has no password to log in with. Guest identities are like this:
+    /// they act through the token they were issued and become accounts by REGISTERING (which promotes the row), not by guessing
+    /// a password they never had.
+    NoCredential,
     Database(sqlx::Error),
 }
 
@@ -82,6 +89,10 @@ fn valid_password(password: &str) -> Result<(), AuthError> {
 }
 
 /// argon2id with the Go tree's parameters, in the PHC string format both sides parse.
+pub fn hash_for(password: &str) -> String {
+    hash_password(password)
+}
+
 fn hash_password(password: &str) -> String {
     use argon2::password_hash::{PasswordHasher, SaltString};
     // The parameters are the Go store's: m=65536 KiB, t=1, p=2, 32-byte output, 16-byte salt.
@@ -110,6 +121,14 @@ fn new_token() -> String {
 fn hash_token(token: &str) -> String {
     let digest = Sha256::digest(token.as_bytes());
     base64::engine::general_purpose::STANDARD_NO_PAD.encode(digest)
+}
+
+/// A user by id, for the callers outside this module that need the shape.
+///
+/// # Errors
+/// [`AuthError::Database`] when the row cannot be read.
+pub async fn user_by_id_public(pool: &PgPool, id: i64) -> Result<User, AuthError> {
+    user_by_id(pool, id).await
 }
 
 async fn user_by_id(pool: &PgPool, id: i64) -> Result<User, AuthError> {
@@ -178,15 +197,101 @@ pub async fn register_user(
     };
 
     let user = user_by_id(pool, id).await?;
+    let token = issue_token(pool, id).await?;
+    Ok((user, token))
+}
+
+/// Issue a fresh bearer token for `user_id` and return it in plaintext, once.
+///
+/// # Errors
+/// `sqlx::Error`, wrapped.
+pub async fn issue_token(pool: &PgPool, user_id: i64) -> Result<String, AuthError> {
     let token = new_token();
     sqlx::query(
         "insert into api_tokens (token_hash, user_id, created_at, last_used_at) \
          values ($1, $2, now(), now())",
     )
     .bind(hash_token(&token))
-    .bind(id)
+    .bind(user_id)
     .execute(pool)
     .await?;
+    Ok(token)
+}
+
+/// Revoke one token. Idempotent: revoking a token that is already gone is a success, because a client that logs out twice,
+/// or whose token was revoked elsewhere, must not be told its logout failed.
+///
+/// # Errors
+/// `sqlx::Error`, wrapped.
+pub async fn revoke_token(pool: &PgPool, token: &str) -> Result<u64, AuthError> {
+    let removed = sqlx::query("delete from api_tokens where token_hash = $1")
+        .bind(hash_token(token))
+        .execute(pool)
+        .await?
+        .rows_affected();
+    Ok(removed)
+}
+
+/// The account a username names, if any.
+async fn user_by_username(pool: &PgPool, username: &str) -> Result<Option<i64>, AuthError> {
+    Ok(sqlx::query_scalar("select id from users where username = $1")
+        .bind(username)
+        .fetch_optional(pool)
+        .await?)
+}
+
+/// `verifyPassword`: argon2id against the stored PHC string.
+fn verify_password(password: &str, hash: &str) -> bool {
+    use argon2::password_hash::{PasswordHash, PasswordVerifier};
+    let Ok(parsed) = PasswordHash::new(hash) else {
+        // An unparseable hash is a credential that cannot be checked. It must not be a crash and it must not be a pass.
+        return false;
+    };
+    Argon2::default()
+        .verify_password(password.as_bytes(), &parsed)
+        .is_ok()
+}
+
+/// Log in with a username and password.
+///
+/// Three decisions, all of them about what the failure tells an attacker:
+///
+/// * **an unknown username still costs a password hash.** Looking the user up and returning early is ~1 ms against ~60 ms for
+///   a real attempt, which is a username oracle in a stopwatch. The work is done and thrown away;
+/// * **"no credential" and "wrong password" both answer [`AuthError::Credentials`]** with the same sentence, for the same
+///   reason — and a guest identity, which has no password at all, is indistinguishable from a typo from the outside;
+/// * **the token is issued only after the password verifies**, so a failure leaves no credential behind.
+///
+/// # Errors
+/// [`AuthError::Credentials`] for either half being wrong, [`AuthError::Database`] for the rest.
+pub async fn login(
+    pool: &PgPool,
+    username: &str,
+    password: &str,
+) -> Result<(User, String), AuthError> {
+    let username = username.trim();
+    let id = user_by_username(pool, username).await?;
+    let Some(id) = id else {
+        // Work done anyway. See the doc comment: the point is the clock, not the hash.
+        let _ = hash_password(password);
+        return Err(AuthError::Credentials("invalid credentials".into()));
+    };
+    let hash: Option<String> = sqlx::query_scalar("select coalesce(password_hash, '') from users where id = $1")
+        .bind(id)
+        .fetch_optional(pool)
+        .await?;
+    let hash = hash.unwrap_or_default();
+    if hash.is_empty() {
+        // A guest identity — or an account that predates authentication. Neither can log in, and both must look exactly like a
+        // wrong password from the outside.
+        let _ = hash_password(password);
+        return Err(AuthError::Credentials("invalid credentials".into()));
+    }
+    if !verify_password(password, &hash) {
+        return Err(AuthError::Credentials("invalid credentials".into()));
+    }
+    let user = user_by_id(pool, id).await?;
+    let token = issue_token(pool, id).await?;
     Ok((user, token))
 }
 

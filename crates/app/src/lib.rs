@@ -537,6 +537,20 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/projects/{slug}/documents/{document}",
             get(get_document).delete(delete_document),
         )
+        // The identity cluster: a nameless visitor can act, can become an account in place, and can log in and out.
+        .route(
+            "/api/v1/guest",
+            get(guest_status_handler).post(claim_guest),
+        )
+        .route("/api/v1/consent", post(accept_consent))
+        .route("/api/v1/auth/login", post(login))
+        .route("/api/v1/auth/logout", post(logout))
+        // The gate is one layer rather than 184 handlers: consent and the guest cap are properties of every mutation, and a rule
+        // copied into every handler is a rule that will be missing from the one written next month.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            interaction_gate,
+        ))
         .fallback(not_found)
         .with_state(state)
 }
@@ -651,16 +665,57 @@ struct RegisterRequest {
 }
 
 /// `POST /api/v1/auth/register` — an account and its first token.
+///
+/// A visitor who has been acting as a guest registers INTO their guest identity: the row becomes the account, so everything they
+/// did as a guest is theirs without a copy, and the history stays one identity's — "this account took these positions while it
+/// had no name". A caller who is already an account takes the ordinary path and gets a second account, which is unusual but not
+/// wrong; the caller is signed in either way.
 async fn register(
     State(state): State<AppState>,
+    headers: HeaderMap,
     Json(body): Json<RegisterRequest>,
 ) -> Result<(axum::http::StatusCode, Json<Value>), ApiError> {
     use concord_db::auth::AuthError;
+    use concord_db::identity::Refused;
     let display_name = if body.display_name.trim().is_empty() {
         body.username.trim().to_string()
     } else {
         body.display_name.trim().to_string()
     };
+    if body.username.trim().is_empty() || body.password.is_empty() {
+        return Err(ApiError::invalid_request("username and password are required"));
+    }
+    if let Some(actor) = acting_user(&state, &headers).await? {
+        let guest = concord_db::identity::is_guest(&state.pool, actor.id)
+            .await
+            .unwrap_or(false);
+        if guest {
+            return match concord_db::identity::promote_guest(
+                &state.pool,
+                actor.id,
+                &body.username,
+                &display_name,
+                &body.password,
+            )
+            .await
+            {
+                Ok((user, token)) => Ok((
+                    axum::http::StatusCode::CREATED,
+                    Json(json!({
+                        "user": serde_json::to_value(user).map_err(internal)?,
+                        "token": token,
+                        "token_note": TOKEN_NOTE,
+                    })),
+                )),
+                Err(Refused::Invalid(message)) => Err(ApiError::invalid_request(message)),
+                Err(Refused::Duplicate(message)) => Err(ApiError::conflict(format!("{message} exists"))),
+                Err(Refused::NotAGuest) => {
+                    Err(ApiError::conflict("this identity is no longer a guest"))
+                }
+                Err(other) => Err(internal(format!("{other:?}"))),
+            };
+        }
+    }
     match concord_db::auth::register_user(&state.pool, &body.username, &display_name, &body.password)
         .await
     {
@@ -674,6 +729,8 @@ async fn register(
         )),
         Err(AuthError::Invalid(message)) => Err(ApiError::invalid_request(message)),
         Err(AuthError::Duplicate(message)) => Err(ApiError::conflict(format!("{message} exists"))),
+        Err(AuthError::Credentials(message)) => Err(ApiError::unauthenticated(message)),
+        Err(AuthError::NoCredential) => Err(ApiError::unauthenticated("invalid credentials")),
         Err(AuthError::Database(error)) => Err(internal(error)),
     }
 }
@@ -7421,5 +7478,367 @@ fn arena_vote_refusal(refused: concord_db::arena_writes::Refused) -> ApiError {
             ApiError::invalid_request("both sides of a comparison must be different projects")
         }
         Refused::Database(error) => internal(error),
+    }
+}
+
+
+// ── The consent gate, guest identities, and login ────────────────────────────────────────────────────────────────
+
+/// The cookie that records the accepted notice. HttpOnly because the page is TOLD the state by the server rather than reading it:
+/// a cookie a script can read is a cookie a script can forge, and the only reason to read it in JavaScript would be to skip the
+/// server's answer.
+const CONSENT_COOKIE: &str = "concord_consent";
+
+/// A year. The notice is about cookies, and a notice that re-asks every week is a notice people dismiss without reading.
+const CONSENT_MAX_AGE: i64 = 365 * 24 * 60 * 60;
+
+/// The navigation cookie. Accepted ONLY on a GET whose path is not under `/api/` — every mutating route is an API route, so this
+/// cookie structurally cannot authorize a write, and the bearer header remains the only credential for the API. Without it a
+/// member page would be cacheable and shareable, and with it a GET is a session.
+const NAV_COOKIE: &str = "concord_nav";
+
+/// Methods that change something.
+fn is_mutating(method: &axum::http::Method) -> bool {
+    use axum::http::Method;
+    matches!(
+        *method,
+        Method::POST | Method::PUT | Method::PATCH | Method::DELETE
+    )
+}
+
+/// Paths the gate does not touch.
+///
+/// Establishing or ending an identity is not an interaction with the project's data, and hiding registration behind a cookie
+/// banner is a dark pattern: a visitor must be able to create an account, and to leave, without agreeing to anything. The
+/// webhook is server-to-server and has no browser and no cookie to accept.
+fn consent_exempt(path: &str) -> bool {
+    path == "/api/v1/consent"
+        || path == "/api/v1/guest"
+        || path.starts_with("/api/v1/auth/")
+        || path == "/api/v1/hooks/forgejo"
+        || !path.starts_with("/api/")
+}
+
+/// One cookie's value from the request headers.
+fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
+    let raw = headers.get(axum::http::header::COOKIE)?.to_str().ok()?;
+    raw.split(';')
+        .map(str::trim)
+        .find_map(|pair| pair.strip_prefix(&format!("{name}=")).map(str::to_string))
+}
+
+/// The token this request presents in the `Authorization` header.
+///
+/// **The navigation cookie is deliberately NOT read here.** It exists so a browser navigation renders as the member, and it is
+/// accepted only for a GET outside `/api/` — see [`presented_token_for_logout`] for the one exception. Reading it for API calls
+/// would make every mutating API route reachable from a cross-site form post with the visitor's cookie attached, which is the
+/// CSRF hole the split exists to prevent, and the header is what every script sends anyway.
+fn presented_token(headers: &HeaderMap) -> Option<String> {
+    headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+        .and_then(|value| value.strip_prefix("Bearer "))
+        .map(str::to_string)
+}
+
+/// The token to revoke: the header if present, else the navigation cookie.
+///
+/// Logout is the one route that reads the cookie, because a browser that navigates to `/logout` may send only that. Revoking is
+/// not a privileged action — it only ever ends the session it was handed — so accepting the weaker credential here costs nothing
+/// that accepting it on a write would.
+fn presented_token_for_logout(headers: &HeaderMap) -> Option<String> {
+    presented_token(headers).or_else(|| cookie_value(headers, NAV_COOKIE))
+}
+
+/// The user this request acts as, by either credential.
+async fn acting_user(
+    state: &AppState,
+    headers: &HeaderMap,
+) -> Result<Option<concord_db::auth::User>, ApiError> {
+    let Some(token) = presented_token(headers) else {
+        return Ok(None);
+    };
+    concord_db::auth::user_for_token(&state.pool, &token)
+        .await
+        .map_err(|error| match error {
+            concord_db::auth::AuthError::Database(error) => internal(error),
+            other => internal(format!("{other:?}")),
+        })
+}
+
+/// A refusal with a `code` a client can switch on and a sentence a person can read.
+fn coded(status: StatusCode, code: &str, message: &str) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    (
+        status,
+        Json(serde_json::json!({ "code": code, "error": message })),
+    )
+        .into_response()
+}
+
+/// Consent and the guest cap, in the one place both are enforced.
+///
+/// Consent is a GATE, not a credential: it permits, while identity still comes from the bearer token. That is why the cookie is
+/// safe to set from a page the visitor does not control, and why planting it gains an attacker nothing.
+///
+/// The guest cap is checked on every guest write and not only at mint: mint-only would let an instance cross the cap with a
+/// visitor mid-session and keep serving that visitor forever, which is exactly the state the cap exists to end. A guest is the
+/// only identity that can be refused this way, and a store failure while checking fails CLOSED for a guest — an instance that
+/// cannot say how big it is must not keep taking nameless contributions.
+async fn interaction_gate(
+    State(state): State<AppState>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    use axum::response::IntoResponse;
+    let path = request.uri().path().to_string();
+    if !is_mutating(request.method()) || consent_exempt(&path) {
+        return next.run(request).await;
+    }
+    let version = concord_db::identity::GuestStatus::consent_version_from_env();
+    if cookie_value(request.headers(), CONSENT_COOKIE).as_deref() != Some(version.as_str()) {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "code": "consent_required",
+                "error": "cookies must be accepted before interacting with this site",
+                "consent": "required",
+            })),
+        )
+            .into_response();
+    }
+    let Ok(Some(user)) = acting_user(&state, request.headers()).await else {
+        // No identity, or one that cannot be resolved: the route's own gates decide. A store error here must not become a 403
+        // for a legitimate account, so it is reported by the handler that needs the actor.
+        return next.run(request).await;
+    };
+    let guest = concord_db::identity::is_guest(&state.pool, user.id)
+        .await
+        .unwrap_or(false);
+    if !guest {
+        return next.run(request).await;
+    }
+    let limit = concord_db::identity::GuestStatus::limit_from_env();
+    match concord_db::identity::guest_status(&state.pool, limit).await {
+        Ok(status) if status.allowed => next.run(request).await,
+        Ok(status) => {
+            use axum::response::IntoResponse;
+            (
+                StatusCode::FORBIDDEN,
+                Json(serde_json::json!({
+                    "code": "guest_limit_reached",
+                    "error": "this instance has grown past its guest limit; create an account to take part",
+                    "mau": status.mau,
+                    "limit": status.limit,
+                })),
+            )
+                .into_response()
+        }
+        Err(error) => {
+            tracing::warn!(%error, "guest limit check failed");
+            coded(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "guest_check_failed",
+                "guest contributions are paused: this instance could not check its own size",
+            )
+        }
+    }
+}
+
+/// `GET /api/v1/guest` — the public, read-only question a page asks before it offers to let a visitor act.
+async fn guest_status_handler(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let limit = concord_db::identity::GuestStatus::limit_from_env();
+    let status = concord_db::identity::guest_status(&state.pool, limit)
+        .await
+        .map_err(internal)?;
+    let version = concord_db::identity::GuestStatus::consent_version_from_env();
+    Ok(Json(serde_json::json!({
+        "allowed": status.allowed,
+        "mau": status.mau,
+        "limit": status.limit,
+        "window_days": status.window_days,
+        "guests": status.guests,
+        "stale_guests": status.stale_guests,
+        "consent_version": version,
+        "consented": cookie_value(&headers, CONSENT_COOKIE).as_deref() == Some(version.as_str()),
+    })))
+}
+
+/// `POST /api/v1/guest` — mint a guest identity.
+///
+/// Consent is already enforced by the gate, so reaching this handler means the visitor accepted the notice. The token is the
+/// identity's only credential and is returned once.
+async fn claim_guest(
+    State(state): State<AppState>,
+) -> Result<axum::response::Response, ApiError> {
+    use axum::response::IntoResponse;
+    use concord_db::identity::Refused;
+    let limit = concord_db::identity::GuestStatus::limit_from_env();
+    match concord_db::identity::create_guest(&state.pool, limit).await {
+        Ok((user, token)) => Ok((
+            StatusCode::CREATED,
+            Json(serde_json::json!({
+                "user": serde_json::to_value(user).map_err(internal)?,
+                "token": token,
+                "token_note": TOKEN_NOTE,
+            })),
+        )
+            .into_response()),
+        Err(Refused::LimitReached { mau, limit }) => Ok((
+            StatusCode::FORBIDDEN,
+            Json(serde_json::json!({
+                "code": "guest_limit_reached",
+                "error": "this instance has grown past its guest limit; create an account to take part",
+                "mau": mau,
+                "limit": limit,
+            })),
+        )
+            .into_response()),
+        Err(Refused::CheckFailed(error)) => Err(internal(error)),
+        Err(other) => Err(internal(format!("{other:?}"))),
+    }
+}
+
+/// `POST /api/v1/consent` — record acceptance: the cookie the gate reads, plus the identity's own record when there is an identity
+/// to record it against.
+async fn accept_consent(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<axum::response::Response, ApiError> {
+    use axum::response::IntoResponse;
+    let version = concord_db::identity::GuestStatus::consent_version_from_env();
+    let secure = headers
+        .get("x-forwarded-proto")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.eq_ignore_ascii_case("https"));
+    let mut response = Json(serde_json::json!({ "ok": true, "consent": version })).into_response();
+    let cookie = format!(
+        "{CONSENT_COOKIE}={version}; Path=/; Max-Age={CONSENT_MAX_AGE}; HttpOnly; SameSite=Lax{}",
+        if secure { "; Secure" } else { "" }
+    );
+    if let Ok(value) = axum::http::HeaderValue::from_str(&cookie) {
+        response
+            .headers_mut()
+            .append(axum::http::header::SET_COOKIE, value);
+    }
+    // A failure to record it against the identity is reported in the log and NOT turned into a failed acceptance: the visitor did
+    // accept, and a 500 would tell them otherwise.
+    if let Some(user) = acting_user(&state, &headers).await? {
+        if let Err(error) = concord_db::identity::record_consent(&state.pool, user.id).await {
+            tracing::warn!(%error, "record consent");
+        }
+    }
+    Ok(response)
+}
+
+#[derive(Debug, Deserialize)]
+struct LoginRequest {
+    username: String,
+    password: String,
+}
+
+/// `POST /api/v1/auth/login`.
+///
+/// The fold runs AFTER a successful login and its failure does not undo it: someone who has just proved they own an account must
+/// not be stranded by a 500 from a housekeeping step. It is reported in the response instead, beside the counts it produced.
+async fn login(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(body): Json<LoginRequest>,
+) -> Result<axum::response::Response, ApiError> {
+    use axum::response::IntoResponse;
+    use concord_db::auth::AuthError;
+    let (user, token) = match concord_db::auth::login(&state.pool, &body.username, &body.password).await {
+        Ok(pair) => pair,
+        Err(AuthError::Credentials(message) | AuthError::Invalid(message)) => {
+            return Err(ApiError::unauthenticated(message))
+        }
+        Err(AuthError::NoCredential) => {
+            return Err(ApiError::unauthenticated("invalid credentials"))
+        }
+        Err(AuthError::Duplicate(message)) => return Err(ApiError::conflict(message)),
+        Err(AuthError::Database(error)) => return Err(internal(error)),
+    };
+    // The guest this browser was acting as, if any: its rows genuinely have to move, because a second identity already holds the
+    // token this visitor proved they own.
+    let mut fold = concord_db::identity::FoldReport::default();
+    let mut fold_error: Option<String> = None;
+    if let Some(actor) = acting_user(&state, &headers).await? {
+        if actor.id != user.id {
+            let guest = concord_db::identity::is_guest(&state.pool, actor.id)
+                .await
+                .unwrap_or(false);
+            if guest {
+                match concord_db::identity::fold_guest_into(&state.pool, actor.id, user.id).await {
+                    Ok(report) => fold = report,
+                    Err(error) => fold_error = Some(format!("{error:?}")),
+                }
+            }
+        }
+    }
+    let mut body_json = serde_json::json!({
+        "user": serde_json::to_value(&user).map_err(internal)?,
+        "token": token,
+        "token_note": TOKEN_NOTE,
+    });
+    if fold.moved > 0 || fold.superseded > 0 {
+        body_json["fold"] = serde_json::to_value(&fold).map_err(internal)?;
+    }
+    if let Some(message) = fold_error {
+        body_json["fold_error"] = Value::String(message);
+    }
+    let mut response = Json(body_json).into_response();
+    // The navigation cookie is a SESSION cookie (no Max-Age): the localStorage token lives until it is revoked, and the navigation
+    // convenience should not outlive the browser session that created it. Clearing it on logout is what makes logout look like it
+    // happened.
+    let cookie = nav_cookie(&format!("={token}"), &headers);
+    if let Ok(value) = axum::http::HeaderValue::from_str(&cookie) {
+        response
+            .headers_mut()
+            .append(axum::http::header::SET_COOKIE, value);
+    }
+    Ok(response)
+}
+
+/// `POST /api/v1/auth/logout` — revoke the presented token. Idempotent: a client that logs out twice, or whose token was already
+/// revoked, gets 204 both times.
+async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Result<axum::response::Response, ApiError> {
+    use axum::response::IntoResponse;
+    if let Some(token) = presented_token_for_logout(&headers) {
+        concord_db::auth::revoke_token(&state.pool, &token)
+            .await
+            .map_err(|error| match error {
+                concord_db::auth::AuthError::Database(error) => internal(error),
+                other => internal(format!("{other:?}")),
+            })?;
+    }
+    let mut response = StatusCode::NO_CONTENT.into_response();
+    // A cookie left behind would keep rendering member pages for a credential that no longer resolves.
+    let cookie = nav_cookie("", &headers);
+    if let Ok(value) = axum::http::HeaderValue::from_str(&cookie) {
+        response
+            .headers_mut()
+            .append(axum::http::header::SET_COOKIE, value);
+    }
+    Ok(response)
+}
+
+/// The `concord_nav` Set-Cookie value. `payload` is `=<token>` to set it, or empty to expire it.
+fn nav_cookie(payload: &str, headers: &HeaderMap) -> String {
+    let secure = headers
+        .get("x-forwarded-proto")
+        .and_then(|value| value.to_str().ok())
+        .is_some_and(|value| value.eq_ignore_ascii_case("https"));
+    let base = format!(
+        "{NAV_COOKIE}{payload}; Path=/; HttpOnly; SameSite=Lax{}",
+        if secure { "; Secure" } else { "" }
+    );
+    if payload.is_empty() {
+        format!("{base}; Max-Age=-1")
+    } else {
+        base
     }
 }

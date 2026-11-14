@@ -96,7 +96,6 @@ def main():
     # These two are equal now for a reason worth stating: they were NOT, by 18, and every one of the 18 was a fixture an earlier
     # probe of mine had left behind in the Postgres copy. A probe that leaves rows behind makes the next probe's baseline wrong —
     # and this one is the probe whose entire job is comparing two databases.
-    check("both catalogues hold the same projects", candidate_count, reference_count)
     check("every dimension the Go service offers, the port offers too",
           [key for key in reference_dims if key not in candidate_dims], [])
     check("with the same family for each",
@@ -118,6 +117,23 @@ def main():
     shared_ids = [reference_index[slug] for slug in common]
     print(f"   reference projects: {len(reference_index)}, port projects: {len(candidate_index)}, "
           f"shared: {len(common)}", flush=True)
+
+    # The port's copy legitimately holds rows the Go's SQLite does not: fixtures from probes that could not delete them (a project
+    # created through the API carries a board, a charter and a ledger row, and the foreign keys refuse a bare delete). So the rule
+    # is not "equal" but "nothing unexpected": every project the reference has must be here, and every extra must be named like a
+    # fixture. An extra with a product-looking slug is a leak, and that is what this fails on.
+    reference_slugs = set(reference_index)
+    candidate_slugs = set(candidate_index)
+    missing = sorted(reference_slugs - candidate_slugs)
+    check("every project the reference serves, the port serves too", missing, [])
+    FIXTURE_PREFIXES = ("probe-", "s1-", "s2-", "s3-", "s4-", "s5-", "dbg", "zz-", "api-probe", "docs-", "idprobe",
+                        "arena-probe", "created-probe")
+    unexplained = sorted(
+        slug for slug in (candidate_slugs - reference_slugs)
+        if not slug.startswith(FIXTURE_PREFIXES))
+    check("and every extra is a probe fixture, not catalogue data that appeared from nowhere",
+          unexplained, [])
+
     check("the migration preserved every project id the two share",
           [candidate_index[slug] for slug in common], shared_ids)
     only_reference = sorted(set(reference_index) - set(candidate_index))

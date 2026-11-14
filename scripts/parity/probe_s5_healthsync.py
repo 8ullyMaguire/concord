@@ -70,6 +70,10 @@ def main():
     # Clean up at START as well as at the end: an interrupted run must not poison the next gate.
     con.execute("delete from project_metrics where project_id in "
                 "(select id from projects where slug = ?)", (SLUG,))
+    # `board_columns` is created with the project and has a real foreign key to it, so the project cannot be
+    # deleted while its board exists. A cleanup that cannot remove its own fixture breaks the NEXT run.
+    con.execute("delete from board_cards where column_id in (select id from board_columns where project_id in (select id from projects where slug = ?))", (SLUG,))
+    con.execute("delete from board_columns where project_id in (select id from projects where slug = ?)", (SLUG,))
     con.execute("delete from projects where slug = ?", (SLUG,))
     now = time.time()
     project = con.execute(

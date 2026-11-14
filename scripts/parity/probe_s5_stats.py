@@ -28,6 +28,27 @@ import urllib.request
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(HERE)), "tests", "e2e"))
 
+# ── consent ──────────────────────────────────────────────────────────────────────────────────────────────────────
+# Every mutation on this instance must carry the accepted cookie notice: the server refuses with 403 `consent_required`
+# otherwise, and that is the reference's behaviour, not a detail of this probe. Rather than thread the header through every call
+# below, the probe carries it the way a browser does.
+_ORIGINAL_REQUEST = urllib.request.Request
+
+
+def _consented_request(*args, **kwargs):
+    if len(args) > 2:
+        headers = dict(args[2] or {})
+        args = args[:2]
+        kwargs["headers"] = headers
+    else:
+        kwargs["headers"] = dict(kwargs.pop("headers", None) or {})
+    kwargs["headers"].setdefault(
+        "Cookie", os.environ.get("CONCORD_CONSENT_COOKIE", "concord_consent=1"))
+    return _ORIGINAL_REQUEST(*args, **kwargs)
+
+
+urllib.request.Request = _consented_request
+
 BASE = os.environ.get("CANDIDATE", "http://127.0.0.1:8108")
 
 STAMP = int(time.time() * 1000) % 100000000
