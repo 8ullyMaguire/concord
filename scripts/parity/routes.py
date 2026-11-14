@@ -160,7 +160,10 @@ def rust_routes():
             continue
         with open(path, encoding="utf-8") as handle:
             source = handle.read()
-        for match in re.finditer(r'\.route\(\s*"([^"]+)"', source):
+        # A comment between `.route(` and its path is legal Rust and it made the threads route invisible here: the
+        # regex demanded the string immediately after the paren, so three routes the port answers were reported as
+        # missing work. Skip whole `//` lines between the paren and the string.
+        for match in re.finditer(r'\.route\(\s*(?://[^\n]*\n\s*)*"([^"]+)"', source):
             path_text = match.group(1)
             # Walk to the matching close paren of this `.route(` call.
             index = source.index("(", match.start())

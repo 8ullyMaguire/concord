@@ -10,7 +10,7 @@
 
 use axum::response::IntoResponse;
 use axum::{
-    extract::{Path, Query, State},
+    extract::{DefaultBodyLimit, Path, Query, State},
     http::{HeaderMap, StatusCode},
     routing::{get, post, put},
     Json, Router,
@@ -493,10 +493,19 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/projects/{slug}/board/cards/{card_id}/move",
             put(move_card),
         )
-        .route("/api/v1/projects/{slug}/documents", get(list_documents))
+        // A project's documents: written by a contributor, removed by a maintainer. The PUT is an upsert at
+        // (kind, slug) that bumps `revision` rather than replacing the row, so links and comments keep resolving.
+        .route(
+            "/api/v1/projects/{slug}/documents",
+            // 8 MB, not axum's 2 MB default: a specification is not a comment, and a 3,982-line spec is the shape this
+            // raises the bound FOR. It is still a bound — an unbounded read is one POST away from taking the service down.
+            get(list_documents)
+                .put(put_document)
+                .layer(DefaultBodyLimit::max(DOCUMENT_BODY_LIMIT)),
+        )
         .route(
             "/api/v1/projects/{slug}/documents/{document}",
-            get(get_document),
+            get(get_document).delete(delete_document),
         )
         .fallback(not_found)
         .with_state(state)
@@ -7020,6 +7029,105 @@ fn merge_refusal(refused: concord_db::merge_writes::Refused) -> ApiError {
         Refused::NotAMember => ApiError::forbidden(
             "approving a merge request is for members with at least the contributor role".to_string(),
         ),
+        Refused::Database(error) => internal(error),
+    }
+}
+
+
+/// The document body limit: 8 MB, the reference's own, raised for specifications rather than comments.
+const DOCUMENT_BODY_LIMIT: usize = 8 << 20;
+
+/// What a document write sends.
+#[derive(serde::Deserialize, Default)]
+struct PutDocumentRequest {
+    #[serde(default)]
+    kind: String,
+    #[serde(default)]
+    slug: String,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    body: String,
+}
+
+/// `PUT /projects/{id}/documents` — create or replace the document at `(kind, slug)`.
+///
+/// Writing needs the **contributor** role, not merely an account: a document states what a project *is*, so it is not something
+/// any signed-in visitor gets to rewrite. The reply is the stored document with its new `revision` — the one number that tells a
+/// reader whether the spec in front of them is the one that was agreed.
+async fn put_document(
+    State(state): State<AppState>,
+    Path(project_segment): Path<String>,
+    headers: HeaderMap,
+    Json(body): Json<PutDocumentRequest>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("writing a document needs an account"))?;
+    // Visibility before anything is read or written: a private project's spec is exactly the content that must not leak, and
+    // this handler resolves its project by slug rather than through a project-id guard.
+    let project = readable_project_segment(&state, &project_segment, &headers).await?;
+    require_role(&state, &project, "contributor", &user).await?;
+    let document = concord_db::document_writes::put(
+        &state.pool,
+        project.id,
+        user.id,
+        &body.kind,
+        &body.slug,
+        &body.title,
+        &body.body,
+    )
+    .await
+    .map_err(document_refusal)?;
+    let _ = sqlx::query(
+        "insert into audit_log (project_id, actor_id, action, entity, entity_id, detail, created_at)
+         values ($1,$2,'put_document','project_document',$3,$4,now())",
+    )
+    .bind(project.id)
+    .bind(user.id)
+    .bind(document.id)
+    .bind(format!("{}/{}", document.kind, document.slug))
+    .execute(&state.pool)
+    .await;
+    Ok(Json(serde_json::to_value(&document).map_err(internal)?))
+}
+
+/// `DELETE /projects/{id}/documents/{doc}` — remove a document. **Maintainer**, not contributor.
+async fn delete_document(
+    State(state): State<AppState>,
+    Path((project_segment, document)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("deleting a document needs an account"))?;
+    let project = readable_project_segment(&state, &project_segment, &headers).await?;
+    require_role(&state, &project, "maintainer", &user).await?;
+    let Ok(id) = document.parse::<i64>() else {
+        return Err(ApiError::invalid_request("document id must be an integer"));
+    };
+    concord_db::document_writes::delete(&state.pool, project.id, id)
+        .await
+        .map_err(document_refusal)?;
+    let _ = sqlx::query(
+        "insert into audit_log (project_id, actor_id, action, entity, entity_id, detail, created_at)
+         values ($1,$2,'delete_document','project_document',$3,null,now())",
+    )
+    .bind(project.id)
+    .bind(user.id)
+    .bind(id)
+    .execute(&state.pool)
+    .await;
+    Ok(Json(serde_json::json!({ "status": "deleted" })))
+}
+
+/// A document refusal, as the status it deserves. An unknown kind is a 400 with the list of kinds, because the caller's next
+/// question is which ones exist.
+fn document_refusal(refused: concord_db::document_writes::Refused) -> ApiError {
+    use concord_db::document_writes::Refused;
+    match refused {
+        Refused::Invalid(reason) => ApiError::invalid_request(reason),
+        Refused::NotFound => ApiError::not_found("no such document"),
         Refused::Database(error) => internal(error),
     }
 }
