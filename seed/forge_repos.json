@@ -31,8 +31,8 @@
   },
   {
     "slug": "bluesky-feed-generator",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.polarisocial.xyz/hirrolot19/bluesky-feed-generator",
+    "repo_host": "forgejo"
   },
   {
     "slug": "build-lemmy",
@@ -56,18 +56,18 @@
   },
   {
     "slug": "concord",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.polarisocial.xyz/hirrolot19/concord",
+    "repo_host": "forgejo"
   },
   {
     "slug": "darkhold",
-    "repo_url": "https://git.polarisocial.xyz/hirrolot19/lorehaven",
+    "repo_url": "https://git.polarisocial.xyz/hirrolot19/darkhold",
     "repo_host": "forgejo"
   },
   {
     "slug": "dotfiles",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.polarisocial.xyz/hirrolot19/dotfiles",
+    "repo_host": "forgejo"
   },
   {
     "slug": "dotfiles-old",
@@ -76,13 +76,13 @@
   },
   {
     "slug": "dream-leptos",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.polarisocial.xyz/hirrolot19/dream-leptos",
+    "repo_host": "forgejo"
   },
   {
     "slug": "dream-old",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.polarisocial.xyz/hirrolot19/dream-old",
+    "repo_host": "forgejo"
   },
   {
     "slug": "dream-social-media-platform",
@@ -91,13 +91,13 @@
   },
   {
     "slug": "feedgen",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.polarisocial.xyz/hirrolot19/bluesky-feedgen",
+    "repo_host": "forgejo"
   },
   {
     "slug": "ferrisfeed",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.polarisocial.xyz/hirrolot19/piefed-rs",
+    "repo_host": "forgejo"
   },
   {
     "slug": "fichub-cli-bak",
@@ -111,8 +111,8 @@
   },
   {
     "slug": "ficnexus",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://github.com/8ullyMaguire/ficnexus",
+    "repo_host": "github"
   },
   {
     "slug": "gpt-repository-loader",
@@ -121,8 +121,8 @@
   },
   {
     "slug": "gravity",
-    "skip": true,
-    "reason": "the remote recorded in Q5 (github.com/8ullyMaguire/gravity) answers 404 for the repository AND for the account, checked 2026-10-30 -- the owner was renamed or the repository made private, so the URL needs stating again (Q5)"
+    "repo_url": "https://git.polarisocial.xyz/hirrolot19/gravity",
+    "repo_host": "forgejo"
   },
   {
     "slug": "heirloom-v1",
@@ -141,13 +141,13 @@
   },
   {
     "slug": "hermes-artifacts",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.polarisocial.xyz/hirrolot19/hermes-artifacts",
+    "repo_host": "forgejo"
   },
   {
     "slug": "kindred",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.polarisocial.xyz/hirrolot19/kindred",
+    "repo_host": "forgejo"
   },
   {
     "slug": "l2-adrenaline-scripts",
@@ -181,13 +181,13 @@
   },
   {
     "slug": "lorebook",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.polarisocial.xyz/hirrolot19/lorebook",
+    "repo_host": "forgejo"
   },
   {
     "slug": "lorebot",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.polarisocial.xyz/hirrolot19/lorebot",
+    "repo_host": "forgejo"
   },
   {
     "slug": "media-wiki",
@@ -201,8 +201,8 @@
   },
   {
     "slug": "orbital",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.polarisocial.xyz/hirrolot19/orbital",
+    "repo_host": "forgejo"
   },
   {
     "slug": "pamac",
@@ -281,8 +281,8 @@
   },
   {
     "slug": "streakforge",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.polarisocial.xyz/hirrolot19/streakforge",
+    "repo_host": "forgejo"
   },
   {
     "slug": "string-to-number",
@@ -301,8 +301,8 @@
   },
   {
     "slug": "threadlight",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://github.com/8ullyMaguire/threadlight",
+    "repo_host": "github"
   },
   {
     "slug": "threadlight-frontend",
@@ -311,8 +311,8 @@
   },
   {
     "slug": "trending-linux-packages",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://github.com/8ullyMaguire/trending-linux-packages",
+    "repo_host": "github"
   },
   {
     "slug": "trending-linux-packages-data",
@@ -361,7 +361,7 @@
   },
   {
     "slug": "zeph",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://github.com/8ullyMaguire/zeph",
+    "repo_host": "github"
   }
 ]
