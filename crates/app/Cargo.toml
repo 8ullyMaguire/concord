@@ -15,6 +15,7 @@ anyhow.workspace = true
 chrono.workspace = true
 axum.workspace = true
 concord-db = { path = "../db" }
+concord-web = { path = "../web" }
 concord-ranking = { path = "../ranking" }
 concord-scout = { path = "../scout" }
 polaris-core.workspace = true

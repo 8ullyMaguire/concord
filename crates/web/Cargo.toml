@@ -1,0 +1,12 @@
+[package]
+name = "concord-web"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+publish = false
+
+[dependencies]
+concord-db = { path = "../db" }
+axum.workspace = true
+sqlx.workspace = true
+serde_json.workspace = true

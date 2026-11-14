@@ -116,7 +116,10 @@ def go_routes_with_handlers():
                 # A LIST of handlers, because `normalise` strips `/api/v1` and so an API route and a page route of the
                 # same shape collide. Keeping both lets the classification say "JSON" when either answers JSON,
                 # which is the question that matters: is there API work here?
-                found.setdefault((method.upper(), normalise(full)), []).append(handler)
+                # The pair is (handler, registered-under-/api/), because `/api/v1` is stripped by `normalise` and the Go
+                # registers a PAGE and its API at the same shape — `/projects/{}/board` and `/api/v1/projects/{}/board` —
+                # so the flag is the only thing that still tells them apart after the prefix is gone.
+                found.setdefault((method.upper(), normalise(full)), []).append((handler, "/api/" in full))
             depth += opened
             # Close blocks whose depth has gone past.
             while stack and depth <= stack[-1][0]:
@@ -165,8 +168,17 @@ def rust_routes():
     across several lines and a lazy regex over them stops at the first nested `)` — which is how the first
     version of this script reported `/projects/{}/features` as missing when the port answers it.
     """
-    found = set()
-    for relative in ("crates/app/src/lib.rs", "crates/app/src/feeds.rs"):
+    # `found` maps a shape to whether it came from a PAGE source. The distinction is the port's own: `crates/web` is the page
+    # renderer, `feeds.rs` and the three document routes are pages the app already answered, and everything else under
+    # `crates/app` answers JSON. Without it the port's `/api/v1/scout` (JSON) would satisfy the Go's `/scout` (a page) after
+    # `normalise` strips the prefix, which is the same collapse that hid 14 page routes on the Go side.
+    PAGE_SOURCES = {"crates/web/src/lib.rs", "crates/app/src/feeds.rs"}
+    # `/atom.xml` and `/badge/{slug}.svg` are documents the app already answers; `/healthz` answers JSON and is NOT one,
+    # which is why it is absent here — putting it in made the port look as if it had dropped the Go's health endpoint.
+    PAGE_PATHS = {"/atom.xml", "/badge/{}"}
+    api_found = set()
+    page_found = set()
+    for relative in ("crates/app/src/lib.rs", "crates/app/src/feeds.rs", "crates/web/src/lib.rs"):
         path = os.path.join(ROOT, relative)
         if not os.path.exists(path):
             continue
@@ -189,10 +201,15 @@ def rust_routes():
                         break
                 index += 1
             handlers = source[match.end():index]
+            shape = normalise(path_text)
+            is_page = relative in PAGE_SOURCES or shape in PAGE_PATHS
             for method in ("get", "post", "put", "delete", "patch"):
                 if re.search(rf"\b{method}\(", handlers) or re.search(rf"axum::routing::{method}\b", handlers):
-                    found.add((method.upper(), normalise(path_text)))
-    return found
+                    # The key goes into the set for ITS kind only: a shape can be both (the port answers the page
+                    # `/projects` from `crates/web` and the API `/projects` from `crates/app`), and one set holding a
+                    # single boolean made whichever registration was read second erase the other.
+                    (page_found if is_page else api_found).add((method.upper(), shape))
+    return api_found, page_found
 
 
 def normalise(path):
@@ -213,16 +230,32 @@ def normalise(path):
 def main():
     handlers = go_routes_with_handlers()
     go = set(handlers)
-    rust = rust_routes()
-    missing = sorted(go - rust)
-    extra = sorted(rust - go)
-    # THE LIST IS SPLIT, because the two halves are different work: a JSON route is a port TODO, and a page route is
-    # the frontend's (row 12). Reporting them together invites porting pages as JSON, and then deleting them.
-    api_missing = [(m, path) for m, path in missing if any(answers_json(h) for h in handlers[(m, path)])]
-    page_missing = [(m, path) for m, path in missing if not any(answers_json(h) for h in handlers[(m, path)])]
+    rust_api_set, rust_page_set = rust_routes()
+    rust = rust_api_set | rust_page_set
+    # PAGE AND JSON ARE SEPARATE SETS ON BOTH SIDES, not one set split after the fact.
+    #
+    # `normalise` strips `/api/v1` so a port route and its Go registration compare equal. The Go registers BOTH a page at
+    # `/projects/{slug}/board` and its API at `/api/v1/projects/{slug}/board`, and after stripping they are one key with two
+    # handlers — so `any(answers_json(...))` classified the pair as JSON and the PAGE disappeared from the missing list. That is
+    # how this script reported "missing: 10 page routes" while the Go registers 66 page GETs and the port served none of them.
+    #
+    # The split is now on the registered path, not on the handler's body: a Go route whose path is not under `/api/` is a page.
+    # A path can be BOTH: the Go serves the page `/projects` and the API `/api/v1/projects`, which share a shape once the
+    # prefix is stripped. Each registration contributes to its own kind's set, so neither can hide the other.
+    go_api = {key for key in go if any(is_api for _, is_api in handlers[key])}
+    go_pages = {key for key in go if any(not is_api for _, is_api in handlers[key])}
+    rust_pages = rust_page_set
+    rust_api = rust_api_set
+    missing_api = sorted(go_api - rust_api)
+    missing_pages = sorted(go_pages - rust_pages)
+    missing = missing_api + missing_pages
+    extra = sorted(set(rust) - go)
+    api_missing = [(m, path) for m, path in missing_api
+                   if any(answers_json(h) for h, _ in handlers.get((m, path), [("", True)]))]
+    page_missing = missing_pages
     print(
-        f"go routes: {len(go)}   port routes: {len(rust)}   "
-        f"missing: {len(missing)} ({len(api_missing)} json, {len(page_missing)} page)"
+        f"go routes: {len(go)} ({len(go_api)} json, {len(go_pages)} page)   "
+        f"port answers: {len(go & set(rust))}   missing: {len(missing)} ({len(api_missing)} json, {len(page_missing)} page)"
     )
     if "--go-only" in sys.argv:
         for method, path in sorted(go):
@@ -242,6 +275,8 @@ def main():
             print(f"  {method:6} {path}")
     if not api_missing:
         print("\nevery go JSON route is answered")
+    if not page_missing:
+        print("every go page route is answered")
     return 1 if missing else 0
 
 

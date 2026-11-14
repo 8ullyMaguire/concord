@@ -25,6 +25,13 @@ use sqlx::PgPool;
 
 /// What every handler needs. One field today; the pool is what makes a handler testable without a
 /// service, which is how the slice's tests will call them.
+/// The page routes read the pool and nothing else, so `AppState` hands them that one field rather than growing a second state type.
+impl axum::extract::FromRef<AppState> for PgPool {
+    fn from_ref(state: &AppState) -> Self {
+        state.pool.clone()
+    }
+}
+
 #[derive(Clone)]
 pub struct AppState {
     pub pool: PgPool,
@@ -595,6 +602,9 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/auth/logout", post(logout))
         // The gate is one layer rather than 184 handlers: consent and the guest cap are properties of every mutation, and a rule
         // copied into every handler is a rule that will be missing from the one written next month.
+        // The page routes (row 12). Merged before the gate so a GET is not asked for consent — the gate refuses mutations, and a
+        // reader who has not accepted the notice can still read.
+        .merge(concord_web::router::<AppState>())
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             interaction_gate,
