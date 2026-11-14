@@ -39,6 +39,7 @@ pub mod criteria;
 pub mod criteria_writes;
 pub mod deps;
 pub mod members;
+pub mod merge_writes;
 pub mod panels;
 pub mod metrics;
 pub mod stats;

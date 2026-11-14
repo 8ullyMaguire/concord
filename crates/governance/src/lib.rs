@@ -53,6 +53,22 @@ impl Role {
     pub fn at_least(self, min: Self) -> bool {
         self.level() >= min.level()
     }
+
+    /// The role a stored `members.role` names, or [`Role::Guest`] for anything unrecognised.
+    ///
+    /// Unknown spellings fall to `Guest` rather than to the nearest-sounding role: an unrecognised string is a data problem, and
+    /// reading it charitably is how a typo in a role column becomes a permission.
+    #[must_use]
+    pub fn parse(value: &str) -> Self {
+        match value.trim().to_ascii_lowercase().as_str() {
+            "owner" => Self::Owner,
+            "maintainer" => Self::Maintainer,
+            "reviewer" => Self::Reviewer,
+            "contributor" => Self::Contributor,
+            "user" => Self::User,
+            _ => Self::Guest,
+        }
+    }
 }
 
 /// The project's decision regime.
