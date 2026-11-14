@@ -2788,6 +2788,61 @@ differential probe, which asserts both catalogues hold the same 73, went red and
 now cleans on the way out too, and `.gitignore` covers the `unused` file a probe's DB handle drops in the repo root. A probe that
 writes must not leave a trace; one that cleans only on entry leaves one on every run that fails halfway.
 
+### Row 11 — part 57: the identity cluster — guest, consent, login, logout, fold (2026-11-14, `ceaf47f`)
+
+```
+gate (before): POST /api/v1/auth/login -> 404, /auth/logout -> 404, GET /guest -> 404, POST /guest -> 404, /consent -> 404
+               (5 routes missing, and no gate on the other 184)
+gate (after):
+  probe_identity.py -> 65/65 ok
+  probe_s6_finder_diff.py -> 35/35 ok
+  alternatives 62/62, documents 46/46, merge 37/37, invites 32/32, featurevote 20/20, coverage 22/22, solutionvote 21/21,
+  solutionwrites 24/24, solutioncall 24/24, workitems 44/44, featurewrites 37/37, listwrites 41/41, criteriawrites 45/45,
+  projsettings 28/28, milestonewrites 41/41, complaintwrites 40/40, requestwrites 43/43, filing 31/31, requests 23/23,
+  accept 15/15, s3_api 94/94, s4_comments 41/41, s4_moderation 39/39, s3b_arena 20/20, s4_inbox 26/26, s4_curation 27/27,
+  s5_* (35 probes) all ok;   probe_s5_feeds RED — it drives /projects/{}/feed.xml, a PAGE route, i.e. row 12
+  routes.py -> go 216 / port 189   missing: 29 (19 json, 10 page)
+```
+
+`crates/db/src/auth.rs`: `login`, `issue_token`, `revoke_token`, `verify_password`, and two `AuthError` variants
+(`Credentials`, `NoCredential`). `crates/db/src/identity.rs` (new): `create_guest`, `promote_guest`, `guest_status`,
+`monthly_active_users`, `fold_columns`, `fold_guest_into`, `record_consent`, `is_guest`. `crates/app/src/lib.rs`: five routes, the
+consent middleware, the navigation cookie, register-with-promotion.
+
+**The consent gate is the reference's, probed before it was ported**: `POST /api/v1/projects/suki/join` on the live Go answers
+`403 {"code":"consent_required"}` without the cookie and `401` with it. The port now does the same, as one layer instead of 189
+handlers. Identity-establishing paths stay exempt — hiding registration behind a cookie banner is a dark pattern. Consequence:
+every probe carries the cookie (53 of them, through one shim), which is what a browser does.
+
+**Properties established by `probe_identity.py` (65 checks):**
+* a guest cannot log in, and "no such user" / "wrong password" / "guest identity" answer the SAME 401, compared byte for byte;
+* an unknown username still costs an argon2 hash, so the answer cannot be read off a stopwatch;
+* registering WITH a guest token returns the guest's own id — the row becomes the account;
+* logging in from a guest folds its work (2 audit rows + 1 reputation event + the guest's token = 4 moved) and deletes the guest;
+  the column list is derived from `pg_constraint` at fold time, and `audit_log.actor_id` is added by name-and-type because it has
+  no foreign key on purpose;
+* the navigation cookie is accepted for logout and NOT for an API call — the header is the API's only credential;
+* logout is idempotent (204 twice); a revoked token is dead;
+* consent is recorded against the identity, and a failure to record it is logged rather than turned into a failed acceptance.
+
+**Negative controls**: `audit_log.actor_id` dropped from the derived list → `moved: got 2 want 4`, `audit rows name the account:
+got 0 want 2`; the gate short-circuited → `got 401 want 403`, no code, no sentence.
+
+**Decisions, dated:**
+* **`/auth/me` does not grow an `is_guest` field.** The reference emits `false` for a guest too (its handler reads four columns
+  and leaves the flag at its zero value), so guest-ness is visible where it is true: in `GET /guest`, and in the register that
+  promotes the row. Copying the reference's lie would have been the wrong kind of fidelity.
+* **The fold moves the guest's API tokens too**, so the browser's guest token keeps working after the login, now naming the
+  account. That is the reference's behaviour and the right one: the alternative logs the visitor out of the page they just signed
+  into.
+* **58 `probe_s5_feeds`-style checks are row 12's**, not row 11's: feeds live at `/projects/{}/feed.xml`, outside `/api/v1` and
+  outside the JSON surface. Recorded so a red probe is not mistaken for a missing JSON route.
+
+**Found while probing, and fixed**: `probe_s1_api` and `probe_s2_status` could not delete their own fixtures once a project
+carried a board (a real foreign key refuses the bare delete), so each failing run left one behind and the next failed on the
+duplicate; both now use a stamped slug and delete the board first. `probe_s5_healthsync`'s cleanup was broken by my own scripted
+edit and is fixed.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
