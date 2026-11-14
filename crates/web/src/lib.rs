@@ -418,6 +418,8 @@ where
     Router::new()
         .route("/", get(home))
         .route("/projects", get(project_index))
+        // Static before dynamic: `/projects/new` must be the form, not a project whose slug is "new".
+        .route("/projects/new", get(misc::new_project))
         .route("/projects/{slug}", get(project_overview))
         .route("/projects/{slug}/board", get(project::board))
         .route("/projects/{slug}/roadmap", get(project::roadmap))

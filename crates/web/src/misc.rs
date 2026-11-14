@@ -252,6 +252,58 @@ pub struct LoginQuery {
     pub next: String,
 }
 
+/// `/projects/new` — the intent first, the form second.
+///
+/// Every other creation surface on the internet starts with the form, and the note this roadmap follows names the cost: a blank
+/// repository form invites a 74th project that duplicates the 12th. So this page asks the question in the order the problem exists —
+/// *what are you trying to build?* — and answers it from the catalogue before the name and slug fields are reached.
+///
+/// Two decisions worth stating:
+///
+/// * **The answer is not written on the server.** `GET /api/v1/similar/project` is the shipped semantic route (embedder, score bands,
+///   `has_duplicate`); re-deriving an answer here would be the second implementation of one rule this port has removed twice already.
+///   The page renders the question and the mount, and `new-project.js` fills it.
+/// * **An empty answer is a sentence, not a suggestion.** When nothing matches, the page says so and names how many projects were looked
+///   at. An intent router that always produces a "closest" project teaches people to trust a wrong answer, so the client refuses to
+///   invent one — and there is a browser test for exactly that.
+pub async fn new_project(headers: HeaderMap) -> Response {
+    let mut html = Html::new();
+    html.open("h2", &[]).text("Start a project").close("h2")
+        .open("p", &[("class", "muted")])
+        .text("Say what you are trying to build. Concord tells you what is already here before you make another one.")
+        .close("p")
+        .open("div", &[("class", "card mb-6")])
+        .open("label", &[("for", "intent")]).text("What are you trying to build?").close("label")
+        .void("input", &[("type", "text"), ("id", "intent"), ("name", "intent"),
+                         ("placeholder", "A CLI tool that converts CSV files to Parquet"),
+                         ("autocomplete", "off")])
+        // `aria-live` because the answer arrives while the reader is typing: a region that changes silently is invisible to a screen
+        // reader, and this one is the page's whole point.
+        .open("div", &[("id", "intent-results"), ("aria-live", "polite")]).close("div")
+        .close("div")
+        .open("form", &[("id", "create-form"), ("class", "auth-form")])
+        .open("label", &[("for", "name")]).text("Name").close("label")
+        .void("input", &[("type", "text"), ("id", "name"), ("name", "name"), ("required", "required")])
+        .open("label", &[("for", "slug")]).text("Slug").close("label")
+        .void("input", &[("type", "text"), ("id", "slug"), ("name", "slug"),
+                         ("placeholder", "lowercase-with-dashes"), ("required", "required")])
+        .open("label", &[("for", "description")]).text("One line about it").close("label")
+        .void("input", &[("type", "text"), ("id", "description"), ("name", "description")])
+        .open("button", &[("type", "submit")]).text("Create project").close("button")
+        .close("form")
+        .open("p", &[("id", "create-status"), ("class", "muted"), ("aria-live", "polite")]).close("p");
+    // The script goes after the markup it fills, and by URL rather than inline: `shell::asset` is what puts the content hash on it, so a
+    // changed script is a changed URL and no reader is served a cached one.
+    let body = format!(r#"{html}<script src="{}"></script>"#,
+                       crate::shell::asset("/assets/js/new-project.js"), html = html.finish());
+    render(&headers, Page {
+        title: "Start a project",
+        path: "/projects/new",
+        description: "Start a project on Concord — after seeing what already exists.",
+        bootstrap: serde_json::json!({"route": "/projects/new", "mount": "intent-results"}),
+    }, body)
+}
+
 /// `/login` — the form, and the reason every failure answers the same way.
 pub async fn login(Query(request): Query<LoginQuery>, headers: HeaderMap) -> Response {
     let next = if request.next.starts_with('/') { request.next.as_str() } else { "/" };

@@ -427,6 +427,16 @@ def main():
     check("  and asks for a session instead of pretending to be an empty inbox",
           "signed-in reader" in notifications_page, True)
 
+    # `/projects/new` — the intent check sits in front of the create form, and the mount is what the script fills. The probe asserts
+    # the CONTRACT (the page is a document, the mount exists, the script is served); the behaviour is `new_project_e2e.py`, because a
+    # client-rendered answer cannot be asserted from an HTTP body.
+    status, content_type, create_page = get("/projects/new")
+    check("GET /projects/new is a document", (status, content_type.startswith("text/html")), (200, True))
+    check("  carries the intent mount", 'id="intent-results"' in create_page, True)
+    check("  asks the intent before the name field",
+          create_page.find('id="intent"') < create_page.find('id="name"'), True)
+    check("  and serves the script that fills it", "/assets/js/new-project.js" in create_page, True)
+
     status, _content_type, login_page = get("/login")
     check("GET /login is a document", status, 200)
     check("  and posts to the API's own login", 'action="/api/v1/auth/login"' in login_page, True)

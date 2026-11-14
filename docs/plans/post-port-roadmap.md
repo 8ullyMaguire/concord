@@ -248,7 +248,49 @@ What the partial index already established, since a half-filled index is enough 
 are plausibly the semantic neighbours; `text=booru image board` still returns nothing, because the project that would match is one of the
 33 not yet indexed.
 
-### Step 3b — NEXT (after the backfill finishes)
+### Step 3b — DONE 2026-11-14 (the create page, and a guest could create a project)
+
+`/projects/new` now exists — the first creation surface in this tree, because until now `POST /api/v1/projects` was the only way to start
+a project and it had no page at all. It asks *what are you trying to build?* first, answers it from `GET /api/v1/similar/project` via
+`new-project.js`, and only then offers the name and slug fields. The intent answer is not re-derived: the page renders the mount and the
+script renders the route's answer, including `has_duplicate`.
+
+**An empty answer is a sentence, not a suggestion.** With no matches the page says nothing in the catalogue is described that way, names
+the wording it searched, and links `/search` — it never manufactures a "closest project", and there is a browser test whose whole job is
+that negative.
+
+**The finding, and it is why the page was worth building.** The first end-to-end run of the form created a project as a visitor who had
+signed into nothing. The trace is in `new_project_e2e.py`'s own diagnostic: `session.js` asks `POST /api/v1/guest` for every visitor, the
+browser then POSTs `/api/v1/projects` with that guest token, and the server answered **201 Created**:
+
+```
+req POST /api/v1/guest      -> 201
+req POST /api/v1/projects   -> 201
+GET  /projects/new-project  -> 200
+```
+
+`create_project` checked `bearer_user` — which returns a guest identity happily — and never `identity::is_guest`, while the handler's own
+doc comment claims "the Go handler refuses a guest identity here and nowhere else in the read path". **The comment was the only thing
+refusing it**, which is the squatting vector it describes, reachable by clicking submit on a page nobody had signed into. Fixed with the
+predicate the guest cap and the promotion path already ask; proved on the live host:
+
+```
+$ POST /api/v1/guest -> token (47 chars)
+$ POST /api/v1/projects (Bearer <guest>) -> 403
+  {"code":"forbidden","error":"a project needs an account, not a guest session"}
+```
+
+Gates: `new_project_e2e.py` 6 passed (the guest arm asserts the STATUS CODE, because a 403 that still wrote a row would read as a
+refusal); mutation `if false && is_guest(…)` turns `test_creating_without_an_account_says_so` red with the source restored
+byte-identical; `probe_pages.py` grew four contract checks for the new route.
+
+### Step 3c — NEXT (the remaining half)
+
+The page reaches the route; the route still answers from a half-filled index. Finish `embedbackfill --kind project` to 100% (54.8% as of
+this writing), then the semantic answer covers the catalogue rather than 40 of 73 projects. That is a job, not a feature.
+
+### Step 4 — the AI-transparency declaration
+
 
 With project vectors present, `/api/v1/similar/project` becomes the intent router the note asks for, and the remaining work is the
 creation surface, which does not exist yet either: there is no `/projects/new` page at all — `POST /api/v1/projects` is the only way to

@@ -916,6 +916,13 @@ async fn create_project(
         Some(user) => user,
         None => return Err(ApiError::unauthenticated("authentication required")),
     };
+    // A GUEST identity is not an account, and the comment above says the Go handler refuses one here and nowhere else in the read path.
+    // It was not refused: measured on 2026-11-14, a browser that had just been issued a guest session by `POST /api/v1/guest` got
+    // `201 Created` from this route — the squatting vector the rule exists to prevent, reachable by clicking submit on a page nobody
+    // signed into. The check is `identity::is_guest`, the same predicate the guest cap and the promotion path ask.
+    if concord_db::identity::is_guest(&state.pool, user.id).await.map_err(internal)? {
+        return Err(ApiError::forbidden("a project needs an account, not a guest session"));
+    }
     let model = if body.governance_model.is_empty() {
         "collective"
     } else {
