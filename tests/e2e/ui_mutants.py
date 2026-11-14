@@ -52,17 +52,29 @@ CANDIDATE_STAGE = os.environ.get(
 
 
 def _build(js_rel):
-    """Compile the mutated asset into whatever the suites will run. Returns True on success."""
+    """Compile the mutated asset into whatever the suites will run.
+
+    Returns `(ok, reason)`. The reason matters: a red build used to be recorded as a SURVIVED mutant, which is the opposite claim —
+    a survivor says "the suite ran and did not notice", a red build says "nothing ran at all". One of them is a defended rule, the
+    other is an outage, and folding the second into the first is how a flaky host turns into a false quality signal. Observed on
+    thinkcentre: `cargo build` returned non-zero with EMPTY stderr (killed by the kernel under memory pressure from three other
+    release builds), and the gate reported a survivor.
+    """
     if not CANDIDATE:
         result = run(["go", "build", "-o", "bin/concord", "./cmd/concord"], 400)
-        return result.returncode == 0
+        return (result.returncode == 0, f"go build exit {result.returncode}")
     result = run(["cargo", "build", "--release", "-p", "concord-cli"], 900)
     if result.returncode != 0:
-        sys.stderr.write(result.stderr[-2000:])
-        return False
-    shutil.copy(CANDIDATE_STAGE, CANDIDATE)
-    os.chmod(CANDIDATE, 0o755)
-    return True
+        if result.stderr:
+            sys.stderr.write(result.stderr[-2000:])
+        return (False, f"cargo exit {result.returncode}" + ("" if result.returncode >= 0 else " (killed by a signal — not a code fault)"))
+    # Rename, never copy over the target: `shutil.copy` onto a path whose previous inode is still mapped by a running server fails
+    # with ETXTBSY, and the suite's server is killed asynchronously.
+    staged = CANDIDATE + ".new"
+    shutil.copy(CANDIDATE_STAGE, staged)
+    os.chmod(staged, 0o755)
+    os.replace(staged, CANDIDATE)
+    return (True, "")
 
 
 def run(cmd, timeout):
@@ -126,7 +138,7 @@ def run_mutants(js_rel, suite_rel, mutants, label):
         fh.write(original)
         backup = fh.name
 
-    killed, survived, not_applied, inconclusive = [], [], [], []
+    killed, survived, not_applied, inconclusive, build_red = [], [], [], [], []
     try:
         for name, old, new in mutants:
             mutated = original.replace(old, new)
@@ -137,9 +149,10 @@ def run_mutants(js_rel, suite_rel, mutants, label):
             open(js, "w").write(mutated)
             say(f"  running      {name}")
             try:
-                if not _build(js_rel):
-                    survived.append(name)
-                    say(f"  BUILD-RED    {name}")
+                built, why = _build(js_rel)
+                if not built:
+                    build_red.append(f"{name} ({why})")
+                    say(f"  BUILD-RED    {name}   ({why}) — NOT a survivor: nothing ran")
                     continue
                 # The binary embeds the JS, so a stale bin is not a flake, it is a false
                 # PASS. Rebuilt every time above for exactly that reason.
@@ -173,8 +186,9 @@ def run_mutants(js_rel, suite_rel, mutants, label):
         restored = open(js).read() == open(backup).read() == original
         say(f"\n  source restored byte-identical: {restored}")
         say(f"[{label}] ---- {len(killed)}/{len(mutants)} killed, {len(survived)} survived, "
-              f"{len(not_applied)} not applicable, {len(inconclusive)} not run")
-        if survived or not_applied or inconclusive or not restored:
+              f"{len(not_applied)} not applicable, {len(inconclusive)} not run, "
+              f"{len(build_red)} build-red")
+        if survived or not_applied or inconclusive or build_red or not restored:
             say(f"[{label}] FAIL: the rules above are UNPROVEN. A surviving mutant is a "
                   f"missing fixture or a test that does not reach the rule; a mutant that "
                   f"was not applied or whose suite never ran proves nothing at all.")
