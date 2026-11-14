@@ -3770,3 +3770,61 @@ passing.
 `concord-db` lib 38 passed; `routes.py` go 216 / port 198 / missing 20 (10 json, 10 page).
 **Commit:** `528974d`. **Files:** `crates/db/src/ops_reads.rs` (new), `crates/db/src/criteria.rs` (`name`), `crates/app/src/lib.rs`
 (3 routes + 3 handlers, lists takes a slug), `scripts/parity/probe_ops_reads.py` (new, 34 checks).
+
+### Part 61 — lifting a hold, and two inventory bugs that were inflating the count (2026-11-14)
+
+**Before** (`probe_ops_writes.py` against the deployed port):
+```
+FAIL releasing a hold anonymously is 401: got 404 want 401
+FAIL the project's maintainer lifts it: got 404 want 200
+```
+Note what the 404-for-everyone did to the *other* checks: "a maintainer of another project cannot lift this hold" passed **vacuously**,
+because nobody could. That is the same defect the reference's own comment describes — the route asked for a role against a
+`project_id` parameter its path does not have, so it answered 404 for every caller and hid the second defect, that a hold was
+releasable by its id alone.
+
+**After:**
+```
+31/31 ok
+```
+
+**Landed:** `POST /api/v1/emergency-holds/{hold_id}/release`. The merge route
+`POST /api/v1/projects/{}/complaints/{}/merge/{}` turned out to be registered and answering already — the port's *inventory* said it
+was missing, which is the worse kind of error: it invites the work to be done twice.
+
+**What the probe establishes:**
+1. *The hold is resolved first, because the URL carries no project.* The role check is against the **hold's** project — the one fact
+   the path does not have. A maintainer of another project is refused, and so is the other project's maintainer here.
+2. *A written reason is required* — §9.3's ledger carries it, and "who did it" with no "why" is not accountability.
+3. *Releasing twice is 400, not 200.* The UPDATE carries `released_at is null` in its WHERE, so the first reason cannot be
+   overwritten; the probe asserts the stored reason is unchanged after the second attempt.
+4. *Two records per release*: §9.3's admin ledger (`release_emergency_hold`, subject `consensus call N`) and the project's audit
+   log. One alone answers half the question.
+5. *A merge cannot cross projects and cannot be into itself* — both the store's refusals, asserted with their messages, because a
+   status-only assertion cannot tell "you cannot" from "you may later".
+6. *A complaint reached through another project's URL is 404*, since the path's project and the row's project are two facts.
+
+**Two bugs in `scripts/parity/routes.py`, both of which had been feeding this ledger's own counts:**
+- A chi prefix such as `"/api/v1/projects/{project_id}/complaints"` carries braces of its own, and the depth counter counted them —
+  so one `r.Route(` line opened **two** blocks, the stack popped the outer prefix early, and every route in a doubly-nested block was
+  recorded without it. Braces are now counted outside string literals.
+- A route quoted **inside a comment** — `handlers.go` explains a defect by quoting `// r.Post("/merge/{target_id}", …)` — was counted
+  as a live registration under the comment's own prefix. That phantom is where "missing `POST /complaints/{}/merge/{}`" came from: an
+  endpoint that has never existed on either side. Comment lines are now skipped.
+
+**Go routes are 215, not 216.** One of the 216 was never a route. The port is at 199, missing 18 (8 JSON, 10 page) — so the JSON
+remainder is now: badge, scout, four taxonomy routes, the arena recompute and the Forgejo webhook.
+
+**Controls** (startup seam, no rebuild):
+```
+control hold-any-role:         28/31 — FAIL the hold is no longer active; FAIL the first reason is not overwritten; FAIL ledger; FAIL audit
+control hold-releasable-twice: 28/31 — FAIL releasing twice is 400 got 200; FAIL the first reason is not overwritten; FAIL ledger
+```
+Both move exactly the observations that depend on the rule they remove. A probe bug found while writing this: one check asserted on
+a `body` left over from an earlier call because the response was discarded with `_` — the cross-project message check was reading the
+release route's body. Fixed by capturing it.
+
+**Gate:** `probe_ops_writes.py` 31/31; `probe_s5_complaintwrites.py` 40/40; `concord-db` lib 38 passed; `routes.py` go 215 / port 199
+/ missing 18 (8 json, 10 page).
+**Commit:** `d78ab4b`. **Files:** `crates/db/src/holds.rs` (`release`), `crates/app/src/lib.rs` (1 route + 1 handler),
+`scripts/parity/routes.py` (2 parse fixes), `scripts/parity/probe_ops_writes.py` (new, 31 checks).
