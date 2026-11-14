@@ -2711,6 +2711,43 @@ signature below it. The JSON (`id`/`label`/`impact`) is unchanged.
 **Not done (part 55b):** the 6 routes, the candidate loader, the session store, and the differential probe that drives the same
 answers into the live Go service and this port and compares questions and ranking.
 
+### Row 11 — part 55b: the finder's six routes (2026-11-14, `3165a10`)
+
+```
+gate (before): GET /api/v1/finder/questions -> 404, POST /finder/sessions -> 404 (6 routes missing)
+gate (after):
+  probe_s6_finder_diff.py -> 34/34 ok
+  documents 46/46, merge 37/37, invites 32/32, featurevote 20/20, coverage 22/22, solutionvote 21/21, solutionwrites 24/24,
+  solutioncall 24/24, workitems 44/44, featurewrites 37/37, listwrites 41/41, criteriawrites 45/45, projsettings 28/28,
+  milestonewrites 41/41, complaintwrites 40/40, requestwrites 43/43, filing 31/31, requests 23/23, accept 15/15
+  routes.py -> go 216 / port 180   missing: 38 (28 json, 10 page)
+  concord-parity -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-finder -> 12 passed;  cargo test -p concord-db --lib -> 38 passed
+```
+
+`crates/db/src/finder_reads.rs`: `attributes`, `report_rates`, `arena_standings`, `candidates` — batched by id, because the set is
+73 projects. `crates/app/src/finder.rs`: six routes, in-memory session store, DTOs.
+
+**The gate is differential** — the same seed and the same answers into the Go service (live, serving production) and into the
+port, comparing at each step: question key, option order, surviving count, stop verdict, top five, fits to 1e-9, gaps,
+unknown-fit, back, lift. 34/34 agree.
+
+**What the probe found before it agreed (dated):**
+1. The services do not share data — the Go runs on its own SQLite (`CONCORD_DB=…/concord.db`, 73 public), the port on Postgres.
+2. All 18 of the port's extra catalogue rows were **fixtures my own earlier probes had left behind** and were still publicly
+   listed. Removed (with their features, arenas, votes, solutions, documents, members, users); the probe now asserts the two
+   catalogues hold the same projects, so a future leak fails instead of drifting.
+3. The port's search 500'd on the first empty-query search it ever served: `0::double precision` with no alias, read back as
+   column `score`. Every earlier caller passed a query.
+
+**Negative controls**: `apply()` dropping the unknown rule → 9 observations move; **the diversity penalty 0.7 → 1.0 passed
+34/34**, because the live catalogue's first three questions never repeat a family — so that rule now has a unit test that builds
+the tie by hand, and it fails under the mutation (`left: "cap:x"`). A probe that cannot fail is not a gate.
+
+**Decisions, dated:** sessions stay in memory (mutex + map, one-hour age-out), exactly the reference's shape — a table would buy
+durability the Go service does not have, and `persisted: false` already tells the client. And `filtered_out` records the filter,
+not the slugs it removed: naming near-miss projects would disclose what the catalogue holds.
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
