@@ -21,11 +21,24 @@ curl -s https://concord.polarisocial.xyz/api/v1/version    # "concord-rs 0.0.0+<
 systemctl --user status concord-rs.service --no-pager | head -3
 ```
 
-**The Go service is stopped, not removed.** `concord.service` plus `~/.local/share/concord/concord.db` is the rollback, one
-`systemctl --user start concord.service` away. **Two of its timers are still ENABLED and still write to that database**
-(`concord-healthsync.timer`, `concord-proposalsweep.timer`) — see the review, decision 4. Until they are disabled the rollback is a
-diverging copy rather than a snapshot, and the Go database currently knows more than the live one does about repository identity
-(23 projects with a `repo_url` against 5 in PostgreSQL).
+**The Go service is stopped and no longer starts at boot.** `concord.service` plus `~/.local/share/concord/concord.db` is the
+rollback, one `systemctl --user start concord.service` away.
+
+This matters after a **reboot**, and it was wrong until 2026-11-14: while `concord-rs.service` was *disabled* and `concord.service`
+was *enabled*, restarting the host would have brought the **Go** service up on port 8006 and left the Rust binary down — a rollback
+nobody asked for. Corrected in the same session:
+
+```
+systemctl --user enable  concord-rs.service
+systemctl --user disable concord.service concord-healthsync.timer concord-proposalsweep.timer
+→ concord-rs.service enabled, concord.service disabled, both Go timers disabled and stopped
+```
+
+Linger is `yes`, so user units do start at boot. Verify with `systemctl --user is-enabled concord-rs.service` → `enabled`.
+
+The Go database still knows more than the live one about repository identity (23 projects with a `repo_url` against 5 in PostgreSQL)
+— the discovery in the review, decision 4 — and that is now a static fact rather than a moving target, because nothing writes to it
+any more.
 
 ## What landed after the cutover (all 2026-11-14)
 

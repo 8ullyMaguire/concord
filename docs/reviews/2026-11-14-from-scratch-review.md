@@ -102,6 +102,9 @@ cutover ledger) and missed the second, and the cost is that the live instance is
 **What I would do.** The cutover checklist has three items, not two: reconcile the rows, move the **writers**, and disable the losing side's
 units in the same change. Then the rollback really is frozen and its timestamp means something.
 
+**Fixed the same day, after writing this:** `concord-rs.service` was *disabled* while `concord.service` was *enabled*, so a reboot
+would have silently rolled production back to Go. Both are now the right way round and the two Go timers are stopped and disabled.
+
 **Cost to change now:** minutes for the timers (`systemctl --user disable concord-healthsync.timer concord-proposalsweep.timer`), an hour
 for the eighteen repository identities that already exist in the Go database and have never been copied forward.
 
