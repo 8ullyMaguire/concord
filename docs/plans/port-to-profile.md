@@ -4188,6 +4188,61 @@ lacked rather than documents it serves.
 service's configuration), `scripts/parity/routes.py` (any `*.xml` route is a document).
 
 
+### Part 75 — thirteen routes that were the right shape and the wrong argument, and the gate that finds them (2026-11-14)
+
+**Before:** `probe_project_segments.py` (new) → `73/86 answered`, thirteen refusals:
+```
+FAIL /api/v1/projects/suki/capabilities  -> 400 refused the segment: 'Invalid URL: Cannot parse `suki` to a `i64`'
+FAIL /api/v1/projects/suki/criteria      -> 400 …
+FAIL /api/v1/projects/suki/field-reports -> 400 …
+   (+ criteria-profiles, criteria/, criteria-profiles/, members, requests, solutions,
+      strategy/themes, strategy/theme-proposals, strategy/weight-proposals, tallies)
+```
+**After:**
+```
+86/86 answered
+132/132 ok        (probe_pages.py)
+```
+**The same defect five times over, in five different disguises.** The reference's page scripts build every project URL from the SLUG —
+`comments.js`, `feature.js`, `settings.js`, `ranking.js` all do `'/api/v1/projects/' + encodeURIComponent(slug)`. The port resolved the slug
+on some routes, parsed an integer on others, and the route inventory could not tell the difference because it compares PATTERNS and an
+argument's type is not in the pattern. Part 72 fixed three by hand (`threads`, `features/{id}/complaints`, `complaints/{id}`); part 74's
+settings page exposed a fourth (`charter`); this part asked the question of every route at once and found thirteen more.
+
+**The gate is the point of the part.** `scripts/parity/probe_project_segments.py` parses the PORT's own `.route("...")` literals, substitutes
+the live slug for the first project segment, and fails on any answer whose **message** says the project was not resolved — `Invalid URL`,
+`must be an integer`, `no such project`. Two design decisions, both from getting it wrong first:
+
+* **The list comes from the port's router source, not from `routes.py`.** The inventory returns paths with `/api/v1` stripped and every
+  placeholder normalised to `{}` — right for comparing two implementations, useless for making a request. The first version used it and
+  reported fourteen healthy routes as broken because they were asked at the wrong address.
+* **The verdict is the message, not the status.** Keying on 404 reported fourteen MORE false failures: `/features/1` answers
+  `404 feature 1` because feature 1 is not in `suki`, which means the project resolved perfectly. A gate that cries wolf is worse than no
+  gate, because the next reader turns it off.
+
+**The fix is one resolver, called once per handler:** `Path(project_id): Path<i64>` becomes `Path(project): Path<String>` and the handler's
+first line is `let project_id = project_by_id(&state, &project).await?.id;`. `project_by_id` already resolves id-first-then-slug (part 72),
+so a numeric segment still works and the store calls below are untouched.
+
+**`probe_pages.py` is rewritten for the mount contract, 132/132.** It read 81/132 after the pages became mounts because ~40 of its
+assertions described server-rendered content the reference never sends — board `<h3>`s, `.rank-card`s, the ranking's `<th>` components,
+the tab strip's `aria-current`. What a mount page must guarantee ON THE SERVER is narrower and checkable, and that is now what it asserts:
+the mount exists, it starts `aria-busy="true"`, and the script that fills it is served by the same binary — plus the one fact each page
+decides server-side (`data-can-moderate="false"` for an anonymous reader) and the API behind it. The tab strip is the shell's and derives
+from the path, so `detail-tab is-active` is now the assertion; `aria-current` remains for the reader.
+
+**Two smaller things this part had to repair:**
+* `crates/web/assets/js/feature.js` was committed MUTATED by `a5db6e7` — `git add -A` ran while the mutation gate had the file rewritten
+  in the shared checkout. The runner restores on exit; the commit does not. Restored here, and the lesson is recorded in the ledger because
+  the same `add -A` will be tempting again.
+* `ui_mutants` derived the built binary from this workstation's `~/.cache/cargo-target`, which does not exist on the host that builds, so
+  the gate died with `FileNotFoundError` after a nine-minute build. It now derives from the checkout's `target/`.
+
+**Gate:** `probe_project_segments.py` 86/86, `probe_pages.py` 132/132. **Commit:** `9f6cee5`.
+**Files:** `crates/app/src/lib.rs` (thirteen handlers, `get_charter` in `a5db6e7`), `crates/web/src/detail.rs` + `crates/web/templates/
+settings.html` (the settings mount), `scripts/parity/probe_project_segments.py` (new), `scripts/parity/probe_pages.py` (mount contract),
+`scripts/parity/restart_8108.sh`, `tests/e2e/ui_mutants.py`, `crates/web/assets/js/feature.js` (restored).
+
 ### Part 74 — the consensus template, and three API defects a browser could see (2026-11-14)
 
 **Before:** `consensus_e2e` `15 failed in 219.81s` (all fifteen had been errors in setup two parts ago).
