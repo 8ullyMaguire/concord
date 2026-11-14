@@ -3716,3 +3716,57 @@ to move the value in the direction the defect would, or it proves nothing while 
 46/46; `concord-db` lib 38 passed; `routes.py` go 216 / port 195 / missing 23 (13 json, 10 page).
 **Commit:** `3241e3c`. **Files:** `crates/db/src/field_report_writes.rs` (new), `crates/app/src/lib.rs` (2 routes + 2 handlers),
 `scripts/parity/probe_fieldreports_write.py` (new, 33 checks).
+
+### Part 60 — three operator reads, and two divergences in routes already called done (2026-11-14)
+
+**Before** (`probe_ops_reads.py` against the deployed port):
+```
+FAIL the ledger is readable with no token at all — §9.3's whole point: got 404 want 200
+FAIL rising is public: got 500 want 200
+```
+
+**After:**
+```
+34/34 ok
+```
+
+**Routes:** `GET /api/v1/admin-ledger`, `GET /api/v1/stats/rising`, `GET /api/v1/lists`.
+
+**The rule the three share,** which is why they were batched: *a missing measurement is not a zero, and an empty set is not null.*
+
+1. *The ledger is public, unfiltered, ungated.* §9.3 makes admin actions publicly visible because an admin with no content authority
+   is only a real constraint when anyone can watch them. A gate on this route would be the constraint watching itself.
+2. *`limit` is clamped, not refused* — `<= 0` or `> 500` becomes 100. A viewer typed at by hand must not 400 on a typo, and a
+   caller that asks for a million learns the ceiling from the size of the page.
+3. *A rising row carries its span.* A rate over 14 days and one over 90 are different claims, so `days` travels with
+   `features_per_week`; a series under the floor is **absent**, because `0.0` reads as "flat" rather than "not measurable".
+4. *Health is recomputed, never read from the column.* Project creation inserts an empty `project_metrics` row for every project,
+   and the live instance's `health_score` is 0 everywhere — reading it would publish a confident "0" for the whole catalogue
+   (§6.3's trap, one layer down).
+5. *Instance-wide lists are a scope, not a missing project*: `project_id` is `null`, and a project's list set **includes** them.
+
+**Decision (dated 2026-11-14): "measured" means `last_commit_at is not null or median_review_hours is not null`.** The other two
+signals, `contributors` and `releases_90d`, are `NOT NULL default 0` in this schema, so a placeholder row carries 0 there and 0 is
+indistinguishable from a real measurement of zero. The reference has the same blind spot — which is exactly why its own comment
+says the live instance's scores are all 0. Only the two nullable columns can say "never measured".
+
+**Two divergences found in routes already marked ported**, both by probing the reference rather than this repo's probes:
+- **`lists` serialised `title`; the reference emits `name`.** Its Go struct maps the `title` *column* onto a field called `Name`.
+  `probe_s5_lists` had asserted `title` — the port's own key — which is how a self-consistent suite hides a shape divergence. Fixed
+  in `ProjectList` (`#[serde(rename = "name")]`), and the probe corrected.
+- **`GET /projects/{}/lists` took a numeric id**, so the slug form that every other project route accepts answered 400. It now
+  resolves slug-then-id, like the reference's `requireProjectID`.
+
+**Controls** (startup seam, no rebuild):
+```
+control rising-short-series: 32/34 — FAIL a series shorter than the floor is ABSENT ... got True; FAIL no other fixture leaked
+control health-from-column:  32/34 — FAIL a real score in [0,1] got False; FAIL a placeholder row publishes NO score got 0.0
+```
+A third control was written (`admin-ledger-null`) and **could not be exercised**: the instance ledger is never empty during a probe,
+and deleting rows that are not the probe's to delete is not a control, it is vandalism. Recorded as unrun rather than reported as
+passing.
+
+**Gate:** `probe_ops_reads.py` 34/34; `probe_s5_lists.py` 16/16; `probe_s5_stats.py` 16/16; `probe_contribute.py` 46/46;
+`concord-db` lib 38 passed; `routes.py` go 216 / port 198 / missing 20 (10 json, 10 page).
+**Commit:** `528974d`. **Files:** `crates/db/src/ops_reads.rs` (new), `crates/db/src/criteria.rs` (`name`), `crates/app/src/lib.rs`
+(3 routes + 3 handlers, lists takes a slug), `scripts/parity/probe_ops_reads.py` (new, 34 checks).
