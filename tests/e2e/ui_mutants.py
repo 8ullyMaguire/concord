@@ -60,6 +60,13 @@ def _build(js_rel):
     thinkcentre: `cargo build` returned non-zero with EMPTY stderr (killed by the kernel under memory pressure from three other
     release builds), and the gate reported a survivor.
     """
+    if os.environ.get("CONCORD_ASSET_DIR"):
+        # The server reads the asset from disk (`crates/web/src/assets.rs`), so the mutation is already live and there is nothing to
+        # compile. This is what makes the gate cheap enough to run: with the embed as the only source, nine mutants were nine relinks
+        # of a 21 MB binary — four to six minutes each on a loaded host, one of them killed by the kernel and misfiled as a survivor.
+        if not os.path.exists(CANDIDATE):
+            return (False, f"no binary at {CANDIDATE}")
+        return (True, "") 
     if not CANDIDATE:
         result = run(["go", "build", "-o", "bin/concord", "./cmd/concord"], 400)
         return (result.returncode == 0, f"go build exit {result.returncode}")

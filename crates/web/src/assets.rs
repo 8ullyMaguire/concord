@@ -21,14 +21,38 @@ use axum::{
 
 include!(concat!(env!("OUT_DIR"), "/asset_table.rs"));
 
+/// Where the assets are read from: the binary, or a directory when `CONCORD_ASSET_DIR` says so.
+///
+/// # Why an override exists for a thing that was deliberately embedded
+///
+/// The embed is the production answer and stays the default. But the mutation gate for these scripts (which proves the browser suites
+/// actually assert the rules the scripts implement) rewrites one asset and needs the server to serve the rewrite. With the embed as
+/// the only source, that means `cargo build --release` per mutant — a relink of a 21 MB binary that took **four to six minutes on a loaded
+/// host**, nine times, and one of those builds was killed by the kernel under memory pressure and reported as a *surviving mutant*. The
+/// override turns nine rebuilds into nine file writes. It is dev-only by construction: unset in production, unreadable from a route, and
+/// the directory must be named by whoever starts the process.
+///
+/// The traversal guard is not decoration: the path comes from the URL.
+fn read_asset(path: &str) -> Option<Vec<u8>> {
+    let dir = std::env::var("CONCORD_ASSET_DIR").ok().filter(|dir| !dir.is_empty())?;
+    if path.split('/').any(|segment| segment.is_empty() || segment == "." || segment == "..") {
+        return None;
+    }
+    std::fs::read(std::path::Path::new(&dir).join(path)).ok()
+}
+
 /// `GET /assets/{*path}` — one file, or 404.
 ///
 /// The content type is decided from the extension rather than stored: there are two kinds of file here, and a table of MIME types keyed
 /// by extension is smaller than the table of files.
 pub async fn serve(Path(path): Path<String>) -> Response {
     let path = path.trim_start_matches('/');
-    let Some(bytes) = ASSETS.iter().find(|(name, _)| *name == path).map(|(_, bytes)| *bytes) else {
-        return (StatusCode::NOT_FOUND, "no such asset").into_response();
+    let bytes: Vec<u8> = match read_asset(path) {
+        Some(from_disk) => from_disk,
+        None => match ASSETS.iter().find(|(name, _)| *name == path) {
+            Some((_, bytes)) => bytes.to_vec(),
+            None => return (StatusCode::NOT_FOUND, "no such asset").into_response(),
+        },
     };
     let content_type = if path.ends_with(".js") {
         "application/javascript; charset=utf-8"
