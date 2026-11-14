@@ -108,20 +108,45 @@ would have silently rolled production back to Go. Both are now the right way rou
 **Cost to change now:** minutes for the timers (`systemctl --user disable concord-healthsync.timer concord-proposalsweep.timer`), an hour
 for the eighteen repository identities that already exist in the Go database and have never been copied forward.
 
-### 5. Health ingest should not need a file
+### 5. Health ingest: the code existed, the job did not — and I said the opposite here first
 
-**What exists.** `concord-rs healthsync` requires `--from <measurements.json>` and nothing in the tree produces that file. The Go binary
-scraped GitHub and Forgejo itself; the port moved the scraping out and left the slot empty. So health is frozen at whatever the last Go run
-wrote, and the three Rust timer units for it are installed **disabled** — a job that cannot run, wired to a producer that does not exist.
+**What I wrote in the first draft of this review, and it was wrong.** I claimed `healthsync` needs `--from measurements.json` and that
+"nothing produces that file". `grep -n 'healthsync_fetch' crates/cli/src/lib.rs` says otherwise: `healthsync --fetch` has existed since the
+port and it works —
 
-**Why it is wrong.** A measurement that only arrives when a human writes a JSON file is not a measurement, it is a fixture. Every surface
-that ranks by health — the badge, `sort=health`, the scout's `avoid` rule, the stage function's `mature` arm — is reading a stale number.
+```
+$ concord-rs healthsync --fetch --dry-run --only kindred,commons,orbital
+dry-run commons:  commits=257 contributors=0 releases90=0 review latency unknown
+dry-run kindred:  commits=128 contributors=0 releases90=0 review latency unknown
+dry-run orbital:  commits=255 contributors=0 releases90=0 review latency unknown
+```
 
-**What I would do.** One job that fetches and writes: read every project with a repository, ask the forge for the last commit, the median
-review time, contributors and releases, write `project_metrics`, journal what it did. The file can stay as an input for testing.
+I read the `--from` signature in the CLI and the Go-era note that the port "moved the scraping out", and wrote a conclusion from two
+half-facts. The lesson is the review's own rule, applied to the review: grep the symbols before trusting the document, including this one.
 
-**Cost to change now:** medium (a day), and it is the highest-value unblocked work after migrations, because it turns four separate
-features from "reads a stale column" into "reads a number that is true".
+**What was actually wrong, and it is worse than a missing feature.** The installed unit was
+
+    ExecStart=/personal/documents/code/rust/concord/deploy/concord-cli healthsync
+
+— a **local build artefact** rather than the deployed binary, and **no `--fetch`**, so the job would have failed every run demanding a
+file. It was also disabled. Three defects in one line, and none of them visible from the code: the capability was written, tested and
+unreachable, which is the failure mode this repository has produced more often than any other (see `docs/KNOWN-ISSUES.md`, "every page
+existed").
+
+**What I did instead of writing the ingest.** Fixed the unit (`%h/concord-deploy/concord-rs healthsync --fetch`), added it to `deploy/`
+with an hourly timer, enabled it, and ran it through systemd rather than my shell:
+
+```
+Nov 14 21:15:17 DEFERRED zeph: https://api.github.com/... -> 403 Forbidden: API rate limit exceeded
+Nov 14 21:15:17 healthsync: synced 16, deferred 7, skipped 0, failed 0
+```
+
+`deferred 7` is the honest number: the seven GitHub repositories exceed the unauthenticated 60-requests-an-hour budget once a few calls
+each are made, and the job reports a deferral instead of writing a measurement of zero. Against the database: 23 of 23 stated repositories
+have a `last_commit_at` and a fresh `health_score` — `stash-box 0.656`, `stash 0.582`, `gravity 0.491`.
+
+**Still blocked, and it is a credential:** `CONCORD_FORGE_TOKEN` would take the seven GitHub repositories from deferred to measured. Until
+then the timer measures the 16 Forgejo ones every hour and says so.
 
 ### 6. There should be one discovery engine, not four
 

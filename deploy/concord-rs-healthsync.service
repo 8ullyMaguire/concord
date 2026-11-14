@@ -1,0 +1,13 @@
+[Unit]
+Description=concord (Rust) forge measurements — fetch each project's upstream and write project_metrics
+After=network-online.target
+
+[Service]
+Type=oneshot
+EnvironmentFile=%h/.config/concord/.env
+# `--fetch` is not optional here: without it the command wants `--from <file>` and the job fails every hour into a journal nobody reads.
+# The installed unit had exactly that defect — it named a local build (`deploy/concord-cli`) and no `--fetch`, and it was disabled, so the
+# numbers every ranking surface reads had not moved since the Go binary stopped.
+ExecStart=%h/concord-deploy/concord-rs healthsync --fetch
+StandardOutput=journal
+StandardError=journal

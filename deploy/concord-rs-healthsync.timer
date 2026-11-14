@@ -1,0 +1,14 @@
+[Unit]
+Description=concord (Rust) forge measurements, hourly
+
+[Timer]
+# Hourly, because the health score is a function of "how long ago" and a daily sweep would make the number a day stale by design.
+# The unauthenticated GitHub budget is 60 requests an hour; 23 repositories with a handful of calls each fits, and a 403 defers rather
+# than writes (see `healthsync --fetch`'s deferred counter).
+OnCalendar=hourly
+Persistent=true
+RandomizedDelaySec=300
+Unit=concord-rs-healthsync.service
+
+[Install]
+WantedBy=timers.target
