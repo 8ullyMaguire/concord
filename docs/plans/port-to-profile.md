@@ -4265,7 +4265,9 @@ port; `x-estate-version: concord@2026.11.3` still reported (that header is nginx
 **The stamp was wrong once, and that is worth recording.** The first deployed binary answered `+fc8e535` — the commit *before* the version
 change — because it was built after the edit but before the commit. A stamp that names a commit the binary is not is worse than no stamp:
 it is a claim, and the next reader would have checked out `fc8e535` to find the change missing. Rebuilt at `530ce8f` and redeployed; both
-the loopback and the public host now answer `concord-rs 0.0.0+530ce8f`, which is `git rev-parse --short HEAD`.
+the loopback and the public host answer `concord-rs 0.0.0+530ce8f`. The stamp names the commit the binary was BUILT from, which is the only
+thing it can honestly name — the ledger commit that follows it moves HEAD without changing the binary, and re-stamping for a docs commit
+would be theatre.
 
 **Row 13: Done.**
 
