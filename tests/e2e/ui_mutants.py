@@ -75,6 +75,16 @@ def _pytest_ran(stdout: str, stderr: str) -> bool:
     return "passed" in blob or "failed" in blob or "error" in blob.lower()
 
 
+def say(*args):
+    """Progress to a redirected log.
+
+    `print` to a file is block-buffered, so a gate that takes fifteen minutes printed NOTHING until it exited — and the run that
+    finally did exit had been killed by its outer timeout with an empty log, which reads as "it never started". Every line here is
+    flushed.
+    """
+    print(*args, flush=True)
+
+
 def run_mutants(js_rel, suite_rel, mutants, label):
     """Mutate `js_rel` once per entry, rebuild, run `suite_rel`, and require each corpse.
 
@@ -95,7 +105,7 @@ def run_mutants(js_rel, suite_rel, mutants, label):
     # restore. Refuse to run against a source that already contains a mutant.
     for name, old, new in mutants:
         if new in original and old not in original:
-            print(f"[{label}] REFUSING TO RUN: the page already carries the mutant "
+            say(f"[{label}] REFUSING TO RUN: the page already carries the mutant "
                   f"{name!r}. Restore {js_rel} and run again -- a byte-compared restore "
                   f"would otherwise ratify it.")
             return 1
@@ -122,20 +132,24 @@ def run_mutants(js_rel, suite_rel, mutants, label):
             mutated = original.replace(old, new)
             if mutated == original:
                 not_applied.append(name)
-                print(f"  NOT APPLIED  {name}")
+                say(f"  NOT APPLIED  {name}")
                 continue
             open(js, "w").write(mutated)
+            say(f"  running      {name}")
             try:
                 if not _build(js_rel):
                     survived.append(name)
-                    print(f"  BUILD-RED    {name}")
+                    say(f"  BUILD-RED    {name}")
                     continue
                 # The binary embeds the JS, so a stale bin is not a flake, it is a false
                 # PASS. Rebuilt every time above for exactly that reason.
                 if CANDIDATE:
                     # `e2e_candidate.sh` recreates the scratch database, sets the candidate and its DSN, and runs
                     # the suite — the same wrapper a hand-run uses, so a mutant is judged by the same command.
-                    res = run(["bash", "scripts/parity/e2e_candidate.sh", suite_rel, "-q"], 1200)
+                    # `-x`: stop at the FIRST failing test. Without it a killed mutant runs all fifteen tests, each waiting out its own
+                    # fifteen-second expect, and one mutant costs four minutes — which is how this gate burned twenty-eight minutes and
+                    # was killed by its outer timeout with an empty log. A surviving mutant still runs the whole suite.
+                    res = run(["bash", "scripts/parity/e2e_candidate.sh", suite_rel, "-q", "-x"], 1200)
                 else:
                     res = run([PYTHON, "-m", "pytest", "-p", "no:cacheprovider",
                                suite_rel, "-q", "--no-header"], 900)
@@ -143,25 +157,25 @@ def run_mutants(js_rel, suite_rel, mutants, label):
                 last = tail[-1] if tail else ""
                 if not _pytest_ran(res.stdout, res.stderr):
                     inconclusive.append(name)
-                    print(f"  NOT RUN      {name}   (pytest produced no result: {last!r})")
+                    say(f"  NOT RUN      {name}   (pytest produced no result: {last!r})")
                     continue
                 if res.returncode == 0:
                     survived.append(name)
-                    print(f"  SURVIVED     {name}")
+                    say(f"  SURVIVED     {name}")
                 else:
                     killed.append(name)
-                    print(f"  killed       {name}   ({last})")
+                    say(f"  killed       {name}   ({last})")
             finally:
                 open(js, "w").write(original)
 
         # The real binary from the real source, and a byte-compared restore.
         _build(js_rel)
         restored = open(js).read() == open(backup).read() == original
-        print(f"\n  source restored byte-identical: {restored}")
-        print(f"[{label}] ---- {len(killed)}/{len(mutants)} killed, {len(survived)} survived, "
+        say(f"\n  source restored byte-identical: {restored}")
+        say(f"[{label}] ---- {len(killed)}/{len(mutants)} killed, {len(survived)} survived, "
               f"{len(not_applied)} not applicable, {len(inconclusive)} not run")
         if survived or not_applied or inconclusive or not restored:
-            print(f"[{label}] FAIL: the rules above are UNPROVEN. A surviving mutant is a "
+            say(f"[{label}] FAIL: the rules above are UNPROVEN. A surviving mutant is a "
                   f"missing fixture or a test that does not reach the rule; a mutant that "
                   f"was not applied or whose suite never ran proves nothing at all.")
             return 1
