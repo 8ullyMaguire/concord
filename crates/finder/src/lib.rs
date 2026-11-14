@@ -1222,6 +1222,38 @@ mod tests {
         assert!(!stop || reason == STOP_LOW_GAIN, "a six-way tie is not a finding: {reason}");
     }
 
+
+    #[test]
+    fn two_questions_from_one_family_is_a_quiz() {
+        // THE DIVERSITY RULE, and the case the HTTP-level differential probe cannot reach: the live catalogue's first three
+        // questions never repeat a family, so a probe that drives it observes the rule firing zero times. This is that case
+        // built by hand — capability and language tie on gain, and only the penalty for following a capability question with
+        // another one breaks the tie.
+        let set = vec![
+            candidate("a", &[("cap:x", "yes"), ("cap:y", "yes"), ("language", "rust")]),
+            candidate("b", &[("cap:x", "no"), ("cap:y", "no"), ("language", "rust")]),
+            candidate("c", &[("cap:x", "yes"), ("cap:y", "yes"), ("language", "go")]),
+            candidate("d", &[("cap:x", "no"), ("cap:y", "no"), ("language", "go")]),
+        ];
+        let cold = State {
+            candidates: set.clone(),
+            ..State::default()
+        };
+        let (first, _) = next_question(&cold).unwrap();
+        assert_eq!(first.key, "cap:x", "cold, the tie goes to the first key in order");
+
+        let warm = State {
+            candidates: set,
+            last_family: FAMILY_CAPABILITY.to_string(),
+            ..State::default()
+        };
+        let (next, _) = next_question(&warm).unwrap();
+        assert_eq!(
+            next.key, "language",
+            "after a capability question the other capability is discounted by 0.7, so the platform              question wins the tie"
+        );
+    }
+
     #[test]
     fn gaps_report_unknown_data_not_unaskable_questions() {
         let set = vec![

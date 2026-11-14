@@ -191,7 +191,10 @@ pub async fn search(
 
     // The rank reads the SAME placeholder the match used, so the two can never disagree about the query.
     let score = if query.is_empty() {
-        "0::double precision".to_string()
+        // Aliased, not bare: the caller reads `score` by name, and a bare expression is a column called `?column?`. This was
+        // a live 500 on the FIRST empty-query search the port ever served — the finder's catalogue — because every earlier
+        // caller passed a query.
+        "0::double precision as score".to_string()
     } else {
         format!(
             "ts_rank(p.search_tsv, plainto_tsquery('simple', $1))::double precision as score"

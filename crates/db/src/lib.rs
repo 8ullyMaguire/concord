@@ -23,6 +23,7 @@ pub mod feature_writes;
 pub mod embeddings;
 pub mod document_writes;
 pub mod feature_work;
+pub mod finder_reads;
 pub mod features;
 pub mod holds;
 pub mod invite_writes;

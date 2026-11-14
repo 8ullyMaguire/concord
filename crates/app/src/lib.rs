@@ -17,6 +17,7 @@ use axum::{
 };
 use serde::Deserialize;
 pub mod feeds;
+pub mod finder;
 
 use polaris_core::ApiError;
 use serde_json::{json, Value};
@@ -247,6 +248,20 @@ pub fn router(state: AppState) -> Router {
             post(revoke_invite),
         )
         .route("/api/v1/auth/redeem-invite", post(redeem_invite))
+        // §4/§5: Finder. Sessions live in memory and say so (`persisted: false`) — the reference's own decision, kept.
+        .route("/api/v1/finder/questions", get(finder::finder_questions))
+        .route("/api/v1/finder/sessions", post(finder::start_finder_session))
+        .route("/api/v1/finder/sessions/{session}", get(finder::get_finder_session))
+        .route(
+            "/api/v1/finder/sessions/{session}/answers",
+            post(finder::answer_finder_question),
+        )
+        .route("/api/v1/finder/sessions/{session}/back", post(finder::back_finder))
+        .route("/api/v1/finder/sessions/{session}/lift", post(finder::lift_finder))
+        .route(
+            "/api/v1/finder/sessions/{session}/results",
+            get(finder::finder_results),
+        )
         // §5.7's merge requests. `execute` is the destructive one: it ships the feature and closes its complaints, and its gate
         // lives in the store beside that change so no route can skip it.
         .route(
@@ -601,7 +616,7 @@ async fn not_found() -> ApiError {
 
 /// One place where a database failure becomes a refusal. The cause is logged and not answered: an
 /// operator gets the trace, a caller gets "internal".
-fn internal(error: impl std::fmt::Display) -> ApiError {
+pub(crate) fn internal(error: impl std::fmt::Display) -> ApiError {
     tracing::error!(error = %error, "internal");
     ApiError::internal("internal error")
 }
@@ -751,7 +766,7 @@ async fn create_project(
 /// One helper rather than a middleware: the port has routes that treat an absent identity as an
 /// error and routes that treat it as an anonymous read, and a layer that decided for both would be
 /// wrong for one of them.
-async fn bearer_user(
+pub(crate) async fn bearer_user(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<Option<concord_db::auth::User>, ApiError> {
@@ -2880,7 +2895,7 @@ fn theme_refusal(refusal: concord_db::themes::Refused) -> ApiError {
 ///   before the membership query rather than after it;
 /// * an unknown visibility FAILS CLOSED. Migration 0009's CHECK makes it unreachable from the database, but
 ///   fail-open is the wrong direction for an access check, and the store is reachable from tests.
-async fn readable(
+pub(crate) async fn readable(
     state: &AppState,
     project: &concord_db::projects::Project,
     user: Option<&concord_db::auth::User>,
