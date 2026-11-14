@@ -644,17 +644,55 @@ async fn get_project(
     }
 }
 
+/// `GET /api/v1/projects/{slug}/board[?milestone=ID]` — the board, optionally NARROWED to one milestone's features.
+///
+/// The reference's rule, kept because each half of it is a decision: ONE board filtered, never a board per milestone (a column's WIP limit
+/// is a statement about the project's capacity, and a limit that applied to a fifth of the work would be five times too generous); an
+/// absent or unparseable `milestone` means the WHOLE board (a filter nobody asked for would change the default page, and a typo must not
+/// empty it); and a card with no feature is dropped under a filter, because it belongs to no milestone and a filter is a claim about
+/// membership.
+///
+/// The port answered `?milestone=` with the whole board — a filter that silently does nothing is worse than one that errors, because the
+/// reader believes it. `milestones_e2e` caught it by counting a card that should not be there.
 async fn get_board(
     State(state): State<AppState>,
     Path(slug): Path<String>,
+    Query(query): Query<BoardQuery>,
 ) -> Result<Json<Value>, ApiError> {
-    match concord_db::projects::board_by_slug(&state.pool, &slug)
+    let Some(mut board) = concord_db::projects::board_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
-    {
-        Some(board) => Ok(Json(serde_json::to_value(board).map_err(internal)?)),
-        None => Err(ApiError::not_found(format!("project {slug}"))),
+    else {
+        return Err(ApiError::not_found(format!("project {slug}")));
+    };
+    let milestone = query
+        .milestone
+        .as_deref()
+        .and_then(|raw| raw.parse::<i64>().ok())
+        .filter(|id| *id > 0);
+    if let Some(milestone) = milestone {
+        // `Board` carries no project id, so it is read here rather than added to the shape every client sees.
+        let project_id = concord_db::projects::project_by_slug(&state.pool, &slug)
+            .await
+            .map_err(internal)?
+            .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?
+            .id;
+        let membership = concord_db::projects::feature_milestones(&state.pool, project_id)
+            .await
+            .map_err(internal)?;
+        board.cards.retain(|card| {
+            card.feature_id != 0 && membership.get(&card.feature_id).copied() == Some(milestone)
+        });
     }
+    Ok(Json(serde_json::to_value(board).map_err(internal)?))
+}
+
+/// The board's query string. `milestone` is the only parameter, and it is a STRING here rather than an `Option<i64>` so that an
+/// unparseable value can mean "the whole board" instead of failing the request — the reference's parser does the same.
+#[derive(Debug, Deserialize)]
+struct BoardQuery {
+    #[serde(default)]
+    milestone: Option<String>,
 }
 
 async fn list_documents(

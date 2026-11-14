@@ -116,119 +116,6 @@ macro_rules! project_page {
     };
 }
 
-/// `/projects/{slug}/board` — the columns, with the cards in them and the limit each column declared.
-async fn board_body(pool: &PgPool, project: &Project) -> Result<(String, serde_json::Value), String> {
-    let board = projects::board_by_slug(pool, &project.slug)
-        .await
-        .map_err(|error| format!("the board could not be read: {error}"))?
-        .ok_or_else(|| "this project has no board".to_string())?;
-    if board.columns.is_empty() {
-        return Ok((empty("This project has no board columns yet."), serde_json::json!({"columns": []})));
-    }
-    let mut body = Html::new();
-    body.open("div", &[("class", "board")]);
-    for column in &board.columns {
-        let in_column: Vec<&projects::BoardCard> =
-            board.cards.iter().filter(|card| card.column == column.name).collect();
-        body.open("section", &[("class", "board-column")])
-            .open("h3", &[]).text(&column.name).close("h3");
-        // The WIP limit is a claim about capacity, so it is shown beside the count rather than enforced silently by the page.
-        if let Some(limit) = column.wip {
-            body.open("p", &[("class", "muted")])
-                .text(&format!("{} of {limit} in progress", in_column.len()))
-                .close("p");
-        } else {
-            body.open("p", &[("class", "muted")])
-                .text(&format!("{} card(s), no limit", in_column.len()))
-                .close("p");
-        }
-        body.open("ul", &[("class", "cards")]);
-        for card in &in_column {
-            // The title, and the feature it belongs to — as TEXT, because `/projects/{}/features/{id}` has no page yet and a link
-            // to a 404 is a promise the shell cannot keep. The link arrives with the page.
-            // A placed card carries no feature title in the store — the JSON API returns `title` only for DERIVED cards, and this
-            // instance's 329 placed cards have none. So the identifier is the label: "feature 1793" is a fact a reader can act on,
-            // and "(untitled feature)" repeated 329 times is a page that has given up. Decision dated 2026-11-14.
-            // A placed card carries no feature title in the store, so the identifier is the label: `#1793` is a fact a reader can act
-            // on. It is a LINK now that `/projects/{}/features/{id}` exists — until that page landed it was text, because a link to a
-            // 404 is a promise the shell cannot keep.
-            let label = card.title.as_deref().map(str::to_string).unwrap_or_else(|| format!("#{}", card.feature_id));
-            body.open("li", &[])
-                .open("a", &[("href", &format!("/projects/{}/features/{}", project.slug, card.feature_id))])
-                .text(&label)
-                .close("a");
-            if card.derived {
-                body.open("span", &[("class", "muted")]).text(" · derived").close("span");
-            }
-            body.close("li");
-        }
-        body.close("ul").close("section");
-    }
-    body.close("div");
-    let bootstrap = serde_json::json!({
-        "columns": board.columns.iter().map(|column| serde_json::json!({
-            "name": column.name, "wip": column.wip,
-            "cards": board.cards.iter().filter(|card| card.column == column.name)
-                .map(|card| serde_json::json!({"feature_id": card.feature_id, "title": card.title}))
-                .collect::<Vec<_>>(),
-        })).collect::<Vec<_>>(),
-    });
-    Ok((body.finish(), bootstrap))
-}
-
-project_page!(board, "/board", "Board", board_body);
-
-/// `/projects/{slug}/roadmap` — the milestones, with the counts that make "on track" checkable.
-async fn roadmap_body(pool: &PgPool, project: &Project) -> Result<(String, serde_json::Value), String> {
-    let milestones = concord_db::milestones::list_milestones(pool, project.id)
-        .await
-        .map_err(|error| format!("the roadmap could not be read: {error}"))?;
-    if milestones.is_empty() {
-        return Ok((empty("This project has no milestones."), serde_json::json!({"milestones": []})));
-    }
-    let mut body = Html::new();
-    body.open("table", &[("class", "table")])
-        .open("thead", &[]).open("tr", &[]);
-    for heading in ["Milestone", "Target", "Status", "Shipped", "Open", "Risk"] {
-        body.open("th", &[("scope", "col")]).text(heading).close("th");
-    }
-    body.close("tr").close("thead").open("tbody", &[]);
-    for milestone in &milestones {
-        body.open("tr", &[])
-            .open("td", &[])
-            .open("a", &[("href", &format!("/projects/{}/milestones/{}", project.slug, milestone.id))])
-            .text(&milestone.title)
-            .close("a")
-            .close("td");
-        // A milestone with no target date is not "targeted today": it prints an em dash, the same mark the badge uses for a
-        // measurement that does not exist.
-        match milestone.target_date {
-            Some(epoch) => body.open("td", &[]).text(&crate::date(epoch)).close("td"),
-            None => body.open("td", &[("class", "unmeasured")]).text("—").close("td"),
-        };
-        body.open("td", &[]).text(&milestone.status).close("td")
-            .open("td", &[]).text(&format!("{} of {}", milestone.shipped, milestone.total)).close("td")
-            .open("td", &[]).text(&milestone.open.to_string()).close("td");
-        if milestone.at_risk {
-            body.open("td", &[("class", "risk")]).text("at risk").close("td");
-        } else {
-            body.open("td", &[("class", "muted")]).text("—").close("td");
-        }
-        body.close("tr");
-    }
-    body.close("tbody").close("table");
-    let bootstrap = serde_json::json!({
-        "milestones": milestones.iter().map(|milestone| serde_json::json!({
-            "id": milestone.id, "title": milestone.title, "status": milestone.status,
-            "total": milestone.total, "shipped": milestone.shipped, "open": milestone.open,
-            "target_date": milestone.target_date, "at_risk": milestone.at_risk,
-        })).collect::<Vec<_>>(),
-    });
-    Ok((body.finish(), bootstrap))
-}
-
-project_page!(roadmap, "/roadmap", "Roadmap", roadmap_body);
-
 /// `/projects/{slug}/consensus` — the calls, newest first, with the verdict where there is one.
 async fn consensus_body(pool: &PgPool, project: &Project) -> Result<(String, serde_json::Value), String> {
     let calls = concord_db::consensus::list_calls(pool, project.id, 50)
@@ -366,3 +253,64 @@ async fn audit_body(pool: &PgPool, project: &Project) -> Result<(String, serde_j
 }
 
 project_page!(audit, "/audit", "Audit log", audit_body);
+
+// ── the two pages the reference renders in the browser ───────────────────────────────────────────────────────────────────────────────
+//
+// `board_body` and `roadmap_body` used to build these on the server, and the first suite run is what showed the cost: `probe_pages.py`
+// asserted the columns and the milestones were on the page, the suite asserted `milestones.js` had drawn `.ms-counts`, and only the
+// second one is what a reader sees. The bodies are the reference's mounts now; nothing on the server counts anything.
+
+/// `/projects/{slug}/board` — the reference's kanban mount.
+///
+/// `board.js` fetches `/api/v1/projects/{slug}/board` and builds the columns; the suite asserts the cards it drew, that `?milestone=`
+/// narrows them, and that a feature outside the milestone is ABSENT. A server-rendered board satisfies none of those.
+pub async fn board(State(pool): State<PgPool>, Path(slug): Path<String>, headers: HeaderMap) -> Response {
+    let Ok(project) = resolve(&pool, &slug).await else { return crate::not_found(&headers) };
+    let body = format!(
+        r#"<div class="page-header">
+  <h1 class="page-title">Board <span class="muted" style="color:var(--slate-500);font-weight:400;">&middot; {slug}</span></h1>
+  <p class="page-subtitle">Phase-gated kanban — each advance is consented.</p>
+</div>
+<div id="kanban-board" aria-busy="true"></div>
+<script src="{skeleton}"></script>
+<script>(function(){{var b=document.getElementById("kanban-board");if(b&&window.ConcordSkeleton){{b.innerHTML=window.ConcordSkeleton.board(4,2);}}}})();</script>
+<script src="{board_js}"></script>
+"#,
+        slug = project.slug,
+        skeleton = crate::shell::asset("/assets/js/skeleton.js"),
+        board_js = crate::shell::asset("/assets/js/board.js"),
+    );
+    let title = format!("{}: Board", project.name);
+    render(&headers, Page {
+        title: &title,
+        path: &format!("/projects/{}/board", project.slug),
+        description: &format!("The board for {}, on Concord.", project.name),
+        bootstrap: serde_json::json!({"route": format!("/projects/{}/board", project.slug), "mount": "kanban-board"}),
+    }, body)
+}
+
+/// `/projects/{slug}/roadmap` — the reference's milestone timeline mount.
+///
+/// `milestones.js` builds it, and the suite asserts the COUNTS it prints (`.ms-counts`: "0/1 shipped", "1 open") rather than the shape of
+/// the timeline, because a timeline nobody can count is a picture.
+pub async fn roadmap(State(pool): State<PgPool>, Path(slug): Path<String>, headers: HeaderMap) -> Response {
+    let Ok(project) = resolve(&pool, &slug).await else { return crate::not_found(&headers) };
+    let body = format!(
+        r#"<div class="page-header">
+  <h1 class="page-title">Roadmap <span class="muted" style="color:var(--slate-500);font-weight:400;">&middot; {slug}</span></h1>
+  <p class="page-subtitle">Milestones on a timeline &mdash; planned versus shipped, with the slip measured rather than asserted.</p>
+</div>
+<div id="roadmap" data-slug="{slug}" aria-busy="true"><p class="muted">Loading milestones&hellip;</p></div>
+<script src="{milestones_js}"></script>
+"#,
+        slug = project.slug,
+        milestones_js = crate::shell::asset("/assets/js/milestones.js"),
+    );
+    let title = format!("{}: Roadmap", project.name);
+    render(&headers, Page {
+        title: &title,
+        path: &format!("/projects/{}/roadmap", project.slug),
+        description: &format!("The roadmap for {}, on Concord.", project.name),
+        bootstrap: serde_json::json!({"route": format!("/projects/{}/roadmap", project.slug), "mount": "roadmap"}),
+    }, body)
+}

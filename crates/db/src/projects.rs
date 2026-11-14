@@ -187,6 +187,27 @@ pub struct Board {
 ///
 /// # Errors
 /// `sqlx::Error`.
+/// feature id -> milestone id (`0` for the backlog), read once for the board's filter.
+///
+/// The reference reads the same map for the same reason: a filtered board has to know which milestone each CARD's feature belongs to, and
+/// asking per card is a query per card. `0` rather than NULL because the map's job is membership — a feature with no milestone belongs to
+/// the backlog and to no milestone, and those are different answers.
+pub async fn feature_milestones(
+    pool: &PgPool,
+    project_id: i64,
+) -> Result<std::collections::HashMap<i64, i64>, sqlx::Error> {
+    use sqlx::Row;
+    let rows = sqlx::query("select id, coalesce(milestone_id, 0) from features where project_id = $1")
+        .bind(project_id)
+        .fetch_all(pool)
+        .await?;
+    let mut out = std::collections::HashMap::with_capacity(rows.len());
+    for row in rows {
+        out.insert(row.try_get::<i64, _>(0)?, row.try_get::<i64, _>(1)?);
+    }
+    Ok(out)
+}
+
 pub async fn board_by_slug(pool: &PgPool, slug: &str) -> Result<Option<Board>, sqlx::Error> {
     use sqlx::Row;
     let project: Option<i64> = sqlx::query_scalar("select id from projects where slug = $1")

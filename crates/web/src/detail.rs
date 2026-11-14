@@ -243,62 +243,29 @@ pub async fn milestone(
     headers: HeaderMap,
 ) -> Response {
     let Some(project) = project_of(&pool, &slug).await else { return crate::not_found(&headers) };
-    let row = match concord_db::milestones::milestone(&pool, project.id, id).await {
-        Ok(Some(row)) => row,
-        Ok(None) => return crate::not_found(&headers),
-        Err(error) => return crate::error_page(&headers, "the milestone could not be read", &error.to_string()),
-    };
-    let features = concord_db::features::milestone_features(&pool, id).await.unwrap_or_default();
-    let mut body = Html::new();
-    body.open("h3", &[]).text(&row.title).close("h3");
-    if !row.body.is_empty() {
-        body.open("p", &[]).text(&row.body).close("p");
-    }
-    body.open("dl", &[("class", "facts")]);
-    fact(&mut body, "Status", &row.status);
-    match row.target_date {
-        Some(epoch) => fact(&mut body, "Target", &crate::date(epoch)),
-        None => fact(&mut body, "Target", "—"),
-    }
-    fact(&mut body, "Shipped", &format!("{} of {}", row.shipped, row.total));
-    fact(&mut body, "Open", &row.open.to_string());
-    if row.at_risk {
-        fact(&mut body, "Risk", "at risk");
-    }
-    // Seeded and unshipped features are counts of features whose events are MISSING — the numbers a milestone's honesty depends on,
-    // so they are shown rather than left to a JSON client that may never read them.
-    if row.seeded > 0 {
-        fact(&mut body, "Seeded without a creation event", &row.seeded.to_string());
-    }
-    if row.unshipped > 0 {
-        fact(&mut body, "Shipped without a shipment event", &row.unshipped.to_string());
-    }
-    body.close("dl").open("h3", &[]).text(&format!("{} feature(s)", features.len())).close("h3");
-    if features.is_empty() {
-        body.open("p", &[("class", "empty")]).text("No feature is attached to this milestone.").close("p");
-    } else {
-        body.open("ul", &[("class", "rows")]);
-        for feature in &features {
-            body.open("li", &[])
-                .open("a", &[("href", &format!("/projects/{slug}/features/{}", feature.id))])
-                .text(&feature.title)
-                .close("a")
-                .open("span", &[("class", "badge")]).text(&feature.status).close("span")
-                .close("li");
-        }
-        body.close("ul");
-    }
-    let bootstrap = serde_json::json!({
-        "milestone": {"id": row.id, "title": row.title, "status": row.status,
-                      "total": row.total, "shipped": row.shipped, "open": row.open,
-                      "target_date": row.target_date, "at_risk": row.at_risk},
-    });
+    // Like the feature page, this does NOT look the milestone up: the reference renders the mount and `milestones.js` fills `#ms-title`
+    // from the API, which is where the suite reads it (`#ms-title` must equal the milestone's title, not the word "Milestone" the mount
+    // starts with). A server-rendered title would pass a grep and fail the suite, and a server-side 404 would remove the client's own
+    // "no such milestone" state.
+    let body = format!(
+        r#"<div class="page-header">
+  <h1 class="page-title" id="ms-title">Milestone</h1>
+  <p class="page-subtitle" id="ms-subtitle">Its features, grouped by status.</p>
+</div>
+<div id="milestone" data-slug="{slug}" data-milestone="{id}" aria-busy="true"><p class="muted">Loading milestone&hellip;</p></div>
+<script src="{milestones_js}"></script>
+"#,
+        slug = project.slug,
+        id = id,
+        milestones_js = crate::shell::asset("/assets/js/milestones.js"),
+    );
+    let title = format!("{}: milestone", project.name);
     render(&headers, Page {
-        title: &format!("{}: {}", project.name, row.title),
-        path: &format!("/projects/{slug}/milestones/{id}"),
-        description: &row.body.chars().take(160).collect::<String>(),
-        bootstrap,
-    }, body.finish())
+        title: &title,
+        path: &format!("/projects/{}/milestones/{}", project.slug, id),
+        description: &format!("A milestone of {}, on Concord.", project.name),
+        bootstrap: serde_json::json!({"route": format!("/projects/{}/milestones/{}", project.slug, id), "mount": "milestone"}),
+    }, body)
 }
 
 /// `/projects/{slug}/features/{id}` — the reference's mount point, moderation panel and comment thread.
