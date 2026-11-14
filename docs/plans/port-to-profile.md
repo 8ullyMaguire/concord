@@ -46,7 +46,7 @@ gate ran and its output is quoted — not when it was removed from a list. The h
 | 9b | S3 arena and solutions | **Done 2026-11-13** (`345b132`) — `probe_s3b_arena.py` 20/20 (was 5/20), the negative control at 19/20, corpus still 2 disagreed of 14, ranking oracle green with 10 arena rows |
 | 10 | S4 moderation, comments, inbox | **Done 2026-11-13** (`b969b26`): four probes 26/26, 27/27, 40/40, 39/39; `e2e.sh` 29 passed; gates 22 and 45 green (`CHECK inbox` exit 0, `CHECK authz` 10/10); `polaris-comments` and `polaris-authz` adopted |
 | 11 | S5 stats, feeds, admin binaries | **Done 2026-11-14** (`3ac7f5e`) — corpus `0 shape(s) disagreed of 16 checked, 5 skipped`; `probe_s5_stats` 16/16; `probe_admin_binaries` **69/69** with four controls; three `concord-rs-*` timers declared in `scheduled.toml` (`active = false` until cutover); `CHECK feed-routes: 8 arm(s) passed, 0 failed`. **Dated correction 2026-11-14:** "feed parse" moves to row 12 — the feeds are page routes returning XML, not JSON routes, and `probe_s5_feeds` is that row's gate. Gates 4 and 5 are red for `media.polarisocial.xyz` and not for concord (recorded in the row-11 body below). |
-| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **In progress 2026-11-14** — 23 of the Go's **44** page routes answered (`/`, `/projects`, `/projects/{slug}`, `/badge/{slug}.svg` and the 13 feeds, plus six project sub-pages), 21 remain; part 66 opened the crate and corrected the count from 10 to 44. Gate unchanged: every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
+| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **In progress 2026-11-14** — 27 of the Go's **44** page routes answered (`/`, `/projects`, `/projects/{slug}`, `/badge/{slug}.svg` and the 13 feeds, plus six project sub-pages and four instance pages), 17 remain; part 66 opened the crate and corrected the count from 10 to 44. Gate unchanged: every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
 | 13 | P7 cutover | `concord.polarisocial.xyz/api/v1/version` served by the Rust binary, and estate gate 17 green for `concord` with NO `reason` |
 
 **Row 8 (S2) — the failing probe, pasted before any code** (2026-11-13):
@@ -4187,6 +4187,42 @@ lacked rather than documents it serves.
 **Commit:** `31fa726`. **Files:** `crates/cli/src/lib.rs` (boot warning), `scripts/parity/probe_s5_feeds.py` (origin from the
 service's configuration), `scripts/parity/routes.py` (any `*.xml` route is a document).
 
+
+### Part 69 — the four instance pages (2026-11-14)
+
+**Before:** `GET /search`, `/stats`, `/taxonomy`, `/scout` → `404`; `routes.py` `missing: 21 (0 json, 21 page)`.
+**After:** `probe_pages.py` **93/93 ok**; `routes.py` `missing: 17 (0 json, 17 page)`.
+
+`/search`, `/stats`, `/taxonomy`, `/scout`. Each is a GET whose whole state is in the URL, so each can be bookmarked and reloaded, and
+each answers without JavaScript. Browser-verified: `/search?q=suki` "1 project(s) match", `/stats` 11 rows plus the no-slope sentence,
+`/taxonomy` "68 ratified tag(s)", `/scout` a form posting to `/api/v1/scout`.
+
+**Three rules, each of which was nearly a bug:**
+
+* **An empty query is a browse, not an error.** The search read has no `WHERE` without a query, so `/search` lists the whole visible
+  catalogue — **78 projects** on this instance. The page's first draft said "Nothing has been searched for yet." above 78 rows, which
+  is a page contradicting itself in two adjacent lines; it now says "78 project(s) in the catalogue — every one you may see".
+* **An unmeasured number is an em dash.** `/stats` prints `—` for a health score nobody measured, and the probe asserts that no row
+  prints `0.00`. Each rising row carries the SPAN its slope was measured over, because a slope over 14 days and one over 90 are
+  different claims that look identical as a number.
+* **A suggested tag is not a ratified one.** `/taxonomy` reads with `include_suggested: false`, and groups by namespace with the
+  unnamed one **last** — the empty namespace means "no namespace", not "first alphabetically".
+
+**Two things the pages state rather than hide.** `/stats` says "No project has two snapshots to measure a slope over yet" (this
+instance has one snapshot, so there is no slope to show and none is invented). `/scout` says when no capabilities are registered —
+an empty capability matrix makes the question selector correctly decline to ask anything, and a reader deserves to know which of the
+two situations they are in.
+
+**Finding: the capability vocabulary has no JSON route.** `capabilities` is written by `capableseed` and read by Scout's engine;
+nothing serves it over HTTP. So `/scout`'s "18 capability(ies)" can only be checked against itself — the probe compares the sentence
+to the `data-capabilities` attribute and says in a comment why it is not cross-checking against an API that does not exist. The first
+draft compared it to `/api/v1/scout`'s `capabilities` field, which is a different thing entirely (the idea's own decomposed
+capabilities), and failed honestly instead of passing meaninglessly.
+
+**Gate:** `probe_pages.py` **93/93 ok**; `routes.py` `missing: 17 (0 json, 17 page)`; `cargo build --release -p concord-cli` clean;
+browser check of all four pages as quoted above.
+**Commit:** `09f909c`. **Files:** `crates/web/src/top.rs` (new), `crates/web/src/lib.rs` (four routes, `error_page` made crate-visible),
+`crates/web/Cargo.toml` (serde), `scripts/parity/probe_pages.py` (18 more checks).
 
 ### Part 68 — six project pages behind one tab strip (2026-11-14)
 
