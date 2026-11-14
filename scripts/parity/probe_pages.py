@@ -23,6 +23,7 @@ What is asserted here:
 """
 import json
 import os
+import re
 import sys
 import time
 import urllib.error
@@ -244,6 +245,84 @@ def main():
     sentence = _re.search(r"against (\d+) capability", scout_page)
     check("  and the count in its sentence is the count a client reads",
           attribute.group(1) if attribute else None, sentence.group(1) if sentence else "none")
+
+
+    # ── the nine row pages ────────────────────────────────────────────────────────────────────────────────────────────────────────
+    # Each is fetched twice: once for a real row (which must render) and once for an id from another project (which must be a 404, not
+    # a 200 with someone else's row on it). The second half is the scoping rule the write routes already keep, and the page routes had
+    # no reason to be looser than they are.
+    for suffix, section in [
+        ("/requests", "Requests"),
+        ("/lists", "Lists"),
+        ("/merge", "Merge requests"),
+        ("/settings", "Settings"),
+    ]:
+        status, content_type, body = get(f"/projects/suki{suffix}")
+        check(f"GET /projects/suki{suffix} is a document", status, 200)
+        check(f"  and it is HTML", content_type.split(";")[0], "text/html")
+        check(f"  and its title names it", f"<title>Suki: {section} — Concord</title>" in body, True)
+
+    # A row page is reached by clicking a row, so the probe follows a real one out of the list page when the list is not empty.
+    def first_link(page, pattern):
+        match = re.search(pattern, page)
+        return match.group(1) if match else None
+
+    _, _, requests_page = get("/projects/suki/requests")
+    row = first_link(requests_page, r'href="(/projects/suki/requests/\d+)"')
+    if row:
+        status, _content_type, row_page = get(row)
+        check(f"a request row page answers ({row})", status, 200)
+        check("  and shows an answer count", "answer(s)" in row_page, True)
+    else:
+        note("this project has no requests to open", True, "the list page says so")
+
+    _, _, lists_page = get("/projects/suki/lists")
+    row = first_link(lists_page, r'href="(/projects/suki/lists/\d+)"')
+    if row:
+        status, _content_type, row_page = get(row)
+        check(f"a list row page answers ({row})", status, 200)
+        note("  and shows its entry count", "entries" in row_page, "")
+    else:
+        note("this project keeps no lists", True, "the list page says so")
+
+    # A feature and a complaint are reachable from the board and from a feature page respectively; the probe takes the first feature
+    # the board lists and follows it.
+    _, _, board_page = get("/projects/suki/board")
+    feature_row = first_link(board_page, r'href="(/projects/suki/features/\d+)"')
+    if feature_row:
+        status, _content_type, feature_page = get(feature_row)
+        check(f"a feature page answers ({feature_row})", status, 200)
+        note("  and prints a rating", "±" in feature_page, "")
+        complaint_row = first_link(feature_page, r'href="(/projects/suki/complaints/\d+)"')
+        if complaint_row:
+            status, _content_type, complaint_page = get(complaint_row)
+            check(f"a complaint page answers ({complaint_row})", status, 200)
+            check("  and prints its severity", "Severity" in complaint_page, True)
+        else:
+            note("  and the feature answers no complaint", True, "")
+    else:
+        note("the board offers no feature to open", True, "")
+
+    _, _, roadmap_page = get("/projects/suki/roadmap")
+    milestone_row = first_link(roadmap_page, r'href="(/projects/suki/milestones/\d+)"')
+    if milestone_row:
+        status, _content_type, milestone_page = get(milestone_row)
+        check(f"a milestone page answers ({milestone_row})", status, 200)
+        check("  and prints shipped of total", "Shipped" in milestone_page, True)
+    else:
+        note("this project has no milestone to open", True, "")
+
+    # Scoping: a row that belongs to another project is a 404, not a 200. `suki` is project 74 on this database, so any other
+    # project's feature id must not render under `suki`.
+    status, _content_type, foreign = get("/projects/suki/features/1")
+    check("a feature id from another project is 404 under suki", status, 404)
+    check("  and the 404 is the not-found document, not someone else's row",
+          "There is no project at this address." in foreign and "<h3>" not in foreign, True)
+
+    # A settings page must print the charter's numbers, not a JSON blob: a reader arrives here to learn the quorum.
+    _, _, settings_page = get("/projects/suki/settings")
+    check("the settings page prints the charter's quorum", "Quorum" in settings_page, True)
+    check("  and the vote window", "Vote window" in settings_page, True)
 
     # ── a project that does not exist is a 404 on every sub-page too ─────────────────────────────────────────────────────────
     status, _content_type, _body = get(f"/projects/no-such-{STAMP}/audit")

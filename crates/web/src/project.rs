@@ -20,16 +20,20 @@ use crate::{render, Page};
 
 /// The tabs, in the order the Go renders them — but **only the ones whose page exists**.
 ///
-/// The Go's strip has nine tabs and three of them (`Requests`, `Lists`, `Settings`) are not ported yet. A tab is a promise that the
+/// The Go's strip has nine tabs; `Settings` is reachable from the overview rather than the strip (the Go puts it in the strip, and the
+/// difference is recorded in the ledger), and `Requests`/`Lists` joined when their pages landed. A tab is a promise that the
 /// address behind it answers; a strip that offers a 404 teaches a reader that the navigation lies, which is the one thing a
 /// navigation cannot survive. The strip grows by one in each commit that lands a page, and the ledger names the missing three.
-pub const TABS: [(&str, &str); 7] = [
+pub const TABS: [(&str, &str); 10] = [
     ("Overview", ""),
     ("Board", "/board"),
     ("Roadmap", "/roadmap"),
     ("Consensus", "/consensus"),
     ("Documents", "/documents"),
     ("Criteria", "/criteria"),
+    ("Lists", "/lists"),
+    ("Requests", "/requests"),
+    ("Merge", "/merge"),
     ("Audit", "/audit"),
 ];
 
@@ -145,8 +149,14 @@ async fn board_body(pool: &PgPool, project: &Project) -> Result<(String, serde_j
             // A placed card carries no feature title in the store — the JSON API returns `title` only for DERIVED cards, and this
             // instance's 329 placed cards have none. So the identifier is the label: "feature 1793" is a fact a reader can act on,
             // and "(untitled feature)" repeated 329 times is a page that has given up. Decision dated 2026-11-14.
+            // A placed card carries no feature title in the store, so the identifier is the label: `#1793` is a fact a reader can act
+            // on. It is a LINK now that `/projects/{}/features/{id}` exists — until that page landed it was text, because a link to a
+            // 404 is a promise the shell cannot keep.
             let label = card.title.as_deref().map(str::to_string).unwrap_or_else(|| format!("#{}", card.feature_id));
-            body.open("li", &[]).text(&label);
+            body.open("li", &[])
+                .open("a", &[("href", &format!("/projects/{}/features/{}", project.slug, card.feature_id))])
+                .text(&label)
+                .close("a");
             if card.derived {
                 body.open("span", &[("class", "muted")]).text(" · derived").close("span");
             }
@@ -186,7 +196,9 @@ async fn roadmap_body(pool: &PgPool, project: &Project) -> Result<(String, serde
     for milestone in &milestones {
         body.open("tr", &[])
             .open("td", &[])
+            .open("a", &[("href", &format!("/projects/{}/milestones/{}", project.slug, milestone.id))])
             .text(&milestone.title)
+            .close("a")
             .close("td");
         // A milestone with no target date is not "targeted today": it prints an em dash, the same mark the badge uses for a
         // measurement that does not exist.
