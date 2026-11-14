@@ -3892,3 +3892,67 @@ first, always.
 missing 14 (4 json, 10 page). The JSON remainder is now four routes: badge, scout, arena recompute, Forgejo webhook.
 **Commit:** `ae70634`. **Files:** `crates/db/src/taxonomy.rs` (`tags`, `list`, `propose`, `ProposeRefused`, `KNOWN_NAMESPACES`),
 `crates/app/src/lib.rs` (4 routes + 4 handlers + `contributor_somewhere`), `scripts/parity/probe_taxonomy.py` (new, 48 checks).
+
+### Part 63 — the two writes nobody clicks (2026-11-14)
+
+**Before** (`probe_arena_webhook.py` against the deployed port):
+```
+FAIL recomputing anonymously is 401: got 404 want 401
+FAIL a contributor's recompute is 200: got 404 want 200
+```
+
+**After:**
+```
+30/30 ok
+```
+
+**Routes:** `POST /projects/{slug}/arenas/{id}/recompute`, `POST /hooks/forgejo`. `arena::replay` and `arena::verify` already existed
+from the rating work; what was missing was the write that reconciles the stored entries with them, and the endpoint that reaches for a
+forge.
+
+**Recompute.** Votes are applied incrementally, and an incremental application of a rating system drifts for reasons with no common
+shape: a failed request between the game and the entry update, a manual fix, a bug shipped for an afternoon. The replay is the only
+answer to "are these numbers right" as opposed to "these are the numbers the code produced".
+
+* *`changed` is measured before the write.* Afterwards the two agree by construction and the count is always zero — a caller could not
+  distinguish "nothing had drifted" from "I fixed twelve".
+* *It counts disagreements, not rows.* `verify` returns one row per entry with an `agrees` flag; counting rows reports every entry as
+  drift and makes the number meaningless. The control `recompute-count-rows` moves exactly the two checks that read it.
+* *A feature arena mirrors into `features.elo_r`/`elo_rd`/`elo_vol`.* Features keep their own columns for the priority endpoint, so a
+  recompute that only fixed `arena_entries` leaves two numbers disagreeing — and the disagreement is invisible from the arena side.
+  Control `recompute-no-mirror` moves the mirror check and nothing else.
+* *The arena's membership in the project is checked before the role.* A role check first answers 403 "not your project" for an arena
+  that is not in this project either, which confirms an enumerable id exists. Both differences are 404.
+
+**Webhook.** Four arms (push, pull request, review, comment) plus the two Forgejo/GitHub comment shapes, which differ in where the
+number lives.
+
+* *No secret configured is 503*, not "accept everything". An unauthenticated write endpoint that is live because nobody finished setting
+  it up is worse than one that says so.
+* *Constant-time comparison over the exact bytes received*, and every refusal is the same 401 — no header, wrong scheme and wrong digest
+  answer identically, because the difference tells an attacker whether their format is right.
+* *The timestamp is the payload's, and the unique key includes it*, so a redelivery writes nothing. A receipt time makes every retry a
+  new row, and a forge that retried five times would outweigh one that did not — silently, because nothing about the row looks wrong.
+  Control `webhook-receipt-time` moves both the timestamp check and the redelivery check.
+* *An unreadable timestamp writes no event row at all*, while the audit row is still written. `now()` would invent a time for an event
+  that may have happened a week ago, and the newcomer median is exactly the number such a row moves. Control
+  `webhook-timestamp-fallback` moves the one check that guards it.
+* *A push's number is stored `0`, not NULL.* In a unique index NULL never equals NULL, so a NULL number would let every duplicate push
+  through as a new row.
+* *An unknown event type is `ignored`, not an error*: a forge that adds an event must not start failing deliveries.
+
+**Decision (dated 2026-11-14): the event timestamp is parsed from the payload, not read from the forge's API.** The webhook is the only
+place the original time exists; a backfill that asked the forge afterwards would get the same answer only for events young enough to
+still be in its timeline, so the median would drift by age. The column is `timestamptz` and the payload supplies seconds, so the parse
+is RFC 3339 in the request path with no date crate.
+
+**Written out rather than pulled in:** HMAC-SHA256 and the civil-day count, both six lines against `sha2` which the crate already has.
+Checked against vectors written by other people — RFC 4231 cases 2 and 6, and a leap day — because a hand-written HMAC or a
+hand-written `days_from_civil` is a hand-written bug until something external agrees with it. Four tests in `concord-app`.
+
+**Gate:** `probe_arena_webhook.py` 30/30; controls 29/30, 28/30, 28/30, 29/30; regressions `probe_alternatives` 62/62,
+`solutionvote` 21/21, `featurevote` 20/20, `probe_taxonomy` 48/48; `concord-app` lib 4 passed. `routes.py` go 215 / port 205 /
+missing 12 (2 json, 10 page) — the JSON remainder is `/badge/{slug}.svg` and `/scout`.
+**Commit:** `957f348`. **Files:** `crates/db/src/forge_events.rs` (new), `crates/db/src/arena_writes.rs` (`recompute`),
+`crates/db/src/arena.rs` (`entries`), `crates/app/src/lib.rs` (2 routes, 2 handlers, HMAC + RFC 3339 + tests),
+`scripts/parity/probe_arena_webhook.py` (new, 30 checks).
