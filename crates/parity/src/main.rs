@@ -340,31 +340,14 @@ fn truncate(value: &str) -> String {
 ///
 /// `None` means "compare it"; a difference belongs here only when keeping it is a decision rather than a
 /// remainder.
-fn declared_divergence(shape_key: &str) -> Option<(&'static str, &'static str)> {
-    match shape_key {
-        // The deployed Go build answers an unauthenticated request with `{"error": "authentication required"}`
-        // -- a bare string -- while its own 404s and every route the estate added use `polaris-core`'s
-        // `{"error": {"code", "message"}}`. The port cannot have two envelopes: ADR 0011 says one, and a client
-        // that switches on the shape of `error` would break on the other. The port keeps the envelope; the Go
-        // build keeps its string until it is switched off.
-        // THE PORT IS MORE CORRECT HERE, and that is the reason: the Go index `projects_fts` holds 111 rows
-        // for 73 projects and is MISSING TWO OF THEM (`ascend`, `suki`), so the live build's search cannot
-        // find a project whose description contains the word it searched for. Measured on the host:
-        //   select count(*) from projects                                -> 73
-        //   select count(*) from projects_fts                            -> 111
-        //   select count(*) from projects p where not exists (…)          -> 2   (ascend, suki)
-        // The port's index is a generated `search_tsv` column, which the database recomputes from the row, so
-        // this class of staleness cannot exist there. Recorded rather than reproduced: copying a stale index
-        // is not parity, it is a bug with a test.
-        "/api/v1/search?q=arena" => Some((
-            "the Go fts index is missing 2 of 73 projects, so it returns 2 hits where the port returns 3 \
-             (suki's description contains 'an arena'); the port's index is generated and cannot go stale",
-            "row 13 (cutover: the stale index stops being consulted)",
-        )),
-        "/api/v1/notifications" => Some((
-            "the Go build's 401 is a bare string; the port answers the estate's error envelope",
-            "row 13 (cutover: the Go build stops answering)",
-        )),
-        _ => None,
-    }
+fn declared_divergence(_shape_key: &str) -> Option<(&'static str, &'static str)> {
+    // Empty since the cutover (2026-11-14, port row 13). The two entries that lived here were about the GO build — its bare-string 401
+    // and the stale `projects_fts` index that was missing two of seventy-three projects — and both named this row as the one that would
+    // retire them. It did: the Go service stopped answering, `crates/parity/corpus.json` was re-recorded against the Rust binary
+    // (`__meta.version` = `concord-rs 0.0.0+530ce8f`), and the pre-cutover recording is kept as `corpus-pre-cutover.json` because throwing
+    // away the only description of what the old service did would make the rollback unverifiable.
+    //
+    // The list stays, empty, because its whole purpose is to be hard to add to: a divergence has to carry a reason and an owner, and the
+    // tool must report DECLARED rather than silently pass. Compare against the pre-cutover corpus if the Go build ever has to answer again.
+    None
 }

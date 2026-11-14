@@ -33,10 +33,11 @@ Read this table FIRST every turn, before any code. A row is done when its gate r
 quoted below it, never because it merged. The count in this header is the number the turn report
 quotes; `grep -cE '^\| [0-9]+ \|' docs/plans/port-to-profile.md` recounts it.
 
-### Open *(2 — rows 12 and 13; row 11 closed 2026-11-14)*
+### Open *(0 — rows 12 and 13 closed 2026-11-14)*
 
-Rows 7, 8, 9, 9b and 10 are Done and stay in this table with their commits and gates, because a row is done when its
-gate ran and its output is quoted — not when it was removed from a list. The header count says 2: 12 and 13.
+Every row is Done. Rows stay in this table with their commits and gates, because a row is done when its gate ran and its
+output is quoted — not when it was removed from a list. The header count says 0: the port is complete and the Rust binary
+serves `concord.polarisocial.xyz`.
 
 
 | # | step | gate — the command that fails if the step is absent |
@@ -2845,11 +2846,15 @@ edit and is fixed.
 
 ### Blocked
 
-**B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
-stays a recording of `pre-merge-2026-11-05-63-g313b4ee` and is re-recorded after the cutover
-deploy, before row 13 closes.)
+**B1. closed 2026-11-14.** The corpus was a recording of the Go build (`__meta.version: "dev"`, `2026-11-13T15:15:45Z`) and had to be
+re-recorded after the cutover, before row 13 could close. Done: `crates/parity/corpus.json` is now
+`{"base": "https://concord.polarisocial.xyz", "version": "concord-rs 0.0.0+530ce8f", "recorded_at": "2026-11-14T16:25:48Z"}`, 21 shapes —
+the same 21, no shape gained or lost — and the Go recording is kept beside it as `corpus-pre-cutover.json`, because the rollback is only
+verifiable against a description of what the old service did. Replay against the live host:
+`0 shape(s) disagreed of 21 checked, 0 skipped`, with `declared_divergence()` emptied: both entries it held were about the Go build and
+both named this row as the one that retires them.
 
-### Done *(2 — 11 open)*
+### Done *(13 rows — 0 open, 0 blocked; the table above carries rows 8–13 and the sections below carry 1–7)*
 
 **7. S1 projects, documents, board** — done 2026-11-13, commits `07b1663` and this one, pushed to
 `forgejo/port-rust` and `github/port-rust`.
