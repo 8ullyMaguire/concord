@@ -42,8 +42,13 @@ PYTHON = os.environ.get("E2E_PYTHON") or sys.executable
 # fail for another reason and as "survived" if it passed. So the build is `cargo build --release -p concord-cli` and the
 # install is a copy, both inside the loop.
 CANDIDATE = os.environ.get("CONCORD_E2E_CANDIDATE", "")
-CANDIDATE_STAGE = os.environ.get("CONCORD_E2E_CANDIDATE_BUILD",
-                                 os.path.expanduser("~/.cache/cargo-target/release/concord-cli"))
+# The binary `cargo build` produces is under the CHECKOUT's own `target/` unless CARGO_TARGET_DIR says otherwise — measured on the host
+# the gate runs on, because the first version assumed this workstation's `~/.cache/cargo-target` and the gate died with
+# `FileNotFoundError: .../concord-cli` on the very host that had just built it.
+CANDIDATE_STAGE = os.environ.get(
+    "CONCORD_E2E_CANDIDATE_BUILD",
+    os.environ.get("CARGO_TARGET_DIR", os.path.join(REPO, "target")) + "/release/concord-cli",
+)
 
 
 def _build(js_rel):

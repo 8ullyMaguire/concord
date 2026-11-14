@@ -1927,19 +1927,17 @@ async fn place_emergency_hold(
 /// The path segment is the NUMERIC project id, as the Go route is; the neighbouring routes take a slug. A
 /// slug here answers a parse error rather than silently resolving, which is what the Go handler does —
 /// `requireProjectID` parses and refuses, it does not look the slug up.
+/// `GET /api/v1/projects/{slug}/charter` — the charter a project's decisions are made with.
+///
+/// The segment is an **id or a slug**, like every other project segment: `settings.js` asks for
+/// `/api/v1/projects/{slug}/charter`, and this handler parsed the segment as an integer, so the settings page's whole body — quorum, vote
+/// window, WIP limits — was a `400 project id must be an integer` in a page that looked empty. Fourth route in this family to fail that way;
+/// the fix is the shared resolver rather than a fifth local parse.
 async fn get_charter(
     State(state): State<AppState>,
     Path(project): Path<String>,
 ) -> Result<Json<Value>, ApiError> {
-    let project_id = parse_id(&project, "project id")?;
-    let exists: Option<i64> = sqlx::query_scalar("select id from projects where id = $1")
-        .bind(project_id)
-        .fetch_optional(&state.pool)
-        .await
-        .map_err(internal)?;
-    if exists.is_none() {
-        return Err(ApiError::not_found(format!("project {project_id}")));
-    }
+    let project_id = project_by_id(&state, &project).await?.id;
     let charter = concord_db::charter::charter(&state.pool, project_id)
         .await
         .map_err(internal)?;
@@ -2876,9 +2874,13 @@ async fn strategy_project(
 
 async fn list_weight_proposals(
     State(state): State<AppState>,
-    Path(project_id): Path<i64>,
+    Path(project): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
+    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
+    // the top of the handler — the `project_id` the body uses is its id.
+    let project_id = project_by_id(&state, &project).await?.id;
     strategy_project(&state, project_id, &headers).await?;
     let rows = concord_db::strategy::proposals(&state.pool, project_id)
         .await
@@ -2888,9 +2890,13 @@ async fn list_weight_proposals(
 
 async fn list_theme_proposals(
     State(state): State<AppState>,
-    Path(project_id): Path<i64>,
+    Path(project): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
+    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
+    // the top of the handler — the `project_id` the body uses is its id.
+    let project_id = project_by_id(&state, &project).await?.id;
     strategy_project(&state, project_id, &headers).await?;
     let rows = concord_db::themes::proposals(&state.pool, project_id)
         .await
@@ -2900,9 +2906,13 @@ async fn list_theme_proposals(
 
 async fn list_themes(
     State(state): State<AppState>,
-    Path(project_id): Path<i64>,
+    Path(project): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
+    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
+    // the top of the handler — the `project_id` the body uses is its id.
+    let project_id = project_by_id(&state, &project).await?.id;
     strategy_project(&state, project_id, &headers).await?;
     let rows = concord_db::themes::themes(&state.pool, project_id)
         .await
@@ -3155,9 +3165,13 @@ async fn project_tags(
 /// `GET /api/v1/projects/{id}/members` — most privileged first.
 async fn list_members(
     State(state): State<AppState>,
-    Path(project_id): Path<i64>,
+    Path(project): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
+    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
+    // the top of the handler — the `project_id` the body uses is its id.
+    let project_id = project_by_id(&state, &project).await?.id;
     let project = project_by_id(&state, &project_id.to_string()).await?;
     let user = bearer_user(&state, &headers).await?;
     if !readable(&state, &project, user.as_ref()).await? {
@@ -3172,9 +3186,13 @@ async fn list_members(
 /// `GET /api/v1/projects/{id}/criteria` — active first, then slug.
 async fn list_criteria(
     State(state): State<AppState>,
-    Path(project_id): Path<i64>,
+    Path(project): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
+    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
+    // the top of the handler — the `project_id` the body uses is its id.
+    let project_id = project_by_id(&state, &project).await?.id;
     let project = readable_project(&state, project_id, &headers).await?;
     let rows = concord_db::criteria::list(&state.pool, project.id)
         .await
@@ -3185,9 +3203,13 @@ async fn list_criteria(
 /// `GET /api/v1/projects/{id}/criteria-profiles`
 async fn list_criteria_profiles(
     State(state): State<AppState>,
-    Path(project_id): Path<i64>,
+    Path(project): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
+    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
+    // the top of the handler — the `project_id` the body uses is its id.
+    let project_id = project_by_id(&state, &project).await?.id;
     let project = readable_project(&state, project_id, &headers).await?;
     let rows = concord_db::criteria::profiles(&state.pool, project.id)
         .await
@@ -3311,9 +3333,13 @@ async fn write_audit(
 /// `GET /api/v1/projects/{id}/capabilities` — the whole catalogue, each entry with this project's claim.
 async fn list_capabilities(
     State(state): State<AppState>,
-    Path(project_id): Path<i64>,
+    Path(project): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
+    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
+    // the top of the handler — the `project_id` the body uses is its id.
+    let project_id = project_by_id(&state, &project).await?.id;
     let project = readable_project(&state, project_id, &headers).await?;
     let panel = concord_db::capabilities::panel(&state.pool, project.id)
         .await
@@ -3324,9 +3350,13 @@ async fn list_capabilities(
 /// `GET /api/v1/projects/{id}/field-reports` — §4.7's "worked for 83% of reporters on arm64".
 async fn list_field_reports(
     State(state): State<AppState>,
-    Path(project_id): Path<i64>,
+    Path(project): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
+    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
+    // the top of the handler — the `project_id` the body uses is its id.
+    let project_id = project_by_id(&state, &project).await?.id;
     let project = readable_project(&state, project_id, &headers).await?;
     let panel = concord_db::field_reports::panel(&state.pool, project.id)
         .await
@@ -3610,9 +3640,13 @@ async fn get_list_entries(
 /// service, and the difference is recorded rather than tidied.
 async fn feature_tallies(
     State(state): State<AppState>,
-    Path(project_id): Path<i64>,
+    Path(project): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
+    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
+    // the top of the handler — the `project_id` the body uses is its id.
+    let project_id = project_by_id(&state, &project).await?.id;
     let project = readable_project(&state, project_id, &headers).await?;
     let tallies = concord_db::tallies::tallies(&state.pool, project.id)
         .await
@@ -3974,9 +4008,13 @@ const STANDINGS_PER_FEATURE: i64 = 5;
 ///   proposals and four do not" is the useful sentence; a panel that omits the four reads as if one were the project.
 async fn project_solutions(
     State(state): State<AppState>,
-    Path(project_id): Path<i64>,
+    Path(project): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
+    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
+    // the top of the handler — the `project_id` the body uses is its id.
+    let project_id = project_by_id(&state, &project).await?.id;
     let project = readable_project(&state, project_id, &headers).await?;
     // Status "" is every status: a shipped feature whose proposals were all withdrawn is still part of the roadmap, and
     // a standings panel that hides closed work is a panel that erases it.
@@ -4155,9 +4193,13 @@ async fn require_readable_request(
 /// `GET /projects/{id}/requests` — a project's requests, newest first.
 async fn list_project_requests(
     State(state): State<AppState>,
-    Path(project_id): Path<i64>,
+    Path(project): Path<String>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
+    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
+    // the top of the handler — the `project_id` the body uses is its id.
+    let project_id = project_by_id(&state, &project).await?.id;
     let project = readable_project(&state, project_id, &headers).await?;
     let rows = concord_db::requests::by_project(&state.pool, project.id)
         .await

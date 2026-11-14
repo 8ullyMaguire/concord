@@ -442,46 +442,19 @@ pub async fn settings(
     headers: HeaderMap,
 ) -> Response {
     let Some(project) = project_of(&pool, &slug).await else { return crate::not_found(&headers) };
-    let charter = match concord_db::charter::charter(&pool, project.id).await {
-        Ok(charter) => charter,
-        Err(error) => return crate::error_page(&headers, "the charter could not be read", &error.to_string()),
+    // The reference renders this page IN THE BROWSER too: `settings.js` reads the project's charter from `/api/v1/projects/{slug}/charter`
+    // and prints the quorum, the vote window and the WIP limits. The port printed them itself, which read correctly and failed the probe's
+    // own question — the numbers a reader acts on have to come from the one read the API serves, or a page and its API can disagree about
+    // the charter without either looking wrong.
+    let body = match crate::shell::template("settings.html", &[("Slug", &project.slug)]) {
+        Ok(body) => body,
+        Err(error) => return crate::error_page(&headers, "the settings page could not be rendered", &error),
     };
-    let mut body = Html::new();
-    body.open("dl", &[("class", "facts")]);
-    fact(&mut body, "Governance model", &project.governance_model);
-    fact(&mut body, "Visibility", &project.visibility);
-    fact(&mut body, "Intake mode", &project.intake_mode);
-    body.close("dl").open("h3", &[]).text("Charter").close("h3");
-    // The charter's numbers, each with the name of the rule it sets. `accepted_fit_overrides_ranking` is deliberately ABSENT from the
-    // JSON API's shape and from this page: §17 makes the author's accepted answer a badge, never an override, so a field implying the
-    // opposite would be a rule the product does not have.
-    body.open("dl", &[("class", "facts")]);
-    fact(&mut body, "Quorum", &format!("{:.0}% of eligible, at least {}",
-        charter.quorum_ratio * 100.0, charter.quorum_min));
-    fact(&mut body, "Support over all positions", &format!("{:.0}%", charter.support_ratio_min * 100.0));
-    fact(&mut body, "Consent over positions that took a side", &format!("{:.0}%", charter.consent_ratio * 100.0));
-    fact(&mut body, "Override window", &format!("{:.0}%", charter.override_ratio * 100.0));
-    fact(&mut body, "Vote window", &format!("{:.1} days", charter.vote_window_days));
-    fact(&mut body, "Merge quorum", &if charter.merge_requires_quorum {
-        format!("{:.0}%, at least {}", charter.merge_quorum_ratio * 100.0, charter.merge_quorum_min)
-    } else {
-        "not required".to_string()
-    });
-    fact(&mut body, "Reviewer approval", if charter.require_reviewer_approval { "required" } else { "not required" });
-    fact(&mut body, "WIP limits", &format!("in progress {}, review {}",
-        charter.wip_in_progress, charter.wip_review));
-    body.close("dl");
-    let bootstrap = serde_json::json!({
-        "settings": {"governance_model": project.governance_model,
-                     "visibility": project.visibility, "intake_mode": project.intake_mode,
-                     "quorum_ratio": charter.quorum_ratio, "quorum_min": charter.quorum_min,
-                     "vote_window_days": charter.vote_window_days,
-                     "merge_requires_quorum": charter.merge_requires_quorum},
-    });
+    let title = format!("{}: Settings", project.name);
     render(&headers, Page {
-        title: &format!("{}: Settings", project.name),
+        title: &title,
         path: &format!("/projects/{slug}/settings"),
-        description: &format!("How {} is governed, on Concord.", project.name),
-        bootstrap,
-    }, body.finish())
+        description: &format!("The charter of {}, on Concord.", project.name),
+        bootstrap: serde_json::json!({"route": format!("/projects/{slug}/settings"), "mount": "settings-root"}),
+    }, body)
 }

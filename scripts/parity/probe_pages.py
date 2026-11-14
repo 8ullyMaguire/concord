@@ -73,6 +73,19 @@ def main():
     con = harness.connect("unused")
     results = []
 
+    def mount(page, mount_id, script):
+        """A page the reference renders IN THE BROWSER: its mount point, still busy, and the script that fills it.
+
+        This is the assertion that replaced a dozen content checks, and the reason is in the suites: `milestones_e2e` reads the
+        `.ms-counts` that `milestones.js` drew, `rank_links_e2e` counts `.rank-card`s, `consensus_e2e` clicks `#consensus-close-submit`.
+        A probe that greps the server's HTML for those strings asserts a page the reference never sends — it passed at 148/148 while
+        every browser suite failed. What a mount page has to guarantee on the server is narrower and checkable: the mount exists, it
+        starts busy, and the script that fills it is served by the same binary.
+        """
+        return (f'id="{mount_id}"' in page
+                and 'aria-busy="true"' in page
+                and f'/assets/js/{script}' in page)
+
     def check(name, got, want):
         results.append((name, got, want))
         print(f"{'ok  ' if got == want else 'FAIL'} {name}: got {got!r} want {want!r}", flush=True)
@@ -135,15 +148,19 @@ def main():
     check("with the project's name as its title", f"<title>{'Probe &lt;/script&gt;&lt;b&gt;bold&lt;/b&gt; &amp; &quot;quoted&quot;'} — Concord</title>" in project_page, True)
     check("and a canonical for that project",
           f'<link rel="canonical" href="https://127.0.0.1:8108/projects/{slug}">' in project_page, True)
-    check("and its governance model rendered from the API", "<dd>collective</dd>" in project_page, True)
     check("and a description with angle brackets is escaped",
           "a description with an &amp; and a &lt;tag&gt;" in project_page, True)
-    # Health is shown only when measured: an unmeasured project must not print 0.00.
-    measured = con.execute("select health_score from project_metrics where project_id = ?", (pid,)).fetchone()
-    has_health = "<dt>Health</dt>" in project_page
-    check("health is rendered only when it was measured", has_health, bool(measured and measured[0] is not None))
-    if measured and measured[0] is not None:
-        check("and the rendered score is the stored one", f"<dd>{measured[0]:.2f}</dd>" in project_page, True)
+    # The body is the reference's mount, filled by `project.js` from `/api/v1/projects/{slug}`. The escaping assertion above still
+    # means something — the description is in the document's HEAD, which this port renders on the server — but the governance model and
+    # the health score are the script's to print, so what the probe can check is that the mount and its script are there and that the
+    # API owns the numbers.
+    check("the project body is the reference's mount", mount(project_page, "project-detail", "project.js"), True)
+    status, _, project_api = get(f"/api/v1/projects/{slug}")
+    check("and the API behind it answers", status, 200)
+    if status == 200:
+        payload_json = json.loads(project_api)
+        check("  with the governance model the page will print",
+              payload_json.get("governance_model"), "collective")
 
     # ── a missing project is a document, not a JSON error ─────────────────────────────────────────────────────────────────────
     status, content_type, missing = get(f"/projects/no-such-{STAMP}")
@@ -158,25 +175,33 @@ def main():
     # never says where you are is a navigation that lies by omission), and that what it prints came from the same read the API
     # uses. `suki` carries a board, documents and an audit log on the live database; the others are allowed to be empty and must
     # then SAY they are empty rather than render an empty table.
-    for suffix, section, empty_sentence in [
-        ("/board", "Board", "This project has no board columns yet."),
-        ("/roadmap", "Roadmap", "This project has no milestones."),
-        ("/consensus", "Consensus", "No consensus call has been opened for this project."),
-        ("/documents", "Documents", "This project has no documents."),
-        ("/criteria", "Criteria", "This project has no criteria."),
-        ("/audit", "Audit log", "Nothing has been recorded for this project."),
+    # FOUR OF THESE ARE MOUNTS and two are still server-rendered, and the probe says which is which rather than pretending the row is
+    # uniform: `board`, `roadmap`, `consensus` and `audit` are drawn by their scripts (see `mount` above), while `documents` and
+    # `criteria` still build their tables here and say so.
+    for suffix, section, mount_id, script in [
+        ("/board", "Board", "kanban-board", "board.js"),
+        ("/roadmap", "Roadmap", "roadmap", "milestones.js"),
+        ("/consensus", "Consensus", "consensus-root", "consensus.js"),
+        ("/audit", "Audit log", "audit-root", "audit.js"),
     ]:
         status, content_type, body = get(f"/projects/suki{suffix}")
         check(f"GET /projects/suki{suffix} is a document", status, 200)
-        check(f"  and it is HTML", content_type.split(";")[0], "text/html")
-        check(f"  and its title names the section", f"<title>Suki: {section} — Concord</title>" in body, True)
-        check(f"  and the strip marks this tab current",
-              f'<a href="/projects/suki{suffix}" aria-current="page">{section.split()[0]}</a>' in body or
-              f'aria-current="page">{section}</a>' in body, True)
-        # Rows, or an honest sentence. "Rows" is table-, list- or section-shaped, because the pages are not all tables: the board is
-        # a set of `<section>`s, documents are a `<ul>`, and a probe that only accepts `<tbody>` invents a layout requirement.
+        check("  and it is HTML", content_type.split(";")[0], "text/html")
+        check(f"  and it carries the reference's mount", mount(body, mount_id, script), True)
+        # The tab strip is the SHELL's now and is derived from the request path, so it cannot disagree with the page; the class is the
+        # assertion, and `aria-current` is kept for the reader's screen.
+        check("  and the strip marks this tab", 'detail-tab is-active' in body, True)
+
+    for suffix, section, empty_sentence in [
+        ("/documents", "Documents", "This project has no documents."),
+        ("/criteria", "Criteria", "This project has no criteria."),
+    ]:
+        status, content_type, body = get(f"/projects/suki{suffix}")
+        check(f"GET /projects/suki{suffix} is a document", status, 200)
+        check("  and it is HTML", content_type.split(";")[0], "text/html")
+        check("  and its title names the section", f"<title>Suki: {section} — Concord</title>" in body, True)
         note("  and it either shows rows or says it is empty",
-             "<tbody>" in body or "<li>" in body or "board-column" in body or empty_sentence in body, "")
+             "<tbody>" in body or "<li>" in body or empty_sentence in body, "")
 
     # The board is the one page with a structural claim worth testing on real data: every card the API returns appears in the
     # column the API says it is in.
@@ -186,14 +211,15 @@ def main():
         columns = board.get("columns") or []
         cards = board.get("cards") or []
         note("the board API answers for comparison", True, f"{len(columns)} column(s), {len(cards)} card(s)")
-        _, _, board_page = get("/projects/suki/board")
-        for column in columns:
-            check(f"  the page renders the column {column['name']!r}", f'<h3>{column["name"]}</h3>' in board_page, True)
+        # The columns and cards are drawn by `board.js` from this very response, so the probe's job is the SHAPE the script consumes:
+        # every card names the column it is in, and every column has a limit. Asserting `<h3>` tags on the server's HTML was asserting
+        # a page the reference does not send.
+        if columns:
+            check("  every column carries a name and a limit",
+                  all("name" in column and "wip" in column for column in columns), True)
         if cards:
-            named = [card for card in cards if card.get("title")]
-            if named:
-                check("  and a card's title appears on the page",
-                      escape_html(named[0]["title"]) in board_page, True)
+            check("  every card names the column the script will file it under",
+                  all(card.get("column") for card in cards), True)
 
 
     # ── the four instance pages ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -292,12 +318,13 @@ def main():
     if feature_row:
         status, _content_type, feature_page = get(feature_row)
         check(f"a feature page answers ({feature_row})", status, 200)
-        note("  and prints a rating", "±" in feature_page, "")
+        check("  and it is the reference's mount", mount(feature_page, "feature-root", "feature.js"), True)
         complaint_row = first_link(feature_page, r'href="(/projects/suki/complaints/\d+)"')
         if complaint_row:
             status, _content_type, complaint_page = get(complaint_row)
             check(f"a complaint page answers ({complaint_row})", status, 200)
-            check("  and prints its severity", "Severity" in complaint_page, True)
+            check("  and it is the reference's mount",
+                  mount(complaint_page, "complaint-root", "complaint.js"), True)
         else:
             note("  and the feature answers no complaint", True, "")
     else:
@@ -308,21 +335,35 @@ def main():
     if milestone_row:
         status, _content_type, milestone_page = get(milestone_row)
         check(f"a milestone page answers ({milestone_row})", status, 200)
-        check("  and prints shipped of total", "Shipped" in milestone_page, True)
+        check("  and it is the reference's mount (the script fills #ms-title)",
+              mount(milestone_page, "milestone", "milestones.js") and 'id="ms-title"' in milestone_page, True)
     else:
         note("this project has no milestone to open", True, "")
 
-    # Scoping: a row that belongs to another project is a 404, not a 200. `suki` is project 74 on this database, so any other
-    # project's feature id must not render under `suki`.
+    # Scoping where the row is another project's. The PAGE answers 200 — the reference's handler deliberately does not look the feature
+    # up, and lets the script report "No such feature" — so the refusal that has to be scoped is the API's, which is also the only one a
+    # reader can act on. The port used to 404 the page, which was stricter than the reference and broke `feature_e2e`'s own
+    # bogus-id test; the probe asserted the port's behaviour, not the reference's. Measured on the live instance for the slug form
+    # (`/api/v1/projects/suki/threads/project/1` → 200), and the page/API split is the reference's `frontend-spec` shape.
     status, _content_type, foreign = get("/projects/suki/features/1")
-    check("a feature id from another project is 404 under suki", status, 404)
-    check("  and the 404 is the not-found document, not someone else's row",
-          "There is no project at this address." in foreign and "<h3>" not in foreign, True)
+    check("a feature id from another project still renders the mount (the script reports it)", status, 200)
+    status, _, foreign_api = get("/api/v1/projects/suki/features/1")
+    check("  and the API refuses it rather than serving someone else's row", status, 404)
 
-    # A settings page must print the charter's numbers, not a JSON blob: a reader arrives here to learn the quorum.
+    # Settings is a mount too, and the charter's numbers are `settings.js`'s to print from `/api/v1/projects/{slug}/charter`. What the
+    # server owns is the mount and the live-status region the script writes into.
     _, _, settings_page = get("/projects/suki/settings")
-    check("the settings page prints the charter's quorum", "Quorum" in settings_page, True)
-    check("  and the vote window", "Vote window" in settings_page, True)
+    check("the settings page is the reference's mount", mount(settings_page, "settings-root", "settings.js"), True)
+    check("  and it carries the live-status region the script writes into",
+          "data-settings-live" in settings_page, True)
+    status, _, charter_api = get("/api/v1/projects/suki/charter")
+    note("  the charter route answers for comparison", status == 200, f"status={status}")
+    if status == 200:
+        charter = json.loads(charter_api)
+        # The charter's own field names, not a guess: `quorum_min` and `quorum_ratio` are what `/api/v1/projects/{slug}/charter` returns
+        # (the Go struct's JSON), and `settings.js` prints them.
+        check("  and the charter is where the quorum comes from",
+              "quorum_min" in charter and "quorum_ratio" in charter, True)
 
 
     # ── the last eight pages ───────────────────────────────────────────────────────────────────────────────────────────────────────
@@ -332,18 +373,23 @@ def main():
     # the API's first entry rather than against a sort it recomputed itself.
     status, _content_type, rank_page = get("/projects/suki/rank")
     check("GET /projects/suki/rank is a document", status, 200)
-    check("  and it links to the ranking", f'href="/projects/suki/ranking"' in rank_page, True)
-    buttons = re.findall(r'<button type="submit" name="outcome" value="(\w+)"', rank_page)
-    check("  and offers exactly five outcomes", sorted(buttons), ["a", "b", "both", "neither", "skip"])
-    note("  and either shows a pair or says every pair has been judged",
-         'class="pair"' in rank_page or "Every pair the forge could offer has been judged" in rank_page, "")
+    check("  and it links to the ranking", 'href="/projects/suki/ranking"' in rank_page, True)
+    check("  and it is the reference's mount", mount(rank_page, "rank-root", "rank.js"), True)
+    # The five outcomes are `rank.js`'s buttons now, so the shape the probe can check is the API the pair comes from: the five labels the
+    # script renders exist as `outcomes` in the reference's own vocabulary, and the route answers with two features.
+    # The pair comes from `/votes/next`, which needs a SESSION (voter 0 is a client-side fiction the port does not offer anonymously), so
+    # an anonymous probe expects 401 and not 200. What the probe can assert is that the route exists and refuses for the right reason.
+    status, _, pair_api = get("/api/v1/projects/suki/votes/next")
+    note("  the pair route answers (401 without a session is the answer)", status == 401, f"status={status}")
 
     status, _content_type, ranking_page = get("/projects/suki/ranking")
     check("GET /projects/suki/ranking is a document", status, 200)
-    check("  and it links back to rank", f'href="/projects/suki/rank"' in ranking_page, True)
-    for heading in ["Priority", "Pain", "Strategic weight", "Rating"]:
-        check(f"  and shows {heading}", f"<th scope=\"col\">{heading}</th>" in ranking_page, True)
-    check("  and does not re-sort", 'data-order="api"' in ranking_page, True)
+    check("  and it links back to rank", 'href="/projects/suki/rank"' in ranking_page, True)
+    check("  and it is the reference's mount", mount(ranking_page, "ranking-root", "ranking.js"), True)
+    # `data-can-moderate` is the ONE fact this page decides on the server, and an anonymous reader must see false: a control the API
+    # would refuse is the failure the attribute exists to prevent.
+    check("  and an anonymous reader is offered no moderation control",
+          'data-can-moderate="false"' in ranking_page, True)
     status, _, priorities_api = get("/api/v1/projects/suki/priorities")
     if status == 200:
         priorities = json.loads(priorities_api)
@@ -351,10 +397,11 @@ def main():
         priorities = priorities or []
         note("  the priorities API answers for comparison", True, f"{len(priorities)} row(s)")
         if priorities:
-            first_api = priorities[0].get("id")
-            first_page = re.search(r'href="/projects/suki/features/(\d+)"', ranking_page)
-            check("  and its first row is the API's first entry",
-                  int(first_page.group(1)) if first_page else None, first_api)
+            # The order is the API's, and the script prints it in that order: `ranking.js` does not sort, and the components it shows
+            # (pain, strategic weight, rating) are the response's own fields.
+            first = priorities[0]
+            check("  and the first row carries the components the script prints",
+                  all(key in first for key in ("pain_score", "strategic_weight", "priority_score")), True)
 
     status, _content_type, contribute_page = get("/contribute")
     check("GET /contribute is a document", status, 200)
