@@ -46,7 +46,7 @@ gate ran and its output is quoted — not when it was removed from a list. The h
 | 9b | S3 arena and solutions | **Done 2026-11-13** (`345b132`) — `probe_s3b_arena.py` 20/20 (was 5/20), the negative control at 19/20, corpus still 2 disagreed of 14, ranking oracle green with 10 arena rows |
 | 10 | S4 moderation, comments, inbox | **Done 2026-11-13** (`b969b26`): four probes 26/26, 27/27, 40/40, 39/39; `e2e.sh` 29 passed; gates 22 and 45 green (`CHECK inbox` exit 0, `CHECK authz` 10/10); `polaris-comments` and `polaris-authz` adopted |
 | 11 | S5 stats, feeds, admin binaries | **Done 2026-11-14** (`3ac7f5e`) — corpus `0 shape(s) disagreed of 16 checked, 5 skipped`; `probe_s5_stats` 16/16; `probe_admin_binaries` **69/69** with four controls; three `concord-rs-*` timers declared in `scheduled.toml` (`active = false` until cutover); `CHECK feed-routes: 8 arm(s) passed, 0 failed`. **Dated correction 2026-11-14:** "feed parse" moves to row 12 — the feeds are page routes returning XML, not JSON routes, and `probe_s5_feeds` is that row's gate. Gates 4 and 5 are red for `media.polarisocial.xyz` and not for concord (recorded in the row-11 body below). |
-| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **In progress 2026-11-14** — **44 of 44** page routes answered (`routes.py missing: 0`), `probe_pages.py` 148/148; the row's remaining gate is the six inherited e2e suites — **`feature_e2e` 15/15 green 2026-11-14 (`d15ceba`)**, the other five run against the candidate on a scratch database and do not pass (`/`, `/projects`, `/projects/{slug}`, `/badge/{slug}.svg` and the 13 feeds, plus six project sub-pages, four instance pages ), 0 remain but the suites do not pass; part 66 opened the crate and corrected the count from 10 to 44. Gate unchanged: every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
+| 12 | P6 the frontend on SvelteKit + `@polaris/ui` | **In progress 2026-11-14** — **44 of 44** page routes answered (`routes.py missing: 0`), `probe_pages.py` 148/148; the row's remaining gate is the six inherited e2e suites — **five are green 2026-11-14**: `feature_e2e` 15/15 (`d15ceba`), `milestones_e2e` 5/5 + `rank_links_e2e` 4/4 + `audit_e2e` 11/11 (`6081f27`), `consensus_e2e` 15/15 (`a5db6e7`); `feature_ui_mutants` is a script rather than a suite and is being run against the candidate (`/`, `/projects`, `/projects/{slug}`, `/badge/{slug}.svg` and the 13 feeds, plus six project sub-pages, four instance pages ), 0 remain but the suites do not pass; part 66 opened the crate and corrected the count from 10 to 44. Gate unchanged: every page its slice owns renders from the API with the server-rendered head, in a browser; **inherits `feature_e2e`, `feature_ui_mutants`, `milestones_e2e`, `rank_links_e2e`, and from row 9 `consensus_e2e` + `audit_e2e` — the last two FIRST need their fixtures moved from `sqlite3.connect` to `harness.connect`** |
 | 13 | P7 cutover | `concord.polarisocial.xyz/api/v1/version` served by the Rust binary, and estate gate 17 green for `concord` with NO `reason` |
 
 **Row 8 (S2) — the failing probe, pasted before any code** (2026-11-13):
@@ -4187,6 +4187,49 @@ lacked rather than documents it serves.
 **Commit:** `31fa726`. **Files:** `crates/cli/src/lib.rs` (boot warning), `scripts/parity/probe_s5_feeds.py` (origin from the
 service's configuration), `scripts/parity/routes.py` (any `*.xml` route is a document).
 
+
+### Part 74 — the consensus template, and three API defects a browser could see (2026-11-14)
+
+**Before:** `consensus_e2e` `15 failed in 219.81s` (all fifteen had been errors in setup two parts ago).
+**After:**
+```
+tests/e2e/consensus_e2e.py ...............                               [100%]
+15 passed in 18.39s
+```
+**Five of the six inherited suites now pass**: `feature_e2e` 15/15, `milestones_e2e` 5/5, `rank_links_e2e` 4/4, `audit_e2e` 11/11,
+`consensus_e2e` 15/15.
+
+**The page is the first the port renders from the reference's own TEMPLATE.** `consensus.html` is two hundred lines of markup whose ids
+the suite reads (`#consensus-index`, `#consensus-call`, `#tally-support`, `#consensus-hold`, four position buttons, the override window),
+and it contains script comments full of braces. Transcribing that into a Rust string literal means escaping every brace by hand and
+re-escaping on every future edit of the reference. So the file is kept as the file — `crates/web/templates/consensus.html`, compiled in by
+`build.rs`, rendered by `shell::template`, which implements exactly the three constructs it uses (`{{define "content"}}`, a dotted field,
+`asset "path"`) and **refuses anything else** with a 500 that names the construct. A page rendered half-way is worse than a page that says
+it cannot be rendered.
+
+**Three defects, each of which every probe passed and a browser could see:**
+
+| symptom in the browser | cause | fix |
+|---|---|---|
+| an alert reading `[object Object]` | the estate's `ApiError` answers `{"error":{"code","message"}}`; the Go answers `{"error":"a sentence"}` and `consensus.js` does `new Error(data.error)` | `flatten_error_bodies`, one `map_response` layer |
+| a recorded override vote reported as refused | the port answered `200`; the reference answers `201` and the script treats anything else as a failure | `201` + the stance as the body |
+| the block still read `open` after the override carried | the port wrote the call's `accepted_overridden` and not the objection's `overridden` | both in one transaction, with the remedy as the resolution |
+
+The error shape is fixed **at the boundary and not in `polaris_core`**: that crate is the estate's contract for sixteen other sites, and
+re-shaping it for one port would break the thing the port exists to conform to. It is not fixed per handler because a hundred call sites is
+a hundred chances to forget; the layer transforms only an error status whose JSON body is exactly `{"error": {"code", "message"}}`,
+and passes everything else through untouched. No probe in `scripts/parity` reads the envelope, so the change is invisible to them — which is
+precisely why the browser suites had to be the ones to find it.
+
+**One more small one, found by reading the assertion rather than the code:** the decision record is `adr/call-{id}`, not
+`adr/decision-call-{id}`. The reference writes `fmt.Sprintf("call-%d", call.ID)`; the port had invented a prefix, and the suite reads the
+slug back to prove the record is a project DOCUMENT rather than a private row.
+
+**Gate:** `tests/e2e/consensus_e2e.py` → **15 passed in 18.39s**. **Commit:** `a5db6e7` (forgejo + github).
+**Files:** `crates/web/templates/consensus.html` (new, verbatim from the reference), `crates/web/build.rs` (template table),
+`crates/web/src/shell.rs` (`template()`), `crates/web/src/project.rs` (the page + `ConsensusQuery`), `crates/app/src/lib.rs`
+(`flatten_error_bodies` + layer, `cast_override_position` 201), `crates/db/src/override_window.rs` (objection status in the same
+transaction), `crates/db/src/call_outcome.rs` (`call-{id}`).
 
 ### Part 73 — four suites green, and a probe that was asserting a page nobody serves (2026-11-14)
 
