@@ -2654,6 +2654,38 @@ from 1-of-1 to 1-of-2 and a second `execute` is refused by the *gate* — same s
 a confirmation that does not exist. **A status-only assertion cannot tell "you cannot" from "you may, later"**, so the probe now
 asserts the reason string. The accidental rising quorum stays as it is: it is a defence, not a rule, and the ledger says so.
 
+### Row 11 — part 54: B7, documents and threads (2026-11-14, `30c7fde`)
+
+```
+gate (before): PUT /projects/{}/documents -> 405, DELETE /projects/{}/documents/{} -> 405
+               routes.py reported GET/POST /projects/{}/threads/{}/{} as MISSING — implemented, never called
+gate (after):
+  probe_s5_documents.py -> 46/46 ok
+  merge 37/37, invites 32/32, featurevote 20/20, coverage 22/22, solutionvote 21/21, solutionwrites 24/24,
+  solutioncall 24/24, workitems 44/44, featurewrites 37/37, listwrites 41/41, criteriawrites 45/45,
+  projsettings 28/28, milestonewrites 41/41, complaintwrites 40/40, requestwrites 43/43, filing 31/31,
+  requests 23/23, accept 15/15
+  routes.py -> go 216 / port 173   missing: 45 (35 json, 10 page)
+  concord-parity -> 0 shape(s) disagreed of 16 checked, 5 skipped
+  cargo test -p concord-db --lib -> 38 passed
+```
+
+`crates/db/src/document_writes.rs` (new): `put` (upsert at `(kind, slug)` bumping `revision`, `author_id` to the last writer,
+`created_at` fixed), `delete` (project predicate in the `WHERE`, not a read-then-write). 8 MB body limit on that PUT only.
+
+**The inventory was lying, dated.** `routes.py` matched `.route(\s*"…"` — path string immediately after the paren. The threads
+route carries a comment line between the two, so **three routes the port already answered were counted as missing work**, and
+that count is what every turn chooses from. Fixed the regex to skip `//` lines: port routes 169 → **171 with no code change**,
+missing 47. Recorded here because the count is the ledger's only input.
+
+**Found by running it:** `public_id` is NOT NULL with no default on `project_documents`, so every write was a 500 (supplied on
+insert only, never rewritten on update); and GET/POST disagree about `thread_kind = 'release'` — the read answers `[]`, the
+write refuses 400. That asymmetry is the reference's own (`GetThreadComments` does not validate either), so the probe asserts it
+and says why.
+
+**Two negative controls**: overwrite instead of bump → `FAIL the second write is revision 2: got 1 want 2` (45/46); delete not
+scoped → `FAIL another project's document cannot be deleted under this URL: got 200 want 404` (44/46).
+
 ### Blocked
 
 **B1. (closed 2026-11-13 — decided without a deploy; see row 6's Done entry.** The corpus
