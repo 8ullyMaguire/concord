@@ -210,3 +210,90 @@ pub async fn one(pool: &PgPool, id: i64) -> Result<Hold, WriteError> {
         None => Err(WriteError::NotFound(format!("hold {id}"))),
     }
 }
+
+/// A deliberate defect reachable only by environment variable, so a probe's control does not cost a rebuild.
+fn mutant(name: &str) -> bool {
+    std::env::var("CONCORD_MUTANT")
+        .unwrap_or_default()
+        .split(',')
+        .any(|candidate| candidate.trim() == name)
+}
+
+/// Lift a hold, with a written reason, and record the act twice: in §9.3's admin ledger and in the project's audit log.
+///
+/// **Both records, always.** A hold is an emergency power — it suspends a consensus call that is already open — so lifting one is
+/// the event a later reader needs to find from either direction: the instance-wide ledger answers "what has an admin done", the
+/// project's log answers "what happened to this project". One of them alone answers half the question.
+///
+/// The UPDATE carries `released_at is null` in its WHERE. Releasing twice is therefore refused rather than silently rewriting the
+/// first reason: the reason is the record, and a second release with a different one would erase what was said at the time.
+///
+/// # Errors
+/// [`WriteError::NotFound`] for an unknown hold, [`WriteError::Invalid`] for a second release or a blank reason, or
+/// `sqlx::Error`.
+pub async fn release(
+    pool: &PgPool,
+    hold_id: i64,
+    user_id: i64,
+    reason: &str,
+) -> Result<Result<Hold, WriteError>, sqlx::Error> {
+    let reason = reason.trim();
+    if reason.is_empty() {
+        return Ok(Err(WriteError::Invalid(
+            "a written reason is required to lift a hold: the ledger records who did it, and with no reason it records nothing else"
+                .to_string(),
+        )));
+    }
+    let Ok(existing) = one(pool, hold_id).await else {
+        return Ok(Err(WriteError::NotFound(format!("no such hold {hold_id}"))));
+    };
+    if existing.released_at != 0.0 && !mutant("hold-releasable-twice") {
+        return Ok(Err(WriteError::Invalid(format!(
+            "hold {hold_id} is already released"
+        ))));
+    }
+    let mut tx = pool.begin().await?;
+    let updated = sqlx::query(
+        "update emergency_holds set released_at = now(), release_reason = $1
+          where id = $2 and (released_at is null or $3)",
+    )
+    .bind(reason)
+    .bind(hold_id)
+    .bind(mutant("hold-releasable-twice"))
+    .execute(&mut *tx)
+    .await?;
+    if updated.rows_affected() == 0 {
+        // Somebody released it between the read and the write. The answer is the same as releasing twice, because that is what
+        // happened; a 200 here would claim this caller's reason took effect.
+        tx.rollback().await?;
+        return Ok(Err(WriteError::Invalid(format!(
+            "hold {hold_id} is already released"
+        ))));
+    }
+    sqlx::query(
+        "insert into admin_ledger (actor_id, action, subject, justification, project_id, created_at)
+         values ($1, 'release_emergency_hold', $2, $3, $4, now())",
+    )
+    .bind(user_id)
+    .bind(format!("consensus call {}", existing.call_id))
+    .bind(reason)
+    .bind(existing.project_id)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "insert into audit_log (project_id, actor_id, action, entity, entity_id, detail, created_at)
+         values ($1, $2, 'release_emergency_hold', 'consensus_call', $3, $4, now())",
+    )
+    .bind(existing.project_id)
+    .bind(user_id)
+    .bind(existing.call_id)
+    .bind(reason)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
+    let after = one(pool, hold_id).await.map_err(|error| match error {
+        WriteError::Database(error) => error,
+        other => sqlx::Error::Protocol(format!("hold vanished after release: {other:?}")),
+    })?;
+    Ok(Ok(after))
+}

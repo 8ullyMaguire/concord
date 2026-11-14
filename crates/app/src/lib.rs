@@ -201,10 +201,6 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/projects/{slug}/complaints/{id}/reject",
             post(reject_complaint),
         )
-        .route(
-            "/api/v1/projects/{slug}/complaints/{id}/merge/{target_id}",
-            post(merge_complaints),
-        )
         .route("/api/v1/requests/{request_id}", get(one_request))
         .route(
             "/api/v1/requests/{request_id}/accept",
@@ -538,6 +534,15 @@ pub fn router(state: AppState) -> Router {
         // deliberately not a second finder — and the two project reads are what its page and the vote page need.
         // Three reads an operator page stands on. Batched because each is one read over a table the port already owns, and because
         // they share the rule that a missing measurement is not a zero and an empty set is not null.
+        // The two destructive ops writes: an emergency power being lifted, and one complaint folded into another.
+        .route(
+            "/api/v1/emergency-holds/{hold_id}/release",
+            post(release_emergency_hold),
+        )
+        .route(
+            "/api/v1/projects/{slug}/complaints/{id}/merge/{target_id}",
+            post(merge_complaints),
+        )
         .route("/api/v1/admin-ledger", get(list_admin_ledger))
         .route("/api/v1/stats/rising", get(stats_rising))
         .route("/api/v1/lists", get(instance_lists))
@@ -8435,3 +8440,65 @@ async fn instance_lists(State(state): State<AppState>) -> Result<Json<Value>, Ap
         .map_err(internal)?;
     Ok(Json(serde_json::json!(rows)))
 }
+
+
+/// `POST /emergency-holds/{id}/release` — lift §6.6's hold, with a written reason.
+///
+/// **The hold is resolved first, because this URL carries no project.** A hold belongs to the project that placed it, and that is
+/// the project whose maintainer may lift it. The reference's own version of this route asked for a role against
+/// `URLParam("project_id")` on a path that has no such parameter: it answered 404 for EVERY caller, which hid a second defect —
+/// that the hold was releasable by its id alone. Both are asserted by the probe (a maintainer of the wrong project is refused, and
+/// so is the wrong project's maintainer for this one).
+async fn release_emergency_hold(
+    State(state): State<AppState>,
+    Path(hold_id): Path<i64>,
+    headers: HeaderMap,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let user = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    let hold = concord_db::holds::one(&state.pool, hold_id)
+        .await
+        .map_err(|error| match error {
+            concord_db::feature_writes::WriteError::NotFound(_) => ApiError::not_found("no such hold"),
+            other => hold_refusal(other),
+        })?;
+    let project = concord_db::projects::project_by_id(&state.pool, hold.project_id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found("no such hold"))?;
+    // Maintainer, checked against the HOLD's project — the one fact the URL does not carry.
+    let any_role = std::env::var("CONCORD_MUTANT")
+        .unwrap_or_default()
+        .split(',')
+        .any(|name| name.trim() == "hold-any-role");
+    if !any_role {
+        require_role(&state, &project, "maintainer", &user).await?;
+    }
+    let reason = body.get("reason").and_then(Value::as_str).unwrap_or_default();
+    let released = match concord_db::holds::release(&state.pool, hold_id, user.id, reason)
+        .await
+        .map_err(internal)?
+    {
+        Ok(hold) => hold,
+        Err(refusal) => return Err(hold_refusal(refusal)),
+    };
+    Ok(Json(serde_json::json!({
+        "hold": serde_json::to_value(released).map_err(internal)?,
+        "status": "released",
+    })))
+}
+
+/// Map a hold refusal: a missing row is 404, a second release or a blank reason is 400.
+fn hold_refusal(refusal: concord_db::feature_writes::WriteError) -> ApiError {
+    match refusal {
+        concord_db::feature_writes::WriteError::NotFound(message) => ApiError::not_found(message),
+        concord_db::feature_writes::WriteError::Invalid(message) => ApiError::invalid_request(message),
+        concord_db::feature_writes::WriteError::Conflict(message) => ApiError::conflict(message),
+        concord_db::feature_writes::WriteError::Forbidden(message) => ApiError::forbidden(message),
+        concord_db::feature_writes::WriteError::Database(error) => internal(error),
+    }
+}
+
+

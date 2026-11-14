@@ -79,7 +79,19 @@ def go_routes_with_handlers():
         depth = 0
         for line in source.splitlines():
             stripped = line.strip()
-            opened = stripped.count("{") - stripped.count("}")
+            # A route written INSIDE a comment is not a route. `handlers.go` explains the defect it fixed by quoting the
+            # registration it moved — `// r.Post("/merge/{target_id}", …)` — and this script counted that quotation as a live
+            # route under the comment's own prefix, so the port was reported as missing `POST /complaints/{}/merge/{}`, an
+            # endpoint that has never existed on either side.
+            if stripped.startswith("//"):
+                continue
+            # Count braces OUTSIDE string literals. A chi route prefix like `"/api/v1/projects/{project_id}/complaints"`
+            # carries braces of its own, and counting them made one `r.Route(` line open TWO blocks — so the stack popped the
+            # outer prefix early and every route in a doubly-nested block lost it. That is how
+            # `POST /api/v1/projects/{project_id}/complaints/{id}/merge/{target_id}` was reported MISSING while the port has been
+            # answering it for many turns: the Go side had recorded it as `/complaints/{}/merge/{}`.
+            without_strings = re.sub(r'"(?:[^"\\]|\\.)*"', '""', stripped)
+            opened = without_strings.count("{") - without_strings.count("}")
             # A prefix opens BEFORE the line's own route matches, so the block's own registrations see it.
             route_prefix = re.search(r"\br\.(?:Route|Group|Mount)\(\s*\"([^\"]+)\"", stripped)
             if route_prefix:
