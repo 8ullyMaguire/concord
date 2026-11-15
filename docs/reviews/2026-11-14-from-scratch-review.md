@@ -8,6 +8,16 @@ Every claim below is a measurement, and the command that produced it is in the s
 
 ## Work log
 
+- **2026-11-15 — item 4 finished: one command runs the whole gate, and it has passed.** The live layer of `scripts/gate.sh` was two
+  probes; the eight e2e suites, the signed-out crawl and the claim probe were run by hand, in an order chosen that day — precisely
+  what item 4 exists to end, and two of those suites had been erroring in setup for a day with nothing noticing. `--live` now runs
+  all of it (`f6613cb`), and the first full pass is a `gate: PASS` with every layer measured: `js: all 42 assets parse` ·
+  `js: API paths with a stray trailing '/': 0` · `unit: ok` · `routes: all 13 answered` · `136/136 ok` (pages) · `86/86 answered`
+  (segments) · eight suites at `26 · 15 · 8 · 5 · 18 · 15 · 7 · 5 passed` · `VERDICT: POST reached the route` (claim) ·
+  crawl `20 pages · 48 requests · 404/405/5xx: 0`. The layer caught its own bug on the way: `probe_requests` ran under the system
+  python and died with `ModuleNotFoundError: No module named 'playwright'` while the suites beside it passed — a probe that cannot
+  import is not a probe that passed. `make gate` (unit + smoke) stays the fast path; `make gate-live` is the whole thing.
+
 - **2026-11-15 — the gate could be green over a stale lock, and could point a writing suite at production.** Two defects in
   `scripts/gate.sh`, both measured. First: when `eb20faf` added seven crates to the workspace it left `Cargo.lock` uncommitted, and
   the gate stayed green because `cargo` rewrites the lock unless it is passed `--locked` — so the committed tree was not

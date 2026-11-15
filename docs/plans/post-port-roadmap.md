@@ -523,6 +523,14 @@ projects, in the same order, because two callers deriving one answer is how they
   remotes — are vendored under `vendor/` (ADR 0013, commit `eb20faf`, symlink cleanup `f8121cb`). Measured: `git clone` to
   `~/tmp/concord-clean`, where `ls ../polaris-authz` is "No such file or directory", then `cargo build -p concord-cli --offline`
   → `Finished dev profile in 4m 02s`.
+* **`make gate-live` is one command that runs everything, and it passed for the first time.** Its live layer was two probes; the
+  eight e2e suites, the signed-out crawl and the claim probe were run by hand from memory — the exact defect review item 4 names.
+  `--live` now runs all of them (`f6613cb`), and the first full pass printed:
+  `js: all 42 assets parse` · `js: API paths with a stray trailing '/': 0` · `unit: ok` · `routes: all 13 answered` ·
+  `136/136 ok` · `86/86 answered` · `26 · 15 · 8 · 5 · 18 · 15 · 7 · 5 passed` (eight suites) · `VERDICT: POST reached the route` ·
+  **`gate: PASS`**. The crawl alone: `pages crawled: 20 · distinct requests observed: 48 · 404/405/5xx: 0`. The layer found its own
+  bug on the way: `probe_requests` ran under the system python and died with `ModuleNotFoundError: No module named 'playwright'`
+  while the suites beside it passed.
 * **The gate now fails on a stale lock, and refuses to test against production.** `--locked` on both cargo calls (`91ad518`);
   the stale lock it would have caught was the vendoring's own (`30590a6` committed it afterwards). The `CONCORD_TEST_DSN="$DATABASE_URL"`
   fallback — which on this host means production — now refuses unless `CONCORD_ALLOW_PROD_TESTS=1`, after a `cargo test` run in this
