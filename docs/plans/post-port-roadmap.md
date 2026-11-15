@@ -18,8 +18,13 @@ which half is missing.
 > slashes the port answers `404` where the Go service answered both (`/similar/{kind}/`, `/documents/`, `/features/` twice, each
 > swallowed by a `.catch` or `getOrNull`). `scripts/parity/api_paths.py` is now a gate layer for that class, `duplicates_e2e` runs
 > against PostgreSQL for the first time, and `scripts/parity/probe_claim_button.py` covers the claim path that had no test.
-> **Blocked: 1.** The pool's 68 unstated upstream candidates need `CONCORD_FORGE_TOKEN` (7 GitHub repos are deferred by the anonymous
-> 60/h budget) — on the operator, not on the code.
+> **Blocked: 2, both outside the code, and one vendor outage on top.** (a) `CONCORD_FORGE_TOKEN` — the ingest's own line says it now:
+> `synced 16, deferred 7, failed 16`, where the seven deferred are GitHub's anonymous 60/h budget, and enumerating the operator's GitHub
+> repositories answers `403 rate limit exceeded`. (b) The **58 projects that still state no upstream**: the discoverable subset was
+> exhausted on 2026-11-15 — 39 of 97 now state a repository (was 23), the family forge's own 23 repositories match none of the 58, and
+> the rest is somebody saying where their code lives. Vendor-shaped rather than ours: `git.disroot.org` is offline (Disroot's storage
+> server failed), so the 16 projects hosted there cannot be re-measured until it returns; `dormancysweep` counts them aloud as
+> `16 with a repository but no readable commit age` instead of letting them read as dead.
 > Nothing in this file is "complete" while either number is above zero.
 > A critical review of the product as it now stands, with what I would do differently, is `docs/reviews/2026-11-14-from-scratch-review.md`.
 
@@ -402,6 +407,68 @@ What was not blocked, and is now done: `seed/forge_repos.json` copied into this 
 - **The stage function immediately responded to new measurement**, which is the whole argument for computing it instead of storing it.
   Before: 61 `seed`, 12 `sprout`. After: 59 `seed`, 14 `sprout` — `stash` and `stash-box` moved because commits are now readable, and
   `commons` / `darkhold` / `tessera` moved because they ship and are old enough to be measured.
+
+#### 2026-11-15, second pass — the identities discovered from the checkouts, and then verified against the forge
+
+The count above (5 stated of 73) was the state before the Go database's 18 identities were copied in, which took it to 23 of 97. The
+remaining 74 were all `not stated (Q5)`, and that is what `scripts/parity/upstream_candidates.py` attacks — not by guessing, but by the
+one place a repository identity can be *measured*: the checkout that already knows where it pushes.
+
+It accepts a remote only when the host is one the ingest itself knows (`forge::KNOWN_HOSTS`) and the owner is the operator's, and it
+matches on the **normalised** repository name — lowercase, `.git` stripped, `_`→`-`, one trailing `-rs`/`-go`/`-js`/`-py`/`-app`/`-site`
+removed from either side — never on a prefix, because `suki-gate`, `suki-m215` and `suki-wt-tmp` are worktrees of one repository and a
+prefix match would have said three projects have upstreams when one does.
+
+```
+$ python3 scripts/parity/upstream_candidates.py --write
+catalogue: 97 projects · stated: 23 · unstated: 74
+checkouts scanned under /personal/documents/code: 46 owned remotes
+stated by measurement: 19 of 74 unstated
+wrote seed/forge_repos.proposed.json: 97 entries
+```
+
+Two defects were fixed to make that application possible, and both were in the code rather than in the data:
+
+* **`crates/cli/src/forge.rs`, commit `495f288`.** `KNOWN_HOSTS` had three entries and `api_root` hardcoded `git.polarisocial.xyz` for *every*
+  `Host::Forgejo` — so the sixteen `git.disroot.org` projects were refused as `not a known forge` and, once parsed, would have been
+  fetched from the wrong API. A Gitea server is identified by its own hostname; the API root now follows from it, and the refusal
+  message lists the host table it is actually checked against so adding a server cannot leave the advice stale. Gate:
+  `cargo test -p concord-cli --lib --locked forge` → `6 passed; 0 failed`, including
+  `a_forgejo_repository_on_another_server_parses_and_is_fetched_from_that_server`.
+* **A checkout's `origin` records where code was pushed, not that the destination still exists.** Three of the nineteen
+  — `ascend`, `blackrep`, `suki` — name `git.polarisocial.xyz/hirrolot19/<slug>`, which answers **404**, and neither GitHub nor the
+  forge's own search has them. The ingest found out the only way it can:
+
+  ```
+  FAILED suki: https://git.polarisocial.xyz/api/v1/repos/hirrolot19/suki -> 404 Not Found: {"error":{"code":"not_found",...}}
+  ```
+
+  So the script grew `--verify`, which asks the forge (`/repos/{owner}/{repo}` on GitHub, `/api/v1/repos/{owner}/{repo}` on a Forgejo)
+  and lets **only a 404** become a skip. A timeout keeps the URL: a vendor being down does not make the URL false, and `git.disroot.org`
+  was down for exactly that reason. Result: **39 of 97 stated**, three skips that carry the measurement as their reason.
+
+The ingest after all of it, and what each number means:
+
+```
+$ concord-rs healthsync --fetch
+healthsync: synced 16, deferred 7, failed 16
+$ concord-rs dormancysweep
+dormancysweep: 0 project(s) would be marked, 39 considered, 16 with a repository but no readable commit age
+$ curl -s https://concord.polarisocial.xyz/adopt | grep -o 'Nothing is dormant right now[^<]*'
+Nothing is dormant right now. 23 of 97 projects have a measured commit history, and the longest measured silence is 75.4 days.
+```
+
+* **`synced 16`** — the family Forgejo, fresh. **`deferred 7`** — GitHub's anonymous 60/h budget, which is the `CONCORD_FORGE_TOKEN`
+  blocker becoming visible in the ingest's own output instead of in a document about it. **`failed 16`** — `git.disroot.org`, whose
+  front page says it plainly: *"Major hardware failure on storage server … Cryptpad, PrivateBin, Lufi, Forgejo - are disabled."*
+  Nothing on this side can measure through that, and the URLs stay stated because they are still true.
+* **`23 of 97` did not move, and that is the honest answer.** The sixteen disroot projects have `project_metrics` rows from
+  2026-09-29 with **no `last_commit_at`** — computed and never readable — so they are unmeasured, not old. The stage function says so
+  instead of filling in `seed`: stages are `seed 52 · sprout 29 · **unknown 16**`, and the sweep counts the sixteen aloud rather than
+  letting silence read as death.
+* **The well is now dry, measurably.** The family forge's own 23 repositories match **none** of the 58 projects that still state no
+  upstream, and enumerating the operator's GitHub repositories answers `403 rate limit exceeded`. What remains is not discoverable by
+  this machine: it is somebody saying where the code lives.
 
 Their health was already present (inherited from the Go database copy): `commons 0.389`, `darkhold 0.505`, `stash 0.592`, `stash-box
 0.400`, `tessera 0.491` — all below the 0.6 mature floor, so **no project claims `mature` yet, and that is the honest reading rather than

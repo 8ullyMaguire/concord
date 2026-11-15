@@ -8,6 +8,21 @@ Every claim below is a measurement, and the command that produced it is in the s
 
 ## Work log
 
+- **2026-11-15 — the adoption pool's missing half was measurable after all, and the measurement said "not by guessing".** The pool has been
+  blocked on "68 projects state no upstream" since the roadmap was written. It is now **39 of 97 stated** (was 23), by reading the `origin`
+  remote of every checkout under the code root (`scripts/parity/upstream_candidates.py`, 46 owned remotes, 19 of 74 unstated matched) rather
+  than by guessing a URL — with normalisation instead of prefix matching, because `suki-gate`/`suki-m215`/`suki-wt-tmp` are worktrees of one
+  repository and a prefix match would have claimed three upstreams for one project. Two things had to be fixed to get there: `KNOWN_HOSTS`
+  knew three forges and `api_root` hardcoded `git.polarisocial.xyz` for every Forgejo repository, so the sixteen `git.disroot.org` projects
+  were refused as "not a known forge" and would have been fetched from the wrong API (`495f288`, `cargo test -p concord-cli --lib forge` →
+  `6 passed`); and three of the nineteen matches (`ascend`, `blackrep`, `suki`) push to repositories that **404** — the ingest found them,
+  `FAILED suki: … -> 404 Not Found`, so the script grew `--verify` and only a 404 becomes a skip (a timeout keeps the URL: disroot being
+  down does not make the URL false). After: `healthsync: synced 16, deferred 7, failed 16` — deferred is the GitHub token blocker showing up
+  in the ingest's own output, failed is `git.disroot.org` whose front page says *"Major hardware failure on storage server … Forgejo -
+  are disabled"*. The product's answer did not move and should not have: `23 of 97 projects have a measured commit history`, because those
+  sixteen have metrics rows with no `last_commit_at` and the stage function now renders them `unknown` rather than `seed`
+  (`seed 52 · sprout 29 · unknown 16`), and `dormancysweep` reports `39 considered, 16 with a repository but no readable commit age`.
+
 - **2026-11-15 — item 4 finished: one command runs the whole gate, and it has passed.** The live layer of `scripts/gate.sh` was two
   probes; the eight e2e suites, the signed-out crawl and the claim probe were run by hand, in an order chosen that day — precisely
   what item 4 exists to end, and two of those suites had been erroring in setup for a day with nothing noticing. `--live` now runs

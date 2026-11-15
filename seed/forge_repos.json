@@ -1,367 +1,487 @@
 [
   {
     "slug": "ao3",
-    "skip": true,
-    "reason": "not stated (Q5)"
-  },
-  {
-    "slug": "ao3-stats-icons-with-hover-text",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.disroot.org/hirrolot19/ao3",
+    "repo_host": "git.disroot.org"
   },
   {
     "slug": "ao3downloader",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "ao3-stats-icons-with-hover-text",
+    "repo_url": "https://git.disroot.org/hirrolot19/AO3-Stats-Icons-with-Hover-Text",
+    "repo_host": "git.disroot.org"
+  },
+  {
+    "slug": "archive-probe-220154",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "archive-probe-220933",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "archive-probe-222202",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "ascend",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "the checkout's origin names a repository the forge answers 404 for and no other host in the owner's set has it (measured by scripts/parity/upstream_candidates.py --verify); a repository that does not exist is not an upstream"
   },
   {
     "slug": "assistant",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "blackrep",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "the checkout's origin names a repository the forge answers 404 for and no other host in the owner's set has it (measured by scripts/parity/upstream_candidates.py --verify); a repository that does not exist is not an upstream"
   },
   {
     "slug": "bluesky-feed-generator",
     "repo_url": "https://git.polarisocial.xyz/hirrolot19/bluesky-feed-generator",
-    "repo_host": "forgejo"
+    "repo_host": "git.polarisocial.xyz"
   },
   {
     "slug": "build-lemmy",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "campus-adams-scraper",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "click",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "commons",
     "repo_url": "https://github.com/8ullyMaguire/commons",
-    "repo_host": "github"
+    "repo_host": "github.com"
   },
   {
     "slug": "concord",
     "repo_url": "https://git.polarisocial.xyz/hirrolot19/concord",
-    "repo_host": "forgejo"
+    "repo_host": "git.polarisocial.xyz"
+  },
+  {
+    "slug": "d-01m7dw827yz4ahfw0vjvp2t0a4",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "d-01m7dw83sw6q4snjne0xj7npyd",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "darkhold",
     "repo_url": "https://git.polarisocial.xyz/hirrolot19/darkhold",
-    "repo_host": "forgejo"
+    "repo_host": "git.polarisocial.xyz"
   },
   {
     "slug": "dotfiles",
     "repo_url": "https://git.polarisocial.xyz/hirrolot19/dotfiles",
-    "repo_host": "forgejo"
+    "repo_host": "git.polarisocial.xyz"
   },
   {
     "slug": "dotfiles-old",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.disroot.org/hirrolot19/dotfiles-old",
+    "repo_host": "git.disroot.org"
   },
   {
     "slug": "dream-leptos",
     "repo_url": "https://git.polarisocial.xyz/hirrolot19/dream-leptos",
-    "repo_host": "forgejo"
+    "repo_host": "git.polarisocial.xyz"
   },
   {
     "slug": "dream-old",
     "repo_url": "https://git.polarisocial.xyz/hirrolot19/dream-old",
-    "repo_host": "forgejo"
+    "repo_host": "git.polarisocial.xyz"
   },
   {
     "slug": "dream-social-media-platform",
+    "repo_url": "https://git.disroot.org/hirrolot19/dream-social-media-platform",
+    "repo_host": "git.disroot.org"
+  },
+  {
+    "slug": "dup-01m7dw7z9pq2amdy0cvbj1mwpm",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "f-01m7dw7vk09y3aycqjycm2gvqy",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "f-01m7dw7wc57tssycytqq7gn6f4",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "f-01m7dw7wk7b7a4atqb8htkfy8c",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "f-01m7dw7xv7jwqfhpxvcyc1aebe",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "f-01m7dw7yr1pfphce1mdzcj1fxq",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "f-01m7dw80da0h5wczwedp6na77h",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "f-01m7dw81re5hqb6whg324czsc9",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "f-01m7dw83mgvsxjr6en7ay6zv58",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "feedgen",
     "repo_url": "https://git.polarisocial.xyz/hirrolot19/bluesky-feedgen",
-    "repo_host": "forgejo"
+    "repo_host": "git.polarisocial.xyz"
   },
   {
     "slug": "ferrisfeed",
     "repo_url": "https://git.polarisocial.xyz/hirrolot19/piefed-rs",
-    "repo_host": "forgejo"
+    "repo_host": "git.polarisocial.xyz"
   },
   {
     "slug": "fichub-cli-bak",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "fichub-frontend",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.disroot.org/hirrolot19/fichub-frontend",
+    "repo_host": "git.disroot.org"
   },
   {
     "slug": "ficnexus",
     "repo_url": "https://github.com/8ullyMaguire/ficnexus",
-    "repo_host": "github"
+    "repo_host": "github.com"
   },
   {
     "slug": "gpt-repository-loader",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "gravity",
     "repo_url": "https://git.polarisocial.xyz/hirrolot19/gravity",
-    "repo_host": "forgejo"
+    "repo_host": "git.polarisocial.xyz"
   },
   {
     "slug": "heirloom-v1",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "heirloom-v2",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "hermes-archived-jobs",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.disroot.org/hirrolot19/hermes-archived-jobs",
+    "repo_host": "git.disroot.org"
   },
   {
     "slug": "hermes-artifacts",
     "repo_url": "https://git.polarisocial.xyz/hirrolot19/hermes-artifacts",
-    "repo_host": "forgejo"
+    "repo_host": "git.polarisocial.xyz"
   },
   {
     "slug": "kindred",
     "repo_url": "https://git.polarisocial.xyz/hirrolot19/kindred",
-    "repo_host": "forgejo"
+    "repo_host": "git.polarisocial.xyz"
+  },
+  {
+    "slug": "l-01m7dw82j44b78wmvexkkybmqw",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "l2-adrenaline-scripts",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.disroot.org/hirrolot19/L2-adrenaline-scripts",
+    "repo_host": "git.disroot.org"
   },
   {
     "slug": "legality-checker",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "lemmy",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "lemmy-docs",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "lemmy-ui",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "listen-updater",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "lorebook",
     "repo_url": "https://git.polarisocial.xyz/hirrolot19/lorebook",
-    "repo_host": "forgejo"
+    "repo_host": "git.polarisocial.xyz"
   },
   {
     "slug": "lorebot",
     "repo_url": "https://git.polarisocial.xyz/hirrolot19/lorebot",
-    "repo_host": "forgejo"
+    "repo_host": "git.polarisocial.xyz"
+  },
+  {
+    "slug": "m-01m7dw82c0dn8vjf8xfqn1djda",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "media-wiki",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.disroot.org/hirrolot19/media_wiki",
+    "repo_host": "git.disroot.org"
   },
   {
     "slug": "number-to-string",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "orbital",
     "repo_url": "https://git.polarisocial.xyz/hirrolot19/orbital",
-    "repo_host": "forgejo"
+    "repo_host": "git.polarisocial.xyz"
+  },
+  {
+    "slug": "p-01m7dw823kxwyq86nggnbg7mwj",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "pamac",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "penny-dreadful-tools",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.disroot.org/hirrolot19/Penny-Dreadful-Tools",
+    "repo_host": "git.disroot.org"
   },
   {
     "slug": "pizza-dough-calculator",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "polaris",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.disroot.org/hirrolot19/polaris",
+    "repo_host": "git.disroot.org"
   },
   {
     "slug": "qostube-scraper",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "raven",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "ravenclaws",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "reduce-video-size",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.disroot.org/hirrolot19/reduce_video_size",
+    "repo_host": "git.disroot.org"
   },
   {
     "slug": "rust-threadlight-mirror",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "scripts",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "stash",
     "repo_url": "https://github.com/8ullyMaguire/stash",
-    "repo_host": "github"
+    "repo_host": "github.com"
   },
   {
     "slug": "stash-box",
     "repo_url": "https://github.com/8ullyMaguire/stash-box",
-    "repo_host": "github"
+    "repo_host": "github.com"
   },
   {
     "slug": "stashbox-fork",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "stashforge",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "steeltitan",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "streakforge",
     "repo_url": "https://git.polarisocial.xyz/hirrolot19/streakforge",
-    "repo_host": "forgejo"
+    "repo_host": "git.polarisocial.xyz"
   },
   {
     "slug": "string-to-number",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "suki",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "the checkout's origin names a repository the forge answers 404 for and no other host in the owner's set has it (measured by scripts/parity/upstream_candidates.py --verify); a repository that does not exist is not an upstream"
   },
   {
     "slug": "tessera",
     "repo_url": "https://git.polarisocial.xyz/hirrolot19/tessera",
-    "repo_host": "forgejo"
+    "repo_host": "git.polarisocial.xyz"
   },
   {
     "slug": "threadlight",
     "repo_url": "https://github.com/8ullyMaguire/threadlight",
-    "repo_host": "github"
+    "repo_host": "github.com"
   },
   {
     "slug": "threadlight-frontend",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.disroot.org/hirrolot19/threadlight-frontend",
+    "repo_host": "git.disroot.org"
   },
   {
     "slug": "trending-linux-packages",
     "repo_url": "https://github.com/8ullyMaguire/trending-linux-packages",
-    "repo_host": "github"
+    "repo_host": "github.com"
   },
   {
     "slug": "trending-linux-packages-data",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.disroot.org/hirrolot19/trending-linux-packages-data",
+    "repo_host": "git.disroot.org"
   },
   {
     "slug": "twitch-summary-bot",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.disroot.org/hirrolot19/twitch-summary-bot",
+    "repo_host": "git.disroot.org"
   },
   {
     "slug": "ubuntu-post-install-script",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.disroot.org/hirrolot19/ubuntu-post-install-script",
+    "repo_host": "git.disroot.org"
   },
   {
     "slug": "userscripts",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "validator-badaro",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "video-diet",
-    "skip": true,
-    "reason": "not stated (Q5)"
+    "repo_url": "https://git.disroot.org/hirrolot19/video-diet",
+    "repo_host": "git.disroot.org"
   },
   {
     "slug": "vtuber",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "w-01m7dw7wj9tkgz26y2p52t8fxh",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "w-01m7dw7z5yrcnnbh6k499s1rr3",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "w-01m7dw82ak5xvn6mk0dyxb0zzt",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "w-01m7dw84c9r35xrr882fc18sxg",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "w-01m7dw84njs4d66scgc1j95bna",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "w-01m7dw84wgh0e6ydn4h07nfd1c",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
+  },
+  {
+    "slug": "w-01m7dw85ys7v4nczr6rtaeghda",
+    "skip": true,
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "whitebois",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "yahoo-finance-api",
     "skip": true,
-    "reason": "not stated (Q5)"
+    "reason": "no checkout under the code root has an origin remote this owner controls (measured 2026-11-15 by scripts/parity/upstream_candidates.py); stating it is the owner's answer to give"
   },
   {
     "slug": "zeph",
     "repo_url": "https://github.com/8ullyMaguire/zeph",
-    "repo_host": "github"
+    "repo_host": "github.com"
   }
 ]

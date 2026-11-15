@@ -26,13 +26,20 @@ gate-unit:
 push:
 	@scripts/push-and-gate.sh $(if $(B),$(B),$$(git rev-parse --abbrev-ref HEAD))
 
+# Where cargo actually put it. `make deploy` used to scp `$$HOME/.cache/cargo-target/release/concord-cli`, a path that has not
+# existed since the target directory moved into the tree — so the recipe either failed or, with a stale file left there, shipped an
+# older binary under the new commit's name. Ask cargo where the binary is; honour CARGO_TARGET_DIR when it is set.
+TARGET_DIR := $(shell cargo metadata --format-version 1 --no-deps 2>/dev/null | python3 -c 'import sys,json;print(json.load(sys.stdin)["target_directory"])' 2>/dev/null)
+BIN := $(if $(TARGET_DIR),$(TARGET_DIR),./target)/release/concord-cli
+
 release:
-	CONCORD_VERSION="concord-rs 0.0.0+$$(git rev-parse --short HEAD)" cargo build --release -p concord-cli
+	CONCORD_VERSION="concord-rs 0.0.0+$$(git rev-parse --short HEAD)+vendor" cargo build --release -p concord-cli --locked
 
 # The deploy is four commands that have gone wrong in four different ways; they live here so the next person does not rediscover them.
 # `concord.service` (the Go rollback) stays disabled at boot; `concord-rs.service` is the one that serves.
 deploy: release
-	scp -q $$HOME/.cache/cargo-target/release/concord-cli thinkcentre:/home/alvaro/concord-deploy/concord-rs.new
+	@test -x "$(BIN)" || { echo "deploy: $(BIN) does not exist; run \`make release\` first"; exit 1; }
+	scp -q "$(BIN)" thinkcentre:/home/alvaro/concord-deploy/concord-rs.new
 	ssh thinkcentre 'chmod 755 ~/concord-deploy/concord-rs.new && systemctl --user stop concord-rs.service \
 	  && mv ~/concord-deploy/concord-rs.new ~/concord-deploy/concord-rs \
 	  && systemctl --user start concord-rs.service && sleep 4 \
