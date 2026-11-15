@@ -516,3 +516,16 @@ projects, in the same order, because two callers deriving one answer is how they
   Two were wrapped in `.catch`/`getOrNull`, so the pages rendered and every probe passed. Fixed; `scripts/parity/api_paths.py`
   is gate layer 0b with three reviewed exceptions, and `duplicates_e2e` — which had been erroring in setup against SQLite since
   cutover (`no such table: users`, 5 errors, 0 tests) — now runs on `harness.connect` and says 5 passed.
+
+## Repository state (2026-11-15, measured)
+
+* **The repository now compiles from a clone.** Seven estate crates that lived only as sibling directories — 4,052 lines, no
+  remotes — are vendored under `vendor/` (ADR 0013, commit `eb20faf`, symlink cleanup `f8121cb`). Measured: `git clone` to
+  `~/tmp/concord-clean`, where `ls ../polaris-authz` is "No such file or directory", then `cargo build -p concord-cli --offline`
+  → `Finished dev profile in 4m 02s`.
+* **CI is green for the first time.** GitHub run `43732462823` (commit `f8121cb`, `workflow_dispatch`): `js: all 42 assets parse` ·
+  `js: API paths with a stray trailing '/': 0` · `routes: all 13 answered` · `gate: PASS`, with 56 `test result: ok` lines
+  including the vendored crates' suites. Pushes still do not create runs on their own — the workflow now carries
+  `workflow_dispatch`, so `gh workflow run gate.yml --ref port-rust` is the way to ask.
+* **Open, not blocking:** `settings.js` asks four owner-only routes behind `getOrNull` for a signed-out reader (the four 401s
+  `probe_requests.py` lists); the change is written and unproven until the next deploy.

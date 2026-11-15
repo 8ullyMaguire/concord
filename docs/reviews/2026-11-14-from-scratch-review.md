@@ -8,6 +8,41 @@ Every claim below is a measurement, and the command that produced it is in the s
 
 ## Work log
 
+- **2026-11-15 — item 4's CI half: it had never run, and the reason was that the repository could not compile.** `gh run list`
+  over the GitHub remote returned ONE run in the repository's life: 2026-11-14T20:30, `70890ab`, **failure**, 40s. Fourteen
+  pushes since then produced no run at all. `gh api …/actions/permissions` says `{"enabled":true,"allowed_actions":"all"}`, so
+  Actions was not switched off. Adding a `workflow_dispatch` trigger made the question askable, and the answer was not the gate:
+
+      error: failed to load manifest for workspace member `…/crates/db`
+      Caused by: failed to load manifest for dependency `polaris-authz`
+      Caused by: failed to read `…/polaris-authz/Cargo.toml`
+        No such file or directory (os error 2)
+
+  Concord's workspace depended on **seven crates by path, none of them in any repository**: `polaris-core-rust` (1,044 lines),
+  `polaris-healthz` (156), `polaris-authz` (1,249), `polaris-ledger` (466), `polaris-ratelimit` (592), `polaris-slug` (169),
+  `polaris-comments` (376) — 4,052 lines that the production service cannot be rebuilt without and that existed on one host.
+  `git remote -v` printed nothing in all seven; `polaris-authz`'s declared remote answers `Repository not found`. The Go tree this
+  port replaced had `internal/ledger` and `internal/comments` **in** the repository.
+
+  Vendored verbatim into `vendor/` (`diff -r`: all seven verbatim), added as workspace members, ADR 0013 with the alternatives
+  that lost. Proof that this is the defect: a clean clone with no sibling directory reachable —
+
+      $ cd ~/tmp/concord-clean            # git clone of f8121cb; ls ../polaris-authz -> No such file or directory
+      $ cargo build -p concord-cli --offline
+          Finished `dev` profile [unoptimized + debuginfo] target(s) in 4m 02s
+
+  And the first green gate in this repository's history, on GitHub's own runner (run `43732462823`, commit `f8121cb`):
+
+      js: all 42 assets parse
+      js: API paths with a stray trailing '/': 0
+      routes: all 13 answered
+      gate: PASS
+
+  56 `test result: ok` lines, including the vendored crates' own suites (authz, ledger, ratelimit), which nothing had ever run.
+  Two things it also caught about the copy: each estate crate carried a convenience symlink of its own name pointing at its
+  absolute path on this host, copied along with it — six removed in `f8121cb`, because a vendored tree that resolves only on the
+  machine it was copied from is the same defect one level down.
+
 - **2026-11-15 — the split finished, and it found five live defects the split did not cause.** `project.js` went 1,617 → 902 lines
   across three capability files (`project-arena.js` 238, `project-panels.js` 303, `project-writes.js` 234), each registering itself
   on `window` and loaded in dependency order; helpers (`setStatus`, `postJSON`, `showCardRefusal`) are bound once from the file that
