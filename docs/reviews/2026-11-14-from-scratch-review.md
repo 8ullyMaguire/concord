@@ -8,6 +8,13 @@ Every claim below is a measurement, and the command that produced it is in the s
 
 ## Work log
 
+- **2026-11-15 — item 9 done: one client, and the pages it revealed.** Every page script now calls `api.js`; `grep -c 'fetch('` over
+  `crates/web/assets/js/*.js` gives **4 sites in 39 files**, all four the transport itself. What the conversion found, in the order it
+  found it: `/stats` loaded no script at all and had never shown its three numbers; the project overview had never finished loading
+  because a count badge fetched `11.35 MB` of document bodies; and four files I had just edited shipped not parsing (`merge.js`,
+  `ranking.js`, `requests-index.js`, `scout.js`) while every suite stayed green. `scripts/gate.sh` now parses all 39 assets before it
+  compiles anything. Full account in item 9 below; commits `25e9443`, `53062e9`, `4b8b2f9`, `54848be`, `34fbf04`, `9b7abdc`, `6f6d9db`,
+  `947d9ab`.
 - **2026-11-15 — the suites that could not start, and the pages they found.** Both `documents_e2e` and `requests_e2e` seeded SQLite
   directly instead of through `harness.connect`, so neither had ever tested the Rust binary. Making them run found eight defects across
   three pages, none of which any probe could see because a page that renders an empty state is a `200`:
@@ -314,8 +321,35 @@ The live probe found a bug in the module itself, which is why the probe exists: 
 string. It is now a `sentence()` that accepts a string in `error`, in `error.error`, or in `error.message`, and falls back to the status.
 Live after: `404 -> status=404 msg=No such API route.`
 
-Still open in this item: the split by capability (`project.js` is still 1,600 lines that fetch ten endpoints), and adopting the module in the
-remaining ~45 direct `fetch` call sites. Neither is a correctness risk the way escaping was, and both are watched by suites that pass.
+Still open in this item: the split by capability (`project.js` is still 1,600 lines that fetch ten endpoints). That is a reorganisation
+with no correctness edge; the adoption of the module at every call site is done, and the number is measured rather than estimated.
+
+**And the adoption finished, 2026-11-15 (`api3` … `api10`).** Measured with `grep -c 'fetch(' crates/web/assets/js/*.js`: **4 sites
+in 39 files**, and all four are the transport itself — `api.js` (1, the one request), `session.js` (1, reading the token), `auth.js`
+(2, the sign-in form). 36 files carry none. The conversions deleted sixteen duplicate helpers: `apiAuth` in nine files (three were the
+same 785-character copy), `headers()` in four, `authHeaders()` in three, and four bespoke `{status, body}` wrappers.
+
+Three things this cost, all recorded because each was invisible to every suite:
+
+* **`/stats` had never worked.** The page loaded no script and had none of the four containers `stats.js` fills, so the three numbers the
+  page exists for — a summary, complaint/feature latency, newcomer responsiveness — were never fetched. The live page was 3.8 KB of
+  navigation over one empty paragraph. Found by opening the page after converting its script. Live after: summary `discussion 1188`,
+  latency `Complaint triage 0.0 h n=1414 unfinished=996`.
+* **The project overview had never finished loading.** It fetched `/documents` — every body, `11.35 MB`, still downloading at `40 s` — to
+  render a count badge, and `Promise.all` waited for all eleven panels. `?fields=meta` is `37 KB` in `0.64 s`. Live before:
+  `aria-busy="true"`, 0 characters rendered. After: `aria-busy="false"`, 349,804 characters. Every suite passed throughout, because a
+  seeded project has three documents and this one has 175.
+* **Four of my own files shipped not parsing.** A bulk helper deletion in `api8` left a closing brace at the top of `merge.js`,
+  `ranking.js`, `requests-index.js` and `scout.js`; every page still answered 200 and every suite still passed, because they assert HTML
+  and nobody parsed the files. Caught while converting the last eight. `scripts/gate.sh` now runs `node --check` over all 39 assets
+  (`js: all 39 assets parse`) before it compiles anything.
+
+Two dead branches fell out of the same reading: `curation.js`'s "Recorded. Not decided yet" and `taxonomy.js`'s 202 branch both keyed on
+`status === 202`, which neither Rust route ever answers (they return 200 with a `ratified` flag). Both had been unreachable since cutover.
+
+Final gate on the deployed binary (`947d9ab`, `concord-rs 0.0.0+api10`): `probe_pages 136/136`, `probe_project_segments 86/86`, seven
+e2e suites / 94 tests green, `route_readers.py` 174 registered / 166 proved / 8 declared / 0 unknown, and eight pages opened live with
+`console errors: []`.
 
 ### 10. Docs that describe the dead lineage
 
