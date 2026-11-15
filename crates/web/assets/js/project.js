@@ -643,10 +643,13 @@
         var h = session.authHeaders();
         for (var k in h) { if (Object.prototype.hasOwnProperty.call(h, k)) headers[k] = h[k]; }
       }
-      return window.ConcordApi.get(path, { method: method, headers: headers, body: JSON.stringify(body || {}) })
-        .then(function (r) {
-          return r.json().catch(function () { return {}; })
-            .then(function (p) { return { ok: r.ok, status: r.status, payload: p }; });
+      // `request(method, …)` — NOT `get(path, { method: … })`. `api.js`'s `get` hardcodes GET and drops the body, so a
+      // `get` here sent a GET for a POST and a GET for a PUT: claiming work and saving a work item both went out as reads.
+      // This shape is kept because the callers below read `{ok, status}`, and a refusal is `ApiError` now.
+      return window.ConcordApi.request(method, path, body || {})
+        .then(function (payload) { return { ok: true, status: 200, payload: payload || {} }; })
+        .catch(function (error) {
+          return { ok: false, status: error && error.status ? error.status : 0, payload: {} };
         });
     }
 

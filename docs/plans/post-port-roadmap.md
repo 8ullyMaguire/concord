@@ -502,3 +502,10 @@ projects, in the same order, because two callers deriving one answer is how they
   `/projects/suki/ranking` 26,971 chars, `console errors: []` on eight pages. `taxonomy.js`'s 202-vs-200 consent branch was dead for
   the same reason as `curation.js`'s — `taxonomy::consent` answers 200 with `ratified`, never 202. Gate: 7 suites / 94 tests green,
   probes 136/136 and 86/86.
+* **Found 2026-11-15 while splitting `project.js`: the claim button and the work-item form were sending GETs.** `sendJSON` was
+  `ConcordApi.get(path, { method: 'POST', … })`, and `api.js`'s `get` hardcodes GET and drops the body — so "Claim this" hit a POST
+  route with a GET (`405`, button re-enabled silently) and sizing a task did the same (`Refused: HTTP 405`). Introduced in `54848be`,
+  brought in by the item-9 conversion, and unreached by any suite: `project_panels_e2e`'s "claim" tests are capability claims, and the
+  button only renders for a signed-in reader. Fixed to `ConcordApi.request(method, path, body)` and proved by a new
+  `scripts/parity/probe_claim_button.py`, which drives the button in a browser and reads the label it settles on:
+  `Join the project to claim work` — the 403 branch, which only a POST can produce.
