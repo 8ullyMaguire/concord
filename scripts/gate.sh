@@ -189,8 +189,37 @@ fi
 
 if [ -n "$LIVE" ]; then
   say "3. live — probes against $LIVE"
-  CANDIDATE="$LIVE" python3 scripts/parity/probe_pages.py 2>&1 | tail -1 || bad "probe_pages"
-  CANDIDATE="$LIVE" python3 scripts/parity/probe_project_segments.py 2>&1 | tail -1 || bad "probe_project_segments"
+  run_probe() {
+    local name=$1; shift
+    local out status
+    out=$("$@" 2>&1); status=$?
+    echo "  $(echo "$out" | tail -1)"
+    [ "$status" -eq 0 ] || bad "$name"
+  }
+  # The browser probes need playwright, which lives in the e2e venv and not in the system python: `probe_requests` failed with
+  # `ModuleNotFoundError: No module named 'playwright'` on the first full pass of this layer, while the suites beside it passed.
+  PY=python3
+  [ -x "$HOME/.venvs/concord-e2e/bin/python" ] && PY="$HOME/.venvs/concord-e2e/bin/python"
+  CANDIDATE="$LIVE" run_probe probe_pages python3 scripts/parity/probe_pages.py
+  CANDIDATE="$LIVE" run_probe probe_project_segments python3 scripts/parity/probe_project_segments.py
+  CANDIDATE="$LIVE" run_probe probe_requests "$PY" scripts/parity/probe_requests.py
+
+  # The suites the gate never ran, which is why four of them were found dead on arrival (they had been erroring in setup
+  # against SQLite since cutover and nothing that called itself "the gate" ever executed them). Each starts its own candidate
+  # binary against its own scratch database, so they need the binary path and the harness DSN -- not the live URL.
+  if [ -n "${CONCORD_E2E_CANDIDATE:-}" ] && [ -x "${CONCORD_E2E_CANDIDATE:-}" ]; then
+    for suite in project_panels_e2e feature_e2e board_e2e documents_e2e requests_e2e consensus_e2e \
+                 ai_declaration_e2e duplicates_e2e; do
+      out=$(timeout 900 scripts/parity/e2e_candidate.sh "tests/e2e/$suite.py" -q 2>&1); status=$?
+      echo "  $(echo "$out" | tail -1)"
+      [ "$status" -eq 0 ] || bad "$suite"
+    done
+    out=$(timeout 300 "$PY" scripts/parity/probe_claim_button.py 2>&1); status=$?
+    echo "  $(echo "$out" | tail -1)"
+    [ "$status" -eq 0 ] || bad "probe_claim_button"
+  else
+    echo "  suites: skipped — CONCORD_E2E_CANDIDATE is not set to an executable"
+  fi
 else
   echo "live: not run (--live <url> to include the probes)"
 fi
