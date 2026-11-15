@@ -413,3 +413,13 @@ rather than as a suggestion nobody can act on.
 Intent-first creation: at `/projects/new`, ask what the person is trying to build and answer with `concord-finder` before the blank
 form. The gate is a differential probe — the same question asked of the create page and of `/api/v1/finder` must return the same
 projects, in the same order, because two callers deriving one answer is how they disagree.
+
+### Open, found by the suites on 2026-11-15 — not the roadmap's work, but not nobody's either
+
+* **`board_e2e::test_a_private_project_serves_no_board` fails**: the reference answers something a reader reads as "no project"; the port
+  renders the board shell with "This project has not set up its phase-gated kanban columns" for a project the reader may not see. One of the
+  two is wrong about privacy, and the port's version leaks the existence of a project's board. Unblocked — needs a decision on which shape is
+  correct, then a route change.
+* **`documents_e2e` cannot run at all**: it seeds a SQLite file (`sqlite3.connect`, `INSERT INTO users …`). It is a pre-port suite that tests
+  the Go binary's database, and it will keep erroring until it is either ported to the scratch Postgres or retired. Nothing depends on it
+  today, which is the reason it has stayed broken.
