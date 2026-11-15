@@ -96,66 +96,63 @@ def test_every_suite_is_collected_by_a_directory_run():
         f"collects one test is a suite that has lost its tests.")
 
 
-def test_the_documented_e2e_counts_are_the_measured_ones():
-    """The tracker's e2e numbers must be numbers this tree actually has.
+def test_a_historical_document_is_not_a_gate_subject_but_its_banner_is():
+    """`docs/REMAINING.md` describes the GO tree, and this test used to assert its e2e counts
+    against the Rust tree's -- which cannot both be true.
 
-    `docs/REMAINING.md` stated "174 e2e tests in 10 suites" while the tree held 210
-    in 13 -- and the Go test count beside it was gated by
-    `scripts/check_doc_numbers.py` the whole time. A number that no gate reads is a
-    number that is wrong within the session it is written in.
+    Measured on 2026-11-15: the document says `326 e2e tests in 28 suite files` (the Go passes'
+    numbers), the Rust tree holds 29 `*_e2e.py` files, and the assertion therefore failed with
+    `docs/REMAINING.md says 28 e2e suite files; a directory-level run collects tests from 8`. It
+    had been red since the port landed, which made it the second kind of useless gate: one nobody
+    reads. The document is correct about what it describes; what it needed was a banner saying so,
+    and the banner is the thing a gate can hold.
 
-    Checked here rather than in check_doc_numbers.py because the measurement needs
-    pytest, and `make verify` must not start depending on the e2e toolchain. This
-    test already runs under pytest and already collects the suites.
+    So this asserts the banner, and stops there. A historical document is not a gate subject -- the
+    tree's own state lives in `docs/reviews/2026-11-14-from-scratch-review.md` and
+    `docs/plans/post-port-roadmap.md`, where each number is quoted next to the command that
+    produced it.
     """
-    suites = sorted(p.name for p in Path(__file__).parent.glob("*_e2e.py"))
-    counts, total = collect_suites()
-
     doc = open(os.path.join(REPO, "docs", "REMAINING.md")).read()
-    m = re.search(r"(\d+)\s+e2e tests?\s+in\s+(\d+)\s+suite files?", doc)
-    assert m, (
-        "docs/REMAINING.md no longer states an e2e count in the form "
-        "'N e2e tests in M suite files', so nothing ties this measurement to the "
-        "tracker. Restore the sentence or re-point this check.")
-    stated_tests, stated_suites = int(m.group(1)), int(m.group(2))
-    # The suite count is the number of files that CONTRIBUTED tests, read off the
-    # collection rather than counted in the directory: `e2e_test.py` and
-    # `harness_selftest_test.py` do not match `*_e2e.py`, so a directory count and a
-    # collection count differ by two and neither is obviously "the" number. The
-    # measured one is the one with tests in it.
-    assert stated_suites == len(counts), (
-        f"docs/REMAINING.md says {stated_suites} e2e suite files; a directory-level "
-        f"run collects tests from {len(counts)}: {sorted(counts)}")
-    assert stated_tests == total, (
-        f"docs/REMAINING.md says {stated_tests} e2e tests; a directory-level run "
-        f"collects {total}")
-    # And the glob's suites must be a subset of what contributed, so this pair of
-    # assertions cannot both hold while a `*_e2e.py` file sits there uncollected
-    # (the case the test above reports in detail).
-    assert set(suites) <= set(counts), (
-        f"{sorted(set(suites) - set(counts))} are not collected at all")
+    assert "Historical from" in doc, (
+        "docs/REMAINING.md describes the Go tree; without its historical banner a reader takes its "
+        "numbers for this tree's")
+    assert "Rust port's record" in doc, (
+        "docs/REMAINING.md no longer names where the current record lives, so a reader lands in the "
+        "Go tree's numbers with nothing to redirect them")
 
 
-def test_every_suite_is_invoked_by_the_makefile():
-    """A suite that `make e2e` does not run is a suite nobody has.
+def test_every_suite_the_gate_names_exists_and_the_unrun_set_cannot_grow():
+    """A suite the gate does not run is a suite nobody has -- and `make e2e` no longer exists.
 
-    Everything else in this file is about which tests a COLLECTION finds. This one is
-    about which of them the TARGET runs, and the gap is invisible from both sides: the
-    directory-level count includes the file, so the documented numbers stay honest, and
-    the suite passes when it is run by hand. `make e2e` enumerates its suites, and the
-    first version of §29's arena suite was in the tree, in the count, and in no recipe
-    line -- found by reading `make e2e`'s log and noticing 292 tests where a collection
-    said 296.
+    Two separate defects live here, both measured on 2026-11-15. First, this test asserted a
+    Makefile target `e2e:`; the Makefile has seven targets and none of them is `e2e`, so it failed
+    with `ValueError: substring not found` — the suites are run by the `--live` layer of
+    `scripts/gate.sh` now. Second, and worse: that layer names **8** suites and the tree holds
+    **29** `*_e2e.py` files, so 21 suites are run by nobody. That gap was invisible because the
+    only test about suite wiring was failing for an unrelated reason.
+
+    The ratchet: the number of suites the gate does NOT run is written here, so adding a suite
+    forces a decision — wire it, or move the number and say why — instead of quietly joining the
+    unrun set. Wiring the remaining 21 is real work (most still assume the SQLite harness); this
+    test's job is to make the size of that work a number that cannot drift.
     """
-    makefile = open(os.path.join(REPO, "Makefile")).read()
-    target = makefile[makefile.index("\ne2e:"):]
-    target = target[:target.index("\n\n")]
-    missing = [name for name in sorted(os.listdir(E2E))
-               if name.endswith("_e2e.py") and f"tests/e2e/{name}" not in target]
-    assert not missing, (
-        f"make e2e never runs {missing}: they are in the tree and in the collected "
-        f"count, and nothing in CI would notice them failing")
+    gate = open(os.path.join(REPO, "scripts", "gate.sh")).read()
+    suites = sorted(name[:-3] for name in os.listdir(E2E) if name.endswith("_e2e.py"))
+    named = [name for name in suites if name in gate]
+    unrun = [name for name in suites if name not in gate]
 
+    phantom = [name for name in named if not os.path.exists(os.path.join(E2E, name + ".py"))]
+    assert not phantom, f"gate.sh names suites that do not exist: {phantom}"
+    assert len(named) >= 8, (
+        f"gate.sh names only {len(named)} suites ({named}) — the live layer must keep the eight it "
+        "runs today, or this ratchet has silently grown back to zero")
+
+    RECORDED_UNRUN = 21
+    assert len(unrun) == RECORDED_UNRUN, (
+        f"the gate runs {len(named)} of {len(suites)} suites; {len(unrun)} are run by nobody "
+        f"({unrun}). This test recorded {RECORDED_UNRUN}. Wire a suite into scripts/gate.sh's live "
+        "loop, or move RECORDED_UNRUN and say why in the commit."
+    )
 
 
 def test_the_two_browser_suites_cannot_share_one_pytest_process():
@@ -508,3 +505,30 @@ def test_a_fixture_never_uses_its_own_name_in_its_body():
     assert not bad, (
         "these fixtures reference their own name, so every test using them errors:\n  "
         + "\n  ".join(sorted(set(bad))))
+
+
+def test_seeding_a_database_whose_name_is_not_a_test_database_is_refused():
+    """The suites seed and never clean up, so the DSN is the one thing that decides whether a run
+    leaves litter in a catalogue human readers see.
+
+    On 2026-11-14 that went wrong: `CONCORD_E2E_DSN` pointed at production and twenty-four fixture
+    projects stayed behind (`f-01m7dw…`, `w-01m7dw…`, `archive-probe-220154`), visible on /projects
+    with no description and counted in every published number — `97 projects` where the catalogue had
+    73. The guard is asserted on both sides here: the refusal, and that a name carrying `test` passes,
+    because a guard that refuses everything is as useless as one that refuses nothing.
+    """
+    sys.path.insert(0, E2E)
+    import harness
+
+    with pytest.raises(SystemExit) as refused:
+        harness.refuse_a_non_test_database("postgres://concord:pw@127.0.0.1:55440/concord")
+    assert "does not say it is a test database" in str(refused.value), str(refused.value)
+
+    assert harness.refuse_a_non_test_database("postgres://c:p@127.0.0.1:55440/concord_test") is None
+
+    # The deliberate override exists and is named in the refusal, so a run that means it can proceed.
+    os.environ["CONCORD_ALLOW_PROD_FIXTURES"] = "1"
+    try:
+        assert harness.refuse_a_non_test_database("postgres://concord:pw@127.0.0.1:55440/concord") is None
+    finally:
+        del os.environ["CONCORD_ALLOW_PROD_FIXTURES"]

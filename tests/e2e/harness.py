@@ -50,6 +50,34 @@ SEED_DSN = os.environ.get("CONCORD_E2E_DSN")
 SERVED_BY = CANDIDATE or BIN
 
 
+def refuse_a_non_test_database(dsn):
+    """Stop before seeding a database whose name does not say it is a test database.
+
+    The suites seed through the database and never clean up — that is deliberate, because a browser
+    test whose fixtures arrive through the API under test cannot fail for the reason it exists. The
+    cost is that every row they create STAYS, and on 2026-11-14 a run pointed `CONCORD_E2E_DSN` at
+    the production database and left twenty-four fixture projects behind: slugs `f-01m7dw…`,
+    `w-01m7dw…`, `archive-probe-220154`, names `Fixture`, `Writable`, `A project`, visible on
+    /projects with no description and counted in every number the product publishes (`97 projects`
+    where the catalogue has 73).
+
+    A database name carrying `test` is the cheapest honest test for "this is mine to destroy", and
+    `CONCORD_ALLOW_PROD_FIXTURES=1` is the deliberate way to seed somewhere else anyway. The refusal
+    names the database and the two ways out: a suite that fails before it connects is better than a
+    catalogue that grows fixtures silently.
+    """
+    import urllib.parse
+
+    name = urllib.parse.urlparse(dsn).path.lstrip("/") or "(no database in the URL)"
+    if "test" in name.lower() or os.environ.get("CONCORD_ALLOW_PROD_FIXTURES") == "1":
+        return
+    raise SystemExit(
+        f"harness: refusing to seed {name!r} — its name does not say it is a test database, and these "
+        "suites leave every row they create. Point CONCORD_E2E_DSN at a database whose name contains "
+        "'test', or set CONCORD_ALLOW_PROD_FIXTURES=1 if you mean it."
+    )
+
+
 def connect(path):
     """A connection for seeding: SQLite, or PostgreSQL when a candidate is under test.
 
@@ -60,6 +88,7 @@ def connect(path):
     if not SEED_DSN:
         import sqlite3
         return sqlite3.connect(path)
+    refuse_a_non_test_database(SEED_DSN)
     return PgSeed(SEED_DSN)
 
 

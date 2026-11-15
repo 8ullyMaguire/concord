@@ -11,13 +11,26 @@ descending — a number that cannot go stale against the schema.
 
 Usage: `CONCORD_E2E_DSN=... DATABASE_URL=... python3 scripts/parity/clear_probe_litter.py`
 """
-import os, psycopg2
+import argparse, os, psycopg2, sys
 from collections import defaultdict, deque
 
-con = psycopg2.connect(os.environ["DATABASE_URL"]); con.autocommit = False
+# Which slugs are litter is a parameter, because it has been wrong twice in opposite directions: the first version only knew
+# `probe-%`, and on 2026-11-15 the catalogue turned out to hold twenty-four OTHER fixtures — `archive-probe-220154`,
+# `f-01m7dw…`, `w-01m7dw…`, `d-`/`l-`/`m-`/`p-`/`dup-` with ULID tails — left by a suite run whose CONCORD_E2E_DSN pointed at
+# production. A cleaner that can only remove the litter of one tool cleans up one tool.
+ap = argparse.ArgumentParser(description="Remove fixture projects matching a slug pattern, and everything hanging off them.")
+ap.add_argument("--match", default="^probe-", help="POSIX regex the project slug must match (default: ^probe-)")
+ap.add_argument("--dsn", default=os.environ.get("CONCORD_E2E_DSN") or os.environ.get("DATABASE_URL"))
+ap.add_argument("--dry-run", action="store_true", help="report what would be deleted, delete nothing")
+args = ap.parse_args()
+if not args.dsn:
+    sys.exit("no DSN: set CONCORD_E2E_DSN or DATABASE_URL, or pass --dsn")
+
+con = psycopg2.connect(args.dsn); con.autocommit = False
 cur = con.cursor()
-cur.execute("select id from projects where slug like 'probe-%%'")
+cur.execute("select id from projects where slug ~ %s order by slug", (args.match,))
 projects = [r[0] for r in cur.fetchall()]
+print(f"pattern: {args.match}")
 print("projects:", len(projects))
 if not projects:
     raise SystemExit(0)
@@ -78,9 +91,20 @@ removed = 0
 for table in order:
     if table == "projects":
         continue
-    cur.execute(f"delete from {table} where {predicate(table)}", p)
-    removed += cur.rowcount
-cur.execute(f"delete from projects where id in ({m})", p); removed += cur.rowcount
-con.commit()
-print("rows deleted:", removed)
-cur.execute("select count(*) from projects where slug like 'probe-%%'"); print("left:", cur.fetchone()[0])
+    if args.dry_run:
+        cur.execute(f"select count(*) from {table} where {predicate(table)}", p)
+        count = cur.fetchone()[0]
+    else:
+        cur.execute(f"delete from {table} where {predicate(table)}", p)
+        count = cur.rowcount
+    if count:
+        print(f"  {'would delete' if args.dry_run else 'deleted'} {count:>4} from {table}")
+    removed += count
+if args.dry_run:
+    con.rollback()
+    print(f"dry run: {removed} row(s) across {len(projects)} project(s) would be deleted; nothing was written")
+else:
+    cur.execute(f"delete from projects where id in ({m})", p); removed += cur.rowcount
+    con.commit()
+    print("rows deleted:", removed)
+cur.execute("select count(*) from projects where slug ~ %s", (args.match,)); print("left:", cur.fetchone()[0])
