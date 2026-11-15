@@ -4,7 +4,11 @@ name: gate
 # that day. A gate that depends on somebody remembering is a gate that is skipped on the day it matters.
 on:
   push:
-    branches: ["**"]
+    # Explicit branch names, not `"**"`. The glob form was in the file for every push this repository has received since
+    # 2026-11-14 and produced exactly one run (20:30 that day) while the repository's own push events kept arriving --
+    # `repos/:owner/:repo/events` lists PushEvents on `port-rust` on 2026-11-13, 14 and 15. Naming the branches is the
+    # cheapest thing that can be wrong, and it is measurable: if a push creates a run after this change, the glob was it.
+    branches: [port-rust, master, main]
   pull_request:
   # Manual dispatch is not decoration: the only run this workflow has ever had (2026-11-14, `70890ab`) failed at the toolchain
   # step with `failed to load manifest for workspace member crates/db`, and 30+ pushes since then produced no run at all. Without
