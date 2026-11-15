@@ -17,11 +17,9 @@
   var timer = null;
   var lastAsked = '';
 
-  function esc(value) {
-    return String(value == null ? '' : value).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
+  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it. This file's copy replaced the same
+  // five characters in its own way; a single pass over a character class cannot disagree with another page about which are dangerous.
+  var esc = window.ConcordEscape.esc;
 
   // The row's own link, when the server sends one: `url` is the API's answer to "where does this live", and rebuilding it from the id was
   // how a project link can silently point at a numeric id the page does not route.

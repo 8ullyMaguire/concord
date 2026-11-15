@@ -21,11 +21,9 @@
 (function () {
   'use strict';
 
-  function esc(s) {
-    return String(s == null ? '' : s)
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-  }
+  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it. This file's copy replaced the same
+  // five characters in its own way; a single pass over a character class cannot disagree with another page about which are dangerous.
+  var esc = window.ConcordEscape.esc;
 
   function token() {
     try { return window.localStorage.getItem('concord.token') || ''; }

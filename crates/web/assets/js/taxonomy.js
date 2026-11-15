@@ -56,12 +56,9 @@
       note: "Removes the tag. Uses of it are not removed with it." }
   ];
 
-  function esc(s) {
-    if (s === null || s === undefined) return "";
-    return String(s).replace(/[&<>"']/g, function (c) {
-      return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
-    });
-  }
+  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it. This file's copy replaced the same
+  // five characters in its own way; a single pass over a character class cannot disagree with another page about which are dangerous.
+  var esc = window.ConcordEscape.esc;
 
   function say(msg, bad) {
     if (!live) return;

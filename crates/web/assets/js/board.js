@@ -14,11 +14,9 @@ function apiAuth(extra) {
 }
 // Concord kanban board — resolves the slug, then hydrates columns + cards.
 (function () {
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
+  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it, so this file cannot disagree with
+  // another page about which characters are dangerous.
+  var esc = window.ConcordEscape.esc;
 
   // The board filter: ONE board, narrowed. A board per milestone would multiply
   // the WIP limits by the number of milestones, and a limit that applies to a fifth

@@ -45,6 +45,24 @@ here so nobody "fixes" it into an outage.
 
 ## The ten things I would do differently
 
+**The gate passes end to end, once, on a committed tree (2026-11-15).** The line, verbatim from `/tmp/gate10.log` on `thinkcentre`:
+
+```
+scratch database: gate_3203801 (migrated: 2 files)
+=== 1. unit tests
+unit: ok
+=== 2. smoke — fresh database, the real binary, real HTTP
+version: {"version":"concord-rs 0.0.0 (unstamped build)"}
+routes: all 13 answered
+live: not run (--live <url> to include the probes)
+=== result
+gate: PASS
+```
+
+`unit: ok` is the first time layer 1 has passed with a scratch database, and it passed because the gate now applies its own migrations before
+asserting. The run took fifty minutes on a host at load 35 with eight gigabytes swapped out — the number is worth writing down, because "the
+gate is slow" is otherwise indistinguishable from "the gate is stuck".
+
 **What the gate has now proven, and what it still has not.** Layers 2 and 3 are green against the deployed instance: `routes: all 13
 answered`, `probe_pages 136/136`, `probe_project_segments 86/86`, five suites 62 tests. Layer 1 (the unit tests) had never passed with a
 scratch database — it failed on `relation "users" does not exist` because a scratch database is empty and the store tests are not a schema.
@@ -248,6 +266,26 @@ typing for about a day of setup — and the Playwright suites survive it unchang
 
 **Cost to change now:** medium, and it is not urgent. The one thing worth doing immediately is extracting the fetch/error/escape helpers,
 because that is where the subtle bugs live.
+
+**Done 2026-11-15 for the escaping half** (`209c981`, `escape.js` + 29 delegations). `crates/web/assets/js/escape.js` holds the one
+implementation: a single pass over `/[&<>"']/` with a map. All 29 copies are gone — 19 were byte-identical, 7 used `String(s)` after a null
+check, 1 (consensus.js) chained five `.replace()` calls, and 1 was `escapeHTML` in the markdown renderer; every one produced the same five
+replacements, and the single-pass form is the one that cannot double-escape.
+
+Two things this cost, both worth recording because both were invisible until a suite ran:
+
+* The first deploy **broke the live site for about twenty minutes**. The page scripts were emitted in the body and `escape.js` was emitted
+  just before `</body>`, so `var esc = window.ConcordEscape.esc` read `undefined` and every page script threw before rendering. `feature_e2e`
+  caught it — 13 failed, 2 passed — and nothing else did: the server answered 200, the HTML was correct, and the page was blank to a reader
+  with JavaScript on. The three globals (`escape.js`, `session.js`, `consent.js`) are emitted in `<head>` now, and the same suite passes
+  `15 passed in 33.68s`.
+* A production deploy also failed once with `cp: cannot create regular file …: Text file busy` because the old process still held the
+  binary; the fix is write-then-`mv`, which is an atomic rename and does not care who has the old inode open. The service was down for the
+  length of my next command, which is the cost of doing that step by hand instead of in `make deploy` — which does it correctly and which I
+  did not use.
+
+Still open in this item: the fetch/error half (`postJSON` is re-implemented per file, with four different error messages for the same 401) and
+the split by capability. Both are larger than one turn on a host at load 50, and neither is a correctness risk the way escaping was.
 
 ### 10. Docs that describe the dead lineage
 

@@ -14,11 +14,9 @@ function apiAuth(extra) {
 }
 // Concord project detail — resolves the slug, then hydrates from the API.
 (function () {
-  function esc(s) {
-      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-      });
-    }
+  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it. This file's copy replaced the same
+  // five characters in its own way; a single pass over a character class cannot disagree with another page about which are dangerous.
+  var esc = window.ConcordEscape.esc;
 
     // ------------------------------------------------------- the §4.10 panels
     //

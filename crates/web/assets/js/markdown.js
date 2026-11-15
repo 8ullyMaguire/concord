@@ -28,11 +28,9 @@
   // escapeHTML is the only way text reaches the output. Every branch that
   // produces a text node calls it, and no branch concatenates authored text
   // into a tag without it.
-  function escapeHTML(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
+  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it, so this file cannot disagree with
+  // another page about which characters are dangerous.
+  var escapeHTML = window.ConcordEscape.esc;
 
   // isSafeURL rejects anything that can execute or exfiltrate when placed in
   // href/src. Allowlist, not blocklist: a blocklist of "javascript:", "data:",

@@ -22,11 +22,9 @@ function apiAuth(extra) {
 // esc() helper below is the ordinary one for interpolating our own values, and
 // the two are not interchangeable — see the comment at the top of markdown.js.
 (function () {
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
-  }
+  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it, so this file cannot disagree with
+  // another page about which characters are dangerous.
+  var esc = window.ConcordEscape.esc;
 
   // KIND_META drives the rail. The order is reading order for a project: what it
   // is, what it must do, how it is being built, why it was built that way.

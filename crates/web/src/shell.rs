@@ -133,6 +133,13 @@ pub fn document(
     let consent_state = if accepted { "accepted" } else { "required" };
     let mut document = String::with_capacity(shell.body.len() + 8192);
     document.push_str("<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n");
+    // The three globals belong in the HEAD, and this is a correction rather than a preference: they used to be emitted just before
+    // `</body>`, which put every page script ABOVE them, so `var esc = window.ConcordEscape.esc` in a page file read `undefined` and threw
+    // before the page rendered anything. Thirteen of `feature_e2e`'s fifteen tests caught it; nothing else did.
+    document.push_str(&format!("<script src=\"{}\"></script>\n", asset("/assets/js/escape.js")));
+    document.push_str(&format!("<script src=\"{}\"></script>\n", asset("/assets/js/session.js")));
+    document.push_str(&format!("<script src=\"{}\"></script>\n", asset("/assets/js/consent.js")));
+
     document.push_str(&head.finish());
     document.push_str(&format!(
         "\n</head>\n<body data-consent=\"{consent_state}\" data-consent-version=\"{}\">\n",
@@ -192,7 +199,6 @@ pub fn document(
         document.push_str(&crate::script_json(value));
         document.push_str("</script>\n");
     }
-    document.push_str("<script src=\"/assets/js/session.js\"></script>\n<script src=\"/assets/js/consent.js\"></script>\n");
     document.push_str("</body>\n</html>\n");
     document
 }
