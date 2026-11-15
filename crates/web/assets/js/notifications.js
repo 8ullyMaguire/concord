@@ -1,17 +1,3 @@
-/* apiAuth: the session's Authorization header.
- *
- * Inlined at every call site rather than wrapped one level away, because
- * assets_auth_reads_test.go reads the CALL SITES: a helper that hides the header shipped a
- * member-only read as anonymous, and the audit could not see it. Two lines here, twice, is
- * the price of a gate that can see the credential.
- */
-function apiAuth(extra) {
-  var h = extra || {};
-  var tok = window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {};
-  for (var k in tok) { if (Object.prototype.hasOwnProperty.call(tok, k)) h[k] = tok[k]; }
-  return h;
-}
-
 // Concord notifications (docs/specs/notification-spec.md §4.4).
 //
 // Four rules, and each of them is a way this page goes wrong:
@@ -95,40 +81,29 @@ function apiAuth(extra) {
     var id = btn.getAttribute('data-read');
     if (!id) return;
     btn.disabled = true;
-    fetch('/api/v1/notifications/' + encodeURIComponent(id) + '/read', {
-      method: 'POST',
-      headers: apiAuth({ 'Content-Type': 'application/json' })
-    }).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return load();
-    }).catch(function (e) {
-      btn.disabled = false;
-      btn.textContent = 'Could not mark read (' + e.message + ')';
-    });
+    window.ConcordApi.post('/api/v1/notifications/' + encodeURIComponent(id) + '/read', {})
+      .then(function () { return load(); })
+      .catch(function (e) {
+        btn.disabled = false;
+        btn.textContent = 'Could not mark read (' + (e && e.message ? e.message : 'no answer') + ')';
+      });
   }
 
   function markAll(btn) {
     btn.disabled = true;
-    fetch('/api/v1/notifications/read-all', {
-      method: 'POST',
-      headers: apiAuth({ 'Content-Type': 'application/json' })
-    }).then(function (r) {
-      if (!r.ok) throw new Error('HTTP ' + r.status);
-      return load();
-    }).catch(function (e) {
-      btn.disabled = false;
-      btn.textContent = 'Could not mark read (' + e.message + ')';
-    });
+    window.ConcordApi.post('/api/v1/notifications/read-all', {})
+      .then(function () { return load(); })
+      .catch(function (e) {
+        btn.disabled = false;
+        btn.textContent = 'Could not mark read (' + (e && e.message ? e.message : 'no answer') + ')';
+      });
   }
 
   function load() {
     root.setAttribute('aria-busy', 'true');
-    return fetch('/api/v1/notifications', { headers: apiAuth() })
-      .then(function (r) {
-        if (r.status === 401) throw new Error('sign in to see your notifications');
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      })
+    // `ApiError` already says "Sign in first — this needs an account." for a 401; the sentence this page used to
+    // substitute said the same thing in its own words, which is how a product ends up with four of them.
+    return window.ConcordApi.get('/api/v1/notifications')
       .then(render)
       .catch(function (e) {
         root.setAttribute('aria-busy', 'false');
@@ -137,11 +112,9 @@ function apiAuth(extra) {
       });
   }
 
-  // WAIT FOR THE SESSION SCRIPT. base.html loads session.js at the END of <body>, after the
-  // page's own content, so a script here that calls window.ConcordSession at parse time finds
-  // it undefined -- apiAuth() then returns {} and every read answers 401 "sign in to see your
-  // notifications" for a reader who IS signed in. Proved by the browser suite: the server
-  // rendered the signed-in page and the page still asked the reader to sign in.
+  // WAIT FOR THE SESSION SCRIPT. The header is assembled when the request is made, not at parse time, but a request
+  // fired before `session.js` has run still goes out anonymous — the signed-in page then telling a signed-in reader to
+  // sign in. Proved by the browser suite once; the wait is the fix and it still applies with `api.js` doing the work.
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', load);
   } else {

@@ -224,36 +224,20 @@
     var label = ev.target.querySelector("#cmt-label").value;
     if (label) payload.label = label;
 
-    var headers = { "Content-Type": "application/json" };
-    var token = localStorage.getItem("concord.token");
-    if (token) headers.Authorization = "Bearer " + token;
-
-    fetch(baseURL(), {
-      method: "POST",
-      headers: headers,
-      body: JSON.stringify(payload)
-    })
-      .then(function (r) {
-        return r.json().catch(function () { return {}; }).then(function (j) {
-          return { ok: r.ok, body: j };
-        });
-      })
-      .then(function (res) {
-        if (!res.ok) {
-          // A refusal is information. The store's messages are specific -- "a comment
-          // needs a body", "belongs to project 2, not 1" -- and swallowing them into a
-          // generic failure is how a cross-project post looks like a permissions
-          // problem.
-          fail(res.body && res.body.error ? res.body.error : "That comment was refused.");
-          return;
-        }
+    // One client (review item 9b). A refusal is information: the store's messages are specific -- "a comment needs a
+    // body", "belongs to project 2, not 1" -- and swallowing them into a generic failure is how a cross-project post
+    // looks like a permissions problem.
+    window.ConcordApi.post(baseURL(), payload)
+      .then(function () {
         // Only re-read on success. On failure nothing is prepended, so the comment
         // that was never saved never appears to be there.
         replyingTo = null;
         load();
       })
-      .catch(function () {
-        fail("Could not reach the server. Your comment was not posted.");
+      .catch(function (error) {
+        fail(error && error.status
+          ? error.message
+          : "Could not reach the server. Your comment was not posted.");
       });
   }
 
@@ -263,14 +247,7 @@
   }
 
   function load() {
-    var headers = {};
-    var token = localStorage.getItem("concord.token");
-    if (token) headers.Authorization = "Bearer " + token;
-    fetch(baseURL(), { headers: headers })
-      .then(function (r) {
-        if (!r.ok) throw new Error(r.status);
-        return r.json();
-      })
+    window.ConcordApi.get(baseURL())
       .then(function (list) {
         // Guard the shape rather than trusting it: a wrapped response here would make
         // Array.isArray false and the thread render empty with no error, which is the

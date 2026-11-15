@@ -13,21 +13,6 @@
  * Rationales are prose typed by a person and are written with textContent, never parsed as
  * markup.
  */
-/*
- * apiAuth: the session's Authorization header, for API reads.
- *
- * This app authenticates with a bearer token in localStorage, not a cookie, so a fetch with
- * `credentials: 'same-origin'` and nothing else arrives anonymous -- and the queue's vote
- * routes then answer 401 while the page renders a list that came back fine, because the READ
- * path accepts an anonymous caller and the WRITE path does not.
- */
-function apiAuth(extra) {
-  var h = extra || {};
-  var tok = window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {};
-  for (var k in tok) { if (Object.prototype.hasOwnProperty.call(tok, k)) h[k] = tok[k]; }
-  return h;
-}
-
 (function () {
   'use strict';
 
@@ -249,27 +234,20 @@ function apiAuth(extra) {
       }
       confirmBtn.disabled = true;
       say('Reversing\u2026');
-      fetch('/api/v1/projects/' + encodeURIComponent(item.project_slug) + '/moderation/arena/restore', {
-        method: 'POST',
-        headers: apiAuth({ 'Content-Type': 'application/json' }),
-        credentials: 'same-origin',
-        body: JSON.stringify({ undoes: item.id, reason: reason, confirm: true })
-      }).then(function (res) {
-        return res.json().catch(function () { return {}; }).then(function (data) {
-          if (!res.ok) {
-            say((data && data.error) || 'Could not reverse that.');
-            confirmBtn.disabled = false;
-            return;
-          }
+      // One client (review item 9b). The refusal is the server's own sentence — "a reversal needs a reason", "only a
+      // moderator may reverse this" — instead of a generic line whenever the body had no `error` field.
+      window.ConcordApi.post('/api/v1/projects/' + encodeURIComponent(item.project_slug) + '/moderation/arena/restore',
+        { undoes: item.id, reason: reason, confirm: true })
+        .then(function () {
           // The message is passed INTO the reload: load() sets the status line itself, and a
           // "Reversed." written before it is replaced by "1 shown." a moment later -- which is
           // what the first version of this handler did, and what the browser test caught.
           load(false, 'Reversed. The restore act is in the log with that reason on it.');
+        })
+        .catch(function (error) {
+          confirmBtn.disabled = false;
+          say(error && error.status ? error.message : 'Could not reach the server.');
         });
-      }).catch(function () {
-        say('Could not reach the server.');
-        confirmBtn.disabled = false;
-      });
     });
 
     wrap.appendChild(form);
@@ -279,23 +257,18 @@ function apiAuth(extra) {
   function vote(item, choice, btn) {
     if (btn) { btn.disabled = true; }
     say('Recording\u2026');
-    fetch('/api/v1/curation/' + encodeURIComponent(item.kind) + '/' + item.id + '/vote', {
-      method: 'POST',
-      headers: apiAuth({ 'Content-Type': 'application/json' }),
-      credentials: 'same-origin',
-      body: JSON.stringify({ vote: choice, rationale: '' })
-    }).then(function (res) {
-      return res.json().catch(function () { return {}; }).then(function (data) {
-        if (res.status !== 200 && res.status !== 202) {
-          say((data && data.error) || 'Could not record that.');
-          if (btn) { btn.disabled = false; }
-          return;
-        }
+    // One client (review item 9b). The 202/200 split said whether the vote decided it; `ratified` is the server's own
+    // answer to that question, so the page reads the field instead of the status code that carried it.
+    window.ConcordApi.post('/api/v1/curation/' + encodeURIComponent(item.kind) + '/' + item.id + '/vote',
+      { vote: choice, rationale: '' })
+      .then(function (data) {
         item.my_vote = choice === 'yes' ? 1 : -1;
         item.yes = data.yes || 0;
         item.no = data.no || 0;
         var msg = 'Recorded.';
-        if (res.status === 202) {
+        // The server's own flags. `202` was the Go service's way of saying "recorded, not decided", and the Rust port
+        // answers 200 for every case — so the status branch was dead and this message never appeared.
+        if (data.ratified === false || data.decided === false) {
           msg = 'Recorded. Not decided yet \u2014 ' + item.yes + ' consent(s) so far.';
         } else if (item.kind !== 'act') {
           item.state = 'ratified';
@@ -305,11 +278,11 @@ function apiAuth(extra) {
         // about how much work is left. The message is carried into the reload for the same
         // reason as the Undo handler's -- load() owns the status line.
         load(false, msg);
+      })
+      .catch(function (error) {
+        say(error && error.status ? error.message : 'Could not reach the server.');
+        if (btn) { btn.disabled = false; }
       });
-    }).catch(function () {
-      say('Could not reach the server.');
-      if (btn) { btn.disabled = false; }
-    });
   }
 
   function load(append, note) {
@@ -322,13 +295,8 @@ function apiAuth(extra) {
     params.set('limit', '20');
 
     say('Loading\u2026');
-    fetch('/api/v1/curation?' + params.toString(), {
-      headers: apiAuth({ Accept: 'application/json' }),
-      credentials: 'same-origin'
-    }).then(function (res) {
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      return res.json();
-    }).then(function (page) {
+    window.ConcordApi.get('/api/v1/curation?' + params.toString())
+      .then(function (page) {
       if (!append) { listEl.innerHTML = ''; shown = 0; }
       (page.items || []).forEach(function (item) {
         listEl.appendChild(card(item));

@@ -49,12 +49,11 @@
   if (!root) return;
 
   function json(path) {
-    return fetch(path, { headers: { Accept: 'application/json' } })
-      .then(function (r) {
-        if (r.status === 404) return null;
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      });
+    // One client (review item 9b): a 404 is `null` here — the page renders "no such feature" from it.
+    return window.ConcordApi.get(path).catch(function (error) {
+      if (error && error.status === 404) return null;
+      throw error;
+    });
   }
 
   // aria-busy is cleared through the house helper, not by setting the attribute.
@@ -105,27 +104,7 @@
             encodeURIComponent(btn.getAttribute('data-contest-send')) + '/coverage/' +
             encodeURIComponent(btn.getAttribute('data-contest-send-complaint')) + '/contest';
           // authHeaders() from session.js, the one place that knows the key: reaching
-          // into localStorage here would be a second copy of the token's spelling.
-          var headers = { 'Content-Type': 'application/json' };
-          var sess = window.ConcordSession && window.ConcordSession.instance();
-          if (sess) {
-            var auth = sess.authHeaders();
-            for (var k in auth) {
-              if (Object.prototype.hasOwnProperty.call(auth, k)) headers[k] = auth[k];
-            }
-          }
-          fetch(path, {
-            method: 'POST',
-            headers: headers,
-            body: JSON.stringify({ reason: reason })
-          }).then(function (r) {
-            return r.text().then(function (txt) {
-              var body = {};
-              try { body = txt ? JSON.parse(txt) : {}; } catch (e) { body = {}; }
-              if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
-              return body;
-            });
-          }).then(function () {
+          window.ConcordApi.post(path, { reason: reason }).then(function () {
             // Re-read: coverage is recomputed server-side and the contested claim
             // changes that number, so a locally patched row would show the old one.
             window.location.reload();
@@ -290,36 +269,15 @@
     function fail(msg) {
       if (sink) { sink.textContent = msg; sink.hidden = false; }
     }
-    function headers() {
-      // authHeaders() from session.js, the one place that knows the key.
-      var h = { 'Content-Type': 'application/json' };
-      var sess = window.ConcordSession && window.ConcordSession.instance();
-      if (sess) {
-        var auth = sess.authHeaders();
-        for (var k in auth) {
-          if (Object.prototype.hasOwnProperty.call(auth, k)) h[k] = auth[k];
-        }
-      }
-      return h;
-    }
     // send is POST, which is what every writer on this page but the detach control is.
     // sendAs exists rather than a fourth argument on send, because a positional method
     // is the kind of call site where the next writer passes a payload and gets a JSON
     // body it did not ask for.
     function sendAs(method, path, payload, btn) {
       if (btn) btn.disabled = true;
-      fetch(path, {
-        method: method,
-        headers: headers(),
-        body: payload === undefined ? undefined : JSON.stringify(payload)
-      })
-        .then(function (r) {
-          return r.text().then(function (txt) {
-            var body = {};
-            try { body = txt ? JSON.parse(txt) : {}; } catch (e) { body = {}; }
-            if (!r.ok) throw new Error(body.error || ('HTTP ' + r.status));
-            window.location.reload();
-          });
+      window.ConcordApi.request(method, path, payload === undefined ? null : payload)
+        .then(function () {
+          window.location.reload();
         })
         .catch(function (e) {
           if (btn) btn.disabled = false;
@@ -407,26 +365,10 @@
       ' <span class="ms-badge">' + esc(b.status) + '</span>';
   }
 
+  // One client (review item 9b). The plain-text branch (`JSON.parse` in a `try`, `throw new Error(m)`) is what
+  // `ApiError.message` is; a 204 resolves to `null` there too, which is the shape this page's callers expect.
   function send(method, path, body) {
-    return fetch(path, {
-      method: method,
-      headers: (function () {
-        var h = { 'Content-Type': 'application/json' };
-        var tok = window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {};
-        for (var k in tok) { if (Object.prototype.hasOwnProperty.call(tok, k)) h[k] = tok[k]; }
-        return h;
-      })(),
-      body: body === undefined ? undefined : JSON.stringify(body)
-    }).then(function (r) {
-      if (!r.ok) {
-        return r.text().then(function (t) {
-          var m = t;
-          try { m = JSON.parse(t).error || t; } catch (e) { /* plain text */ }
-          throw new Error(m || ('HTTP ' + r.status));
-        });
-      }
-      return r.status === 204 ? null : r.json().catch(function () { return null; });
-    });
+    return window.ConcordApi.request(method, path, body === undefined ? null : body);
   }
 
   function status(el, msg, isError) {

@@ -1,19 +1,3 @@
-/* apiAuth: the session's Authorization header, for API calls.
- *
- * Every read on this page used to go out anonymous -- harmless while the project is
- * public, and fatal for the projects whose settings most need changing: a member
- * reaches a protected project (the navigation cookie opened the page) and then every
- * panel 404s, because the page's own reads carried no credential. session.js has
- * exported authHeaders() all along; this is the two lines that use it, and for a
- * signed-out visitor the request is identical to before. The hand-built copies
- * ("var headers = {Content-Type}; if (token) headers.Authorization = ...") are gone
- * for the same reason there is one of these: five copies of a rule is five chances
- * to leave the token out, and two of them had. */
-function apiAuth(extra) {
-  var h = extra || {};
-  var tok = window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {};
-  for (var k in tok) { if (Object.prototype.hasOwnProperty.call(tok, k)) h[k] = tok[k]; }
-  return h;
 }
 // Concord Scout: free-text idea in, catalog verdicts out.
 //

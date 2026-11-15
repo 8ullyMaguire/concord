@@ -1,17 +1,4 @@
-/* apiAuth: the session's Authorization header, for API reads.
- *
- * Every read on this page used to go out anonymous -- harmless while the project is
- * public, and fatal for the projects whose settings most need changing: a member
- * reaches a protected project (the navigation cookie opened the page) and then every
- * panel 404s, because the page's own reads carried no credential. session.js has
- * exported authHeaders() all along; this is the two lines that use it, and for a
- * signed-out visitor the request is identical to before. */
-function apiAuth(extra) {
-  var h = extra || {};
-  var tok = window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {};
-  for (var k in tok) { if (Object.prototype.hasOwnProperty.call(tok, k)) h[k] = tok[k]; }
-  return h;
-}
+
 // Concord — project documents.
 //
 // Reachable at /projects/{slug}/documents. Before this page the whole document
@@ -546,32 +533,15 @@ function apiAuth(extra) {
     function run(q) {
       var mine = ++seq;
       say('Searching…');
-      fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/documents/search?q=' +
-            encodeURIComponent(q) + '&limit=20', { headers: apiAuth({ Accept: 'application/json' }) })
-        .then(function (r) {
-          return r.text().then(function (t) { return { status: r.status, text: t }; });
-        })
-        .then(function (res) {
+      // One client (review item 9b). The 400 is the one answer this control explains differently from the rest — a
+      // malformed FTS5 expression (an unbalanced quote, a bare operator) is the reader's typo, not a failure — and
+      // `ApiError.status` plus the server's sentence is enough to say so.
+      window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/documents/search?q=' +
+            encodeURIComponent(q) + '&limit=20')
+        .then(function (hits) {
           // A slow answer to "consensus" must not land after "consensus vote".
           if (mine !== seq) return;
-
-          if (res.status === 400) {
-            // A malformed FTS5 expression -- an unbalanced quote, a bare operator.
-            // The server says WHICH, and the list is left as it was rather than
-            // emptied: an empty list is a claim about the corpus, and "your query
-            // could not be parsed" is a different statement.
-            var why = 'the server could not parse that query';
-            try { why = JSON.parse(res.text).error || why; } catch (e) { /* not JSON */ }
-            say('The search could not run: ' + why, true);
-            return;
-          }
-          if (res.status !== 200) {
-            say('The search failed (' + res.status + '). The list below is unchanged.', true);
-            return;
-          }
-
-          var hits = [];
-          try { hits = JSON.parse(res.text) || []; } catch (e) { hits = []; }
+          hits = hits || [];
           hits.forEach(function (d) { d.__slug = slug; });
           var col = column();
           if (col) col.innerHTML = docList(hits, state.doc && state.doc.id);
@@ -580,8 +550,17 @@ function apiAuth(extra) {
               ' for “' + q + '”'
             : 'No document in this project matches “' + q + '”.');
         })
-        .catch(function () {
-          if (mine === seq) say('The search could not reach the server.', true);
+        .catch(function (error) {
+          if (mine !== seq) return;
+          if (error && error.status === 400) {
+            // The list is left as it was rather than emptied: an empty list is a claim about the corpus, and "your
+            // query could not be parsed" is a different statement.
+            say('The search could not run: ' + error.message, true);
+          } else if (error && error.status) {
+            say('The search failed (' + error.status + '). The list below is unchanged.', true);
+          } else {
+            say('The search could not reach the server.', true);
+          }
         });
     }
 
@@ -636,8 +615,8 @@ function apiAuth(extra) {
       : '<div class="loading-spinner" role="status" aria-label="Loading documents"></div>');
 
     // Documents are public: a read of the list returns 200 without a token.
-    fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/documents?fields=meta', { headers: apiAuth() })
-      .then(function (r) { return r.ok ? r.json() : []; })
+    window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/documents?fields=meta')
+      .catch(function () { return []; })
       .then(function (list) {
         var docs = (list || []).map(function (d) { return d; });
         // The list response carries project_id but not the slug, and the links
@@ -677,9 +656,9 @@ function apiAuth(extra) {
         // The list arrives WITHOUT bodies (`?fields=meta`), because a project's documents are megabytes of prose and the page needs exactly
         // one of them. This is the one request the reader makes for a body, and it is why the page draws in a second instead of thirty.
         var bodyReady = doc && !doc.body
-          ? fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/documents/' + encodeURIComponent(String(doc.id)),
-              { headers: apiAuth() })
-              .then(function (r) { return r.ok ? r.json() : null; })
+          ? window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/documents/' +
+              encodeURIComponent(String(doc.id)))
+              .catch(function () { return null; })
               .then(function (full) {
                 if (full && typeof full.body === 'string') doc.body = full.body;
                 return doc;

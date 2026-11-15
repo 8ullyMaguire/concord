@@ -1,20 +1,4 @@
-/* apiAuth: the session's Authorization header, for API calls.
- *
- * Every read on this page used to go out anonymous -- harmless while the project is
- * public, and fatal for the projects whose settings most need changing: a member
- * reaches a protected project (the navigation cookie opened the page) and then every
- * panel 404s, because the page's own reads carried no credential. session.js has
- * exported authHeaders() all along; this is the two lines that use it, and for a
- * signed-out visitor the request is identical to before. The hand-built copies
- * ("var headers = {Content-Type}; if (token) headers.Authorization = ...") are gone
- * for the same reason there is one of these: five copies of a rule is five chances
- * to leave the token out, and two of them had. */
-function apiAuth(extra) {
-  var h = extra || {};
-  var tok = window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {};
-  for (var k in tok) { if (Object.prototype.hasOwnProperty.call(tok, k)) h[k] = tok[k]; }
-  return h;
-}
+
 
 // Concord criteria page -- spec §6.4's comparison table.
 //
@@ -86,29 +70,23 @@ function apiAuth(extra) {
   }
 
   function get(path) {
-    return fetch(base + path, { headers: apiAuth() }).then(function (r) {
-      return r.text().then(function (t) {
-        var body = {};
-        try { body = t ? JSON.parse(t) : {}; } catch (e) { body = { error: t }; }
-        if (!r.ok) throw { status: r.status, body: body };
-        return body;
-      });
-    });
+    // One client (review item 9b). The `{status, body}` shape stays because this page's callers read `err.body.error`
+    // out of it; what is gone is the second parser, and the plain-text branch is `ApiError.message` now.
+    return window.ConcordApi.get(base + path).catch(toRefusal);
+  }
+
+  // The page's refusals have always been `{status, body}` objects (seven call sites read `err.status` and
+  // `err.body.error`); this keeps that shape and stops each call site building it. An `ApiError` already holds both — the
+  // status and the server's sentence — so a plain-text refusal loses nothing.
+  function toRefusal(error) {
+    throw {
+      status: error && error.status ? error.status : 0,
+      body: { error: error && error.message ? error.message : String(error) }
+    };
   }
 
   function send(method, path, payload) {
-    return fetch(base + path, {
-      method: method,
-      headers: apiAuth({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(payload)
-    }).then(function (r) {
-      return r.text().then(function (t) {
-        var body = {};
-        try { body = t ? JSON.parse(t) : {}; } catch (e) { body = { error: t }; }
-        if (!r.ok) throw { status: r.status, body: body };
-        return body;
-      });
-    });
+    return window.ConcordApi.request(method, base + path, payload).catch(toRefusal);
   }
 
   // refusal(): the server's own words, and for the two statuses whose meaning is
@@ -149,18 +127,8 @@ function apiAuth(extra) {
     if (state.includeInactive) payload.include_inactive = true;
     if (state.requireMinRD) payload.require_min_rd = true;
 
-    return fetch(base + '/rank/composite', {
-      method: 'POST',
-      headers: apiAuth({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify(payload)
-    }).then(function (r) {
-      return r.text().then(function (t) {
-        var body = {};
-        try { body = t ? JSON.parse(t) : {}; } catch (e) { body = {}; }
-        if (!r.ok) throw { status: r.status, body: body };
-        return body;
-      });
-    }).then(function (body) {
+    return window.ConcordApi.post(base + '/rank/composite', payload).catch(toRefusal)
+    .then(function (body) {
       state.composite = body;
       say(msg || '');
       render();

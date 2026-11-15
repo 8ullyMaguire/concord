@@ -1,17 +1,3 @@
-/* apiAuth: the session's Authorization header, for API reads.
- *
- * Every read on this page used to go out anonymous -- harmless while the project is
- * public, and fatal for the projects whose settings most need changing: a member
- * reaches a protected project (the navigation cookie opened the page) and then every
- * panel 404s, because the page's own reads carried no credential. session.js has
- * exported authHeaders() all along; this is the two lines that use it, and for a
- * signed-out visitor the request is identical to before. */
-function apiAuth(extra) {
-  var h = extra || {};
-  var tok = window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {};
-  for (var k in tok) { if (Object.prototype.hasOwnProperty.call(tok, k)) h[k] = tok[k]; }
-  return h;
-}
 // Concord homepage stats — rendered from the public read API.
 (function () {
   // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it, so this file cannot disagree with
@@ -25,8 +11,9 @@ function apiAuth(extra) {
   }
 
   document.addEventListener('DOMContentLoaded', function () {
-    var projects = fetch('/api/v1/projects', { headers: apiAuth() }).then(function (r) { return r.ok ? r.json() : []; });
-    var search = fetch('/api/v1/search?sort=updated', { headers: apiAuth() }).then(function (r) { return r.ok ? r.json() : { facets: {} }; });
+    // One client (review item 9b): the two reads the homepage's stats row needs, with the fallback each already had.
+    var projects = window.ConcordApi.get('/api/v1/projects').catch(function () { return []; });
+    var search = window.ConcordApi.get('/api/v1/search?sort=updated').catch(function () { return { facets: {} }; });
 
     projects.then(function (list) {
       setText('stat-projects', Array.isArray(list) ? list.length : 0);

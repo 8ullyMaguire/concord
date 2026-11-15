@@ -475,3 +475,10 @@ projects, in the same order, because two callers deriving one answer is how they
   test's name was not captured, so it is written down as a flake with an unknown identity, not as fixed.
 - **Suite flake to name next time**: run `board_e2e` with `-x -v` when a failure appears, so the roadmap records which test and why
   instead of a count.
+- **2026-11-15 (`api9`)**: `feature.js`, `criteria.js`, `curation.js`, `documents.js`, `notifications.js`, `comments.js`, `index.js`
+  converted (seven duplicate helpers deleted). **28 of 39 files now carry no `fetch(`; 20 occurrences remain in 11 files**, four of
+  which are the transport (`api.js` 1, `session.js` 1, `auth.js` 2). Two dead branches found by reading: `curation.js`'s
+  "Recorded. Not decided yet" hung off `status === 202`, which `curation_vote` never returns on the Rust side (no ACCEPTED arm), so
+  the message had not appeared since cutover — it reads `ratified`/`decided` now; and `documents.js`'s search refusal no longer
+  hand-parses the body. Gate: `probe_pages 136/136`, `feature_e2e 15`, `documents_e2e 5`, `project_panels_e2e 26`; live five pages,
+  zero console errors, no region left `aria-busy`.

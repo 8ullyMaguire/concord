@@ -1,14 +1,3 @@
-/* apiAuth: the session's Authorization header, for API calls.
- *
- * The page's own reads need the token even when the navigation cookie opened the
- * HTML: the cookie is deliberately not an API credential (it cannot authorize a
- * write), so a member whose page loaded would otherwise see every panel 404.
- * Auth is the one thing this file does not decide for itself. */
-function apiAuth(extra) {
-  var h = extra || {};
-  var tok = window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {};
-  for (var k in tok) { if (Object.prototype.hasOwnProperty.call(tok, k)) h[k] = tok[k]; }
-  return h;
 }
 
 // Concord merge requests -- §5.7's confirmation gate, with a reader.
