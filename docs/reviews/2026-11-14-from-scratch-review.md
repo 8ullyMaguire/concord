@@ -8,6 +8,18 @@ Every claim below is a measurement, and the command that produced it is in the s
 
 ## Work log
 
+- **2026-11-15 — the split finished, and it found five live defects the split did not cause.** `project.js` went 1,617 → 902 lines
+  across three capability files (`project-arena.js` 238, `project-panels.js` 303, `project-writes.js` 234), each registering itself
+  on `window` and loaded in dependency order; helpers (`setStatus`, `postJSON`, `showCardRefusal`) are bound once from the file that
+  owns them, never copied. What the work found: the claim button and the sizing form were sending **GETs to POST/PUT routes**
+  (`sendJSON` was `ConcordApi.get(path, {method: …})`, and `api.js`'s `get` hardcodes GET and drops the body) — `405`, button
+  re-enabled silently, since `54848be`; and **four API paths carried a trailing slash the port answers `404` where Go answered both**
+  (`/similar/{kind}/` — the duplicate panel, dead since cutover; `PUT /documents/`; `/features/` in settings; `/features/` in
+  milestones), two of them wrapped in `.catch`/`getOrNull`. `duplicates_e2e` had never run at all: it seeded SQLite directly
+  (`no such table: users`, 5 errors, 0 tests). Repaired, it failed honestly, then passed. Gate: `duplicates_e2e 5 passed` (first
+  PostgreSQL run in its life) · `project_panels_e2e 26` · `feature_e2e 15` · `probe_pages 136/136` · `api_paths 0` ·
+  `probe_claim_button VERDICT: POST reached the route`. Commits `ede8c2c`, `e5f02df`, `d6c942b`, `0c8272b`.
+
 - **2026-11-15 — item 9 done: one client, and the pages it revealed.** Every page script now calls `api.js`; `grep -c 'fetch('` over
   `crates/web/assets/js/*.js` gives **4 sites in 39 files**, all four the transport itself. What the conversion found, in the order it
   found it: `/stats` loaded no script at all and had never shown its three numbers; the project overview had never finished loading
