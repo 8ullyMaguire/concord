@@ -89,14 +89,45 @@ def main() -> int:
 
     files = [(path, path.read_text(errors="ignore")) for path in reader_files()]
     rows = []
+    indirect = set()
     for route in routes():
         pattern = reader_pattern(route)
         hits = sum(1 for _path, text in files if pattern.search(text))
+        if hits == 0:
+            # Indirect readers: the path is assembled from a table of verbs. `merge.js` builds
+            # `base + '/merge/' + id + '/' + verb` where `verb` comes from `ACTIONS = {… approve …}`,
+            # so neither `/merge/…/approve` nor `/approve` exists as a string, and a path grep cannot
+            # see the call at all. Recognised as: the path's literal prefix is in the file AND its last
+            # segment appears there as a quoted string. Counted, and counted SEPARATELY, because a
+            # reader this script cannot point at is a weaker claim than one it can.
+            segments = route.strip("/").split("/")
+            last = segments[-1]
+            prefix = "/" + "/".join(segments[:-1]) + "/"
+            if not last.startswith("{"):
+                for _path, text in files:
+                    if prefix in text and f'"{last}"' in text or prefix in text and f"'{last}'" in text:
+                        hits = 1
+                        indirect.add(route)
+                        break
         rows.append((route, hits))
 
-    unread = [r for r in rows if r[1] == 0]
+    # A reader that assembles the path from a table is invisible to a path grep, and guessing at it is
+    # how this script would start reporting its own opinions. Those are declared by hand, one per line,
+    # with the file:line that proves the claim — `route_readers.allow` beside this script.
+    declared = {}
+    allow = pathlib.Path(__file__).with_suffix(".allow")
+    if allow.exists():
+        for line in allow.read_text().splitlines():
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            route, _, why = line.partition(" ")
+            declared[route] = why.strip()
+
+    unread = [r for r in rows if r[1] == 0 and r[0] not in declared]
     print(f"routes registered: {len(rows)}")
     print(f"routes with a reader: {len(rows) - len(unread)}")
+    print(f"  declared indirect (a verb table, in route_readers.allow): {len([r for r in rows if r[1] == 0 and r[0] in declared])}")
     print(f"routes with no reader: {len(unread)}")
 
     if args.all:

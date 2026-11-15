@@ -1,0 +1,8 @@
+# Routes whose reader builds the path from a table, so a path grep cannot see the call.
+#
+# Format: the route as registered, a space, then the file:line that proves a reader exists.
+# Every line here is a claim somebody checked. A line whose reader disappears is a lie this file keeps,
+# so it is deliberately short and each entry names its evidence.
+
+/api/v1/projects/{slug}/merge/{merge}/approve  crates/web/assets/js/merge.js:195 — `ACTIONS = {'data-approve': 'approve', …}`, and line 209 builds `base + '/merge/' + id + '/' + verb`
+/api/v1/projects/{slug}/merge/{merge}/reject   crates/web/assets/js/merge.js:195 — same table, `'data-reject': 'reject'`

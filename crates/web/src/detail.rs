@@ -441,6 +441,11 @@ pub async fn merge(
         Err(error) => return crate::error_page(&headers, "the merge queue could not be read", &error.to_string()),
     };
     let mut body = Html::new();
+    // The merge queue's own script — the one that carries Confirm / Merge / Reject and the gate sentence — was written and never loaded:
+    // the page rendered a table and nothing else, so the button-less queue was the whole feature. `merge.js` asks for `#merge-root`, which
+    // did not exist either (ADR 0012 counted the three write routes as unread). The table stays inside the mount for a reader without
+    // JavaScript, and the script replaces it with the one that can act.
+    body.open("div", &[("id", "merge-root"), ("aria-busy", "true")]);
     if rows.is_empty() {
         body.open("p", &[("class", "empty")]).text("No merge request has been opened for this project.").close("p");
     } else {
@@ -468,6 +473,10 @@ pub async fn merge(
         }
         body.close("tbody").close("table");
     }
+    body.close("div");
+    body.open("p", &[("id", "merge-notice"), ("class", "form-note"), ("role", "status"), ("aria-live", "polite")]).close("p");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/skeleton.js")), ("defer", "")]).close("script");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/merge.js")), ("defer", "")]).close("script");
     let bootstrap = serde_json::json!({
         "merges": rows.iter().map(|row| serde_json::json!({
             "id": row.id, "title": row.title, "status": row.status, "external_ref": row.external_ref,

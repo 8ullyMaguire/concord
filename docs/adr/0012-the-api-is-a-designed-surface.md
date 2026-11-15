@@ -34,12 +34,13 @@ Result on 2026-11-15, commit `263ef14`:
 
 ```
 routes registered: 174
-routes with a reader: 166
-routes with no reader: 8
+routes with a reader: 168
+  declared indirect (a verb table, in route_readers.allow): 2
+routes with no reader: 6
 ```
 
-The first run of this script, on `263ef14`, said 165 and 9. The difference is `/archive`: the control was wired into
-the project page in the same session (see the table), and the audit is what made that the obvious next move.
+The first run of this script, on `263ef14`, said 165 and 9. The difference is `/archive` (wired into the project page, see
+the table) and the merge pair (below). The audit made both obvious moves; that is the whole argument for it existing.
 
 The nine, with what each one is:
 
@@ -52,8 +53,8 @@ The nine, with what each one is:
 | `/api/v1/projects/{slug}/alternatives/{arena}/vote` | unread — the arena vote page calls a different route |
 | `/api/v1/projects/{slug}/archive` | **wired** — was unread; the project page now carries a maintainer-only control (proved by `scripts/parity/probe_archive_page.py`) |
 | `/api/v1/projects/{slug}/audit/actions` | unread — the audit page reads the whole log instead |
-| `/api/v1/projects/{slug}/merge/{merge}/approve` | unread — the merge UI never grew an approve step |
-| `/api/v1/projects/{slug}/merge/{merge}/reject` | unread — same |
+| `/api/v1/projects/{slug}/merge/{merge}/approve` | **wired** — `merge.js` builds this path from its `ACTIONS` table; the page that loads that script had no `#merge-root` and never loaded it. It does now. |
+| `/api/v1/projects/{slug}/merge/{merge}/reject` | **wired** — same table, same page |
 
 `/archive` was the failure this repository produces most often, and it is worth naming: the act was built
 last session with a migration, a route, a permission check, two unit tests and a passing gate — **and no
@@ -74,7 +75,10 @@ control, and an anonymous reader and a stranger are refused — measured, not as
 3. **The audit is a gate, not an anecdote.** `scripts/parity/route_readers.py` is run by hand today and
    belongs in `make gate` beside the probes; its unread list must be a list of decisions, not a list of
    surprises.
-4. **The unread list above is the queue.** `/archive` first (wire the act into the project page), then the
+4. **A reader this script cannot see is declared, not assumed.** `scripts/parity/route_readers.allow` names the routes whose
+   reader assembles the path from a table (`merge.js`'s `ACTIONS`), one per line with the `file:line` that proves it. The
+   count prints those separately, because a reader the audit had to be told about is a weaker claim than one it found.
+5. **The unread list above is the queue.** `/archive` first (wire the act into the project page), then the
    merge approve/reject pair (either finish the merge UI or delete the routes), then the strategy
    withdraws, then the alternatives vote. Each is a decision — delete or adopt — recorded where the next
    session will read it.
