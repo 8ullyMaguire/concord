@@ -527,5 +527,8 @@ projects, in the same order, because two callers deriving one answer is how they
   `js: API paths with a stray trailing '/': 0` · `routes: all 13 answered` · `gate: PASS`, with 56 `test result: ok` lines
   including the vendored crates' suites. Pushes still do not create runs on their own — the workflow now carries
   `workflow_dispatch`, so `gh workflow run gate.yml --ref port-rust` is the way to ask.
-* **Open, not blocking:** `settings.js` asks four owner-only routes behind `getOrNull` for a signed-out reader (the four 401s
-  `probe_requests.py` lists); the change is written and unproven until the next deploy.
+* **Deployed from the vendored tree, and the signed-out crawl is now clean in both buckets.** `concord-rs 0.0.0+6ff37fb+vendor`
+  on `concord-rs.service`, built `--offline` from the vendored workspace (`Finished release profile in 6m 06s`). `probe_requests.py`
+  went from 52 distinct requests with 4 × 401 to **48 distinct requests, 0 × 401, 0 × 404/405/5xx** — the four gone are exactly the
+  owner-only reads `settings.js` used to make for a signed-out reader (`6ff37fb`). Suites on that binary: `probe_pages 136/136` ·
+  `duplicates_e2e 5` · `project_panels_e2e 26` · `feature_e2e 15` · `board_e2e 8`.
