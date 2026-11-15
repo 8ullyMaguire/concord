@@ -161,6 +161,12 @@ pub async fn search_documents(
         return Ok(Ok(Vec::new()));
     }
     let limit = if limit <= 0 || limit > 100 { 20 } else { limit };
+    // An unbalanced quote is the one malformation `websearch_to_tsquery` will NOT report: it treats the rest as a phrase, so `"unbalanced`
+    // searched for a phrase nobody wrote and the page said "no document matches" — a wrong answer dressed as an empty one. The reference's
+    // SQLite FTS5 refused the expression, and refusing it is the same courtesy: a query that could not run is not a query that found nothing.
+    if query.matches('"').count() % 2 == 1 {
+        return Ok(Err("the query could not run: a quoted phrase is not closed".to_string()));
+    }
     let expression = if looks_like_expression(query) {
         // A real expression goes to the expression parser; a failure there is the caller's mistake, not ours.
         format!("websearch_to_tsquery('simple', {})", quote_literal(query))

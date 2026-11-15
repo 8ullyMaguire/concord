@@ -421,7 +421,13 @@ projects, in the same order, because two callers deriving one answer is how they
   `criteria`, `audit`) rendered a private project's name, tabs and shell to an anonymous reader while the API refused the data. `resolve` now
   calls `projects::readable_for`, the check the overview and the API already used, in one place rather than six. `board_e2e` went from
   `1 failed, 7 passed` to `8 passed in 18.77s`; `consensus_e2e 15`, `audit_e2e 11`, `milestones_e2e 5` still pass.
-* **`documents_e2e` and `requests_e2e` cannot run at all**: both seed a SQLite file (`sqlite3.connect`, `INSERT INTO users …`). They are
-  pre-port suites that test the Go binary's database, and they will keep erroring until they are ported to the scratch Postgres or retired.
-  Nothing depends on them today, which is the reason they have stayed broken — and it is why `requests.js` has no browser proof even after
-  adopting `api.js`: the only suite that would drive it cannot start.
+* ~~**`documents_e2e` and `requests_e2e` cannot run at all**~~ — **`documents_e2e` fixed and passing 2026-11-15** (`5 passed in 22.35s`).
+  Both suites called `sqlite3.connect` directly instead of `harness.connect`, so neither tested the Rust binary; `PgSeed` grew `cursor()`
+  and both use the harness now. Making `documents_e2e` run found five defects that had made `/projects/{slug}/documents` a page nobody could
+  use: no `#project-documents` mount (the script was never loaded, so no kinds rail, reading pane or search), `skeleton.js` missing (so
+  `done()` never ran and the region stayed `aria-busy` forever), `markdown.js` missing (the reader threw), and a list that shipped every
+  document BODY — **11.7 MB, still downloading at thirty seconds** — now `?fields=meta` at `37104b` in `0.20s`, with the single document
+  fetched from `/documents/{id}`. The search endpoint also refused an unbalanced quote, which `websearch_to_tsquery` silently accepted:
+  `400 "the query could not run: a quoted phrase is not closed"`.
+* **`requests_e2e` still cannot run**: it seeds through the harness now, but `16 failed, 2 passed` on the first real run, and every failure
+  needs its own look. `requests.js` adopted `api.js` this session, so this suite is the only proof that panel has.

@@ -718,6 +718,7 @@ struct BoardQuery {
 async fn list_documents(
     State(state): State<AppState>,
     Path(slug): Path<String>,
+    Query(query): Query<DocumentListQuery>,
 ) -> Result<Json<Value>, ApiError> {
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
@@ -726,7 +727,28 @@ async fn list_documents(
     let documents = concord_db::projects::list_documents(&state.pool, project.id)
         .await
         .map_err(internal)?;
-    Ok(Json(serde_json::to_value(documents).map_err(internal)?))
+    let mut value = serde_json::to_value(documents).map_err(internal)?;
+    // `?fields=meta` drops the bodies. The default shape is unchanged, which matters: the Go route returns bodies and the corpus replay
+    // compares this response against the recorded one. What the browser needs is different from what the corpus needs — one project's
+    // documents are 11.7 MB of prose, and the documents page measured 30+ seconds before it drew anything because it asked for all of it
+    // to display one document. The reader fetches the single document at `/documents/{id}` instead.
+    if query.fields.as_deref() == Some("meta") {
+        if let Some(items) = value.as_array_mut() {
+            for item in items {
+                if let Some(object) = item.as_object_mut() {
+                    object.remove("body");
+                }
+            }
+        }
+    }
+    Ok(Json(value))
+}
+
+/// `?fields=` on the document list. Only `meta` is understood, and anything else is ignored rather than refused: an unknown field set is a
+/// client asking for something this route does not do, and answering with the full document is the honest reading of that request.
+#[derive(Debug, Deserialize, Default)]
+struct DocumentListQuery {
+    fields: Option<String>,
 }
 
 /// `GET /api/v1/projects/{slug}/documents/{doc_id}` — one document, body and all.

@@ -74,7 +74,7 @@ def page(browser, server):
 
 def seed(db):
     now = 1790000000
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     try:
         con.execute(
             "INSERT INTO users (username, display_name, created_at, password_hash, trust_level)"

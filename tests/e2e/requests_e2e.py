@@ -48,7 +48,7 @@ _ips = itertools.count(1)
 
 def seed(db):
     """One public project with a request, three answers and tags. One private project."""
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     cur = con.cursor()
     now = time.time()
 

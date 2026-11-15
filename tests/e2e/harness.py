@@ -378,6 +378,15 @@ class PgSeed:
     def fetchall(self):
         return self._cursor.fetchall() if self._cursor else []
 
+    def cursor(self):
+        """Cursor-shaped is enough.
+
+        The adapter IS a cursor — `execute`, `executemany`, `fetchone`, `fetchall`, `description`, `lastrowid`. One suite calls
+        `con.cursor()` because SQLite required one; returning `self` keeps `cur.execute(...)` working without a second state machine that
+        would have to agree with this one about pending rows.
+        """
+        return self
+
     def commit(self):
         self._con.commit()
 

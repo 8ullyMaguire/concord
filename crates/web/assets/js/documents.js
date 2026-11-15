@@ -636,7 +636,7 @@ function apiAuth(extra) {
       : '<div class="loading-spinner" role="status" aria-label="Loading documents"></div>');
 
     // Documents are public: a read of the list returns 200 without a token.
-    fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/documents', { headers: apiAuth() })
+    fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/documents?fields=meta', { headers: apiAuth() })
       .then(function (r) { return r.ok ? r.json() : []; })
       .then(function (list) {
         var docs = (list || []).map(function (d) { return d; });
@@ -674,20 +674,37 @@ function apiAuth(extra) {
         // documents. It used to be omitted in that case, and that is exactly where
         // search results have to appear -- so a search on an empty kind would have
         // had nowhere to draw and would have looked like a search that found nothing.
-        box.innerHTML =
-          '<div class="doc-layout">' +
-          rail(kinds, { kind: kind, slug: slug }) +
-          '<div class="doc-main">' +
-          '<div class="doc-list-col">' + docList(ofKind, doc && doc.id) + '</div>' +
-          '<div class="doc-reader">' + reader(doc, slug) + '</div>' +
-          '</div></div>';
+        // The list arrives WITHOUT bodies (`?fields=meta`), because a project's documents are megabytes of prose and the page needs exactly
+        // one of them. This is the one request the reader makes for a body, and it is why the page draws in a second instead of thirty.
+        var bodyReady = doc && !doc.body
+          ? fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/documents/' + encodeURIComponent(String(doc.id)),
+              { headers: apiAuth() })
+              .then(function (r) { return r.ok ? r.json() : null; })
+              .then(function (full) {
+                if (full && typeof full.body === 'string') doc.body = full.body;
+                return doc;
+              })
+          : Promise.resolve(doc);
 
-        renderMarkdownNodes(box);
-        if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
-        wire(box, slug, doc || { body: '' });
-        // The state the search needs to put the kind list BACK: the hits replace the
-        // list column, and clearing the box has to restore what was there.
-        wireSearch(box, slug, { docs: docs, ofKind: ofKind, kind: kind, doc: doc });
+        return bodyReady.then(function () {
+          box.innerHTML =
+            '<div class="doc-layout">' +
+            rail(kinds, { kind: kind, slug: slug }) +
+            '<div class="doc-main">' +
+            '<div class="doc-list-col">' + docList(ofKind, doc && doc.id) + '</div>' +
+            '<div class="doc-reader">' + reader(doc, slug) + '</div>' +
+            '</div></div>';
+
+          renderMarkdownNodes(box);
+          // The region must leave `aria-busy` behind whether or not `skeleton.js` is on the page: this is the accessibility state of the
+          // page's main content, and making it depend on a second file made it stick forever the one time that file was missing.
+          if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
+          box.setAttribute('aria-busy', 'false');
+          wire(box, slug, doc || { body: '' });
+          // The state the search needs to put the kind list BACK: the hits replace the
+          // list column, and clearing the box has to restore what was there.
+          wireSearch(box, slug, { docs: docs, ofKind: ofKind, kind: kind, doc: doc });
+        });
       })
       .catch(function () {
         box.innerHTML = '<div class="empty-state"><div class="empty-state-icon">\u26A0\uFE0F</div>' +

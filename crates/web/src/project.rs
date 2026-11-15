@@ -183,21 +183,55 @@ async fn documents_body(pool: &PgPool, project: &Project) -> Result<(String, ser
     let documents = projects::list_documents(pool, project.id)
         .await
         .map_err(|error| format!("the documents could not be read: {error}"))?;
-    if documents.is_empty() {
-        return Ok((empty("This project has no documents."), serde_json::json!({"documents": []})));
-    }
+
+    // The reference's document BROWSER, not a list of titles: `documents.js` draws the kinds rail, the reading pane and the search box, and
+    // its four assertions (a search finds a document in another kind and links to it, a query matching nothing says so, a malformed query shows
+    // the server's message, a search is a shareable address) are all client behaviour. This page rendered a server-side list instead and never
+    // loaded the script, so `/projects/{slug}/documents` had no search at all and `documents_e2e` timed out waiting for a mount that did not
+    // exist — five failures that read like a broken page and were a missing one.
+    //
+    // The list is still rendered on the server inside the mount, so a reader without JavaScript sees the documents rather than a spinner. The
+    // script replaces it on load, which is the same bargain `/projects/{slug}` makes between its header and its pills.
     let mut body = Html::new();
-    body.open("ul", &[("class", "documents")]);
-    for document in &documents {
-        body.open("li", &[])
-            .text(&document.title)
-            .open("span", &[("class", "muted")])
-            .text(&format!("{} · revision {}", document.kind, document.revision))
-            .close("span")
-            .close("li");
+    // The search box lives OUTSIDE the mount because `documents.js` replaces the mount's `innerHTML` when it draws, and a form inside it would
+    // be destroyed by the first render. It is also the box the whole search exists for: `wireSearch` looks for `#doc-search` and
+    // `#doc-search-input` and returns silently without them, which is what this page did — the corpus was searchable with `curl` and not from
+    // the site (1,087 documents, all invisible to a reader who did not already know which one to open).
+    body.open("form", &[("id", "doc-search"), ("class", "doc-search"), ("role", "search"), ("action", "")])
+        .open("label", &[("for", "doc-search-input"), ("class", "doc-search-label")]).text("Search documents").close("label")
+        .open("input", &[("id", "doc-search-input"), ("type", "search"), ("class", "input"),
+                         ("placeholder", "Search this project's documents"), ("autocomplete", "off")]).close("input")
+        .open("p", &[("class", "muted"), ("data-search-status", ""), ("role", "status"), ("aria-live", "polite")]).close("p")
+        .close("form");
+    body.open("div", &[("id", "project-documents"), ("aria-busy", "true")]);
+    if documents.is_empty() {
+        body.open("p", &[("class", "empty")]).text("This project has no documents.").close("p");
+    } else {
+        body.open("ul", &[("class", "documents")]);
+        for document in &documents {
+            body.open("li", &[])
+                .open("a", &[("href", &format!("/projects/{}/documents?doc={}", project.slug, document.id))])
+                .text(&document.title)
+                .close("a")
+                .open("span", &[("class", "muted")])
+                .text(&format!("{} · revision {}", document.kind, document.revision))
+                .close("span")
+                .close("li");
+        }
+        body.close("ul");
     }
-    body.close("ul");
+    body.close("div");
+    // `documents.js` uses `ConcordSkeleton` for the loading placeholder and calls `ConcordSkeleton.done()` when it is finished — and that
+    // call is what clears `aria-busy`. Without this line `done()` was never reached, so the region stayed busy forever and every screen
+    // reader got a silent region: the page looked like it was still loading with the content already drawn.
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/skeleton.js")), ("defer", "")]).close("script");
+    // `markdown.js` renders the reading pane. It was the third script this page needed and did not load, and the symptom was the same one for
+    // all three: `documents.js` drew nothing and reported "Could not load documents", because the first file it reached for was missing.
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/markdown.js")), ("defer", "")]).close("script");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/documents.js")), ("defer", "")]).close("script");
+
     let bootstrap = serde_json::json!({
+        "route": format!("/projects/{}/documents", project.slug),
         "documents": documents.iter().map(|document| serde_json::json!({
             "kind": document.kind, "slug": document.slug, "title": document.title, "revision": document.revision,
         })).collect::<Vec<_>>(),
