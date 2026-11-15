@@ -8,6 +8,21 @@ Every claim below is a measurement, and the command that produced it is in the s
 
 ## Work log
 
+- **2026-11-15 — the gate could be green over a stale lock, and could point a writing suite at production.** Two defects in
+  `scripts/gate.sh`, both measured. First: when `eb20faf` added seven crates to the workspace it left `Cargo.lock` uncommitted, and
+  the gate stayed green because `cargo` rewrites the lock unless it is passed `--locked` — so the committed tree was not
+  reproducible and nothing said so. Both cargo calls now pass `--locked`, and the guard is provably able to fail: adding one
+  unused dependency to a manifest gives `error: cannot update the lock file …/Cargo.lock because --locked was passed to prevent
+  this`. On the committed tree, `cargo test --workspace --no-fail-fast --locked` against a migrated scratch database exits 0.
+  Second, and worse: with no scratch database the gate did `export CONCORD_TEST_DSN="$DATABASE_URL"`, and on this host
+  `DATABASE_URL` is production. That is reachable — running `cargo test --workspace` with `.env` sourced reported
+  `error: 1 target failed` against the production database. Measured afterwards, nothing had been written: no row in `users`,
+  `projects`, `features`, `complaints`, `project_documents` or `api_tokens` has a `created_at` later than 2026-11-14. Luck, not a
+  design — the fallback now refuses (`gate: no scratch database and no CONCORD_TEST_DSN; refusing to point the store tests at
+  DATABASE_URL.` … `unit: not run` … `gate: FAIL`) and `CONCORD_ALLOW_PROD_TESTS=1` is the deliberate way to do it anyway.
+  Gate after: `js: all 42 assets parse` · `js: API paths with a stray trailing '/': 0` · `unit: ok` · GitHub run `43740347035`
+  **success**. Commit `91ad518`.
+
 - **2026-11-15 — item 4's CI half: it had never run, and the reason was that the repository could not compile.** `gh run list`
   over the GitHub remote returned ONE run in the repository's life: 2026-11-14T20:30, `70890ab`, **failure**, 40s. Fourteen
   pushes since then produced no run at all. `gh api …/actions/permissions` says `{"enabled":true,"allowed_actions":"all"}`, so

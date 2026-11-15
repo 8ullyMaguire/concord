@@ -523,6 +523,15 @@ projects, in the same order, because two callers deriving one answer is how they
   remotes — are vendored under `vendor/` (ADR 0013, commit `eb20faf`, symlink cleanup `f8121cb`). Measured: `git clone` to
   `~/tmp/concord-clean`, where `ls ../polaris-authz` is "No such file or directory", then `cargo build -p concord-cli --offline`
   → `Finished dev profile in 4m 02s`.
+* **The gate now fails on a stale lock, and refuses to test against production.** `--locked` on both cargo calls (`91ad518`);
+  the stale lock it would have caught was the vendoring's own (`30590a6` committed it afterwards). The `CONCORD_TEST_DSN="$DATABASE_URL"`
+  fallback — which on this host means production — now refuses unless `CONCORD_ALLOW_PROD_TESTS=1`, after a `cargo test` run in this
+  session reached the production database (`error: 1 target failed`) and provably wrote nothing (`max(created_at)` is 2026-11-14 in
+  every key table). GitHub run `43740347035` **success**.
+* **`board_e2e`: thirteen consecutive green runs, flake un-reproduced.** `8 passed` at `16.75s`, `8.81s` and `10.05s` in three
+  runs made deliberately *under load* (a workspace-wide `cargo test --locked` compiling and running beside them), plus the ten
+  earlier. The one failure on 2026-11-14 (`api8` gate: `1 failed, 7 passed`) captured no test name, so there is nothing to look
+  for: recorded as un-reproduced rather than fixed.
 * **`git push` still creates no workflow run; `make push` does.** Three candidate causes were measured and each ruled out: the
   branch glob (`"**"` → explicit names, push `f9b4a07`), the default branch being the pre-port Go tree (`master` → `port-rust`
   via `gh api -X PATCH`, push `309f69e`), and Actions being off (it reports `{"enabled":true,"allowed_actions":"all"}`, workflow
