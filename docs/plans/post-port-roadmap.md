@@ -25,8 +25,9 @@ which half is missing.
 > the rest is somebody saying where their code lives. Vendor-shaped rather than ours: `git.disroot.org` is offline (Disroot's storage
 > server failed), so the 16 projects hosted there cannot be re-measured until it returns; `dormancysweep` counts them aloud as
 > `16 with a repository but no readable commit age` instead of letting them read as dead.
-> **Gate, measured 2026-11-15 after the third pass:** `make gate` → `gate: PASS` on its own scratch database (`migrate: 1 applied, 1 adopted
-> as baseline, 0 already recorded` · `routes: all 13 answered`), and CI green on `7106b87` (run `43757525185`) and `a1827de` (run `43757764235`).
+> **Gate, measured 2026-11-15 at the end of the third pass:** `make gate` → `gate: PASS` on its own scratch database (`migrate: 1 applied,
+> 1 adopted as baseline, 0 already recorded` · `routes: all 13 answered`), `pytest tests/e2e/harness_selftest_test.py` → `14 passed`, and CI
+> green on `7106b87` (`43757525185`), `a1827de` (`43757764235`) and `64cb134` (`43766353299`).
 > `a1827de` fixed the gate's last illegible failure: with neither `CONCORD_TEST_DSN` nor `DATABASE_URL` set it used to surface as six
 > `NotPresent` panics from `-p concord-db --test store` instead of naming the missing variable.
 > Nothing in this file is "complete" while either number is above zero.
