@@ -95,6 +95,17 @@ else
   echo "js: skipped (node not installed)"
 fi
 
+# Parsing is not the same as reaching a route. The port matches exactly, so a path with a trailing slash is a 404 -- and
+# three call sites carried one for a day (`/similar/{kind}/`, `/documents/`, `/features/`), each wrapped in a `.catch` or a
+# `getOrNull`, so the page looked fine and the feature was dead. See scripts/parity/api_paths.py.
+if python3 scripts/parity/api_paths.py > /tmp/gate-api-paths.txt 2>&1; then
+  grep "stray trailing" /tmp/gate-api-paths.txt | sed 's/^/js: /'
+  grep "allowed:" /tmp/gate-api-paths.txt | sed 's/^/js: /' || true
+else
+  cat /tmp/gate-api-paths.txt
+  bad "an API path ends in a stray slash (the server answers 404)"
+fi
+
 say "1. unit tests"
 # `--no-fail-fast` on purpose: one red crate must not hide the four behind it, and the per-crate counts are printed because the number to
 # distrust is the one that says everything ran.

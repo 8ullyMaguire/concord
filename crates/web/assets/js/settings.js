@@ -610,7 +610,7 @@
         // The propose form needs the features to choose from. A number input asking
         // for a feature id would be a control that requires the reader to know
         // something the page is holding.
-        getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/features/"),
+        getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/features"),
         // §6.2's themes: the proposals beside the live weights, so a reader can see a
         // pending change to a tag and consent to it. The live list alone shows only what
         // already won.

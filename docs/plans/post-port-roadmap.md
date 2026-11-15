@@ -12,11 +12,12 @@ which half is missing.
 > are live** — the pool is empty on the live instance and says so (`23 of 97 projects have a measured commit history, and the longest
 > measured silence is 74.6 days`).
 >
-> **Rows open: 1.** The review's "split by capability". First seam done (`project-arena.js`, 220 lines moved, `project.js` 1,617 →
-> 1,394); the panels block (~760 lines) and the duplicate check + field reports (~150) remain. A reorganisation with no correctness
-> edge, which is why it is last — and the first seam cost ten minutes of a dead page because a nested `format!` emitted a
-> `<script>` tag with no closing quote, which `project_panels_e2e` caught (`25 failed, 1 passed`) and a browser console check did
-> not.
+> **Rows open: 0.** The review's "split by capability" is done: `project.js` 1,617 → 903 lines across three capability files
+> (`project-arena.js` 238, `project-panels.js` 303, `project-writes.js` 232), each registering itself on `window` and loaded in
+> dependency order. Getting there found five live defects the split did not cause — the claim/sizing GETs (`405`), and four trailing
+> slashes the port answers `404` where the Go service answered both (`/similar/{kind}/`, `/documents/`, `/features/` twice, each
+> swallowed by a `.catch` or `getOrNull`). `scripts/parity/api_paths.py` is now a gate layer for that class, `duplicates_e2e` runs
+> against PostgreSQL for the first time, and `scripts/parity/probe_claim_button.py` covers the claim path that had no test.
 > **Blocked: 1.** The pool's 68 unstated upstream candidates need `CONCORD_FORGE_TOKEN` (7 GitHub repos are deferred by the anonymous
 > 60/h budget) — on the operator, not on the code.
 > Nothing in this file is "complete" while either number is above zero.
@@ -509,3 +510,9 @@ projects, in the same order, because two callers deriving one answer is how they
   button only renders for a signed-in reader. Fixed to `ConcordApi.request(method, path, body)` and proved by a new
   `scripts/parity/probe_claim_button.py`, which drives the button in a browser and reads the label it settles on:
   `Join the project to claim work` — the 403 branch, which only a POST can produce.
+* **Found 2026-11-15: four API paths carried a trailing slash the port answers 404 for.** The Go service matched both spellings;
+  Axum matches exactly. `/similar/{kind}/` (the duplicate panel — dead since cutover), `PUT /documents/` (saving a scout digest),
+  `/features/` in settings (feature count silently null) and `/features/` in milestones (bulk-assign candidates silently empty).
+  Two were wrapped in `.catch`/`getOrNull`, so the pages rendered and every probe passed. Fixed; `scripts/parity/api_paths.py`
+  is gate layer 0b with three reviewed exceptions, and `duplicates_e2e` — which had been erroring in setup against SQLite since
+  cutover (`no such table: users`, 5 errors, 0 tests) — now runs on `harness.connect` and says 5 passed.

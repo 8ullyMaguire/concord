@@ -162,7 +162,8 @@
     };
     saveBtn.disabled = true;
     // One client (review item 9b): the PUT and its refusal sentence are `api.js`'s, not this file's third copy.
-    window.ConcordApi.put('/api/v1/projects/' + encodeURIComponent(slug) + '/documents/', body)
+    // Same trailing-slash trap as the duplicate panel: the collection route has no `/` variant on the port.
+      window.ConcordApi.put('/api/v1/projects/' + encodeURIComponent(slug) + '/documents', body)
     .then(function (doc) {
       if (!saveOk) return;
       // The revision matters: PutDocument REPLACES at the same (kind, slug), so a

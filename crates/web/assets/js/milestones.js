@@ -160,7 +160,7 @@
     // tolerantly: a reader who cannot list features still sees this milestone.
     Promise.all([
       api(slug + '/milestones/' + id),
-      api(slug + '/features/').catch(function () { return null; })
+      api(slug + '/features').catch(function () { return null; })
     ]).then(function (res) {
       var data = res[0];
       var allFeatures = (res[1] && (res[1].features || res[1])) || [];

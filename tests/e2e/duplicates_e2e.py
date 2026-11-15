@@ -25,7 +25,6 @@ Two things are worth more than the happy path here:
 
 import itertools
 import re
-import sqlite3
 import tempfile
 
 import pytest
@@ -43,7 +42,10 @@ _ips = itertools.count(1)
 
 
 def _db(server):
-    return sqlite3.connect(server["db"])
+    # The port reads PostgreSQL (cutover 2026-11-14); `harness.connect` answers for whichever database the server
+    # was handed. This suite still opened SQLite directly, so since cutover every one of its tests errored in setup with
+    # `no such table: users` — which reads as a broken fixture, not as five tests that never ran.
+    return harness.connect(server["db"])
 
 
 def _member_token(db, username):
@@ -62,13 +64,17 @@ def _member_token(db, username):
     uid = reg.get("user", {}).get("id") or reg.get("user_id") or reg.get("id")
     assert uid, f"register returned no user id: {reg}"
 
-    con = sqlite3.connect(db)
+    con = harness.connect(db)
     try:
-        con.execute(
-            "INSERT INTO members (project_id, user_id, role, joined_at)"
-            " SELECT id, ?, 'maintainer', 1790000000 FROM projects"
-            " WHERE id NOT IN (SELECT project_id FROM members WHERE user_id = ?)",
-            (uid, uid))
+        cur = con.cursor()
+        # One INSERT per project rather than `INSERT … SELECT`: `harness.PgSeed` reads the column list to translate
+        # parameter types, and an `INSERT … SELECT` lists four columns while binding two placeholders — the harness
+        # refuses that rather than guess which two columns the SELECT supplies.
+        cur.execute("SELECT id FROM projects WHERE slug = ?", (SLUG,))
+        pid = cur.fetchone()[0]
+        cur.execute(
+            "INSERT INTO members (project_id, user_id, role, joined_at) VALUES (?,?,'maintainer',?)",
+            (pid, uid, 1790000000))
         con.commit()
     finally:
         con.close()
@@ -134,18 +140,19 @@ def page(browser, server):
 def seed(db):
     """The project and its owner, through SQLite, before the server sees traffic."""
     now = 1790000000
-    con = sqlite3.connect(db)
-    con.execute(
+    con = harness.connect(db)
+    cur = con.cursor()
+    cur.execute(
         "INSERT INTO users (username, display_name, created_at, password_hash, trust_level)"
         " VALUES (?,?,?,?,?)", ("dupowner", "Dup Owner", now, "x", 3))
-    uid = con.execute("SELECT id FROM users WHERE username='dupowner'").fetchone()[0]
-    con.execute(
+    uid = cur.lastrowid
+    cur.execute(
         "INSERT INTO projects (slug, name, description, governance_model, license,"
         " created_at, updated_at, visibility) VALUES (?,?,?,?,?,?,?,?)",
         (SLUG, "Duplicates E2E", "duplicate panel fixture", "collective", "MIT",
          now, now, "public"))
-    pid = con.execute("SELECT id FROM projects WHERE slug=?", (SLUG,)).fetchone()[0]
-    con.execute(
+    pid = cur.lastrowid
+    cur.execute(
         "INSERT INTO members (project_id, user_id, role, joined_at) VALUES (?,?,'owner',?)",
         (pid, uid, now))
     con.commit()
