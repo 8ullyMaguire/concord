@@ -5,10 +5,18 @@ a wish list: every idea from the "Rethinking GitHub for the Age of AI" note is p
 actually do today, with the file or route that proves it. An idea that already ships is not refiled; an idea that ships *partly* says
 which half is missing.
 
-> **Status 2026-11-14 (second pass):** the review's engineering items 1, 2, 3, 4 (boot/timers), 6 (feature edit) and 7 (gate + CI) are
-> **done** — see the work log at the top of `docs/reviews/2026-11-14-from-scratch-review.md`. Still open there: the server-rendered project
-> page, `archived` as a declaration, the frontend split, and `port-context.md`'s stale header. Roadmap: steps 1, 2a, 2b, 3, 3b, 3c, 4 **done**; step 5 built (sweep + timer) with its **pool blocked on 68 unstated
-> repositories**. Rows open: 1. Blocked: 1. Nothing in this file is "complete" while that number is above zero.
+> **Status 2026-11-15 (third pass, measured on `6761349`).** The review's ten engineering items are **all done**: migrations with
+> `schema_version`; one renderer per page; the 18 repo identities copied; the health ingest on a timer; a server-rendered project page;
+> the feature edit route; `make gate` + CI; `archived` as a declaration; the frontend on one client (4 `fetch` sites left in 39 files, all
+> of them the transport) with one escaping rule; and `port-context.md` corrected. Roadmap steps 1–4 done; **step 5's sweep, pool and claim
+> are live** — the pool is empty on the live instance and says so (`23 of 97 projects have a measured commit history, and the longest
+> measured silence is 74.6 days`).
+>
+> **Rows open: 1.** `project.js` is still 1,617 lines and 19 API calls for one page — the review's "split by capability". It is a
+> reorganisation with no correctness edge, which is why it is last.
+> **Blocked: 1.** The pool's 68 unstated upstream candidates need `CONCORD_FORGE_TOKEN` (7 GitHub repos are deferred by the anonymous
+> 60/h budget) — on the operator, not on the code.
+> Nothing in this file is "complete" while either number is above zero.
 > A critical review of the product as it now stands, with what I would do differently, is `docs/reviews/2026-11-14-from-scratch-review.md`.
 
 Status vocabulary, and nothing else: **SHIPPED** (a reader can use it today), **PARTIAL** (the engine exists, the surface does not, or
