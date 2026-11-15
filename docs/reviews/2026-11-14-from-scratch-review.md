@@ -8,6 +8,18 @@ Every claim below is a measurement, and the command that produced it is in the s
 
 ## Work log
 
+- **2026-11-15 — the gate failed for the wrong reason, which is a defect in the gate.** Running `make gate` on a host that had not sourced
+  `~/.config/concord/.env` gave `gate: FAIL` — but not the designed refusal: with **neither** `CONCORD_TEST_DSN` nor `DATABASE_URL` set,
+  the production-guard branch (guarded on `DATABASE_URL` being *present*) never fired, `cargo test` ran `-p concord-db --test store` with no
+  DSN, and six tests panicked at `CONCORD_TEST_DSN must point at a scratch PostgreSQL database …: NotPresent`. The failure was honest
+  — it did not touch production — and it was illegible: six panics and a verdict that reads like broken code. Now the missing case is named
+  and still fails (`a1827de`): `gate: neither CONCORD_TEST_DSN nor DATABASE_URL is set, so there is no scratch database to test against.`
+  → `unit: not run` → `gate: FAIL`. With the environment sourced the same command gives, on its own scratch database,
+  `migrate: 1 applied, 1 adopted as baseline, 0 already recorded` · `routes: all 13 answered` · **`gate: PASS`**. CI agreed on both pushes:
+  run `43757525185` (`7106b87`) `success`, run `43757764235` (`a1827de`) `success`. Same lesson as the `--locked` and production-DSN rows
+  above: a gate that reports the wrong reason is a gate an operator learns to ignore, and every one of these three was found by running it
+  rather than by reading it.
+
 - **2026-11-15 — the adoption pool's missing half was measurable after all, and the measurement said "not by guessing".** The pool has been
   blocked on "68 projects state no upstream" since the roadmap was written. It is now **39 of 97 stated** (was 23), by reading the `origin`
   remote of every checkout under the code root (`scripts/parity/upstream_candidates.py`, 46 owned remotes, 19 of 74 unstated matched) rather
