@@ -37,18 +37,24 @@ the reverse — the missing half is named), **NEW** (nothing in the tree), **REF
 
 Measured 2026-11-14 against `crates/` on `port-rust` and the live instance (`73 projects`, `638 → 88 users` after reconciliation).
 
+**Re-measured 2026-11-15, and the table below was wrong for a day.** Steps 1–5 shipped on 2026-11-14/15 while rows 1, 2, 5 and 6
+still said **NEW** — a mapping table that stops being re-measured is a table that starts lying, and this one did it inside a file whose
+own header said all ten items were done. The statuses are now what the tree says, with the check that produced each. Two numbers in this
+file also moved for a reason worth recording: the catalogue read **97 projects** for a day because 24 e2e fixtures had leaked into
+production (`4c8ff0a`); it is 73 again, and every percentage in this file that was computed against 97 was computed against a fiction.
+
 ---
 
 ## The mapping
 
 | # | Idea from the note | Status | What exists, measured | What is missing |
 |---|---|---|---|---|
-| 1 | **Project lifecycle stages** (seed / sprout / mature / dormant / archived) | **NEW** | — (`grep -ril lifecycle crates` → 0 files). Signals to derive it already ship: `project_metrics.last_commit_at`, `health_score`, `features.status`, `members` | The stage itself, and every surface that would read it |
-| 2 | **Intent-first creation** ("12 projects do this — contribute instead") | **PARTIAL** | `crates/finder` (question-driven matching, 12 tests) and `crates/scout` (22 tests) answer "what should I work on" | Nothing at the *create* path: a new project is still a blank form, and the duplicate check is a title match, not intent |
-| 3 | **Project DNA / dedupe / merge suggestion / canonical election** | **PARTIAL** | Alternatives arenas rank competitors inside one project (`crates/db/src/alternatives.rs`); `features` dedupe is title-based | No cross-project fingerprint, no clustering, no merge suggestion, no instance-level canonical |
-| 4 | **Vitality score** (bus factor, dep health, AI ratio, community growth) | **PARTIAL** | `concord_ranking::health` — last commit age, median review hours, contributors, releases/90d, with unknown components excluded and renormalised | Bus factor, dependency health, community growth, AI ratio; and the per-component display |
-| 5 | **Graveyard & resurrection** (declared abandonment, adoption pool, auto-archive with grace, succession link) | **NEW** | `projects.visibility` and `intake_mode` are the nearest neighbours | All of it. Auto-archive is a *job*, not a page |
-| 6 | **AI transparency badges** | **NEW** | — | A declaration per project and its display. The only idea here that is close to free |
+| 1 | **Project lifecycle stages** (seed / sprout / mature / dormant / archived) | **SHIPPED** | `concord_ranking::lifecycle` (one test per rule, incl. the absence rules) · on the wire and the page: `/api/v1/projects` `stage`, project header badge, `/projects` · live `seed 29 · sprout 28 · unknown 16` | `mature` is unreachable because no project's measured health clears 0.6, and `dormant` needs 90 measured days (longest is 75.5). Both are measurements, not missing code |
+| 2 | **Intent-first creation** ("12 projects do this — contribute instead") | **SHIPPED** | Step 3 wired `concord-finder` into the create path; the differential probe asserts the same question returns the same projects | Nothing. The duplicate check at create is still a name match, which is idea 3's problem, not this row's |
+| 3 | **Project DNA / dedupe / merge suggestion / canonical election** | **PARTIAL** | Alternatives arenas rank competitors inside one project (`crates/db/src/alternatives.rs`); `features` dedupe is title-based; a merge request route and `merge_e2e` exist | No cross-project fingerprint, no clustering suggestion, no instance-level canonical election |
+| 4 | **Vitality score** (bus factor, dep health, AI ratio, community growth) | **PARTIAL** | `concord_ranking::health` — last commit age, median review hours, contributors, releases/90d, with unknown components excluded and renormalised | Bus factor (needs commit-author concentration, which the ingest does not collect), dependency health, community growth, AI ratio (the declaration exists in `projects.ai_involvement`, unread by the score); and the per-component display |
+| 5 | **Graveyard & resurrection** (declared abandonment, adoption pool, auto-archive with grace, succession link) | **SHIPPED, except succession and grace** | `/adopt` server-rendered pool + `POST /projects/{slug}/claim` (refuses on the measurement, not the person) · `dormancysweep` weekly, dry-run by default, marks the ACT in `audit_log` · `archived` as a declaration with a required reason | A succession link on the project page, and an auto-archive grace period. The pool has zero candidates because nothing measured is past 90 days |
+| 6 | **AI transparency badges** | **SHIPPED** | `projects.ai_involvement` (four values, nullable) declared by the owner, withdrawn, rendered as a badge; `ai_declaration_e2e` 7 tests; wire changed additively, parity corpus re-recorded | Cross-project reporting: "this instance is 31% AI-assisted" does not exist anywhere a reader can see it |
 | 7 | **Problem spaces** (a layer above projects, community-ranked within) | **PARTIAL** | `crates/db/src/taxonomy.rs` — tags, proposals ratified by quorum, and `completeness` | Tags are a flat vocabulary, not a space with a canonical / alternative / emerging ordering across projects |
 | 8 | **Composable fragments** (sub-project code units) | **REFUSED for now** | — | Concord hosts *decisions and ideas*, not code. A fragment library would need code hosting, which is the one thing this product deliberately does not do; revisit only if a forge integration makes it a lens over someone else's code |
 | 9 | **Maintainer load / succession / paid tiers** | **PARTIAL** | Roles (`concord_governance::Role`), `trust_grants`, invites, the curation queue, `contribution_feed` | Load per maintainer; a succession field; and money, which is out of scope until the licence question is answered |

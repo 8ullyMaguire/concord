@@ -8,6 +8,19 @@ Every claim below is a measurement, and the command that produced it is in the s
 
 ## Work log
 
+- **2026-11-15 — the catalogue was 25% fixtures, and the gate runs 8 of 29 suites.** Two findings from one question ("what does the site
+  actually publish"). First: `/projects` listed 24 projects nobody wrote — `archive-probe-220154/220933/222202` and 21 ULID-tailed slugs
+  (`f-01m7dw…`, `w-01m7dw…`, `d-`, `l-`, `m-`, `p-`, `dup-`), named `Fixture`, `Writable`, `A project`. They were seeded on 2026-11-14 by
+  an e2e run whose `CONCORD_E2E_DSN` pointed at production, and every number the product published since — `97 projects`, the stage
+  distribution, `23 of 97` — was computed against them. Removed with `clear_probe_litter.py` (which learned `--match` and `--dry-run`;
+  `351 rows would be deleted` then `375 rows deleted, left: 0`, projects **97 → 73**), audit rows kept because they record that the acts
+  happened. The seeding is now refused: `tests/e2e/harness.py` stops a `CONCORD_E2E_DSN` whose database name does not contain `test`,
+  with `CONCORD_ALLOW_PROD_FIXTURES=1` as the deliberate way past, and a meta-test asserts both sides. Second, and worse: retargeting the
+  two meta-tests that had been **red since the port landed** (one asserted a `make e2e` target that no longer exists — `ValueError:
+  substring not found`; the other asserted `docs/REMAINING.md`'s Go-era `326 e2e tests in 28 suite files` against this tree) measured what
+  nobody had: **`scripts/gate.sh` runs 8 of the tree's 29 `*_e2e.py` suites; 21 are run by nobody.** The replacement test is a ratchet on
+  that number, proved able to fail (adding `tests/e2e/zzz_probe_e2e.py` → `2 failed`; removed → `14 passed`). `4c8ff0a`.
+
 - **2026-11-15 — the gate failed for the wrong reason, which is a defect in the gate.** Running `make gate` on a host that had not sourced
   `~/.config/concord/.env` gave `gate: FAIL` — but not the designed refusal: with **neither** `CONCORD_TEST_DSN` nor `DATABASE_URL` set,
   the production-guard branch (guarded on `DATABASE_URL` being *present*) never fired, `cargo test` ran `-p concord-db --test store` with no
@@ -140,8 +153,8 @@ Every claim below is a measurement, and the command that produced it is in the s
 | 7 | `make gate` + CI | **done** | `70890ab` | `scripts/gate.sh` three layers + `.github/workflows/gate.yml` |
 | 2 | one renderer per page | **done for the project page** | `f595960` | header server-rendered (h1, slug, stage, AI badge, description, actions); `project.js` lost 2,684 chars of header; probes 136/136 + 86/86, five suites 62 tests green |
 | 8 | lifecycle as (measured stage) + (acts) | **done for `archived`** | `805f8f8` | `0002_project_archived.sql` (first migration through the new mechanism); POST/DELETE archive with a required reason; live: stage `archived`, tooltip = the maintainer's sentence, 400 without a reason, un-archive restores `seed` |
-| 9 | the frontend's 13k lines | **open** (not urgent; extract the fetch/escape helpers first) | — | — |
-| 10 | docs describing the dead lineage | **partly done**: `concord-spec-r4`, `PLAN-r4`, `REMAINING` carry historical banners; `port-context.md` still says "3 rows open" | — | — |
+| 9 | the frontend's 13k lines | **done**: one client (`grep -c 'fetch(' crates/web/assets/js/*.js` → 4 sites in 39 files, all the transport); `project.js` 1,617 → 903 lines over three capability files | `947d9ab` | the pages it revealed: `/stats` never loaded a script, a count badge fetched 11.35 MB of bodies, four files shipped not parsing · probes 136/136 + 86/86, eight suites |
+| 10 | docs describing the dead lineage | **done for the live ones**: `concord-spec-r4`, `PLAN-r4`, `REMAINING` carry historical banners, `port-context.md` corrected, and the roadmap's own mapping table re-measured (it had said NEW for three shipped ideas) | `a3f94e7`, this commit | `harness_selftest_test.py` now gates the banner rather than the dead document's numbers — the assertion it replaces had been red since the port landed |
 
 **Two things this pass learned about its own documents.** First, decision 5 as written was wrong — `healthsync --fetch` had existed since the port and I
 wrote "nothing produces that file" from a `--from` signature and a Go-era note; the section is corrected in place. Second, the migration gate

@@ -329,9 +329,11 @@ async fn project_index(State(pool): State<PgPool>, headers: HeaderMap) -> Respon
 /// server-rendered from one query; the only script is the claim button, because claiming is a write and the number that justifies it is
 /// already in the document.
 ///
-/// The empty state is the interesting one, and it is written to be TRUE rather than reassuring: this instance has 73 projects and 23 of
-/// them name a repository it can read, so "nothing to adopt" would be a claim it cannot support. It says what was measured instead, and
-/// when nothing was measured it says that.
+/// The empty state is the interesting one, and it is written to be TRUE rather than reassuring: on 2026-11-15 this instance had 73
+/// projects, 39 of which state a repository and 23 of which have a MEASURED commit history (16 more state one that no longer answers,
+/// and 16 are hosted on `git.disroot.org`, which was offline after its storage server failed). So "nothing to adopt" would be a claim it
+/// cannot support — it says what was measured instead, and when nothing was measured it says that. Both numbers come from
+/// `concord_db::adoption::pool`, never from this comment.
 async fn adopt(State(db): State<PgPool>, headers: HeaderMap) -> Response {
     let pool = match concord_db::adoption::pool(&db).await {
         Ok(pool) => pool,
