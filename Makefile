@@ -8,6 +8,7 @@ help:
 	@echo "gate        unit tests + smoke against a scratch database (what CI runs)"
 	@echo "gate-live   the above, then probes against https://concord.polarisocial.xyz"
 	@echo "gate-unit   unit tests only (no Postgres needed)"
+	@echo "push        push to both hosts, then dispatch the GitHub gate (a plain push creates no run)"
 	@echo "release     release build of the deployed binary"
 	@echo "deploy      release build, install to ~/concord-deploy, restart the unit"
 
@@ -19,6 +20,11 @@ gate-live:
 
 gate-unit:
 	@SKIP_SMOKE=1 scripts/gate.sh
+
+# `git push` to this repository does not create a workflow run; `workflow_dispatch` does. Three candidate causes were measured and
+# ruled out on 2026-11-15 (branch glob, default branch, Actions enabled) — see the header of the script. So the push path asks.
+push:
+	@scripts/push-and-gate.sh $(if $(B),$(B),$$(git rev-parse --abbrev-ref HEAD))
 
 release:
 	CONCORD_VERSION="concord-rs 0.0.0+$$(git rev-parse --short HEAD)" cargo build --release -p concord-cli
