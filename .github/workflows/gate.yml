@@ -6,6 +6,10 @@ on:
   push:
     branches: ["**"]
   pull_request:
+  # Manual dispatch is not decoration: the only run this workflow has ever had (2026-11-14, `70890ab`) failed at the toolchain
+  # step with `failed to load manifest for workspace member crates/db`, and 30+ pushes since then produced no run at all. Without
+  # this trigger there is no way to ask GitHub "does the gate still run here?" without inventing a commit to push.
+  workflow_dispatch:
 
 jobs:
   gate:
