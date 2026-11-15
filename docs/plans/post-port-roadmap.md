@@ -453,3 +453,9 @@ projects, in the same order, because two callers deriving one answer is how they
 - **Remaining**: `80` occurrences of `fetch(` across `crates/web/assets/js/*.js`, one of which is `api.js` itself — measured with
   `grep -c 'fetch(' crates/web/assets/js/*.js`. The counts include comments, so the working number is the per-file list rather than a
   total: `project.js` 18, `consensus.js` 8, `settings.js` 6, `board.js` 0, `audit.js` 0, `stats.js` 0.
+- **2026-11-15 (`api5`/`api6`)**: `project.js` converted (18 `fetch` sites, its private `apiAuth`, the arena pair/log/verification
+  loaders) — and the measurement after it found the **project overview had never finished loading on the live instance**: the panel
+  asked for `/documents` to show a count, that route returns every body, `11.35 MB` and still downloading at `40 s`, so `Promise.all`
+  never settled and the page sat on its skeleton. `?fields=meta` (`37 KB`, `0.64 s`) fixes it. Live now: `aria-busy false`,
+  `349,804` chars rendered. **Every suite passed throughout** — a seeded project has three documents, this one has 175, and that is
+  the gap between a green suite and a working page.

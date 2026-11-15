@@ -1,17 +1,3 @@
-/* apiAuth: the session's Authorization header, for API reads.
- *
- * Every read on this page used to go out anonymous -- harmless while the project is
- * public, and fatal for the projects whose settings most need changing: a member
- * reaches a protected project (the navigation cookie opened the page) and then every
- * panel 404s, because the page's own reads carried no credential. session.js has
- * exported authHeaders() all along; this is the two lines that use it, and for a
- * signed-out visitor the request is identical to before. */
-function apiAuth(extra) {
-  var h = extra || {};
-  var tok = window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {};
-  for (var k in tok) { if (Object.prototype.hasOwnProperty.call(tok, k)) h[k] = tok[k]; }
-  return h;
-}
 // Concord project detail — resolves the slug, then hydrates from the API.
 (function () {
   // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it. This file's copy replaced the same
@@ -501,21 +487,11 @@ function apiAuth(extra) {
 
     function loadPair(arenaID, out) {
       out.textContent = 'Finding the comparison that teaches the most\u2026';
-      fetch(base + '/arenas/' + encodeURIComponent(arenaID) + '/next-pair', { headers: apiAuth() })
-        .then(function (r) {
-          return r.json().catch(function () { return {}; }).then(function (p) {
-            return { ok: r.ok, status: r.status, body: p };
-          });
-        })
-        .then(function (res) {
-          if (!res.ok) {
-            // The store's "this voter has judged every pair" is the ordinary end
-            // state of an arena, not an error, and it says so in its message.
-            out.innerHTML = '<p class="arena-note">' + esc(res.body.error || ('HTTP ' + res.status)) + '</p>';
-            return;
-          }
-          out.innerHTML = arenaPairForm(arenaID, res.body);
-        })
+      // The store's "this voter has judged every pair" is the ordinary end state of an arena, not an error, and it says
+      // so in its message — which the one error model carries, so the refusal and the network failure are the same
+      // three lines instead of a response-shaped branch and a separate catch.
+      window.ConcordApi.get(base + '/arenas/' + encodeURIComponent(arenaID) + '/next-pair')
+        .then(function (pair) { out.innerHTML = arenaPairForm(arenaID, pair); })
         .catch(function (err) {
           out.innerHTML = '<p class="arena-note">' + esc(String(err && err.message ? err.message : err)) + '</p>';
         });
@@ -523,8 +499,7 @@ function apiAuth(extra) {
 
     function loadLog(arenaID, out) {
       out.textContent = 'Loading the vote log\u2026';
-      fetch(base + '/arenas/' + encodeURIComponent(arenaID) + '/votes', { headers: apiAuth() })
-        .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+      window.ConcordApi.get(base + '/arenas/' + encodeURIComponent(arenaID) + '/votes')
         .then(function (log) { out.innerHTML = arenaLogHTML(log.votes || []); })
         .catch(function (err) {
           out.innerHTML = '<p class="arena-note">' + esc(err.message || String(err)) + '</p>';
@@ -533,8 +508,7 @@ function apiAuth(extra) {
 
     function loadVerification(arenaID, out) {
       out.textContent = 'Replaying the vote log\u2026';
-      fetch(base + '/arenas/' + encodeURIComponent(arenaID) + '/verification', { headers: apiAuth() })
-        .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status)); })
+      window.ConcordApi.get(base + '/arenas/' + encodeURIComponent(arenaID) + '/verification')
         .then(function (verdict) { out.innerHTML = arenaVerifyHTML(verdict); })
         .catch(function (err) {
           out.innerHTML = '<p class="arena-note">' + esc(err.message || String(err)) + '</p>';
@@ -893,7 +867,7 @@ function apiAuth(extra) {
         var h = session.authHeaders();
         for (var k in h) { if (Object.prototype.hasOwnProperty.call(h, k)) headers[k] = h[k]; }
       }
-      return fetch(path, { method: method, headers: headers, body: JSON.stringify(body || {}) })
+      return window.ConcordApi.get(path, { method: method, headers: headers, body: JSON.stringify(body || {}) })
         .then(function (r) {
           return r.json().catch(function () { return {}; })
             .then(function (p) { return { ok: r.ok, status: r.status, payload: p }; });
@@ -1070,13 +1044,8 @@ function apiAuth(extra) {
         joinBtn.addEventListener('click', function () {
           joinBtn.disabled = true;
           joinBtn.textContent = 'Joining\u2026';
-          fetch(base + '/join', { method: 'POST', headers: apiAuth({ 'Content-Type': 'application/json' }), body: '{}' })
-            .then(function (r) {
-              return r.json().catch(function () { return {}; }).then(function (payload) {
-                if (!r.ok) throw new Error(payload.error || ('HTTP ' + r.status));
-                return payload;
-              });
-            })
+          // The refusal ("already a member", "a guest cannot join") arrives as the one error model's message.
+          window.ConcordApi.post(base + '/join', {})
             .then(function () {
               window.location.reload();
             })
@@ -1235,8 +1204,9 @@ function apiAuth(extra) {
     panel.innerHTML = '<p class="dup-note dup-checking">Checking for existing ' + esc(kind) + 's…</p>';
     var url = '/api/v1/similar/' + encodeURIComponent(kind) + '/?text=' +
       encodeURIComponent(text) + '&project_id=' + encodeURIComponent(projectID);
-    fetch(url, { headers: { Accept: 'application/json' } })
-      .then(function (r) { return r.json(); })
+    // One client, including here: the duplicate check is a READ that a signed-out visitor can make, and `api.js`
+    // sends no token when there is no session, so the request is the same one this line used to build by hand.
+    window.ConcordApi.get(url)
       .then(function (data) {
         if (mine !== dupSeq) return;
         panel.innerHTML = dupMarkup(kind, data);
@@ -1522,10 +1492,13 @@ function apiAuth(extra) {
     var slug = slugFromPath();
     if (!slug) { box.innerHTML = notFound(''); return; }
 
-    fetch('/api/v1/projects/' + encodeURIComponent(slug), { headers: apiAuth() })
-      .then(function (r) {
-        if (r.status === 404) throw { notFound: true };
-        return r.ok ? r.json() : Promise.reject({ status: r.status });
+    // One client for the transport (review item 9b). The 404 is still told apart from the rest, because it is the one
+    // refusal the page answers differently (it renders "no such project"); everything else is a status the caller
+    // reports.
+    window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug))
+      .catch(function (error) {
+        if (error && error.status === 404) throw { notFound: true };
+        throw { status: error && error.status };
       })
       .then(function (p) {
         box.innerHTML = (window.ConcordSkeleton
@@ -1539,48 +1512,40 @@ function apiAuth(extra) {
         // project that had three. A failure that looks like a valid empty
         // result is worse than an error, because nothing prompts anyone to look.
         return Promise.all([
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/features', { headers: apiAuth() })
-            .then(function (r) {
-              if (r.status === 401) throw { auth: true };
-              if (!r.ok) throw { status: r.status };
-              return r.json();
+          window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/features')
+            .catch(function (error) {
+              if (error && error.status === 401) throw { auth: true };
+              throw { status: error && error.status };
             }),
           // Complaints are read separately and a failure here is not fatal: the
           // feature list is the more important of the two, and losing it
           // because a second request failed would be a worse outcome than
           // showing the complaints as unavailable.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/complaints', { headers: apiAuth() })
-            .then(function (r) { return r.ok ? r.json() : []; })
+          window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/complaints')
             .catch(function () { return []; }),
           // Documents are a count badge and a link, not content on this page,
           // so a failure here degrades to no badge rather than to an error. The
           // same reasoning as complaints: a third failing request must not cost
           // us the two that matter.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/documents', { headers: apiAuth() })
-            .then(function (r) { return r.ok ? r.json() : []; })
+          // `?fields=meta`: this panel shows a COUNT and a link, and the full list carries every document body — 11.7 MB for one
+          // project on the live instance, measured, which held this page's whole `Promise.all` open past thirty seconds and left the
+          // overview parked on its skeleton. The badge needs the length of an array, not the prose inside it.
+          window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/documents?fields=meta')
             .catch(function () { return []; }),
           // The two §4.10 panels. Both swallow their own failures and resolve to
           // null, which panelError() renders differently from an empty result --
           // so an endpoint that 500s says "unavailable" instead of quietly
           // claiming the project has no capabilities and no field reports.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/capabilities', { headers: apiAuth() })
-            .then(function (r) { return r.ok ? r.json() : null; })
-            .catch(function () { return null; }),
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/field-reports', { headers: apiAuth() })
-            .then(function (r) { return r.ok ? r.json() : null; })
-            .catch(function () { return null; }),
+          window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/capabilities').catch(function () { return null; }),
+          window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/field-reports').catch(function () { return null; }),
           // The third §4.10 panel. Same rule as the other two: swallow its own
           // failure and resolve to null, which panelError renders differently
           // from an empty result.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/solutions', { headers: apiAuth() })
-            .then(function (r) { return r.ok ? r.json() : null; })
-            .catch(function () { return null; }),
+          window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/solutions').catch(function () { return null; }),
           // The fourth §4.10 panel, and the first panel whose data is grouped by
           // something the project NAMED rather than by a fixed dimension. Same
           // failure rule: swallow its own failure, resolve to null.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/alternatives', { headers: apiAuth() })
-            .then(function (r) { return r.ok ? r.json() : null; })
-            .catch(function () { return null; }),
+          window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/alternatives').catch(function () { return null; }),
           // Requests (17), the same non-fatal shape as complaints: the board is one
           // of the sections, and a failure here must not cost the features.
           //
@@ -1589,26 +1554,18 @@ function apiAuth(extra) {
           // first version went in after complaints and fed documents to
           // capabilities, which renders as a panel quietly missing rather than an
           // error. Anything added here goes LAST, and the mapping below is by index.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/requests', { headers: apiAuth() })
-            .then(function (r) { return r.ok ? r.json() : []; })
-            .catch(function () { return []; }),
+          window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/requests').catch(function () { return []; }),
           // Lists (16), appended last so no existing index shifts. Same non-fatal
           // shape as complaints and requests.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/lists', { headers: apiAuth() })
-            .then(function (r) { return r.ok ? r.json() : []; })
-            .catch(function () { return []; }),
+          window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/lists').catch(function () { return []; }),
           // Work items (§4.5.7), appended last for the same reason as the two above:
           // this array is positional, so an insertion renumbers everything after it.
           // Non-fatal as well -- a failed work-item read costs the panel, not the page.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/work-items', { headers: apiAuth() })
-            .then(function (r) { return r.ok ? r.json() : []; })
-            .catch(function () { return []; }),
+          window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/work-items').catch(function () { return []; }),
           // The next milestone on the overview (R17: "the next milestone on the
           // project overview"). Appended LAST for the positional reason above, and
           // non-fatal: a project with no milestones is the ordinary case.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/roadmap', { headers: apiAuth() })
-            .then(function (r) { return r.ok ? r.json() : null; })
-            .catch(function () { return null; })
+          window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/roadmap').catch(function () { return null; })
         ])
           .then(function (res) {
             // Positional, in the order of the Promise.all above. Requests is
