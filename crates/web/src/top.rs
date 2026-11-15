@@ -131,6 +131,13 @@ pub async fn stats(State(pool): State<PgPool>, headers: HeaderMap) -> Response {
     let lists = concord_db::ops_reads::instance_lists(&pool).await.unwrap_or_default();
     let mut body = Html::new();
     body.open("h1", &[]).text("Statistics").close("h1");
+    // The four sections `stats.js` fills. The page rendered the rising table and loaded no script at all, so three of the
+    // four numbers the statistics page exists for — a summary, the latency percentiles and newcomer responsiveness — were
+    // never fetched and never shown, and the page measured 3.8 KB of nav with one empty paragraph under it.
+    body.open("div", &[("id", "stats-summary"), ("aria-busy", "true")]).close("div");
+    body.open("div", &[("id", "stats-latency"), ("aria-busy", "true")]).close("div");
+    body.open("div", &[("id", "stats-responsiveness"), ("aria-busy", "true")]).close("div");
+    body.open("div", &[("id", "stats-rising"), ("aria-busy", "true")]);
     if rising.is_empty() {
         body.open("p", &[("class", "empty")])
             .text("No project has two snapshots to measure a slope over yet.")
@@ -160,6 +167,9 @@ pub async fn stats(State(pool): State<PgPool>, headers: HeaderMap) -> Response {
         }
         body.close("tbody").close("table");
     }
+    body.close("div");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/skeleton.js")), ("defer", "")]).close("script");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/stats.js")), ("defer", "")]).close("script");
     if !lists.is_empty() {
         body.open("h2", &[]).text("Lists").close("h2").open("ul", &[("class", "project-list")]);
         for list in &lists {

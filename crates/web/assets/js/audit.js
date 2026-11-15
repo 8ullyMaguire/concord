@@ -1,17 +1,4 @@
-/* apiAuth: the session's Authorization header, for API reads.
- *
- * Every read on this page used to go out anonymous -- harmless while the project is
- * public, and fatal for the projects whose settings most need changing: a member
- * reaches a protected project (the navigation cookie opened the page) and then every
- * panel 404s, because the page's own reads carried no credential. session.js has
- * exported authHeaders() all along; this is the two lines that use it, and for a
- * signed-out visitor the request is identical to before. */
-function apiAuth(extra) {
-  var h = extra || {};
-  var tok = window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {};
-  for (var k in tok) { if (Object.prototype.hasOwnProperty.call(tok, k)) h[k] = tok[k]; }
-  return h;
-}
+
 // Concord audit log viewer — one page over ListAudit.
 //
 // Three things this deliberately does not do:
@@ -202,23 +189,21 @@ function apiAuth(extra) {
     }
     if (btn) btn.disabled = true;
     say('Reversing\u2026');
-    fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/moderation/arena/restore', {
-      method: 'POST',
-      headers: apiAuth({ 'Content-Type': 'application/json' }),
-      body: JSON.stringify({ undoes: Number(id), reason: reason, confirm: true })
-    }).then(function (r) {
-      return r.json().catch(function () { return {}; }).then(function (data) {
-        if (!r.ok) {
-          say((data && data.error) || 'Could not reverse that.');
-          if (btn) btn.disabled = false;
-          return;
-        }
+    // One client (review item 9b): the refusal is the server's sentence, and it arrives as the error's message
+    // instead of a second parse of the same JSON.
+    window.ConcordApi
+      .post('/api/v1/projects/' + encodeURIComponent(slug) + '/moderation/arena/restore',
+        { undoes: Number(id), reason: reason, confirm: true })
+      .then(function () {
         load('Reversed. The restore act is in this log with that reason on it.');
+      })
+      .catch(function (error) {
+        // One error model: `ApiError.message` is the server's own sentence ("the reason is required", "only a
+        // moderator may reverse this"), and `status: 0` is the network. The page says which one it was instead of
+        // calling both "Could not reach the server".
+        say(error && error.message ? error.message : 'Could not reach the server.');
+        if (btn) btn.disabled = false;
       });
-    }).catch(function () {
-      say('Could not reach the server.');
-      if (btn) btn.disabled = false;
-    });
   }
 
   function query() {
@@ -243,21 +228,18 @@ function apiAuth(extra) {
     var base = '/api/v1/projects/' + encodeURIComponent(slug);
     var filtered = state.kind !== '' || state.action !== '' || state.q !== '';
     var fetches = [
-      fetch(base + '/audit' + query(), { headers: apiAuth() }).then(function (r) {
-        if (!r.ok) throw new Error('audit: HTTP ' + r.status);
-        return r.json();
-      }),
+      window.ConcordApi.get(base + '/audit' + query()),
       // The action list is supplementary: a log that cannot be filtered by
       // action is less usable, but its absence must not blank the page.
-      fetch(base + '/audit/actions', { headers: apiAuth() }).then(function (r) { return r.ok ? r.json() : []; })
+      window.ConcordApi.get(base + '/audit/actions').catch(function () { return []; })
     ];
     if (filtered) {
       // Only when a filter is active, and only to make the count line honest.
       // Fetching this on every load would be a request whose result is never
       // read, and a second failure would have to be handled for no benefit.
-      fetches.push(fetch(base + '/audit?limit=1', { headers: apiAuth() }).then(function (r) {
-        return r.ok ? r.json().then(function (p) { return p.total; }) : null;
-      }));
+      fetches.push(window.ConcordApi.get(base + '/audit?limit=1')
+        .then(function (page) { return page && page.total !== undefined ? page.total : null; })
+        .catch(function () { return null; }));
     }
     Promise.all(fetches).then(function (res) {
       render(res[0], res[1], res[2]);

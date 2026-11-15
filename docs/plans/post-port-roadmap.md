@@ -443,3 +443,13 @@ projects, in the same order, because two callers deriving one answer is how they
   repository's most common defect (a capability that exists, is tested, and cannot be reached), so the project page now renders the
   archive control for a maintainer and `scripts/parity/probe_archive_page.py` proves the four cases: anonymous and stranger refused,
   owner archived, page then offers Restore. The remaining eight have a disposition each in the ADR.
+
+## Review item 9 — the frontend, in progress
+
+- **2026-11-15 (`api3`/`api4`)**: `board.js`, `stats.js` and `audit.js` now call `ConcordApi` instead of their own `fetch` +
+  `apiAuth` copies (11 call sites, 2 duplicate token-header helpers deleted). Converting `stats.js` found that `/stats` had never
+  loaded it: the page rendered the rising table and none of the three numbers the page exists for. Fixed and measured live —
+  summary shows 1,188 discussion features, latency shows complaint triage `0.0 h (n=1414, unfinished=996)`.
+- **Remaining**: `80` occurrences of `fetch(` across `crates/web/assets/js/*.js`, one of which is `api.js` itself — measured with
+  `grep -c 'fetch(' crates/web/assets/js/*.js`. The counts include comments, so the working number is the per-file list rather than a
+  total: `project.js` 18, `consensus.js` 8, `settings.js` 6, `board.js` 0, `audit.js` 0, `stats.js` 0.

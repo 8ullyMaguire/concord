@@ -1,17 +1,3 @@
-/* apiAuth: the session's Authorization header, for API reads.
- *
- * Every read on this page used to go out anonymous -- harmless while the project is
- * public, and fatal for the projects whose settings most need changing: a member
- * reaches a protected project (the navigation cookie opened the page) and then every
- * panel 404s, because the page's own reads carried no credential. session.js has
- * exported authHeaders() all along; this is the two lines that use it, and for a
- * signed-out visitor the request is identical to before. */
-function apiAuth(extra) {
-  var h = extra || {};
-  var tok = window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {};
-  for (var k in tok) { if (Object.prototype.hasOwnProperty.call(tok, k)) h[k] = tok[k]; }
-  return h;
-}
 // Concord kanban board — resolves the slug, then hydrates columns + cards.
 (function () {
   // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it, so this file cannot disagree with
@@ -89,22 +75,29 @@ function apiAuth(extra) {
     // RETURNED, so a caller can wait for the repaint. Without it the chain's result
     // is discarded, `.then(announce)` fires on a promise that has already resolved to
     // undefined, and the confirmation is wiped by the render it was supposed to follow.
-    return fetch('/api/v1/projects/' + encodeURIComponent(slug), { headers: apiAuth() })
-      .then(function (r) {
-        if (r.status === 404) throw { notFound: true };
-        return r.ok ? r.json() : Promise.reject({ status: r.status });
+    // One client for the whole frontend (review item 9b). These four calls were four copies of the same
+    // fetch-plus-token-plus-parse dance, each with its own idea of what a failure meant, and a 404 here had to be
+    // told apart from a 500 by hand. `ConcordApi` throws one error with a `status`, so "not found" is a NUMBER
+    // rather than a shape each page invents.
+    var api = window.ConcordApi;
+    return api.get('/api/v1/projects/' + encodeURIComponent(slug))
+      .catch(function (error) {
+        if (error && error.status === 404) throw { notFound: true };
+        throw { status: error && error.status };
       })
       .then(function (p) {
         return Promise.all([
           // By slug, not p.id: the project-scoped routes resolve a slug.
           // Passing p.id 404s, and the fallbacks below turn that into an empty
           // board that looks like a project with nothing on it.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/board' + boardQuery(), { headers: apiAuth() }).then(function (r) { return r.ok ? r.json() : { columns: [], cards: [] }; }),
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/features', { headers: apiAuth() }).then(function (r) { return r.ok ? r.json() : []; }),
+          api.get('/api/v1/projects/' + encodeURIComponent(slug) + '/board' + boardQuery())
+            .catch(function () { return { columns: [], cards: [] }; }),
+          api.get('/api/v1/projects/' + encodeURIComponent(slug) + '/features')
+            .catch(function () { return []; }),
           // The filter's own options (spec §4.2 item 5). Tolerant: a project with no
           // milestones, or a reader who cannot list them, still gets its board.
-          fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/milestones', { headers: apiAuth() })
-            .then(function (r) { return r.ok ? r.json() : []; }).catch(function () { return []; })
+          api.get('/api/v1/projects/' + encodeURIComponent(slug) + '/milestones')
+            .catch(function () { return []; })
         ]).then(function (res) { return { project: p, board: res[0], features: res[1], milestones: res[2] }; });
       })
       .then(function (ctx) {
@@ -259,14 +252,13 @@ function announce(box, msg, kind) {
 
 function moveCard(slug, cardID, to) {
 
-  return fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/board/cards/' +
-      encodeURIComponent(cardID) + '/move?to=' + encodeURIComponent(to),
-    { method: 'PUT', headers: apiAuth({ 'Content-Type': 'application/json' }) })
-    .then(function (r) {
-      return r.json().catch(function () { return {}; }).then(function (j) {
-        return { ok: r.ok, body: j };
-      });
-    });
+  // The refusal is the useful part — "that phase has a gate", "WIP limit reached" — so the one error model's
+  // message is returned in the shape this caller already reads, rather than a second parser for the same JSON.
+  return window.ConcordApi
+    .put('/api/v1/projects/' + encodeURIComponent(slug) + '/board/cards/' +
+      encodeURIComponent(cardID) + '/move?to=' + encodeURIComponent(to), {})
+    .then(function (body) { return { ok: true, body: body || {} }; })
+    .catch(function (error) { return { ok: false, body: { error: error && error.message } }; });
 }
 
 function commit(slug, box, cardID, to, sourceCard) {

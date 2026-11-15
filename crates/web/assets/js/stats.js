@@ -164,15 +164,11 @@
     container.innerHTML = '<div class="grid-responsive-2">' + parts.join('') + '</div>';
   }
 
-  function authHeaders() {
-    return (window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {});
-  }
-
+  // One client (review item 9b). This file's own `fetch` + `authHeaders` pair was a copy of `api.js`, and its
+  // failure said "HTTP 500" for a page the reader cannot act on either way — the shared client turns the server's
+  // own sentence into the message.
   function getJSON(path) {
-    return fetch(path, { headers: authHeaders() })
-      .then(function (r) {
-        return r.ok ? r.json() : Promise.reject(new Error('HTTP ' + r.status));
-      });
+    return window.ConcordApi.get(path);
   }
 
   document.addEventListener('DOMContentLoaded', function () {
