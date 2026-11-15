@@ -78,7 +78,25 @@ PY
     echo "gate: could not create a scratch database — the store tests will fail on CONCORD_TEST_DSN"
   fi
 fi
-[ -z "${CONCORD_TEST_DSN:-}" ] && [ -n "${DATABASE_URL:-}" ] && export CONCORD_TEST_DSN="$DATABASE_URL"
+# A fallback that points the store tests at DATABASE_URL is a fallback that runs a WRITING suite against whatever database the
+# operator had exported — production, on this host. It was here and it was reachable: on 2026-11-15 `cargo test --workspace` with
+# `DATABASE_URL` exported from ~/.config/concord/.env reached the production database and reported `error: 1 target failed`
+# (measured afterwards: no row in users, projects, features, complaints, project_documents or api_tokens has a created_at later
+# than 2026-11-14, so nothing was written). "Nothing was written" is luck, not a design. The fallback now refuses unless the
+# operator says so explicitly.
+if [ -z "${CONCORD_TEST_DSN:-}" ]; then
+  if [ -n "${DATABASE_URL:-}" ]; then
+    if [ "${CONCORD_ALLOW_PROD_TESTS:-}" = "1" ]; then
+      echo "gate: CONCORD_ALLOW_PROD_TESTS=1 — the store tests will run against DATABASE_URL"
+      export CONCORD_TEST_DSN="$DATABASE_URL"
+    else
+      echo "gate: no scratch database and no CONCORD_TEST_DSN; refusing to point the store tests at DATABASE_URL."
+      echo "gate: set CONCORD_TEST_DSN to a migrated scratch database, or CONCORD_ALLOW_PROD_TESTS=1 to do it anyway."
+      FAILED=1
+      SKIP_UNIT=1
+    fi
+  fi
+fi
 
 # The frontend layer no suite had: `node --check` over every asset. Four scripts shipped syntactically broken for a day
 # (`merge.js`, `ranking.js`, `requests-index.js`, `scout.js`) after a bulk edit removed a helper and left its closing brace —
@@ -110,21 +128,29 @@ say "1. unit tests"
 # `--no-fail-fast` on purpose: one red crate must not hide the four behind it, and the per-crate counts are printed because the number to
 # distrust is the one that says everything ran.
 UNIT_LOG="$SCRATCH/unit.log"
-cargo test --workspace --no-fail-fast >"$UNIT_LOG" 2>&1
-UNIT_STATUS=$?
-grep -E "^test result: (ok|FAILED)" "$UNIT_LOG" | sed 's/^/  /'
-if [ "$UNIT_STATUS" -ne 0 ]; then
-  bad "unit tests"
-  grep -E "^(error|failures:)" -A6 "$UNIT_LOG" | head -30
+# `--locked` on both cargo calls. Without it a workspace whose lockfile no longer describes it passes the gate by silently
+# rewriting the lock — which is exactly what happened when the seven estate crates were added to the workspace in `eb20faf` and
+# `Cargo.lock` was left behind: the gate was green locally and in CI while the committed tree was not reproducible (`30590a6`
+# committed the lock afterwards). A stale lock must fail here, not be repaired here.
+if [ "${SKIP_UNIT:-0}" = "1" ]; then
+  echo "unit: not run — there is no database the tests are allowed to write to"
 else
-  echo "unit: ok"
-fi
+  cargo test --workspace --no-fail-fast --locked >"$UNIT_LOG" 2>&1
+  UNIT_STATUS=$?
+  grep -E "^test result: (ok|FAILED)" "$UNIT_LOG" | sed 's/^/  /'
+  if [ "$UNIT_STATUS" -ne 0 ]; then
+    bad "unit tests"
+    grep -E "^(error|failures:)" -A6 "$UNIT_LOG" | head -30
+  else
+    echo "unit: ok"
+  fi
+fi  # SKIP_UNIT
 
 if [ "${SKIP_SMOKE:-0}" = "1" ] || [ "$CREATED_DB" != "1" ]; then
   echo "smoke: skipped"
 else
   say "2. smoke — fresh database, the real binary, real HTTP"
-  cargo build --release -p concord-cli --quiet || bad "build"
+  cargo build --release -p concord-cli --locked --quiet || bad "build"
   BIN="$HOME/.cache/cargo-target/release/concord-cli"
   [ -x "$BIN" ] || BIN="$ROOT/target/release/concord-cli"
   if [ ! -x "$BIN" ]; then
