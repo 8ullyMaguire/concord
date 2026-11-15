@@ -523,6 +523,14 @@ projects, in the same order, because two callers deriving one answer is how they
   remotes — are vendored under `vendor/` (ADR 0013, commit `eb20faf`, symlink cleanup `f8121cb`). Measured: `git clone` to
   `~/tmp/concord-clean`, where `ls ../polaris-authz` is "No such file or directory", then `cargo build -p concord-cli --offline`
   → `Finished dev profile in 4m 02s`.
+* **`git push` still creates no workflow run; `make push` does.** Three candidate causes were measured and each ruled out: the
+  branch glob (`"**"` → explicit names, push `f9b4a07`), the default branch being the pre-port Go tree (`master` → `port-rust`
+  via `gh api -X PATCH`, push `309f69e`), and Actions being off (it reports `{"enabled":true,"allowed_actions":"all"}`, workflow
+  `state: active`, and `repos/:owner/:repo/events` lists the PushEvents arriving). `workflow_dispatch` works, so
+  `scripts/push-and-gate.sh` / `make push` pushes to both hosts and dispatches the gate with three attempts — a dispatch lost to
+  a DNS blink is the same defect as a push that creates no run. Measured: `make push` printed
+  `https://github.com/8ullyMaguire/concord/actions/runs/43736255200` and that run finished **success** in 3m01s. `port-rust` is
+  now the repository's default branch, which is also true to the product — it is the branch that serves production.
 * **CI is green for the first time.** GitHub run `43732462823` (commit `f8121cb`, `workflow_dispatch`): `js: all 42 assets parse` ·
   `js: API paths with a stray trailing '/': 0` · `routes: all 13 answered` · `gate: PASS`, with 56 `test result: ok` lines
   including the vendored crates' suites. Pushes still do not create runs on their own — the workflow now carries
