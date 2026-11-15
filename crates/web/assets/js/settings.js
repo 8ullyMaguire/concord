@@ -68,19 +68,14 @@
   // does NOT reproduce the stale read: verified by mutation, both sides, and the panel
   // still re-read correctly. So "the browser cached the GET" is a plausible story that
   // the experiment did not support, and it is not written down as though it had.
-  function authHeaders(extra) {
-    var h = extra || {};
-    var tok = localStorage.getItem("concord.token");
-    if (tok) h["Authorization"] = "Bearer " + tok;
-    return h;
-  }
+  // (The function that used to sit here, `authHeaders`, read `concord.token` out of localStorage itself. It is gone:
+  // `api.js` asks `session.js` for the header, and there is one answer to "which token does this request carry".)
 
+  // One client (review item 9b). The old body threw `path -> 500`, which told a reader nothing the server had not
+  // already said better; `ApiError.message` is the server's own sentence. `no-store` still applies — a settings page
+  // reading a cached charter is a page showing a number somebody changed.
   function get(path) {
-    return fetch(path, { headers: authHeaders({ Accept: "application/json" }), cache: "no-store" })
-      .then(function (r) {
-        if (!r.ok) throw new Error(path + " -> " + r.status);
-        return r.json();
-      });
+    return window.ConcordApi.get(path, { cache: "no-store" });
   }
 
   // The charter is 22 scalars. Rendered as a labelled grid rather than 22 hand-written
@@ -652,33 +647,35 @@
   // The four writers. Each sends the token the server reads and reports the SERVER's
   // refusal rather than a generic failure, because "nothing happened" is the least
   // diagnosable symptom a page can produce (the lesson the charter save already encodes).
+  // Both consent controls answer with the same shape — `recorded`, `ratified`, and the tally the decision turns on — so
+  // they get one sentence rather than two that can disagree about what "consent recorded" means.
+  function consentSentence(body) {
+    if (!body) return "Consent recorded.";
+    var tally = (body.consents !== undefined && body.eligible !== undefined)
+      ? " " + body.consents + " of " + body.eligible + " eligible consents so far."
+      : "";
+    return body.ratified
+      ? "Consent recorded and the quorum is reached: ratified." + tally
+      : "Consent recorded. The quorum is not reached yet." + tally;
+  }
+
   function write(path, method, payload, onOk, btn) {
     if (btn) btn.disabled = true;
-    return fetch(path, {
-      method: method,
-      headers: authHeaders({ "Content-Type": "application/json" }),
-      body: JSON.stringify(payload)
-    })
-      .then(function (r) {
-        return r.text().then(function (t) {
-          var body = {};
-          try { body = JSON.parse(t); } catch (e) { /* a non-JSON body is reported raw */ }
-          if (r.status === 401 || r.status === 403) {
-            say(body.error || ("Not allowed (" + r.status + ")."), true);
-            if (btn) btn.disabled = false;
-            return;
-          }
-          if (!r.ok) {
-            say("The server refused it: " + (body.error || t || r.status), true);
-            if (btn) btn.disabled = false;
-            return;
-          }
-          onOk(body);
-        });
-      })
+    // One client (review item 9b). The three branches below are the three answers a write can get, and they are now read
+    // off the error model instead of a status and a hand-parsed body: `auth` is 401, a role refusal is a 403 status, and
+    // anything else that reached here never left the browser.
+    return window.ConcordApi.request(method, path, payload)
+      .then(function (body) { onOk(body); })
       .catch(function (err) {
         if (btn) btn.disabled = false;
-        say("Could not reach the server: " + (err.message || String(err)), true);
+        var status = err && err.status ? err.status : 0;
+        if (status === 401 || status === 403) {
+          say((err && err.message) || ("Not allowed (" + status + ")."), true);
+        } else if (status) {
+          say("The server refused it: " + ((err && err.message) || status), true);
+        } else {
+          say("Could not reach the server: " + ((err && err.message) || String(err)), true);
+        }
       });
   }
 
@@ -833,28 +830,14 @@
       btn.addEventListener("click", function () {
         var id = btn.getAttribute("data-consent");
         btn.disabled = true;
-        fetch("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/weight-proposals/" +
-              encodeURIComponent(id) + "/consent", { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }) })
-          .then(function (r) {
-            return r.text().then(function (t) {
-              var body = {};
-              try { body = JSON.parse(t); } catch (e) { /* a non-JSON body is reported raw */ }
-              if (r.status === 401 || r.status === 403) {
-                say(body.error || ("Not allowed to consent (" + r.status + ")."), true);
-                btn.disabled = false;
-                return;
-              }
-              if (r.status === 202) {
-                say("Consent recorded. " + (body.message || "The quorum is not reached yet."));
-                return;
-              }
-              if (!r.ok) {
-                say("The server refused the consent: " + (body.error || t || r.status), true);
-                btn.disabled = false;
-                return;
-              }
-              say("Consent recorded and the quorum is reached: " + (body.message || "ratified."));
-            });
+        // One client (review item 9b). `202` was a branch because the server answers it when the quorum is not yet reached;
+        // it is still a success and still carries the message that says which of the two happened.
+        window.ConcordApi.post("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/weight-proposals/" +
+              encodeURIComponent(id) + "/consent", {})
+          .then(function (body) {
+            // The server reports the tally, so the page quotes it. `ratified` is the route's own answer; a page that
+            // inferred it from the status code would be deciding the rule itself.
+            say(consentSentence(body));
           })
           .catch(function (err) {
             btn.disabled = false;
@@ -894,34 +877,26 @@
       btn.addEventListener("click", function () {
         var id = btn.getAttribute("data-consent-theme");
         btn.disabled = true;
-        fetch("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/themes/" +
-              encodeURIComponent(id) + "/consent",
-              { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }) })
-          .then(function (r) {
-            return r.text().then(function (txt) {
-              var body = {};
-              try { body = JSON.parse(txt); } catch (e) { /* a non-JSON body is reported raw */ }
-              if (r.status === 401 || r.status === 403) {
-                say(body.error || ("Not allowed to consent (" + r.status + ")."), true);
-                btn.disabled = false;
-                return;
-              }
-              if (r.status === 202) {
-                say("Consent recorded. " + (body.message || "The quorum is not reached yet."));
-                return;
-              }
-              if (!r.ok) {
-                say("The server refused the consent: " + (body.error || txt || r.status), true);
-                btn.disabled = false;
-                return;
-              }
-              say("Ratified. " + (body.message || "The theme is now in force."));
-              load();
-            });
+        window.ConcordApi.post("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/themes/" +
+              encodeURIComponent(id) + "/consent", {})
+          .then(function (body) {
+            // The server answers 202 while the quorum is unmet and 200 once it holds; both are "recorded", and the
+            // tally it returns says which.
+            say(body && body.ratified
+              ? "Ratified. The theme is now in force."
+              : consentSentence(body));
+            if (body && body.ratified) load();
           })
           .catch(function (err) {
+            var status = err && err.status ? err.status : 0;
+            if (status === 401 || status === 403) {
+              say((err && err.message) || ("Not allowed to consent (" + status + ")."), true);
+            } else if (status) {
+              say("The server refused the consent: " + ((err && err.message) || status), true);
+            } else {
+              say("Could not reach the server: " + ((err && err.message) || String(err)), true);
+            }
             btn.disabled = false;
-            say("Could not reach the server: " + (err.message || String(err)), true);
           });
       });
     });
@@ -932,25 +907,20 @@
         btn.addEventListener("click", function () {
           var id = btn.getAttribute(attr);
           btn.disabled = true;
-          fetch("/api/v1/projects/" + encodeURIComponent(slug) + path +
-                encodeURIComponent(id) + "/withdraw",
-                { method: "POST", headers: authHeaders({ "Content-Type": "application/json" }) })
-            .then(function (r) {
-              return r.text().then(function (txt) {
-                var body = {};
-                try { body = JSON.parse(txt); } catch (e) { /* a non-JSON body is reported raw */ }
-                if (!r.ok) {
-                  say("The server refused the withdrawal: " + (body.error || txt || r.status), true);
-                  btn.disabled = false;
-                  return;
-                }
-                say(note);
-                load();
-              });
+          window.ConcordApi.post("/api/v1/projects/" + encodeURIComponent(slug) + path +
+                encodeURIComponent(id) + "/withdraw", {})
+            .then(function () {
+              say(note);
+              load();
             })
             .catch(function (err) {
+              var status = err && err.status ? err.status : 0;
+              if (status) {
+                say("The server refused the withdrawal: " + ((err && err.message) || status), true);
+              } else {
+                say("Could not reach the server: " + ((err && err.message) || String(err)), true);
+              }
               btn.disabled = false;
-              say("Could not reach the server: " + (err.message || String(err)), true);
             });
         });
       });
@@ -1006,10 +976,11 @@
     form.addEventListener("submit", function (ev) {
       ev.preventDefault();
 
-      // Read the VALUES BACK OUT OF THE FORM into the shape the server expects, which is
-      // the PascalCase object it just sent us. Sending a hand-written object would mean a
-      // field added to the charter is silently dropped on save -- and the page would show
-      // the new value until the next reload, then revert it.
+      // Read the VALUES BACK OUT OF THE FORM into the shape the server expects — the same object it just sent us,
+      // `snake_case` and all (`governance::Charter` has no `rename_all`, so the rendered `name` IS the wire key; this
+      // comment said "PascalCase" for as long as it was copied from the Go page). Sending a hand-written object would
+      // mean a field added to the charter is silently dropped on save -- and the page would show the new value until
+      // the next reload, then revert it.
       var payload = {};
       Array.prototype.forEach.call(form.querySelectorAll("input[name]"), function (input) {
         var kind = input.getAttribute("data-kind");
@@ -1026,30 +997,23 @@
         }
       });
 
-      // The same shape as requests.js: Content-Type always, Authorization only when a
-      // token exists, so an anonymous save is a plain request that gets a plain 401
-      // rather than a header of "Bearer null".
-
-      fetch("/api/v1/projects/" + encodeURIComponent(slug) + "/charter", {
-        method: "PUT",
-        headers: authHeaders({ "Content-Type": "application/json" }),
-        body: JSON.stringify(payload)
-      }).then(function (r) {
-        if (r.status === 401 || r.status === 403) {
-          // The two the token typo produced. Named explicitly because "save did nothing"
-          // is the least diagnosable symptom there is.
-          say("Not allowed to change the charter. Sign in as a maintainer.", true);
-          return;
-        }
-        if (!r.ok) {
-          return r.text().then(function (t) {
-            say("The server refused the charter: " + (t || r.status), true);
-          });
-        }
-        say("Charter saved.");
-      }).catch(function (err) {
-        say("Could not reach the server: " + (err.message || String(err)), true);
-      });
+      // One client (review item 9b): the token is `session.js`'s, the parse is `api.js`'s, and an anonymous save is a
+      // plain request that gets a plain 401 rather than a header of "Bearer null".
+      window.ConcordApi.put("/api/v1/projects/" + encodeURIComponent(slug) + "/charter", payload)
+        .then(function () {
+          say("Charter saved.");
+        })
+        .catch(function (err) {
+          var status = err && err.status ? err.status : 0;
+          if (status === 401 || status === 403) {
+            // Named explicitly because "save did nothing" is the least diagnosable symptom there is.
+            say("Not allowed to change the charter. Sign in as a maintainer.", true);
+          } else if (status) {
+            say("The server refused the charter: " + ((err && err.message) || status), true);
+          } else {
+            say("Could not reach the server: " + ((err && err.message) || String(err)), true);
+          }
+        });
     });
   }
 })();

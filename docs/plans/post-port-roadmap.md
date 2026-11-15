@@ -459,3 +459,11 @@ projects, in the same order, because two callers deriving one answer is how they
   never settled and the page sat on its skeleton. `?fields=meta` (`37 KB`, `0.64 s`) fixes it. Live now: `aria-busy false`,
   `349,804` chars rendered. **Every suite passed throughout** — a seeded project has three documents, this one has 175, and that is
   the gap between a green suite and a working page.
+- **2026-11-15 (`api7`)**: `consensus.js` (8 fetch sites, `headers()`/`overrideHeaders()`, five hand-written parse-and-throw bodies) and
+  `settings.js` (6 sites, `authHeaders()`, two consent controls with two sentences) converted. `token()` in consensus.js now asks
+  `session.js` rather than reading `concord.token` itself. The consent conversions quote the server's `ratified` and its tally instead of
+  inferring ratification from a status code — `consent_theme` returns `{recorded, ratified, verdict, consents, eligible}` and no `message`.
+  Corrected the charter-form comment that claimed a `PascalCase` wire (`governance::Charter` has no `rename_all`). Live: settings renders
+  **22 charter inputs** (`consent_ratio=0.7`), consensus renders its index, neither logs a console error. Thirteen of 39 files now
+  carry no `fetch(` at all — measured `grep -c 'fetch(' crates/web/assets/js/*.js`: 48 occurrences remain, of which `api.js` (1),
+  `session.js` (1) and `auth.js` (2) are the transport and the session itself.

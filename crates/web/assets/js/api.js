@@ -62,6 +62,10 @@
     var init = { method: method, headers: headers(body !== undefined && body !== null) };
     if (body !== undefined && body !== null) init.body = JSON.stringify(body);
     if (opts.signal) init.signal = opts.signal;
+    // A caller may need to forbid reuse of an answer (`cache: "no-store"` on a settings read, where a stale charter is
+    // worse than a slow one). Passed through rather than dropped, so moving a page onto this client cannot quietly change
+    // what the browser is allowed to remember.
+    if (opts.cache) init.cache = opts.cache;
 
     return fetch(path, init).then(function (response) {
       return response.text().then(function (text) {

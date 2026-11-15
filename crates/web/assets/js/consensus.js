@@ -25,16 +25,13 @@
   // five characters in its own way; a single pass over a character class cannot disagree with another page about which are dangerous.
   var esc = window.ConcordEscape.esc;
 
+  // One session (review item 9b): `concord.token` is `session.js`'s key, and ten files reading `localStorage` themselves is
+  // how a change to where the token lives turns into ten silent breakages. This reads the session's copy, so signing out in
+  // another tab is visible here on the next render.
   function token() {
-    try { return window.localStorage.getItem('concord.token') || ''; }
-    catch (e) { return ''; }
-  }
-
-  function headers() {
-    var h = { 'Accept': 'application/json' };
-    var t = token();
-    if (t) h.Authorization = 'Bearer ' + t;
-    return h;
+    try {
+      return window.ConcordSession ? (window.ConcordSession.instance().token || '') : '';
+    } catch (e) { return ''; }
   }
 
   function show(el, on) { if (el) el.hidden = !on; }
@@ -229,33 +226,18 @@
     err.hidden = true;
     var url = '/api/v1/projects/' + encodeURIComponent(slug) + '/consensus/objections/' +
       encodeURIComponent(String(o.id)) + '/resolve';
-    fetch(url, {
-      method: 'PUT',
-      headers: (function () {
-        var h = { 'Content-Type': 'application/json' };
-        var t = token();
-        if (t) h.Authorization = 'Bearer ' + t;
-        return h;
-      })(),
-      body: JSON.stringify({ status: status, resolution: why })
-    }).then(function (r) {
-      return r.text().then(function (txt) {
-        var data = {};
-        try { data = txt ? JSON.parse(txt) : {}; } catch (e) { data = {}; }
-        // The server's own sentence, including the store's list of the statuses it
-        // accepts and -- since the standing refusals stopped being bare -- the role
-        // this action needed. Rewriting it here would tell the reader what this page
-        // thinks the rule is.
-        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
-        return data;
+    // The server's own sentence, including the store's list of the statuses it accepts and -- since the standing
+    // refusals stopped being bare -- the role this action needed. Rewriting it here would tell the reader what this
+    // page thinks the rule is, so `ApiError.message` is passed through to the row's error line unchanged.
+    window.ConcordApi.put(url, { status: status, resolution: why })
+      .then(function () {
+        load();
+      })
+      .catch(function (e) {
+        btn.disabled = false;
+        err.textContent = e.message;
+        err.hidden = false;
       });
-    }).then(function () {
-      load();
-    }).catch(function (e) {
-      btn.disabled = false;
-      err.textContent = e.message;
-      err.hidden = false;
-    });
   }
 
   function resolveControls(o) {
@@ -404,17 +386,8 @@
     show(closeDone, false);
     var url = '/api/v1/projects/' + encodeURIComponent(slug) +
       '/consensus/' + encodeURIComponent(callID) + '/close';
-    fetch(url, {
-      method: 'POST',
-      headers: headers()
-    }).then(function (r) {
-      return r.text().then(function (txt) {
-        var data = {};
-        try { data = txt ? JSON.parse(txt) : {}; } catch (e) { data = {}; }
-        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
-        return data;
-      });
-    }).then(function (data) {
+    window.ConcordApi.post(url)
+      .then(function (data) {
       // The server's result, quoted rather than derived: whether the call passed is
       // EvaluateConsensus's judgement and the stored `result` is the record of it.
       closeDone.textContent = 'Recorded: ' + (data.result || 'closed') + '.';
@@ -440,32 +413,16 @@
   // (the role is per project and not published to the reader) and cannot know the
   // charter's override ratio, so a page that hid a button would be making a claim it
   // cannot check -- the same discipline as the call's own controls.
-  function overrideHeaders() {
-    var h = headers();
-    h['Content-Type'] = 'application/json';
-    return h;
-  }
 
   function overrideURL(suffix) {
     return '/api/v1/projects/' + encodeURIComponent(slug) +
       '/consensus/' + encodeURIComponent(callID) + '/override' + (suffix || '');
   }
 
+  // One client (review item 9b): the transport, the parse and the refusal sentence are `api.js`'s, and `ApiError`
+  // already carries the `status` this function used to attach by hand.
   function overrideSend(method, suffix, body) {
-    var opts = { method: method, headers: overrideHeaders() };
-    if (body !== undefined) opts.body = JSON.stringify(body);
-    return fetch(overrideURL(suffix), opts).then(function (r) {
-      return r.text().then(function (txt) {
-        var data = {};
-        try { data = txt ? JSON.parse(txt) : {}; } catch (e) { data = {}; }
-        if (!r.ok) {
-          var err = new Error(data.error || ('HTTP ' + r.status));
-          err.status = r.status;
-          throw err;
-        }
-        return data;
-      });
-    });
+    return window.ConcordApi.request(method, overrideURL(suffix), body === undefined ? null : body);
   }
 
   function clearOverrideMessages() {
@@ -610,14 +567,7 @@
   }
 
   function getJSON(url) {
-    return fetch(url, { headers: headers() }).then(function (r) {
-      return r.text().then(function (txt) {
-        var data = {};
-        try { data = txt ? JSON.parse(txt) : {}; } catch (e) { data = {}; }
-        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
-        return data;
-      });
-    });
+    return window.ConcordApi.get(url);
   }
 
   // §6.6's hold, read rather than inferred. A call whose every write is refused and
@@ -729,18 +679,8 @@
     outcomeSubmit.disabled = true;
     show(outcomeErr, false);
     show(outcomeDone, false);
-    fetch(solURL('/outcome'), {
-      method: 'POST',
-      headers: overrideHeaders(),
-      body: JSON.stringify(body)
-    }).then(function (r) {
-      return r.text().then(function (txt) {
-        var data = {};
-        try { data = txt ? JSON.parse(txt) : {}; } catch (e) { data = {}; }
-        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
-        return data;
-      });
-    }).then(function () {
+    window.ConcordApi.post(solURL('/outcome'), body)
+      .then(function () {
       outcomeSubmit.disabled = false;
       // The record is named rather than described: a decision that says "saved" is a
       // decision nobody can find again.
@@ -857,18 +797,12 @@
 
   function loadIndex() {
     root.setAttribute('aria-busy', 'true');
-    fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/consensus',
-      { headers: headers() })
-      .then(function (r) {
-        return r.text().then(function (txt) {
-          var data = null;
-          try { data = txt ? JSON.parse(txt) : []; } catch (e) { data = null; }
-          if (!r.ok) throw new Error((data && data.error) || ('HTTP ' + r.status));
-          // The list endpoints answer a BARE ARRAY. An object here means the route
-          // changed shape, and rendering nothing would look like an empty project.
-          if (!Array.isArray(data)) throw new Error('the calls index returned no list');
-          return data;
-        });
+    window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/consensus')
+      .then(function (data) {
+        // The list endpoints answer a BARE ARRAY. An object here means the route
+        // changed shape, and rendering nothing would look like an empty project.
+        if (!Array.isArray(data)) throw new Error('the calls index returned no list');
+        return data;
       })
       .then(function (rows) { done(); renderIndex(rows); })
       .catch(function (err) {
@@ -886,15 +820,7 @@
 
     var url = '/api/v1/projects/' + encodeURIComponent(slug) + '/consensus/' +
       encodeURIComponent(callID);
-    fetch(url, { headers: headers() })
-      .then(function (r) {
-        return r.text().then(function (txt) {
-          var data = {};
-          try { data = txt ? JSON.parse(txt) : {}; } catch (e) { data = {}; }
-          if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
-          return data;
-        });
-      })
+    window.ConcordApi.get(url)
       .then(function (data) {
         done();
         render(data);
@@ -921,23 +847,8 @@
     if (!pending) return;
     var url = '/api/v1/projects/' + encodeURIComponent(slug) + '/consensus/' +
       encodeURIComponent(callID) + '/position';
-    fetch(url, {
-      method: 'POST',
-      headers: (function () {
-        var h = { 'Content-Type': 'application/json' };
-        var t = token();
-        if (t) h.Authorization = 'Bearer ' + t;
-        return h;
-      })(),
-      body: JSON.stringify({ position: pending })
-    }).then(function (r) {
-      return r.text().then(function (txt) {
-        var data = {};
-        try { data = txt ? JSON.parse(txt) : {}; } catch (e) { data = {}; }
-        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
-        return data;
-      });
-    }).then(function () {
+    window.ConcordApi.post(url, { position: pending })
+      .then(function () {
       // Re-read rather than patching the tally locally: the counts that decide
       // anything are the server's, and re-reading proves the position landed.
       var saved = $('consensus-saved');
