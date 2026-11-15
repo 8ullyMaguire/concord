@@ -39,9 +39,23 @@ pub const TABS: [(&str, &str); 10] = [
 ];
 
 /// The project and its id, or the 404 document.
-async fn resolve(pool: &PgPool, slug: &str) -> Result<Project, ()> {
-    match projects::project_by_slug(pool, slug).await {
-        Ok(Some(project)) => Ok(project),
+/// The project a sub-page may render — resolved AND readability-checked, because the two questions have one answer.
+///
+/// `resolve` used to answer only the first question, which meant `/projects/{slug}/board` rendered a private project's title, tabs and board
+/// shell to an anonymous reader: the API refused the board's data and the page still named the project. `board_e2e`'s
+/// `test_a_private_project_serves_no_board` is the test that noticed, and it noticed it about exactly one of the six pages that share this
+/// function.
+///
+/// The check is `projects::readable_for`, the same call `/projects/{slug}` and the API make, so a page cannot disagree with the JSON about
+/// who may see a project. `unlisted` stays readable — it means "not in the catalogue", not "not for you".
+async fn resolve(pool: &PgPool, slug: &str, headers: &HeaderMap) -> Result<Project, ()> {
+    let project = match projects::project_by_slug(pool, slug).await {
+        Ok(Some(project)) => project,
+        _ => return Err(()),
+    };
+    let reader = crate::nav_user(pool, headers).await;
+    match projects::readable_for(pool, &project, reader.map(|user| user.id)).await {
+        Ok(true) => Ok(project),
         _ => Err(()),
     }
 }
@@ -91,7 +105,7 @@ macro_rules! project_page {
             Path(slug): Path<String>,
             headers: HeaderMap,
         ) -> Response {
-            let Ok(project) = resolve(&pool, &slug).await else {
+            let Ok(project) = resolve(&pool, &slug, &headers).await else {
                 return crate::not_found(&headers);
             };
             let section = $section;
@@ -133,7 +147,7 @@ pub async fn consensus(
     Query(query): Query<ConsensusQuery>,
     headers: HeaderMap,
 ) -> Response {
-    let Ok(project) = resolve(&pool, &slug).await else { return crate::not_found(&headers) };
+    let Ok(project) = resolve(&pool, &slug, &headers).await else { return crate::not_found(&headers) };
     if project.visibility != "public" {
         return crate::not_found(&headers);
     }
@@ -235,7 +249,7 @@ project_page!(criteria, "/criteria", "Criteria", criteria_body);
 /// The suite asserts the CLIENT's answers — the count is the FILTERED total, a filter matching nothing says so, a `%` in the search box is
 /// matched literally rather than as a wildcard, and a detail containing HTML is escaped — and a server-rendered table satisfies none of them.
 pub async fn audit(State(pool): State<PgPool>, Path(slug): Path<String>, headers: HeaderMap) -> Response {
-    let Ok(project) = resolve(&pool, &slug).await else { return crate::not_found(&headers) };
+    let Ok(project) = resolve(&pool, &slug, &headers).await else { return crate::not_found(&headers) };
     if project.visibility != "public" {
         return crate::not_found(&headers);
     }
@@ -279,7 +293,7 @@ pub async fn audit(State(pool): State<PgPool>, Path(slug): Path<String>, headers
 /// `board.js` fetches `/api/v1/projects/{slug}/board` and builds the columns; the suite asserts the cards it drew, that `?milestone=`
 /// narrows them, and that a feature outside the milestone is ABSENT. A server-rendered board satisfies none of those.
 pub async fn board(State(pool): State<PgPool>, Path(slug): Path<String>, headers: HeaderMap) -> Response {
-    let Ok(project) = resolve(&pool, &slug).await else { return crate::not_found(&headers) };
+    let Ok(project) = resolve(&pool, &slug, &headers).await else { return crate::not_found(&headers) };
     let body = format!(
         r#"<div class="page-header">
   <h1 class="page-title">Board <span class="muted" style="color:var(--slate-500);font-weight:400;">&middot; {slug}</span></h1>
@@ -308,7 +322,7 @@ pub async fn board(State(pool): State<PgPool>, Path(slug): Path<String>, headers
 /// `milestones.js` builds it, and the suite asserts the COUNTS it prints (`.ms-counts`: "0/1 shipped", "1 open") rather than the shape of
 /// the timeline, because a timeline nobody can count is a picture.
 pub async fn roadmap(State(pool): State<PgPool>, Path(slug): Path<String>, headers: HeaderMap) -> Response {
-    let Ok(project) = resolve(&pool, &slug).await else { return crate::not_found(&headers) };
+    let Ok(project) = resolve(&pool, &slug, &headers).await else { return crate::not_found(&headers) };
     let body = format!(
         r#"<div class="page-header">
   <h1 class="page-title">Roadmap <span class="muted" style="color:var(--slate-500);font-weight:400;">&middot; {slug}</span></h1>
