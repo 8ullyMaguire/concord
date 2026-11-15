@@ -82,10 +82,15 @@ impl std::error::Error for RefusedUrl {}
 /// The three forges the ingest knows how to call. A host outside this set is refused rather than stored:
 /// `repo_host` is the switch the fetch dispatches on, and an unknown host would either never be fetched
 /// (silent) or be fetched with the wrong API (wrong numbers).
-const KNOWN_HOSTS: [(&str, &str); 3] = [
+/// A Gitea or Forgejo server is identified by its own hostname, and the API root follows from it, so adding a server is a row
+/// here rather than a change to the fetch: `git.disroot.org` is where sixteen of this catalogue's own projects live, and before
+/// this row existed every one of them was refused — the ingest answered "not a known forge" and the projects stayed unmeasurable
+/// for a reason that looked like policy and was a missing line.
+const KNOWN_HOSTS: [(&str, &str); 4] = [
     ("github.com", "github"),
     ("codeberg.org", "codeberg"),
     ("git.polarisocial.xyz", "forgejo"),
+    ("git.disroot.org", "forgejo"),
 ];
 
 /// Turn what a person typed into one canonical repository reference, or refuse it with a reason.
@@ -133,9 +138,10 @@ pub fn parse_repo_url(raw: &str) -> Result<Repo, RefusedUrl> {
         .unwrap_or("")
         .to_lowercase();
     let Some((_, repo_host)) = KNOWN_HOSTS.iter().find(|(known, _)| *known == host) else {
+        let known: Vec<&str> = KNOWN_HOSTS.iter().map(|(host, _)| *host).collect();
         return Err(RefusedUrl(format!(
-            "host {host:?} is not a known forge (want one of github.com, codeberg.org, \
-             git.polarisocial.xyz)"
+            "host {host:?} is not a known forge (want one of {})",
+            known.join(", ")
         )));
     };
     let path = path.trim_matches('/').trim_end_matches(".git");
@@ -278,7 +284,10 @@ impl Fetcher {
         }
     }
 
-    fn api_root(&self, host: Host) -> String {
+    /// Where this repository's API lives. The server comes from the repository's own URL rather than from the family, because
+    /// two Forgejo instances are two different APIs: hardcoding `git.polarisocial.xyz` here made every `git.disroot.org`
+    /// repository unfetchable even once it parsed.
+    fn api_root(&self, host: Host, server: &str) -> String {
         let override_root = match host {
             Host::GitHub => &self.github_api,
             Host::Forgejo => &self.forgejo_api,
@@ -288,7 +297,7 @@ impl Fetcher {
         }
         match host {
             Host::GitHub => "https://api.github.com/repos".to_string(),
-            Host::Forgejo => "https://git.polarisocial.xyz/api/v1/repos".to_string(),
+            Host::Forgejo => format!("https://{server}/api/v1/repos"),
         }
     }
 
@@ -334,7 +343,7 @@ impl Fetcher {
 
     /// A GitHub repository.
     async fn github(&self, repo: &Repo) -> Result<Snapshot, FetchError> {
-        let base = format!("{}/{}", self.api_root(Host::GitHub), repo.full);
+        let base = format!("{}/{}", self.api_root(Host::GitHub, &repo.host_name), repo.full);
         let (_, body) = self.get(Host::GitHub, &base).await?;
         let value: serde_json::Value = serde_json::from_slice(&body)
             .map_err(|error| FetchError::Failed(format!("{base}: {error}")))?;
@@ -430,7 +439,7 @@ impl Fetcher {
 
     /// A Forgejo repository.
     async fn forgejo(&self, repo: &Repo) -> Result<Snapshot, FetchError> {
-        let base = format!("{}/{}", self.api_root(Host::Forgejo), repo.full);
+        let base = format!("{}/{}", self.api_root(Host::Forgejo, &repo.host_name), repo.full);
         let (_, body) = self.get(Host::Forgejo, &base).await?;
         let value: serde_json::Value = serde_json::from_slice(&body)
             .map_err(|error| FetchError::Failed(format!("{base}: {error}")))?;
@@ -611,6 +620,28 @@ mod tests {
     fn an_unknown_host_is_refused_naming_it() {
         let error = parse_repo_url("https://example.com/owner/repo").unwrap_err();
         assert!(error.0.contains("example.com"), "{error:?}");
+        // The message lists the table it is actually checked against, so adding a server cannot leave the advice stale.
+        assert!(error.0.contains("git.disroot.org"), "{error:?}");
+    }
+
+    #[test]
+    fn a_forgejo_repository_on_another_server_parses_and_is_fetched_from_that_server() {
+        let repo = parse_repo_url("https://git.disroot.org/hirrolot19/media_wiki").expect("a known Gitea server parses");
+        assert_eq!(repo.host, Host::Forgejo);
+        assert_eq!(repo.host_name, "git.disroot.org");
+        assert_eq!(repo.full, "hirrolot19/media_wiki");
+        // `from_env` returns a Result because the TLS client can fail to build; the API roots it reads
+        // (`CONCORD_*_API`) are the probe's seam and are absent in production, so this asserts the real ones.
+        let fetcher = Fetcher::from_env().expect("a HTTP client");
+        // Not the polarisocial API: the server the repository lives on.
+        assert_eq!(
+            fetcher.api_root(Host::Forgejo, &repo.host_name),
+            "https://git.disroot.org/api/v1/repos"
+        );
+        assert_eq!(
+            fetcher.api_root(Host::Forgejo, "git.polarisocial.xyz"),
+            "https://git.polarisocial.xyz/api/v1/repos"
+        );
     }
 
     #[test]
