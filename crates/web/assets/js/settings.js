@@ -599,14 +599,20 @@
   // observable, so the test can name what it is waiting for.
   function load() {
     root.setAttribute("data-loading", "true");
+    // Four of these routes are owner-only, and a signed-out reader asking them gets four 401s for panels that cannot
+    // render anything but empty anyway: `probe_requests.py` saw exactly four 401s on an anonymous crawl. Asking only when
+    // there is a session keeps the crawl honest — a 401 there would mean a route that broke, not one that was never ours
+    // to read. `members` stays unconditional: a member list is public on this product.
+    var signedIn = !!(window.ConcordSession && window.ConcordSession.instance().signedIn());
+    var mine = function (path) { return signedIn ? getOrNull(path) : Promise.resolve(null); };
     return Promise.all([
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/charter"),
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/members"),
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/criteria-profiles"),
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/tags/completeness"),
       Promise.all([
-        getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/weight-proposals"),
-        getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/themes"),
+        mine("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/weight-proposals"),
+        mine("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/themes"),
         // The propose form needs the features to choose from. A number input asking
         // for a feature id would be a control that requires the reader to know
         // something the page is holding.
@@ -614,14 +620,14 @@
         // §6.2's themes: the proposals beside the live weights, so a reader can see a
         // pending change to a tag and consent to it. The live list alone shows only what
         // already won.
-        getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/theme-proposals")
+        mine("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/theme-proposals")
       ]).then(function (s) {
         return { proposals: s[0], themes: s[1], features: s[2], themeProposals: s[3] };
       }),
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug)),
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/tags"),
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/languages"),
-      getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/invites")
+      mine("/api/v1/projects/" + encodeURIComponent(slug) + "/invites")
     ]).then(function (res) {
       render(res[0], res[1], res[2], res[3], res[4], res[5], res[6], res[7], res[8]);
       wireSave();
