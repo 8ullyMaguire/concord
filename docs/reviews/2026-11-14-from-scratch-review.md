@@ -129,6 +129,9 @@ branch in the same commit, and let the existing browser suites prove the interac
 
 ### 3. The API should have been designed, not frozen
 
+**Status 2026-11-15: decided.** `docs/adr/0012-the-api-is-a-designed-surface.md` — the audit is now a script, the count
+is 174 routes / 166 read / 8 unread, and `/archive` (the audit's first finding) is wired into the project page.
+
 **What exists.** 177 routes, additive-only since the port began, because the Go-era Playwright tests speak HTTP and the port's gate was
 "byte-identical shapes". Two shapes now carry a `stage`, a `stage_because` and an `ai_involvement` that the reference never had, and the
 parity corpus had to be re-recorded twice in one session.

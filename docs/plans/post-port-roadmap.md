@@ -438,3 +438,8 @@ projects, in the same order, because two callers deriving one answer is how they
   prints what the API and the rendered page say — that is what caught the bare-array tags and the missing slug.
 * **`board_e2e` is green**: `8 passed in 13.46s`, including `test_a_private_project_serves_no_board`, which had been the one open failure
   (it read as a privacy leak). The board page now carries the reference's mount and script rather than a server-rendered shell.
+* **Review item 3 is decided and measured** (ADR `0012-the-api-is-a-designed-surface.md`): `scripts/parity/route_readers.py` counts the
+  API — 174 routes registered, **166 with a reader, 8 without**. The audit's first run named `/archive` among the unread, which is the
+  repository's most common defect (a capability that exists, is tested, and cannot be reached), so the project page now renders the
+  archive control for a maintainer and `scripts/parity/probe_archive_page.py` proves the four cases: anonymous and stranger refused,
+  owner archived, page then offers Restore. The remaining eight have a disposition each in the ADR.

@@ -424,11 +424,23 @@ async fn project_overview(
     // project's name, description and canonical URL, and tells the reader it exists. Same predicate the JSON API asks (the store's
     // `projects::readable_for`), asked here with the reader the `concord_nav` cookie names.
     let reader = nav_user(&pool, &headers).await;
-    match concord_db::projects::readable_for(&pool, &project, reader.map(|user| user.id)).await {
+    let reader_id = reader.as_ref().map(|user| user.id);
+    match concord_db::projects::readable_for(&pool, &project, reader_id).await {
         Ok(true) => {}
         Ok(false) => return not_found(&headers),
         Err(error) => return error_page(&headers, "the project could not be read", &error.to_string()),
     }
+    // Is this reader answerable for the project? The API refuses archive and claim with `role_for`, so the page asks the same question rather
+    // than inferring it from a badge. An unknown role is "no": a control a reader cannot use is worse than no control.
+    let maintainer = match reader {
+        Some(user) => concord_db::feed_reads::role_for(&pool, project.id, user.id)
+            .await
+            .ok()
+            .flatten()
+            .map(|role| role == "owner" || role == "maintainer")
+            .unwrap_or(false),
+        None => false,
+    };
     // The header, server-rendered. `stage_badge` and `ai_badge` are the SAME functions `/` and `/projects` use, so a badge cannot mean
     // one thing in the catalogue and another on the page it opens.
     let mut header = Html::new();
@@ -454,18 +466,72 @@ async fn project_overview(
         .text("Open board")
         .close("a");
     header.open("a", &[("class", "btn btn-secondary"), ("href", "/projects")]).text("All projects").close("a");
+    // The archive act has had a route, a migration, a permission check and two unit tests since review item 8, and no way to reach it:
+    // `scripts/parity/route_readers.py` counted it among the routes with no reader (ADR 0012). A capability the record keeps and the page
+    // cannot reach is the defect this repository produces most often, so the control lives here — and only for a maintainer, because that is
+    // the API's own rule and the page asks the same table rather than inferring permission from a badge.
+    if maintainer {
+        let archived = project.stage == "archived";
+        header.open("button", &[("type", "button"), ("class", "btn"), ("id", "project-archive-toggle"),
+                                ("data-archive-slug", &project.slug),
+                                ("data-archived", if archived { "1" } else { "0" })])
+            .text(if archived { "Restore this project" } else { "Archive this project" })
+            .close("button");
+        header.open("form", &[("id", "project-archive"), ("class", "archive-form"), ("hidden", "hidden")])
+            .open("label", &[("for", "archive-reason")])
+            .text(if archived { "Why are you restoring it? (optional)" } else { "Why is it archived? A sentence, not a word." })
+            .close("label")
+            .open("input", &[("id", "archive-reason"), ("name", "reason"), ("type", "text"), ("class", "input"),
+                             ("autocomplete", "off")])
+            .close("input")
+            .open("button", &[("type", "submit"), ("class", "btn btn-primary")])
+            .text(if archived { "Restore" } else { "Archive" })
+            .close("button")
+            .open("p", &[("class", "muted"), ("data-archive-status", ""), ("role", "status"), ("aria-live", "polite")])
+            .close("p")
+            .close("form");
+    }
     header.close("div");
     header.close("header");
 
+    // The control's script is emitted only when the control is: an anonymous reader was "seeing the control" in a probe because the script
+    // that wires it was on every page, id and all. A page should not ship the JavaScript for a button it does not render.
+    let archive_script = if maintainer {
+        r#"<script>
+(function () {
+  var form = document.getElementById("project-archive");
+  if (!form || !window.ConcordApi) return;
+  var toggle = document.getElementById("project-archive-toggle");
+  var status = form.querySelector("[data-archive-status]");
+  var slug = toggle.getAttribute("data-archive-slug");
+  var archived = toggle.getAttribute("data-archived") === "1";
+  toggle.addEventListener("click", function () {
+    form.hidden = !form.hidden;
+    if (!form.hidden) form.querySelector("input[name=reason]").focus();
+  });
+  form.addEventListener("submit", function (event) {
+    event.preventDefault();
+    var reason = form.querySelector("input[name=reason]").value.trim();
+    var path = "/api/v1/projects/" + encodeURIComponent(slug) + "/archive";
+    var call = archived ? window.ConcordApi.del(path) : window.ConcordApi.post(path, { reason: reason });
+    call.then(function () { location.reload(); })
+        .catch(function (error) { status.textContent = (error && error.message) || "the request failed"; });
+  });
+})();
+</script>"#
+    } else {
+        ""
+    };
     let body = format!(
         r#"{}<div id="project-detail" aria-busy="true"></div>
 <script src="{}"></script>
 <script>(function(){{var b=document.getElementById("project-detail");if(b&&window.ConcordSkeleton){{b.innerHTML='<div class="card mb-6">'+window.ConcordSkeleton.title()+window.ConcordSkeleton.text(3)+'</div>'+window.ConcordSkeleton.rows(4);}}}})();</script>
-<script src="{}"></script>
+<script src="{}"></script>{}
 "#,
         header.finish(),
         shell::asset("/assets/js/skeleton.js"),
         shell::asset("/assets/js/project.js"),
+        archive_script,
     );
     let description = if project.description.is_empty() {
         format!("{} on Concord.", project.name)
