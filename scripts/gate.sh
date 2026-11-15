@@ -84,6 +84,17 @@ fi
 # (measured afterwards: no row in users, projects, features, complaints, project_documents or api_tokens has a created_at later
 # than 2026-11-14, so nothing was written). "Nothing was written" is luck, not a design. The fallback now refuses unless the
 # operator says so explicitly.
+# The case this block did NOT cover, found on 2026-11-15 by running `make gate` on a host that had not sourced ~/.config/concord/.env:
+# with NEITHER variable set, the refusal below never fired, `cargo test` ran the store suite with no DSN, and every test in
+# `-p concord-db --test store` panicked at `CONCORD_TEST_DSN must point at a scratch PostgreSQL database … NotPresent` — six
+# named failures and `gate: FAIL` over a missing environment variable. A gate that says FAIL when it means "I was not configured"
+# teaches the operator to distrust it, which is the same disease as a gate that cannot fail. Name the two variables instead.
+if [ -z "${CONCORD_TEST_DSN:-}" ] && [ -z "${DATABASE_URL:-}" ]; then
+  echo "gate: neither CONCORD_TEST_DSN nor DATABASE_URL is set, so there is no scratch database to test against."
+  echo "gate: source ~/.config/concord/.env (the gate creates and migrates its own scratch database from DATABASE_URL)."
+  FAILED=1
+  SKIP_UNIT=1
+fi
 if [ -z "${CONCORD_TEST_DSN:-}" ]; then
   if [ -n "${DATABASE_URL:-}" ]; then
     if [ "${CONCORD_ALLOW_PROD_TESTS:-}" = "1" ]; then
