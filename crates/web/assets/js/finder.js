@@ -16,17 +16,6 @@
   // another page about which characters are dangerous.
   var esc = window.ConcordEscape.esc;
 
-  function token() {
-    try { return window.localStorage.getItem('concord.token') || ''; } catch (e) { return ''; }
-  }
-
-  function headers() {
-    var h = { 'Content-Type': 'application/json' };
-    var t = token();
-    if (t) h.Authorization = 'Bearer ' + t;
-    return h;
-  }
-
   var root = document.getElementById('finder-root');
   if (!root) return;
 
@@ -39,23 +28,10 @@
   // R reveals why, V jumps to results. Finder §4.2.
   var KEYMAP = { '1': 0, '2': 1, '3': 2, '4': 3, '5': 4, '6': 5, '7': 6, '8': 7, '9': 8 };
 
+  // One client (review item 9b). This function WAS `api.js`, written again by hand — same parse, same `data.error ||
+  // 'HTTP ' + status`, same `err.status` attached afterwards.
   function api(method, path, body) {
-    return fetch(path, {
-      method: method,
-      headers: headers(),
-      body: body === undefined ? undefined : JSON.stringify(body)
-    }).then(function (r) {
-      return r.text().then(function (txt) {
-        var data = {};
-        try { data = txt ? JSON.parse(txt) : {}; } catch (e) { data = { error: txt }; }
-        if (!r.ok) {
-          var err = new Error(data.error || ('HTTP ' + r.status));
-          err.status = r.status;
-          throw err;
-        }
-        return data;
-      });
-    });
+    return window.ConcordApi.request(method, path, body === undefined ? null : body);
   }
 
   function el(id) { return document.getElementById(id); }

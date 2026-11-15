@@ -44,13 +44,13 @@
   var root = document.getElementById('complaint-root');
   if (!root) return;
 
+  // One client (review item 9b). A 404 here is `null` — "no such complaint" is a state this page renders, not a
+  // failure — and it is `ApiError.status` that says so, instead of a status read from a response it never parses.
   function json(path) {
-    return fetch(path, { headers: { Accept: 'application/json' } })
-      .then(function (r) {
-        if (r.status === 404) return null;
-        if (!r.ok) throw new Error('HTTP ' + r.status);
-        return r.json();
-      });
+    return window.ConcordApi.get(path).catch(function (error) {
+      if (error && error.status === 404) return null;
+      throw error;
+    });
   }
 
   // Through the house helper, not by setting the attribute: a11y_test.go rejects a

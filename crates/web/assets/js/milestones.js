@@ -30,16 +30,9 @@
     return parts.length >= 2 && parts[0] === 'projects' ? decodeURIComponent(parts[1]) : '';
   }
 
-  // apiAuth is the shared name for "this request carries the session", and it is the
-  // string the asset audit looks for (internal/httpapi/assets_auth_reads_test.go):
-  // a fetch that assembles its headers some other way is a read that works for a
-  // signed-out visitor and 404s for the member whose project it is.
-  function apiAuth(extra) {
-    var h = extra || {};
-    var tok = window.ConcordSession ? window.ConcordSession.instance().authHeaders() : {};
-    for (var k in tok) { if (Object.prototype.hasOwnProperty.call(tok, k)) h[k] = tok[k]; }
-    return h;
-  }
+  // The rule this comment used to cite — "a read that assembles its headers some other way 404s for the member whose
+  // project it is" — is now enforced by scripts/parity/route_readers.py plus the one client, not by a per-file helper
+  // whose absence a Go test grepped for. `api()` below delegates to that client, so there is nothing to keep in step.
 
   function api(path, opts) {
     var o = opts || {};
@@ -54,20 +47,9 @@
     var url = cut < 0
       ? '/api/v1/projects/' + encodeURIComponent(path)
       : '/api/v1/projects/' + encodeURIComponent(path.slice(0, cut)) + path.slice(cut);
-    return fetch(url, {
-      method: o.method || 'GET',
-      body: o.body,
-      headers: apiAuth(o.headers || {})
-    }).then(function (r) {
-      if (!r.ok) {
-        return r.text().then(function (t) {
-          var msg = t;
-          try { msg = JSON.parse(t).error || t; } catch (e) { /* plain text */ }
-          throw new Error(msg || ('HTTP ' + r.status));
-        });
-      }
-      return r.status === 204 ? null : r.json();
-    });
+    // One client (review item 9b). `ApiError.message` carries the server's sentence — including a plain-text one, which
+    // is why the old code had a `JSON.parse` attempt inside a `try` — and a 204 resolves to `null` there too.
+    return window.ConcordApi.request(o.method || 'GET', url, o.body === undefined ? null : o.body);
   }
 
   function dateText(ts) {

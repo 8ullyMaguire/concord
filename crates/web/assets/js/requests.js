@@ -337,14 +337,9 @@
   }
 
   function getJSON(url) {
-    var headers = {};
-    var t = localStorage.getItem("concord.token");
-    if (t) headers["Authorization"] = "Bearer " + t;
-    return fetch(url, { headers: headers })
-      .then(function (r) {
-        if (!r.ok) throw new Error(r.status);
-        return r.json();
-      });
+    // One client (review item 9b): the token is `session.js`'s, and the refusal is the server's sentence instead of a
+    // bare number thrown as an Error message ("Error: 403" told the reader nothing about why).
+    return window.ConcordApi.get(url);
   }
 
   function load() {

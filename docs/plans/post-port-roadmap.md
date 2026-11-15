@@ -467,3 +467,11 @@ projects, in the same order, because two callers deriving one answer is how they
   **22 charter inputs** (`consent_ratio=0.7`), consensus renders its index, neither logs a console error. Thirteen of 39 files now
   carry no `fetch(` at all — measured `grep -c 'fetch(' crates/web/assets/js/*.js`: 48 occurrences remain, of which `api.js` (1),
   `session.js` (1) and `auth.js` (2) are the transport and the session itself.
+- **2026-11-15 (`api8`)**: the eight single-site files converted (`complaint`, `finder`, `lists`, `milestones`, `moderation`,
+  `projects`, `requests`, `search`) and their duplicate helpers deleted — `apiAuth` three times as the same 785-character copy, plus
+  `headers()`/`token()` in `finder.js`, plus `moderation.js`'s `{status, data}` wrapper. **21 of 39 files now carry no `fetch(`; 40
+  occurrences remain in 18 files**, of which `api.js` (1), `auth.js` (2), `session.js` (1) are the transport and the session.
+  `board_e2e` failed once (1 failed, 7 passed) and passed on the next two runs (8 passed in 41.81s, 8 passed in 20.63s) — the failing
+  test's name was not captured, so it is written down as a flake with an unknown identity, not as fixed.
+- **Suite flake to name next time**: run `board_e2e` with `-x -v` when a failure appears, so the roadmap records which test and why
+  instead of a count.

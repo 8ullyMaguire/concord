@@ -39,28 +39,19 @@
     status.hidden = !text;
   }
 
+  // One client (review item 9b). This function returned `{status, data}` and every caller re-derived the same three
+  // facts from it; `ApiError` carries the status on a refusal and the body arrives whole on a success.
   function post(url, body) {
-    return fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'same-origin',
-      body: JSON.stringify(body)
-    }).then(function (res) {
-      return res.json().catch(function () { return {}; }).then(function (data) {
-        return { status: res.status, data: data };
-      });
-    });
+    return window.ConcordApi.post(url, body);
   }
 
   // The probe: permitted -> 400 with "confirmation", refused -> 401/403/404.
-  post(base + '/remove', { feature_id: Number(featureID), confirm: false }).then(function (r) {
-    if (r.status !== 400 && r.status !== 201) {
-      root.hidden = true;
-      return;
-    }
+  // The 400 IS the permitted answer here: the server refuses an unconfirmed removal with a sentence asking for the
+  // reason and the confirm flag. A 401/403/404 means this reader cannot use the control at all.
+  post(base + '/remove', { feature_id: Number(featureID), confirm: false }).then(function () {
     root.hidden = false;
-  }).catch(function () {
-    root.hidden = true;
+  }).catch(function (error) {
+    root.hidden = !(error && error.status === 400);
   });
 
   var armed = false;
@@ -88,21 +79,18 @@
       feature_id: Number(featureID),
       reason: text,
       confirm: true
-    }).then(function (r) {
+    }).then(function (body) {
       removeBtn.disabled = false;
       armed = false;
       if (confirmBox) confirmBox.hidden = true;
       if (removeBtn) removeBtn.hidden = false;
-      if (r.status !== 201) {
-        say((r.data && r.data.error) || 'Could not remove this idea.');
-        return;
-      }
       say('Removed from the arena. The act is in the modlog.');
-      lastAct = r.data && r.data.act ? r.data.act.id : null;
+      lastAct = body && body.act ? body.act.id : null;
       if (undoBox && lastAct) undoBox.hidden = false;
-    }).catch(function () {
+    }).catch(function (error) {
       removeBtn.disabled = false;
-      say('Could not reach the server.');
+      // The server's sentence ("a reason is required", "only a moderator may remove") beats "could not remove".
+      say(error && error.status ? error.message : 'Could not reach the server.');
     });
   });
 
@@ -123,18 +111,14 @@
         undoes: lastAct,
         reason: 'undone from the feature page',
         confirm: true
-      }).then(function (r) {
+      }).then(function () {
         undoBtn.disabled = false;
-        if (r.status !== 200) {
-          say((r.data && r.data.error) || 'Could not undo that.');
-          return;
-        }
         if (undoBox) undoBox.hidden = true;
         say('Put back in the arena.');
         lastAct = null;
-      }).catch(function () {
+      }).catch(function (error) {
         undoBtn.disabled = false;
-        say('Could not reach the server.');
+        say(error && error.status ? error.message : 'Could not reach the server.');
       });
     });
   }
