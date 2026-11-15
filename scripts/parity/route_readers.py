@@ -90,24 +90,23 @@ def main() -> int:
     files = [(path, path.read_text(errors="ignore")) for path in reader_files()]
     rows = []
     indirect = set()
+    weak: set[str] = set()
     for route in routes():
         pattern = reader_pattern(route)
         hits = sum(1 for _path, text in files if pattern.search(text))
         if hits == 0:
-            # Indirect readers: the path is assembled from a table of verbs. `merge.js` builds
-            # `base + '/merge/' + id + '/' + verb` where `verb` comes from `ACTIONS = {… approve …}`,
-            # so neither `/merge/…/approve` nor `/approve` exists as a string, and a path grep cannot
-            # see the call at all. Recognised as: the path's literal prefix is in the file AND its last
-            # segment appears there as a quoted string. Counted, and counted SEPARATELY, because a
-            # reader this script cannot point at is a weaker claim than one it can.
-            segments = route.strip("/").split("/")
-            last = segments[-1]
-            prefix = "/" + "/".join(segments[:-1]) + "/"
-            if not last.startswith("{"):
+            # A reader can assemble the path from a variable that already holds the project base:
+            # `var base = '/api/v1/projects/' + slug` and later `fetch(base + '/audit/actions')`. Neither
+            # the whole path nor the base and the suffix sit next to each other, so a path grep sees
+            # nothing. Second tier, deliberately weaker and counted separately: every static segment of
+            # the route appears as a quoted `/segment` in the file, and the file also builds a project
+            # base. It cannot prove the call, it can show the pieces are there.
+            static = [seg for seg in route.strip("/").split("/")
+                      if not (seg.startswith("{") and seg.endswith("}"))]
+            if static and "/api/v1/projects/" in route:
                 for _path, text in files:
-                    if prefix in text and f'"{last}"' in text or prefix in text and f"'{last}'" in text:
-                        hits = 1
-                        indirect.add(route)
+                    if "api/v1/projects" in text and all(f"/{seg}" in text for seg in static):
+                        weak.add(route)
                         break
         rows.append((route, hits))
 
@@ -124,11 +123,20 @@ def main() -> int:
             route, _, why = line.partition(" ")
             declared[route] = why.strip()
 
-    unread = [r for r in rows if r[1] == 0 and r[0] not in declared]
+    # Three answers, not two. A 0 here is a QUESTION, not a verdict: this script can prove a reader
+    # exists and cannot prove one is absent, because a path assembled through two variables leaves no
+    # string to find. Reporting "unread" as a count would be the same false confidence as reporting a
+    # green suite for a page nobody opened.
+    unread = [r[0] for r in rows if r[1] == 0 and r[0] not in declared and r[0] not in weak]
+    only_weak = [r[0] for r in rows if r[1] == 0 and r[0] not in declared and r[0] in weak]
+    declared_here = [r[0] for r in rows if r[1] == 0 and r[0] in declared]
     print(f"routes registered: {len(rows)}")
-    print(f"routes with a reader: {len(rows) - len(unread)}")
-    print(f"  declared indirect (a verb table, in route_readers.allow): {len([r for r in rows if r[1] == 0 and r[0] in declared])}")
-    print(f"routes with no reader: {len(unread)}")
+    print(f"routes with an adjacent reader (proved by the script): {len(rows) - len(unread) - len(only_weak) - len(declared_here)}")
+    print(f"routes declared by hand (route_readers.allow): {len(declared_here)}")
+    print(f"routes with only weak evidence (every segment in one file, no path): {len(only_weak)}")
+    for route in sorted(only_weak):
+        print(f"  weak      {route}")
+    print(f"routes with no evidence at all: {len(unread)}")
 
     if args.all:
         for route, hits in rows:

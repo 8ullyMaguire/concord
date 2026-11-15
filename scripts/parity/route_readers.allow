@@ -1,8 +1,17 @@
-# Routes whose reader builds the path from a table, so a path grep cannot see the call.
+# Routes whose reader assembles the path from variables, so a path grep cannot see the call.
 #
-# Format: the route as registered, a space, then the file:line that proves a reader exists.
-# Every line here is a claim somebody checked. A line whose reader disappears is a lie this file keeps,
-# so it is deliberately short and each entry names its evidence.
+# Format: the route as registered, a space, then the file:line that proves a reader exists and what it does.
+# Every line here is a claim somebody read. A line whose reader disappears is a lie this file keeps, so it is
+# deliberately short and each entry names its evidence.
+#
+# These were found by the audit's third tier — "every static segment of this route appears in one file that
+# also builds a project base" — and then each was opened and confirmed. The tier is a lead, not a verdict.
 
-/api/v1/projects/{slug}/merge/{merge}/approve  crates/web/assets/js/merge.js:195 — `ACTIONS = {'data-approve': 'approve', …}`, and line 209 builds `base + '/merge/' + id + '/' + verb`
+/api/v1/projects/{slug}/merge/{merge}/approve  crates/web/assets/js/merge.js:195 — `ACTIONS = {'data-approve': 'approve', …}`; line 209 builds `base + '/merge/' + id + '/' + verb`
 /api/v1/projects/{slug}/merge/{merge}/reject   crates/web/assets/js/merge.js:195 — same table, `'data-reject': 'reject'`
+/api/v1/projects/{slug}/audit/actions          crates/web/assets/js/audit.js:252 — `fetch(base + '/audit/actions')`, where `base` holds the project prefix
+/api/v1/projects/{slug}/alternatives/{arena}/vote  crates/web/assets/js/project.js:604 — `postJSON(base + '/alternatives/' + arenaID + '/vote', …)`
+/api/v1/projects/{project_id}/features/{id}/solutions/{solution_id}/coverage/{complaint_id}/contest  crates/web/assets/js/feature.js:105 — builds the path from three `data-contest-*` attributes
+/api/v1/projects/{project_id}/strategy/themes/{id}/withdraw                 crates/web/assets/js/settings.js:928 — `withdrawAll("data-withdraw-theme", "/strategy/themes/", …)`
+/api/v1/projects/{project_id}/strategy/weight-proposals/{id}/withdraw       crates/web/assets/js/settings.js:928 — the same wiring, a path argument
+/api/v1/projects/{project_id}/criteria-profiles/                            ALIAS — `crates/app/src/lib.rs:107` registers the trailing-slash form of the handler at line 102, because the reference answered both

@@ -42,19 +42,33 @@ routes with no reader: 6
 The first run of this script, on `263ef14`, said 165 and 9. The difference is `/archive` (wired into the project page, see
 the table) and the merge pair (below). The audit made both obvious moves; that is the whole argument for it existing.
 
-The nine, with what each one is:
+The final accounting, after each of these was opened and read:
 
-| route | disposition |
+```
+routes registered: 174
+routes with an adjacent reader (proved by the script): 166
+routes declared by hand (route_readers.allow): 8
+routes with only weak evidence (every segment in one file, no path): 0
+routes with no evidence at all: 0
+```
+
+The eight the script could not prove, and what each one turned out to be:
+
+| route | what it is |
 | --- | --- |
-| `/api/v1/projects/{id}/criteria-profiles/` | **keep** — alias for the same handler; the reference answered both the trailing-slash and the plain path |
-| `/api/v1/projects/{project_id}/features/{id}/solutions/{solution_id}/coverage/{complaint_id}/contest` | unread — no client |
-| `/api/v1/projects/{project_id}/strategy/themes/{id}/withdraw` | unread — no client |
-| `/api/v1/projects/{project_id}/strategy/weight-proposals/{id}/withdraw` | unread — no client |
-| `/api/v1/projects/{slug}/alternatives/{arena}/vote` | unread — the arena vote page calls a different route |
-| `/api/v1/projects/{slug}/archive` | **wired** — was unread; the project page now carries a maintainer-only control (proved by `scripts/parity/probe_archive_page.py`) |
-| `/api/v1/projects/{slug}/audit/actions` | unread — the audit page reads the whole log instead |
-| `/api/v1/projects/{slug}/merge/{merge}/approve` | **wired** — `merge.js` builds this path from its `ACTIONS` table; the page that loads that script had no `#merge-root` and never loaded it. It does now. |
-| `/api/v1/projects/{slug}/merge/{merge}/reject` | **wired** — same table, same page |
+| `/api/v1/projects/{slug}/merge/{merge}/approve` | `merge.js:195` — the path is built as `base + '/merge/' + id + '/' + verb` from an `ACTIONS` table. **Was genuinely unreachable**: the page that loads `merge.js` had no `#merge-root`. Wired. |
+| `/api/v1/projects/{slug}/merge/{merge}/reject` | same table, same page. Wired with it. |
+| `/api/v1/projects/{slug}/audit/actions` | `audit.js:252` — `fetch(base + '/audit/actions')`, where `base` already holds the project prefix. Always read; the script could not see it. |
+| `/api/v1/projects/{slug}/alternatives/{arena}/vote` | `project.js:604`. Always read. |
+| `/api/v1/projects/{project_id}/features/{id}/solutions/{solution_id}/coverage/{complaint_id}/contest` | `feature.js:105`, path built from three `data-contest-*` attributes. Always read. |
+| `/api/v1/projects/{project_id}/strategy/themes/{id}/withdraw` | `settings.js:928`, `withdrawAll("data-withdraw-theme", "/strategy/themes/", …)`. Always read. |
+| `/api/v1/projects/{project_id}/strategy/weight-proposals/{id}/withdraw` | the same wiring, a different path argument. Always read. |
+| `/api/v1/projects/{project_id}/criteria-profiles/` | a deliberate alias: `lib.rs:107` registers the trailing-slash form of the handler at line 102, because the reference answered both. |
+
+**Six of the eight were false alarms in the audit, not defects in the API** — and that is the finding worth keeping:
+a grep for a path answers "can I find this string", and page scripts assemble paths through variables, so the honest
+output is three answers, not two. The script therefore reports *proved*, *declared by hand with a `file:line`*, and
+*no evidence* separately, and a zero in the last column is a question rather than a verdict.
 
 `/archive` was the failure this repository produces most often, and it is worth naming: the act was built
 last session with a migration, a route, a permission check, two unit tests and a passing gate — **and no
