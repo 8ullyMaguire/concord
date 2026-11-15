@@ -1,4 +1,3 @@
-}
 
 // Concord merge requests -- §5.7's confirmation gate, with a reader.
 //
@@ -134,12 +133,8 @@
   }
 
   function get(path) {
-    return fetch(path, { headers: apiAuth() }).then(function (res) {
-      return res.json().then(function (body) {
-        if (!res.ok) throw new Error(body && body.error ? body.error : ('HTTP ' + res.status));
-        return body;
-      });
-    });
+    // One client (review item 9b): `body.error` was this file's own copy of the refusal branch.
+    return window.ConcordApi.get(path);
   }
 
   function load() {
@@ -161,16 +156,8 @@
   // reviewer approval is required"), which is the gate explaining itself.
   function act(path, body) {
     say('Working…');
-    return fetch(path, {
-      method: body === undefined ? 'PUT' : 'POST',
-      headers: apiAuth({ 'Content-Type': 'application/json' }),
-      body: body === undefined ? undefined : JSON.stringify(body)
-    }).then(function (res) {
-      return res.json().catch(function () { return {}; }).then(function (out) {
-        if (!res.ok) throw new Error(out && out.error ? out.error : ('HTTP ' + res.status));
-        return out;
-      });
-    }).then(function (out) {
+    return window.ConcordApi.request(body === undefined ? 'PUT' : 'POST', path, body === undefined ? null : body)
+    .then(function (out) {
       say(out && out.status ? out.status : 'Done.');
       return load();
     }).catch(function (err) {

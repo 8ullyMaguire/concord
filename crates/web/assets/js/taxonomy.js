@@ -68,41 +68,16 @@
       esc(msg) + "</p>";
   }
 
+  // One client (review item 9b): `get`/`post`/`token`/`serverError` were this file's own four-piece transport. The
+  // server's own message — which "showing it beats any sentence written here" was the whole point of — is
+  // `ApiError.message`, and an anonymous write still sends no Authorization header because `api.js` asks `session.js`
+  // for one and gets none.
   function get(path) {
-    return fetch(path, { headers: { Accept: "application/json" } }).then(function (r) {
-      if (!r.ok) throw new Error(path + " -> " + r.status);
-      return r.json();
-    });
-  }
-
-  function token() {
-    return localStorage.getItem("concord.token");
-  }
-
-  // The server's own message, when it sent one. Every refusal this page can provoke
-  // arrives as {"error": "..."} (mapError), and showing it beats any sentence written
-  // here: a 403 from the self-consent rule says why in words the page would have to
-  // duplicate, and duplicating it is how the two drift apart.
-  function serverError(res) {
-    if (res.body && res.body.error) return String(res.body.error);
-    if (res.body && res.body.message) return String(res.body.message);
-    return String(res.text || res.status);
+    return window.ConcordApi.get(path);
   }
 
   function post(path, body) {
-    var headers = { "Content-Type": "application/json" };
-    var tok = token();
-    // Authorization only when a token exists, so an anonymous write is a plain
-    // request that gets a plain 401 rather than a header of "Bearer null".
-    if (tok) headers["Authorization"] = "Bearer " + tok;
-    return fetch(path, { method: "POST", headers: headers, body: JSON.stringify(body) })
-      .then(function (r) {
-        return r.text().then(function (t) {
-          var parsed = null;
-          try { parsed = t ? JSON.parse(t) : null; } catch (e) { parsed = null; }
-          return { status: r.status, ok: r.ok, body: parsed, text: t };
-        });
-      });
+    return window.ConcordApi.post(path, body);
   }
 
   // ---------------------------------------------------------------- tags
@@ -307,21 +282,20 @@
       };
       // 0 is instance-wide, and the page says so: this page is not project-scoped,
       // and sending no project_id would leave the field at Go's zero value anyway.
-      post("/api/v1/taxonomy/proposals", payload).then(function (res) {
-        if (res.status === 401) {
-          say("Sign in first \u2014 a taxonomy change is proposed by an account, " +
-            "not by an anonymous visitor. The server said: " + serverError(res), true);
-          return;
-        }
-        if (!res.ok) {
-          say("The server refused the proposal: " + serverError(res), true);
-          return;
-        }
-        say((res.body && res.body.message) ||
-          "Proposed. It applies once it has consent.");
+      post("/api/v1/taxonomy/proposals", payload).then(function (body) {
+        say((body && body.message) || "Proposed. It applies once it has consent.");
         form.reset();
         syncNote();
         reload();
+      }).catch(function (err) {
+        var status = err && err.status ? err.status : 0;
+        var why = err && err.message ? err.message : String(err);
+        if (status === 401) {
+          say("Sign in first \u2014 a taxonomy change is proposed by an account, " +
+            "not by an anonymous visitor. The server said: " + why, true);
+          return;
+        }
+        say("The server refused the proposal: " + why, true);
       });
     });
   }
@@ -331,35 +305,31 @@
       btn.addEventListener("click", function () {
         var id = btn.getAttribute("data-consent");
         btn.disabled = true;
-        post("/api/v1/taxonomy/proposals/" + encodeURIComponent(id) + "/consent", {}).then(function (res) {
+        post("/api/v1/taxonomy/proposals/" + encodeURIComponent(id) + "/consent", {}).then(function (body) {
           btn.disabled = false;
-          if (res.status === 401) {
+          // No 403 branch, deliberately: consenting needs an ACCOUNT, not a role, so the only permission failure this
+          // route can produce is the self-consent one — and that is an ordinary state of a consensus process, not a
+          // refusal. An unrecordable consent arrives as an ApiError; an unratified one arrives 200 with
+          // `ratified: false`. (This branch was written against a 202 the Rust route never returns: `taxonomy::consent`
+          // answers 200 with the `ratified` flag, so the "quorum not met" sentence had never appeared.)
+          if (body && body.ratified === false) {
+            say((body && body.message) ||
+              "Recorded. The quorum is not met yet, so nothing has changed.", false);
+            reload();
+            return;
+          }
+          say("Ratified \u2014 the change has been applied.");
+          reload();
+        }).catch(function (err) {
+          btn.disabled = false;
+          var status = err && err.status ? err.status : 0;
+          var why = err && err.message ? err.message : String(err);
+          if (status === 401) {
             say("Sign in first \u2014 consent is recorded against an account. " +
-              "The server said: " + serverError(res), true);
+              "The server said: " + why, true);
             return;
           }
-          // No 403 branch, deliberately: consenting needs an ACCOUNT, not a role
-          // (handleConsentTaxonomyProposal checks requireWriteActor and nothing
-          // else), so the only permission failure this route can produce is the
-          // self-consent one -- and that arrives as 202 with a message, because it is
-          // an ordinary state of a consensus process. A 403 branch here would be a
-          // branch that cannot fire, written as though it could.
-          // 202 is the ordinary answer, not a failure. The server's own message
-          // carries the count it reached ("... (2/5 consents)"), which is the only
-          // place the exhaustion of the quorum is explained.
-          if (res.status === 202) {
-            say((res.body && res.body.message) ||
-              "Recorded. The quorum is not met yet, so nothing has changed.",
-              false);
-            reload();
-            return;
-          }
-          if (res.status === 200) {
-            say("Ratified \u2014 the change has been applied.");
-            reload();
-            return;
-          }
-          say("The server refused the consent: " + serverError(res), true);
+          say("The server refused the consent: " + why, true);
         });
       });
     });

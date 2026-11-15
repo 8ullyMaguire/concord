@@ -31,13 +31,6 @@
   // OutcomeSkip "skip". TestAllFiveOutcomesAreAccepted pins the other end.
   var OUTCOMES = ['a', 'b', 'both', 'neither', 'skip'];
 
-  function authHeaders() {
-    var h = { 'Content-Type': 'application/json' };
-    var t = token();
-    if (t) h.Authorization = 'Bearer ' + t;
-    return h;
-  }
-
   function signInPrompt() {
     return '<div class="empty-state">' +
       '<div class="empty-state-icon">\u{1F511}</div>' +
@@ -212,33 +205,27 @@
     var actions = document.getElementById('rank-actions');
     if (actions) actions.classList.add('rank-actions-busy');
 
-    fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/features/' +
-          pair.feature_a.id + '/vote', {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({
-        feature_a: pair.feature_a.id,
-        feature_b: pair.feature_b.id,
-        outcome: outcome
+    // One client (review item 9b). The three status branches this page distinguishes are still distinguished — 401 is
+    // "you are anonymous", 403 is "the server refused you for a reason it will say", anything else is the vote not
+    // landing — but they are read off `ApiError` instead of a raw response.
+    window.ConcordApi.post('/api/v1/projects/' + encodeURIComponent(slug) + '/features/' +
+          pair.feature_a.id + '/vote',
+      { feature_a: pair.feature_a.id, feature_b: pair.feature_b.id, outcome: outcome })
+      .then(function () {
+        cast += 1;
+        updateProgress();
+        load();
       })
-    }).then(function (res) {
-      if (res.status === 401) { renderAnonymous(); return; }
-      if (res.status === 403) {
-        return res.json().then(function (b) {
-          renderRefused(b);
-        });
-      }
-      if (!res.ok) {
-        return res.text().then(function (txt) {
-          root.innerHTML = errorState('The vote was not recorded (HTTP ' + res.status + '). ' + txt);
-        });
-      }
-      cast += 1;
-      updateProgress();
-      load();
-    }).catch(function (err) {
-      root.innerHTML = errorState(err && err.message ? err.message : String(err));
-    });
+      .catch(function (err) {
+        var status = err && err.status ? err.status : 0;
+        if (status === 401) { renderAnonymous(); return; }
+        if (status === 403) { renderRefused({ error: err.message }); return; }
+        if (status) {
+          root.innerHTML = errorState('The vote was not recorded (HTTP ' + status + '). ' + err.message);
+          return;
+        }
+        root.innerHTML = errorState(err && err.message ? err.message : String(err));
+      });
   }
 
   function renderRefused(body) {
@@ -264,30 +251,28 @@
   }
 
   function load() {
-    fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/votes/next', {
-      headers: authHeaders()
-    }).then(function (res) {
-      if (res.status === 401) { renderAnonymous(); return null; }
-      if (res.status === 403) { renderAnonymous(); return null; }
-      if (res.status === 404) {
-        root.innerHTML = errorState('No project with that slug.');
-        return null;
-      }
-      if (!res.ok) {
-        return res.text().then(function (txt) {
-          // Parse the body so the 409 can be recognised. A malformed body falls
-          // back to the old rendering, which is the safe direction: an
-          // unrecognised failure stays a visible error.
-          var body = null;
-          try { body = JSON.parse(txt); } catch (e) { /* not JSON */ }
-          var friendly = unretriable(res, body);
-          root.innerHTML = friendly ||
-            errorState('HTTP ' + res.status + ': ' + txt);
+    window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/votes/next')
+      // The refusals this page tells apart, mapped onto the same `null` the success path uses so the render below runs
+      // once. `unretriable()` reads the status and the body, both of which `ApiError` carries.
+      .catch(function (err) {
+        var status = err && err.status ? err.status : 0;
+        if (status === 401 || status === 403) { renderAnonymous(); return null; }
+        if (status === 404) {
+          root.innerHTML = errorState('No project with that slug.');
           return null;
-        });
-      }
-      return res.json();
-    }).then(function (pair) {
+        }
+        if (status) {
+          // A 409/422 body names why ("at least 2 features", "every pair voted"); a body that does not parse stays a
+          // visible error, which is the safe direction.
+          var body = null;
+          try { body = JSON.parse(err.message); } catch (e) { body = { detail: err.message }; }
+          var friendly = unretriable({ status: status }, body);
+          root.innerHTML = friendly || errorState('HTTP ' + status + ': ' + err.message);
+          return null;
+        }
+        throw err;
+      })
+      .then(function (pair) {
       // Every outcome above funnels through here: a pair, a 404, a 500, an
       // anonymous prompt. Clearing aria-busy in one place rather than at each
       // innerHTML assignment means the error and empty paths cannot be the two

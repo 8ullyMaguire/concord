@@ -1,4 +1,3 @@
-}
 // A project's open and settled requests (17).
 //
 // THE INDEX, and the thing the Requests tab needs. Until this file existed the tab
@@ -97,12 +96,8 @@
     // exactly the questions that most need an answer. 404 is not an error here --
     // handleListRequests answers [] when the project has none.
     Promise.all([
-      fetch("/api/v1/projects/" + encodeURIComponent(slug) + "/requests", { headers: apiAuth() })
-        .then(function (r) { return r.ok ? r.json() : []; })
-        .catch(function () { return []; }),
-      fetch("/api/v1/requests", { headers: apiAuth() })
-        .then(function (r) { return r.ok ? r.json() : []; })
-        .catch(function () { return []; })
+      window.ConcordApi.get("/api/v1/projects/" + encodeURIComponent(slug) + "/requests").catch(function () { return []; }),
+      window.ConcordApi.get("/api/v1/requests").catch(function () { return []; })
     ])
       .then(function (parts) {
         var seen = {};

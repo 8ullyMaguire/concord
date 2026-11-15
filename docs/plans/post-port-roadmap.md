@@ -482,3 +482,12 @@ projects, in the same order, because two callers deriving one answer is how they
   the message had not appeared since cutover — it reads `ratified`/`decided` now; and `documents.js`'s search refusal no longer
   hand-parses the body. Gate: `probe_pages 136/136`, `feature_e2e 15`, `documents_e2e 5`, `project_panels_e2e 26`; live five pages,
   zero console errors, no region left `aria-busy`.
+- **2026-11-15 (`api10`)**: the last eight files (`list`, `merge`, `new-project`, `rank`, `ranking`, `requests-index`, `scout`,
+  `taxonomy`) — **4 `fetch` sites remain in 39 files, all of them the transport**: `api.js` 1, `session.js` 1, `auth.js` 2.
+  **The conversion caught four pages whose scripts did not parse**: `merge.js`, `ranking.js`, `requests-index.js`, `scout.js` — a bulk
+  helper deletion one commit earlier had left a closing brace at the top of each, so they threw on load while every suite and
+  `probe_pages 136/136` stayed green (they assert HTML; nobody parsed the files). Fixed, and `scripts/gate.sh` grew layer 0:
+  `node --check` over every asset (`js: all 39 assets parse`). Measured after: `/projects/suki/merge` 12,694 chars,
+  `/projects/suki/ranking` 26,971 chars, `console errors: []` on eight pages. `taxonomy.js`'s 202-vs-200 consent branch was dead for
+  the same reason as `curation.js`'s — `taxonomy::consent` answers 200 with `ratified`, never 202. Gate: 7 suites / 94 tests green,
+  probes 136/136 and 86/86.

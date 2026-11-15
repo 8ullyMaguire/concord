@@ -1,4 +1,3 @@
-}
 // Concord Scout: free-text idea in, catalog verdicts out.
 //
 // Vanilla JS, no build step, matching assets/js/finder.js. It renders what
@@ -36,10 +35,6 @@
   function token() {
     try { return window.localStorage.getItem('concord.token') || ''; }
     catch (e) { return ''; }
-  }
-
-  function headers() {
-    return apiAuth({ 'Content-Type': 'application/json' });
   }
 
   var root = document.getElementById('scout-root');
@@ -166,18 +161,9 @@
       body: reportBody(lastReport)
     };
     saveBtn.disabled = true;
-    fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/documents/', {
-      method: 'PUT',
-      headers: headers(),
-      body: JSON.stringify(body)
-    }).then(function (r) {
-      return r.text().then(function (txt) {
-        var data = {};
-        try { data = txt ? JSON.parse(txt) : {}; } catch (e) { data = {}; }
-        if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
-        return data;
-      });
-    }).then(function (doc) {
+    // One client (review item 9b): the PUT and its refusal sentence are `api.js`'s, not this file's third copy.
+    window.ConcordApi.put('/api/v1/projects/' + encodeURIComponent(slug) + '/documents/', body)
+    .then(function (doc) {
       if (!saveOk) return;
       // The revision matters: PutDocument REPLACES at the same (kind, slug), so a
       // second save of the same idea bumps the revision rather than creating a new
@@ -394,7 +380,7 @@
     if (ex) q += '&exclude_licenses=' + encodeURIComponent(ex);
 
     root.setAttribute('aria-busy', 'true');
-    fetch('/api/v1/scout?' + q, { headers: apiAuth({ 'Accept': 'application/json' }) })
+    window.ConcordApi.get('/api/v1/scout?' + q)
       .then(function (r) {
         return r.text().then(function (txt) {
           var data = {};

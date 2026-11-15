@@ -207,34 +207,23 @@
       var outcome = form.querySelector("#cmp-outcome").value;
 
 
-      fetch("/api/v1/projects/" + encodeURIComponent(slug) + "/lists/" +
-        encodeURIComponent(listID) + "/entries/vote", {
-        method: "POST",
-        headers: apiAuth({ "Content-Type": "application/json" }),
-        body: JSON.stringify({ entry_a: a, entry_b: b, outcome: outcome })
-      })
-        .then(function (r) {
-          return r.json().catch(function () { return {}; }).then(function (j) {
-            return { ok: r.ok, body: j };
-          });
-        })
-        .then(function (res) {
-          if (!res.ok) {
-            // "you have already compared these two entries" and "you cannot vote on an
-            // entry you proposed" are both refusals the reader can act on, so the
-            // store's message is surfaced rather than flattened to a generic failure.
-            root.insertAdjacentHTML("afterbegin",
-              '<p class="notice notice-error" role="alert">' +
-              esc(res.body && res.body.error
-                ? res.body.error
-                : "That comparison was refused.") + "</p>");
-            return;
-          }
+      // "you have already compared these two entries" and "you cannot vote on an entry you proposed" are both refusals
+      // the reader can act on, so the store's message is surfaced rather than flattened to a generic failure — which is
+      // what `ApiError.message` is, and why this file no longer needs its own `{ok, body}` wrapper.
+      window.ConcordApi.post("/api/v1/projects/" + encodeURIComponent(slug) + "/lists/" +
+        encodeURIComponent(listID) + "/entries/vote",
+        { entry_a: a, entry_b: b, outcome: outcome })
+        .then(function (body) {
           // The vote response carries the entries back, so the ranking updates from
           // the server's own numbers rather than from an optimistic guess.
-          load(res.body && res.body.entries);
+          load(body && body.entries);
         })
-        .catch(function () {
+        .catch(function (error) {
+          if (error && error.status) {
+            root.insertAdjacentHTML("afterbegin",
+              '<p class="notice notice-error" role="alert">' + esc(error.message) + "</p>");
+            return;
+          }
           root.insertAdjacentHTML("afterbegin",
             '<p class="notice notice-error" role="alert">Could not reach the ' +
             "server.</p>");
@@ -242,14 +231,10 @@
     });
   }
 
+  // One client (review item 9b): the token header this built by hand is `session.js`'s job, and it was building a
+  // second one — three lines that had to agree with `api.js` about the key and the scheme.
   function getJSON(url) {
-    var headers = {};
-    var token = localStorage.getItem("concord.token");
-    if (token) headers.Authorization = "Bearer " + token;
-    return fetch(url, { headers: headers }).then(function (r) {
-      if (!r.ok) throw new Error(r.status);
-      return r.json();
-    });
+    return window.ConcordApi.get(url);
   }
 
   // Two reads, in PARALLEL: the list and its entries. Serialising them would be two

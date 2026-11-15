@@ -1,4 +1,3 @@
-}
 // Concord feature ranking — the public result of the pairwise comparisons.
 //
 // Two things this deliberately does not do:
@@ -134,13 +133,10 @@
   function load() {
     var base = '/api/v1/projects/' + encodeURIComponent(slug);
     Promise.all([
-      fetch(base + '/priorities', { headers: apiAuth() }).then(function (r) {
-        if (!r.ok) throw new Error('priorities: HTTP ' + r.status);
-        return r.json();
-      }),
+      window.ConcordApi.get(base + '/priorities'),
       // Tallies are supplementary: a ranking without participation counts is
       // less honest, but its absence must not blank the page.
-      fetch(base + '/tallies', { headers: apiAuth() }).then(function (r) { return r.ok ? r.json() : []; })
+      window.ConcordApi.get(base + '/tallies').catch(function () { return []; })
     ]).then(function (res) {
       render(res[0], res[1]);
       if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);

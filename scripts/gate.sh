@@ -80,6 +80,21 @@ PY
 fi
 [ -z "${CONCORD_TEST_DSN:-}" ] && [ -n "${DATABASE_URL:-}" ] && export CONCORD_TEST_DSN="$DATABASE_URL"
 
+# The frontend layer no suite had: `node --check` over every asset. Four scripts shipped syntactically broken for a day
+# (`merge.js`, `ranking.js`, `requests-index.js`, `scout.js`) after a bulk edit removed a helper and left its closing brace —
+# every page still answered 200, every suite still passed, because they assert HTML and these files were never parsed as a
+# whole. A script that does not parse is a page whose controls do nothing, and it costs one second to know.
+say "0. frontend syntax"
+JS_BAD=0
+if command -v node >/dev/null 2>&1; then
+  for js in crates/web/assets/js/*.js; do
+    node --check "$js" >/dev/null 2>&1 || { echo "  does not parse: $js"; JS_BAD=1; }
+  done
+  if [ "$JS_BAD" -eq 0 ]; then echo "js: all $(ls crates/web/assets/js/*.js | wc -l) assets parse"; else bad "a frontend asset does not parse"; fi
+else
+  echo "js: skipped (node not installed)"
+fi
+
 say "1. unit tests"
 # `--no-fail-fast` on purpose: one red crate must not hide the four behind it, and the per-crate counts are printed because the number to
 # distrust is the one that says everything ran.

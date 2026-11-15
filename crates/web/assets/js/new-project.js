@@ -27,14 +27,6 @@
     return hit && hit.url ? hit.url : '/projects/' + encodeURIComponent(hit ? hit.entity_id : '');
   }
 
-  function token() {
-    try {
-      return localStorage.getItem('concord.token') || '';
-    } catch (error) {
-      return '';
-    }
-  }
-
   function say(text) {
     if (status) status.textContent = text;
   }
@@ -86,11 +78,7 @@
     if (trimmed === lastAsked) return;
     lastAsked = trimmed;
     var url = '/api/v1/similar/project?limit=5&text=' + encodeURIComponent(trimmed);
-    fetch(url, { headers: { Accept: 'application/json' } })
-      .then(function (reply) {
-        if (!reply.ok) throw new Error('similar answered ' + reply.status);
-        return reply.json();
-      })
+    window.ConcordApi.get(url)
       .then(function (answer) {
         // A slow answer must not overwrite a newer one: the reader may have kept typing.
         if (trimmed !== lastAsked) return;
@@ -124,35 +112,30 @@
         governance_model: 'collective',
         license: ''
       };
-      var headers = { 'Content-Type': 'application/json' };
-      if (token()) headers.Authorization = 'Bearer ' + token();
       say('Creating…');
-      fetch('/api/v1/projects', { method: 'POST', headers: headers, body: JSON.stringify(payload) })
-        .then(function (reply) {
-          return reply.json().catch(function () { return {}; }).then(function (body) {
-            return { status: reply.status, body: body };
-          });
+      // One client (review item 9b). The three refusals this form explains differently are still explained differently —
+      // a 401/403 is "sign in" (403 is the guest case: `session.js` gives every visitor a guest identity, and a guest may
+      // read and propose but not hold a namespace), a 409 is "that slug is taken" — and the server's own sentence is
+      // appended so the reader sees which rule they hit.
+      window.ConcordApi.post('/api/v1/projects', payload)
+        .then(function (body) {
+          window.location.href = '/projects/' + encodeURIComponent((body && body.slug) || payload.slug);
         })
-        .then(function (answer) {
-          if (answer.status === 201) {
-            window.location.href = '/projects/' + encodeURIComponent(answer.body.slug || payload.slug);
-            return;
-          }
-          if (answer.status === 401 || answer.status === 403) {
-            // 403 is the guest case: `session.js` hands every visitor a guest identity, and a guest may read and propose but not hold a
-            // namespace. Saying "sign in" for both is right — the fix is the same — and the server's own sentence is appended so the
-            // reader sees which rule they hit.
+        .catch(function (err) {
+          var status = err && err.status ? err.status : 0;
+          if (status === 401 || status === 403) {
             say('Sign in first — a project needs an account, not a guest session.' +
-                (answer.body && answer.body.error ? ' (' + answer.body.error + ')' : ''));
+                (err && err.message ? ' (' + err.message + ')' : ''));
             return;
           }
-          if (answer.status === 409) {
+          if (status === 409) {
             say('That slug is taken. Pick another, or open the project that has it.');
             return;
           }
-          say(answer.body.error || answer.body.code || ('The project could not be created (' + answer.status + ').'));
-        })
-        .catch(function () {
+          if (status) {
+            say((err && err.message) || ('The project could not be created (' + status + ').'));
+            return;
+          }
           say('The request could not be sent.');
         });
     });
