@@ -12,8 +12,11 @@ which half is missing.
 > are live** — the pool is empty on the live instance and says so (`23 of 97 projects have a measured commit history, and the longest
 > measured silence is 74.6 days`).
 >
-> **Rows open: 1.** `project.js` is still 1,617 lines and 19 API calls for one page — the review's "split by capability". It is a
-> reorganisation with no correctness edge, which is why it is last.
+> **Rows open: 1.** The review's "split by capability". First seam done (`project-arena.js`, 220 lines moved, `project.js` 1,617 →
+> 1,394); the panels block (~760 lines) and the duplicate check + field reports (~150) remain. A reorganisation with no correctness
+> edge, which is why it is last — and the first seam cost ten minutes of a dead page because a nested `format!` emitted a
+> `<script>` tag with no closing quote, which `project_panels_e2e` caught (`25 failed, 1 passed`) and a browser console check did
+> not.
 > **Blocked: 1.** The pool's 68 unstated upstream candidates need `CONCORD_FORGE_TOKEN` (7 GitHub repos are deferred by the anonymous
 > 60/h budget) — on the operator, not on the code.
 > Nothing in this file is "complete" while either number is above zero.

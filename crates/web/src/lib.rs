@@ -526,10 +526,14 @@ async fn project_overview(
         r#"{}<div id="project-detail" aria-busy="true"></div>
 <script src="{}"></script>
 <script>(function(){{var b=document.getElementById("project-detail");if(b&&window.ConcordSkeleton){{b.innerHTML='<div class="card mb-6">'+window.ConcordSkeleton.title()+window.ConcordSkeleton.text(3)+'</div>'+window.ConcordSkeleton.rows(4);}}}})();</script>
+<script src="{}"></script>
 <script src="{}"></script>{}
 "#,
         header.finish(),
         shell::asset("/assets/js/skeleton.js"),
+        // The arena loop registers itself on `window` before the page script runs: `project.js` calls
+        // `window.ConcordArena.controls/wire`, and the order of these two tags IS that dependency.
+        shell::asset("/assets/js/project-arena.js"),
         shell::asset("/assets/js/project.js"),
         archive_script,
     );
