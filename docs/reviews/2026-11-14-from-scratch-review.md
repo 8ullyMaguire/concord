@@ -6,7 +6,23 @@ follows is a critique of the design the port inherited and faithfully reproduced
 
 Every claim below is a measurement, and the command that produced it is in the sentence. Where I am guessing, it says so.
 
-## Work log — what of this is now done (updated 2026-11-14)
+## Work log
+
+- **2026-11-15 — the suites that could not start, and the pages they found.** Both `documents_e2e` and `requests_e2e` seeded SQLite
+  directly instead of through `harness.connect`, so neither had ever tested the Rust binary. Making them run found eight defects across
+  three pages, none of which any probe could see because a page that renders an empty state is a `200`:
+  the documents list shipped every document BODY (**11.7 MB, still downloading at thirty seconds** — now `?fields=meta`, `37104b` in
+  `0.20s`); `#project-documents`, `#requests-root`, `#request-root` and `#lists-root` were never mounted, so no page script ran;
+  `skeleton.js` and `markdown.js` were not loaded on the pages whose scripts require them (the reader threw and the region stayed
+  `aria-busy` forever); `GET /requests/{id}/tags` answered a bare array where the client documents `{tags: […]}`, so every request page
+  said "No constraints recorded" whatever the database held; an unknown request answered with the global 404 page instead of the
+  project's shell, so the script could not say why the address was empty; and `[data-slug]` — read by six scripts, written by no page —
+  made every one of them ask `/api/v1/projects//…` and draw an empty state over a project full of content. **That last one is the
+  general defect**: `shell.rs` now writes the slug once, from the path, as element text.
+  Gate: `documents_e2e 5 passed` · `requests_e2e 18 passed` (from `16 failed, 2 passed`) · `board_e2e 8 passed`, including the private-board
+  test that had been open · `feature_e2e 15`, `project_panels_e2e 26`, `consensus_e2e 15`, `ai_declaration_e2e 7` · `probe_pages 136/136`,
+  `segments 86/86`. Commits `92c815f`, and the one below.
+— what of this is now done (updated 2026-11-14)
 
 | # | item | state | commit | gate |
 |---|---|---|---|---|

@@ -143,6 +143,21 @@ pub fn document(
     document.push_str(&format!("<script src=\"{}\"></script>\n", asset("/assets/js/consent.js")));
 
     document.push_str(&head.finish());
+    // `data-slug` on the BODY, derived from the path, because six scripts (`requests`, `requests-index`, `comments`, `lists`, `list`,
+    // `milestones`) read `document.querySelector("[data-slug]")` to learn which project they are on, and no page ever wrote the attribute:
+    // every one of them silently ran against an empty slug, asked `/api/v1/projects//requests`, got nothing back, and drew an empty state over
+    // a project full of content. It belongs here rather than in each page body for the same reason the escaping rule does — one place that
+    // knows what the path means, instead of six that each have to remember to say it.
+    // The slug as ELEMENT TEXT, not as an attribute, because that is what the six scripts read: `document.querySelector("[data-slug]")`
+    // then `.textContent.trim()`. An attribute on `<body>` matched the same selector and handed them the whole page's text as the slug, so
+    // every one of those pages asked `/api/v1/projects/<entire page>/requests` and drew an empty state over a project full of content.
+    let project_slug = shell
+        .path
+        .strip_prefix("/projects/")
+        .and_then(|rest| rest.split('/').next())
+        .filter(|slug| !slug.is_empty() && *slug != "new")
+        .map(|slug| format!("<span data-slug class=\"visually-hidden\">{}</span>", escape(slug)))
+        .unwrap_or_default();
     document.push_str(&format!(
         "\n</head>\n<body data-consent=\"{consent_state}\" data-consent-version=\"{}\">\n",
         escape(version)
@@ -168,7 +183,7 @@ pub fn document(
         );
     }
 
-    document.push_str(
+    document.push_str(&format!(
         r#"<header class="site-header">
   <div class="container">
     <a href="/" class="brand" aria-label="Concord home"><span class="brand-tile">C</span><span class="brand-name">Concord</span></a>
@@ -186,9 +201,9 @@ pub fn document(
     </nav>
   </div>
 </header>
-<main class="container">
-"#,
-    );
+<main class="container">{project_slug}
+"#
+    ));
     if let Some((slug, sub)) = tab_for(shell.path) {
         document.push_str(&tabs(&slug, &sub));
     }

@@ -58,6 +58,10 @@ pub async fn requests(
         Err(error) => return crate::error_page(&headers, "the requests could not be read", &error.to_string()),
     };
     let mut body = Html::new();
+    // The reference's mount, and the reason is the same one `/documents` had: the page rendered a server-side list and never loaded
+    // `requests-index.js`, so a reader could look at requests and not post one, and `requests_e2e` waited fifteen seconds for a `#requests-root`
+    // that did not exist. The list stays inside the mount for a reader without JavaScript; the script replaces it with the interactive one.
+    body.open("div", &[("id", "requests-root"), ("aria-busy", "true")]);
     if rows.is_empty() {
         body.open("p", &[("class", "empty")]).text("This project has no requests.").close("p");
     } else {
@@ -75,6 +79,9 @@ pub async fn requests(
         }
         body.close("ul");
     }
+    body.close("div");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/skeleton.js")), ("defer", "")]).close("script");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/requests-index.js")), ("defer", "")]).close("script");
     let bootstrap = serde_json::json!({
         "requests": rows.iter().map(|row| serde_json::json!({
             "id": row.id, "title": row.title, "status": row.status,
@@ -100,11 +107,20 @@ pub async fn request(
         // `project_id == 0` is an instance-wide request; `requests::by_project` does not list those, but a URL carried from the
         // instance board still has to answer rather than 404 behind a link somebody copied.
         Ok(Some(row)) if row.project_id == project.id || row.project_id == 0 => row,
-        Ok(_) => return crate::not_found(&headers),
+        // A request that is not here is a STATE this page renders, not a route that does not exist. The global 404 page has no
+        // `#request-root`, so `requests.js` never ran and could not say why the address was empty — a reader got the site's "page not
+        // found" and no sentence about requests at all. The page is served with the mount; the script asks the API, is told 404, and draws
+        // "There is no request at this address." The status stays 404, because an address that names nothing should not answer 200.
+        Ok(_) => {
+            return missing_request(&headers, &project, &slug, id);
+        }
         Err(error) => return crate::error_page(&headers, "the request could not be read", &error.to_string()),
     };
     let answers = concord_db::requests::answers(&pool, id).await.unwrap_or_default();
     let mut body = Html::new();
+    // `request-root` and `requests.js`, for the same reason as the index: the page rendered the request and its answers server-side and loaded
+    // no script, so there was no way to answer, vote or accept from the site — the corpus was readable and not answerable.
+    body.open("div", &[("id", "request-root"), ("aria-busy", "true")]);
     body.open("h3", &[]).text(&row.title).close("h3")
         .open("p", &[]).text(&row.body).close("p")
         .open("dl", &[("class", "facts")]);
@@ -129,6 +145,10 @@ pub async fn request(
         }
         body.close("ul");
     }
+    body.close("div");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/skeleton.js")), ("defer", "")]).close("script");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/markdown.js")), ("defer", "")]).close("script");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/requests.js")), ("defer", "")]).close("script");
     let bootstrap = serde_json::json!({
         "request": {"id": row.id, "title": row.title, "status": row.status,
                     "accepted_answer_id": row.accepted_answer_id},
@@ -144,6 +164,25 @@ pub async fn request(
     }, body.finish())
 }
 
+/// The page for a request that is not there: the project's shell with an empty mount, served as 404.
+fn missing_request(headers: &HeaderMap, project: &Project, slug: &str, id: i64) -> Response {
+    let mut body = Html::new();
+    body.open("div", &[("id", "request-root"), ("aria-busy", "true")]);
+    body.open("p", &[("class", "empty")]).text("Loading…").close("p");
+    body.close("div");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/skeleton.js")), ("defer", "")]).close("script");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/markdown.js")), ("defer", "")]).close("script");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/requests.js")), ("defer", "")]).close("script");
+    let mut response = render(headers, Page {
+        title: &format!("{}: request", project.name),
+        path: &format!("/projects/{slug}/requests/{id}"),
+        description: &format!("Request {id} of {}, on Concord.", project.name),
+        bootstrap: serde_json::json!({ "request": serde_json::Value::Null, "answers": [] }),
+    }, body.finish());
+    *response.status_mut() = axum::http::StatusCode::NOT_FOUND;
+    response
+}
+
 /// `/projects/{slug}/lists` — the curated lists the project keeps.
 pub async fn lists(
     State(pool): State<PgPool>,
@@ -153,6 +192,10 @@ pub async fn lists(
     let Some(project) = project_of(&pool, &slug).await else { return crate::not_found(&headers) };
     let rows = concord_db::criteria::lists(&pool, project.id).await.unwrap_or_default();
     let mut body = Html::new();
+    // The reference's mount and its script: the page rendered a server-side list and loaded nothing, so `lists.js` never ran and
+    // `#lists-root` did not exist — a reader could see the lists and not make one. The list stays inside the mount for a reader without
+    // JavaScript.
+    body.open("div", &[("id", "lists-root"), ("aria-busy", "true")]);
     if rows.is_empty() {
         body.open("p", &[("class", "empty")]).text("This project keeps no lists.").close("p");
     } else {
@@ -167,6 +210,9 @@ pub async fn lists(
         }
         body.close("ul");
     }
+    body.close("div");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/skeleton.js")), ("defer", "")]).close("script");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/lists.js")), ("defer", "")]).close("script");
     let bootstrap = serde_json::json!({
         "lists": rows.iter().map(|row| serde_json::json!({
             "id": row.id, "name": row.title, "status": row.status,

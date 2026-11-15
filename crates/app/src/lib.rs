@@ -4623,7 +4623,10 @@ async fn request_tags(
     let tags = concord_db::requests::tags(&state.pool, request.id)
         .await
         .map_err(internal)?;
-    Ok(Json(serde_json::json!(tags)))
+    // WRAPPED, because that is the contract `requests.js` was written to and documents at the top of the file:
+    // `GET /api/v1/requests/{id}/tags -> {tags: [...]}`. It read `j.tags || []` and this route answered a bare array, so every request
+    // page said "No constraints recorded" no matter what the database held — the tags were there and unreadable.
+    Ok(Json(serde_json::json!({ "tags": tags })))
 }
 
 /// Map the accept rule's three refusals onto the three statuses that mean them.

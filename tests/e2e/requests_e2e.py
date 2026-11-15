@@ -392,7 +392,7 @@ def test_an_instance_wide_request_is_labelled(page, server):
     so a page that assumes every request belongs to a project would hide every
     cross-project comparison -- which is the whole reason the pairwise vote exists.
     """
-    con = sqlite3.connect(server["db"])
+    con = harness.connect(server["db"])
     cur = con.cursor()
     cur.execute(
         "INSERT INTO requests (project_id, author_id, title, body, status, created_at,"
@@ -479,7 +479,7 @@ def test_an_instance_wide_request_is_labelled_on_the_board(page, server):
     store.Request.ProjectID is `json:"project_id,omitempty"`, so an instance-wide
     request has NO KEY rather than 0. A page testing `=== 0` would never see one and
     would label a shared question as this project's own."""
-    con = sqlite3.connect(server["db"])
+    con = harness.connect(server["db"])
     cur = con.cursor()
     cur.execute(
         "INSERT INTO requests (project_id, author_id, title, body, status, created_at,"

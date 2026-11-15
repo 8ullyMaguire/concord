@@ -429,5 +429,12 @@ projects, in the same order, because two callers deriving one answer is how they
   document BODY — **11.7 MB, still downloading at thirty seconds** — now `?fields=meta` at `37104b` in `0.20s`, with the single document
   fetched from `/documents/{id}`. The search endpoint also refused an unbalanced quote, which `websearch_to_tsquery` silently accepted:
   `400 "the query could not run: a quoted phrase is not closed"`.
-* **`requests_e2e` still cannot run**: it seeds through the harness now, but `16 failed, 2 passed` on the first real run, and every failure
-  needs its own look. `requests.js` adopted `api.js` this session, so this suite is the only proof that panel has.
+* ~~**`requests_e2e` still cannot run**~~ — **fixed and passing 2026-11-15**: `18 passed in 19.48s` (from `16 failed, 2 passed`). Five
+  defects, and every one was a page promising behaviour its markup never allowed: `[data-slug]` was read by six scripts and written by no
+  page (so `requests`, `comments`, `lists`, `list` and `milestones` all asked `/api/v1/projects//…` and drew an empty state over a project
+  full of content); `#requests-root` / `#request-root` / `#lists-root` were never mounted, so no script ran; `GET /requests/{id}/tags`
+  answered a bare array where `requests.js` documents `{tags: […]}`; and an unknown request answered with the global 404 page, which has no
+  mount, so the script could not say why the address was empty. `scripts/parity/probe_requests_api.py` seeds the suite's own fixture and
+  prints what the API and the rendered page say — that is what caught the bare-array tags and the missing slug.
+* **`board_e2e` is green**: `8 passed in 13.46s`, including `test_a_private_project_serves_no_board`, which had been the one open failure
+  (it read as a privacy leak). The board page now carries the reference's mount and script rather than a server-rendered shell.
