@@ -1321,22 +1321,9 @@ function apiAuth(extra) {
   }
 
   function postJSON(path, body) {
-    // session.js owns the token, so it is read from one place rather than
-    // reaching into localStorage again with a second set of key literals.
-    var session = window.ConcordSession && window.ConcordSession.instance();
-    var headers = { 'Content-Type': 'application/json' };
-    if (session) {
-      var h = session.authHeaders();
-      for (var k in h) { if (Object.prototype.hasOwnProperty.call(h, k)) headers[k] = h[k]; }
-    }
-    return fetch(path, { method: 'POST', headers: headers, body: JSON.stringify(body) })
-      .then(function (r) {
-        if (r.status === 401) throw new Error('Sign in first — votes and filings need an account.');
-        return r.json().catch(function () { return {}; }).then(function (payload) {
-          if (!r.ok) throw new Error(payload.error || ('HTTP ' + r.status));
-          return payload;
-        });
-      });
+    // One request path and one error model: `api.js` owns the headers (through `session.js`), the parsed body, the 401 sentence and the
+    // distinction between "the server refused" and "the network did", so this file cannot disagree with another page about either.
+    return window.ConcordApi.post(path, body);
   }
 
   // wireFieldReports attaches the panel's two write controls.

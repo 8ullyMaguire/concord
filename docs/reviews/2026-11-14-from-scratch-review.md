@@ -284,8 +284,19 @@ Two things this cost, both worth recording because both were invisible until a s
   length of my next command, which is the cost of doing that step by hand instead of in `make deploy` — which does it correctly and which I
   did not use.
 
-Still open in this item: the fetch/error half (`postJSON` is re-implemented per file, with four different error messages for the same 401) and
-the split by capability. Both are larger than one turn on a host at load 50, and neither is a correctness risk the way escaping was.
+**And the fetch/error half, 2026-11-15.** `crates/web/assets/js/api.js` is now the one way to call the API: headers built from `session.js`,
+body parsed once, and one error model — `ApiError` with `status`, the server's own sentence, and `auth` (the only flag a page can act on,
+because "sign in" is the only refusal a form fixes). A network failure is `status: 0`, not a 500: the server did not answer and saying it
+failed would be inventing a response. `project.js`, `requests.js` and `adopt.js` delegate; `project_panels_e2e` is `26 passed in 40.59s`
+against the deployed binary.
+
+The live probe found a bug in the module itself, which is why the probe exists: a 404 whose body is `{"error":{"code":"not_found","message":
+"No such API route."}}` produced the message `[object Object]` in a reader's face, because `payload.error` was concatenated as if it were a
+string. It is now a `sentence()` that accepts a string in `error`, in `error.error`, or in `error.message`, and falls back to the status.
+Live after: `404 -> status=404 msg=No such API route.`
+
+Still open in this item: the split by capability (`project.js` is still 1,600 lines that fetch ten endpoints), and adopting the module in the
+remaining ~45 direct `fetch` call sites. Neither is a correctness risk the way escaping was, and both are watched by suites that pass.
 
 ### 10. Docs that describe the dead lineage
 

@@ -25,23 +25,10 @@
       if (!button) return;
       var slug = button.getAttribute('data-claim');
 
-      var session = window.ConcordSession && window.ConcordSession.instance();
-      var headers = { 'Content-Type': 'application/json' };
-      if (session) {
-        var auth = session.authHeaders();
-        for (var k in auth) { if (Object.prototype.hasOwnProperty.call(auth, k)) headers[k] = auth[k]; }
-      }
-
       button.disabled = true;
-      fetch('/api/v1/projects/' + encodeURIComponent(slug) + '/claim', {
-        method: 'POST', headers: headers, body: '{}'
-      }).then(function (r) {
-        return r.json().catch(function () { return {}; }).then(function (payload) {
-          if (r.status === 401) throw new Error('Sign in first — adopting a project needs an account.');
-          if (!r.ok) throw new Error(payload.error || ('HTTP ' + r.status));
-          return payload;
-        });
-      }).then(function (payload) {
+      // One request path: `api.js` owns the headers, the parsed body and the 401 sentence.
+      window.ConcordApi.post('/api/v1/projects/' + encodeURIComponent(slug) + '/claim', {}).then(function (payload) {
+
         // The list is a measurement, so the honest thing after a successful claim is to say what happened and let the next visit show the
         // new state: the project only leaves this pool when its own commit history says so, which no claim can manufacture.
         status(note, 'You are a maintainer of ' + slug + ' now — ' + (payload.days_silent_display || '') +

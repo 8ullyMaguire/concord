@@ -327,27 +327,12 @@
   }
 
   function postJSON(url, body, done) {
-    var headers = { "Content-Type": "application/json" };
-    var t = localStorage.getItem("concord.token");
-    if (t) headers["Authorization"] = "Bearer " + t;
-    fetch(url, {
-      method: "POST",
-      headers: headers,
-      body: JSON.stringify(body)
-    }).then(function (r) {
-      return r.json().catch(function () { return {}; }).then(function (j) {
-        return { ok: r.ok, body: j };
-      });
-    }).then(function (res) {
-      if (res.ok) {
-        done();
-      } else {
-        // A refusal is information, not a crash: §5.1 refuses a self-vote and the
-        // weight cap can refuse a vote, and saying which is better than silence.
-        renderError(res.body && res.body.error ? res.body.error : "That did not work.");
-      }
-    }).catch(function () {
-      renderError("Could not reach the server.");
+    // The transport and the error model live in `api.js`; this file keeps the callback shape its callers already use and only decides what to
+    // show. The sentence for a refusal is the server's when there is one — "That did not work." is the fallback for a response with no body.
+    window.ConcordApi.post(url, body).then(function () {
+      done();
+    }).catch(function (error) {
+      renderError(error && error.message ? error.message : "That did not work.");
     });
   }
 

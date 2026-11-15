@@ -138,6 +138,8 @@ pub fn document(
     // before the page rendered anything. Thirteen of `feature_e2e`'s fifteen tests caught it; nothing else did.
     document.push_str(&format!("<script src=\"{}\"></script>\n", asset("/assets/js/escape.js")));
     document.push_str(&format!("<script src=\"{}\"></script>\n", asset("/assets/js/session.js")));
+    // After `session.js`, because `api.js` asks it for the token; before every page script, because they call it.
+    document.push_str(&format!("<script src=\"{}\"></script>\n", asset("/assets/js/api.js")));
     document.push_str(&format!("<script src=\"{}\"></script>\n", asset("/assets/js/consent.js")));
 
     document.push_str(&head.finish());
