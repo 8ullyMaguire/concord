@@ -1,0 +1,10 @@
+[package]
+name = "polaris-ratelimit"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.75"
+license = "MIT"
+description = "The Polaris estate's rate limiting: declared classes, one token bucket, a retry-after that is true"
+repository = "https://git.polarisocial.xyz/hirrolot19/polaris-ratelimit"
+
+[dependencies]

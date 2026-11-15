@@ -1,0 +1,19 @@
+[package]
+name = "polaris-core"
+version = "0.2.0"
+edition = "2024"
+rust-version = "1.85"
+license = "MIT"
+description = "The Polaris estate's shared HTTP contract: the error envelope every /api/** response uses, and the page/cursor every list uses."
+repository = "https://git.polarisocial.xyz/hirrolot19/polaris-core-rust"
+
+[dependencies]
+axum = "0.8"
+base64 = "0.22"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+# The contract is a JSON Schema. Validating against the real file rather than against a hand-written
+# expectation is the difference between "the shape looks right" and "the shape is the contract".
+jsonschema = "0.26"

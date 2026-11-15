@@ -1,0 +1,8 @@
+[package]
+name = "polaris-slug"
+version = "0.1.0"
+edition = "2021"
+description = "One slug rule for the estate: ASCII-folded, dash-separated, with a length cap and a fallback declared by the caller."
+license = "MIT"
+
+[dependencies]

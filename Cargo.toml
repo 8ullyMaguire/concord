@@ -1,6 +1,15 @@
 [workspace]
 resolver = "2"
 members = [
+    # The estate crates, vendored (ADR 0013): they lived in unversioned sibling directories until 2026-11-15, which is why a
+    # clean clone could not compile and CI had never been green. Verbatim copies, checked with `diff -r` at the time of the move.
+    "vendor/polaris-core",
+    "vendor/polaris-healthz",
+    "vendor/polaris-authz",
+    "vendor/polaris-ledger",
+    "vendor/polaris-ratelimit",
+    "vendor/polaris-slug",
+    "vendor/polaris-comments",
     "crates/embed",
     "crates/domain",
     "crates/ranking",
@@ -38,12 +47,13 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 ulid = { version = "1", features = ["serde"] }
 uuid = { version = "1", features = ["v4", "serde"] }
-# estate crates, by path while the port is a branch; by version at cutover.
-# Depth counted from THIS file: the concord checkout is <code>/projects/concord, and the family
-# crates are siblings of <code>/projects, so the parent of `projects` is two levels up.
-polaris-core = { path = "../../polaris-core-rust" }
-polaris-healthz = { path = "../../polaris-healthz" }
-polaris-authz = { path = "../../polaris-authz" }
-polaris-ledger = { path = "../../polaris-ledger" }
-polaris-ratelimit = { path = "../../polaris-ratelimit" }
-polaris-slug = { path = "../../polaris-slug" }
+# The estate crates, vendored under vendor/ (ADR 0013). They were path dependencies on sibling directories outside this
+# repository until 2026-11-15: seven unversioned crates, 4,052 lines, existing on one host. A clean clone could not compile —
+# which is the failure CI had been reporting since 2026-11-14 without anyone reading it as that.
+polaris-core = { path = "vendor/polaris-core" }
+polaris-healthz = { path = "vendor/polaris-healthz" }
+polaris-authz = { path = "vendor/polaris-authz" }
+polaris-ledger = { path = "vendor/polaris-ledger" }
+polaris-ratelimit = { path = "vendor/polaris-ratelimit" }
+polaris-slug = { path = "vendor/polaris-slug" }
+polaris-comments = { path = "vendor/polaris-comments" }

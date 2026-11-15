@@ -1,0 +1,8 @@
+[package]
+name = "polaris-comments"
+version = "0.2.0"
+edition = "2021"
+description = "Thread rules for the estate's comment systems: depth, order, deletion, body bounds. No storage."
+license = "MIT"
+
+[dependencies]

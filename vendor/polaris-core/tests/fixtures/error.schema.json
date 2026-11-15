@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://polarisocial.xyz/contracts/error.schema.json",
+  "title": "Estate error envelope",
+  "description": "Every non-2xx JSON response from /api/** on every host. A path under /api that is not a route is 404 with this body — never the SPA shell.",
+  "type": "object",
+  "required": ["error"],
+  "additionalProperties": false,
+  "properties": {
+    "error": {
+      "type": "object",
+      "required": ["code", "message"],
+      "additionalProperties": false,
+      "properties": {
+        "code": {
+          "enum": [
+            "invalid_request", "invalid_limit", "invalid_sort", "invalid_cursor",
+            "unauthenticated", "forbidden", "not_found", "method_not_allowed",
+            "conflict", "gone", "unprocessable", "rate_limited", "internal", "unavailable"
+          ]
+        },
+        "message": { "type": "string", "minLength": 1, "maxLength": 300 },
+        "details": { "type": "object" },
+        "request_id": { "type": "string", "minLength": 8 }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "description": "429 must say when to come back.",
+      "if": { "properties": { "error": { "properties": { "code": { "const": "rate_limited" } } } } },
+      "then": { "properties": { "error": { "required": ["details"] } } }
+    }
+  ]
+}
