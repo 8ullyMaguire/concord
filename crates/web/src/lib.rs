@@ -159,6 +159,15 @@ pub(crate) fn datetime(epoch: f64) -> String {
     }
 }
 
+/// The build's own stamp, from `CONCORD_VERSION` baked at compile time — one definition, so the page's asset query and
+/// `/api/v1/version` cannot disagree about which build answered.
+pub(crate) const fn version() -> &'static str {
+    match option_env!("CONCORD_VERSION") {
+        Some(stamp) => stamp,
+        None => concat!("concord-rs ", env!("CARGO_PKG_VERSION"), " (unstamped build)"),
+    }
+}
+
 /// The host the reader used, from `Host`/`X-Forwarded-Host`, falling back to the public name.
 pub fn host_of(headers: &HeaderMap) -> String {
     for name in ["x-forwarded-host", "host"] {

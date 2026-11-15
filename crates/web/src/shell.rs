@@ -223,7 +223,10 @@ fn tabs(slug: &str, sub: &str) -> String {
 /// script beside a fresh page is the classic "the fix did not take", and a query that changes when the binary changes forces the fetch.
 #[must_use]
 pub fn asset(path: &str) -> String {
-    format!("{path}?v={}", env!("CARGO_PKG_VERSION"))
+    // The same stamp `/api/v1/version` reports, baked at build time — not `CARGO_PKG_VERSION`, which is `0.0.0` on every build of
+    // this tree and therefore a cache-buster that never busts: the page that says `?v=0.0.0` after a deploy is the page whose script
+    // is still the old one in the reader's cache.
+    format!("{path}?v={}", crate::version())
 }
 
 // The page templates, compiled in. Same reason as the assets: a page whose template is missing is a page that does not render, and one
