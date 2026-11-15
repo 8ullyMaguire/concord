@@ -1,6 +1,8 @@
 # Concord → estate profile: complete context for an outside advisor
 
-Written 2026-11-14. Self-contained: everything below is meant to let a reader who has **no access to the repository, the
+Written 2026-11-14. **Header corrected 2026-11-15** — the two paragraphs below described the port's opening state, and every claim in
+them has since been overtaken; they are kept, corrected in place, because an advisor who reads "the Go monolith serves production" and
+then probes the live host will rightly stop trusting the rest of the file. Self-contained: everything below is meant to let a reader who has **no access to the repository, the
 server, or the conversation history** understand the project, the state, and give useful advice.
 
 If you are a language model being handed this file: the owner wants advice on how to finish faster. Sections 1–5 are the
@@ -16,8 +18,12 @@ solutions compete in pairwise-vote arenas with a Glicko-style rating; proposals 
 (collective, maintainer-led, etc.) with quorums, approvals and an append-only audit ledger; there are documents, milestones,
 dependencies and a "finder" that asks a visitor questions to narrow 73 real projects down to a shortlist.
 
-The product currently runs as a **Go** monolith (chi router, SQLite file, server-rendered HTML with progressive enhancement)
-on one host, publicly at `https://concord.polarisocial.xyz` behind Cloudflare.
+**It ran** as a **Go** monolith (chi router, SQLite file, server-rendered HTML with progressive enhancement) on one host, publicly at
+`https://concord.polarisocial.xyz` behind Cloudflare. **Since 2026-11-14 the Rust port serves that hostname** — `systemctl --user is-active
+concord-rs` → `active`, `curl -s https://concord.polarisocial.xyz/api/v1/version` → `{"version":"concord-rs 0.0.0+<commit>"}`. The Go
+service and its SQLite file are the **rollback**, disabled at boot: `concord-rs.service` enabled, `concord.service` and both Go timers
+disabled, so a reboot comes up on the port. Rollback is one `systemctl --user start concord.service` away, and the Go database has had no
+writers since the cutover.
 
 **The task in progress** is not a new product: it is a **port** of that product onto the owner's "estate profile" —
 Rust/Axum + PostgreSQL + SvelteKit + the family's shared crates — as a strangler, while the Go service keeps serving production.
@@ -37,7 +43,9 @@ shared crates, doc-number accuracy, etc.).
 2. `docs/specs/port-to-profile-spec.md` — the what and why.
 3. `~/code/estate/docs/adr/0011-concord-joins-the-profile.md` — the twelve decisions the owner confirmed (2026-11-13).
 
-**Ledger state today: 3 rows open, 0 blocked.**
+**Ledger state today: 0 rows open, 0 blocked.** All thirteen rows are Done, each with its gate quoted in the body below (`grep -cE
+'^\| [0-9]+ \|' docs/plans/port-to-profile.md`; the ledger's own header says 0). What remains is not the port: it is the ten items of
+`docs/reviews/2026-11-14-from-scratch-review.md` and the post-port roadmap in `docs/plans/post-port-roadmap.md`.
 
 | row | what | state |
 |---|---|---|
