@@ -12,6 +12,10 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-16 — alternatives, consensus and vote writes enforced** (step 1b, fifteenth slice, seven routes). All seven
+  refused anonymous callers; consensus position/objection needed valid bodies first. Rows enforced (56→63), handlers take
+  `Extension<User>`, 62 pinned, `bearer_user` 80→73. The two consensus handlers no longer take `HeaderMap`.
+
 - **2026-11-16 — five more private writes enforced** (step 1b, fourteenth slice). Emergency-hold release, field-report
   response, project languages, merge request and arena restore all answered anonymous `401`; rows enforced (51→56),
   handlers take `Extension<User>`, 55 pinned, `bearer_user` 85→80. `arena_restore` and `release_emergency_hold` no longer

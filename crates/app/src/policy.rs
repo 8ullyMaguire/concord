@@ -136,8 +136,8 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/projects/{project_id}/features/{id}/solutions", Policy::Session, false),
     ("POST", "/api/v1/projects/{project_id}/features/{id}/solutions/vote", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/features/{id}/solutions/{solution_id}", Policy::Session, false),
-    ("POST", "/api/v1/projects/{project_id}/features/{id}/solutions/{solution_id}/coverage", Policy::Session, false),
-    ("POST", "/api/v1/projects/{project_id}/features/{id}/solutions/{solution_id}/coverage/{complaint_id}/contest", Policy::Session, false),
+    ("POST", "/api/v1/projects/{project_id}/features/{id}/solutions/{solution_id}/coverage", Policy::Session, true),
+    ("POST", "/api/v1/projects/{project_id}/features/{id}/solutions/{solution_id}/coverage/{complaint_id}/contest", Policy::Session, true),
     ("GET", "/api/v1/projects/{project_id}/field-reports", Policy::Optional, false),
     ("POST", "/api/v1/projects/{project_id}/field-reports", Policy::Session, true),
     ("POST", "/api/v1/projects/{project_id}/field-reports/{report_id}/responses", Policy::Session, true),
@@ -149,7 +149,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/projects/{project_id}/lists/{list}/", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/lists/{list}/entries", Policy::Optional, false),
     ("POST", "/api/v1/projects/{project_id}/lists/{list}/entries", Policy::Optional, false),
-    ("POST", "/api/v1/projects/{project_id}/lists/{list}/entries/vote", Policy::Session, false),
+    ("POST", "/api/v1/projects/{project_id}/lists/{list}/entries/vote", Policy::Session, true),
     ("GET", "/api/v1/projects/{project_id}/members", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/milestones/{milestone}", Policy::Session, false),
     ("PATCH", "/api/v1/projects/{project_id}/milestones/{milestone}", Policy::Session, true),
@@ -178,9 +178,9 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/projects/{slug}", Policy::Public, false),
     ("PUT", "/api/v1/projects/{slug}/ai-involvement", Policy::Account, true),
     ("GET", "/api/v1/projects/{slug}/alternatives", Policy::Optional, false),
-    ("POST", "/api/v1/projects/{slug}/alternatives", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/alternatives", Policy::Session, true),
     ("POST", "/api/v1/projects/{slug}/alternatives/{arena}/entries", Policy::Session, false),
-    ("POST", "/api/v1/projects/{slug}/alternatives/{arena}/vote", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/alternatives/{arena}/vote", Policy::Session, true),
     ("DELETE", "/api/v1/projects/{slug}/archive", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/archive", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/arenas/{arena_id}/recompute", Policy::Session, false),
@@ -203,13 +203,13 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/projects/{slug}/consensus/{call}/fallback", Policy::Public, false),
     ("GET", "/api/v1/projects/{slug}/consensus/{call}/hold", Policy::Public, false),
     ("POST", "/api/v1/projects/{slug}/consensus/{call}/hold", Policy::Session, false),
-    ("POST", "/api/v1/projects/{slug}/consensus/{call}/objection", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/consensus/{call}/objection", Policy::Session, true),
     ("POST", "/api/v1/projects/{slug}/consensus/{call}/outcome", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/consensus/{call}/override", Policy::Optional, false),
     ("POST", "/api/v1/projects/{slug}/consensus/{call}/override", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/consensus/{call}/override/close", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/consensus/{call}/override/position", Policy::Session, false),
-    ("POST", "/api/v1/projects/{slug}/consensus/{call}/position", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/consensus/{call}/position", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/documents", Policy::Optional, false),
     ("PUT", "/api/v1/projects/{slug}/documents", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/documents/kinds", Policy::Optional, false),
@@ -314,7 +314,7 @@ mod tests {
 
     /// 5 on 2026-11-15 (four routes that already refused a stranger, plus the admin ledger that did not); 6 on
     /// 2026-11-16 when `POST /api/v1/projects` moved its refusal into the gate. It may grow, never shrink.
-    const ENFORCED: usize = 56;
+    const ENFORCED: usize = 63;
 
     /// The source with string literals and comments replaced by spaces, so a brace or a paren inside either
     /// cannot move the scan. Same length as the input, so an index means the same thing in both.
@@ -645,6 +645,13 @@ mod tests {
             "respond_to_field_report",
             "set_project_languages",
             "create_merge_request",
+            "create_alternative",
+            "cast_alternatives_vote",
+            "cast_consensus_position",
+            "create_consensus_objection",
+            "claim_coverage",
+            "contest_coverage",
+            "vote_list_entry",
             "auth_me",
             "list_notifications",
             "list_invites",

@@ -1985,12 +1985,9 @@ struct PositionRequest {
 async fn cast_consensus_position(
     State(state): State<AppState>,
     Path((slug, call)): Path<(String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<PositionRequest>,
 ) -> Result<Json<Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = project_for(&state, &slug).await?;
     let call_id = parse_id(&call, "call id")?;
     concord_db::consensus_writes::cast_position(&state.pool, project.id, call_id, user.id, &body.position)
@@ -2021,12 +2018,9 @@ struct ObjectionRequest {
 async fn create_consensus_objection(
     State(state): State<AppState>,
     Path((slug, call)): Path<(String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<ObjectionRequest>,
 ) -> Result<(axum::http::StatusCode, Json<Value>), ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = project_for(&state, &slug).await?;
     let call_id = parse_id(&call, "call id")?;
     let id = concord_db::consensus_writes::create_objection(
@@ -6184,12 +6178,10 @@ async fn create_list_entry(
 async fn vote_list_entry(
     State(state): State<AppState>,
     Path((project_segment, list)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to vote"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "contributor", &user).await?;
     let list_id: i64 = list
@@ -7042,12 +7034,10 @@ struct ContestCoverageRequest {
 async fn claim_coverage(
     State(state): State<AppState>,
     Path((project_segment, feature, solution)): Path<(String, String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<ClaimCoverageRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to claim coverage"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     let feature_id = caller_feature(&state, &project, &feature).await?;
     let solution_id = solution_in_feature(&state, feature_id, &solution).await?;
@@ -7074,12 +7064,10 @@ async fn claim_coverage(
 async fn contest_coverage(
     State(state): State<AppState>,
     Path((project_segment, feature, solution, complaint)): Path<(String, String, String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<ContestCoverageRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to contest a claim"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     let feature_id = caller_feature(&state, &project, &feature).await?;
     let solution_id = solution_in_feature(&state, feature_id, &solution).await?;
@@ -7770,12 +7758,10 @@ struct CreateAlternative {
 async fn create_alternative(
     State(state): State<AppState>,
     Path(project_segment): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     body: Option<Json<CreateAlternative>>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "contributor", &user).await?;
     let body = body.map(|Json(body)| body).unwrap_or_default();
@@ -7857,12 +7843,10 @@ struct AlternativesVote {
 async fn cast_alternatives_vote(
     State(state): State<AppState>,
     Path((project_segment, arena)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     body: Option<Json<AlternativesVote>>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "contributor", &user).await?;
     let arena_id = alternative_arena_id(&state, &project, &arena).await?;
