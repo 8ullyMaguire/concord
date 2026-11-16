@@ -1140,13 +1140,10 @@ async fn unarchive_project(
 async fn declare_ai_involvement(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     use concord_db::projects::DeclareRefusal;
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to declare a project's AI involvement"))?;
     if concord_db::identity::is_guest(&state.pool, user.id).await.map_err(internal)? {
         return Err(ApiError::forbidden("a project's declaration needs an account, not a guest session"));
     }
@@ -3506,7 +3503,6 @@ pub(crate) async fn readable(
 
 /// `GET /api/v1/auth/me` — the caller, by id: the token carries only an id, so the name is looked up here.
 async fn auth_me(
-    State(state): State<AppState>,
     Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     // The Go answers `role: "member"` for every caller — it is not this project's role, it is "you are signed

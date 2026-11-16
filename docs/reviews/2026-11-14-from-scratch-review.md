@@ -8,6 +8,12 @@ Every claim below is a measurement, and the command that produced it is in the s
 
 ## Work log
 
+- **2026-11-16 — AI declaration moves behind the gate** (step 1b, fourth slice). `curl -X PUT
+  https://concord.polarisocial.xyz/api/v1/projects/lorebook/ai-involvement -H 'Cookie: concord_consent=1' …` →
+  `401 {"code":"unauthenticated","error":"sign in to declare a project's AI involvement"}` from `declare_ai_involvement`.
+  The row is now enforced (6→7), the handler takes `Extension<User>`, and the guest-account refusal stays with it. The
+  uniform gate message replaces the route-specific one; `auth_me`'s dead `State` parameter was removed in the same commit.
+
 - **2026-11-16 — four more duplicate identity checks removed** (step 1b, third slice). The four enforced handlers that still
   opened their own store read — `auth_me`, `list_notifications`, `list_invites`, `next_vote_pair` — now take the `User` the
   gate already resolved. `grep -c 'bearer_user(' crates/app/src/lib.rs`: 121 → 117. The structural test was widened from one
