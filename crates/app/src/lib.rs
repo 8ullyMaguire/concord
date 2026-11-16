@@ -1591,12 +1591,9 @@ struct LinkComplaintRequest {
 async fn link_complaint(
     State(state): State<AppState>,
     Path((slug, feature)): Path<(String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<LinkComplaintRequest>,
 ) -> Result<Json<Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -1638,11 +1635,8 @@ async fn link_complaint(
 async fn unlink_complaint(
     State(state): State<AppState>,
     Path((slug, feature, complaint)): Path<(String, String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -2047,11 +2041,8 @@ async fn create_consensus_objection(
 async fn close_consensus(
     State(state): State<AppState>,
     Path((slug, call)): Path<(String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = project_for(&state, &slug).await?;
     require_maintainer(&state.pool, project.id, user.id).await?;
     let call_id = parse_id(&call, "call id")?;
@@ -2140,11 +2131,8 @@ async fn get_override_window(
 async fn open_override_window(
     State(state): State<AppState>,
     Path((slug, call)): Path<(String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<(axum::http::StatusCode, Json<Value>), ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = project_for(&state, &slug).await?;
     require_maintainer(&state.pool, project.id, user.id).await?;
     let call_id = parse_id(&call, "call id")?;
@@ -2208,12 +2196,9 @@ struct OverrideCloseRequest {
 async fn close_override_window(
     State(state): State<AppState>,
     Path((slug, call)): Path<(String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     body: Option<Json<OverrideCloseRequest>>,
 ) -> Result<Json<Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = project_for(&state, &slug).await?;
     require_maintainer(&state.pool, project.id, user.id).await?;
     let call_id = parse_id(&call, "call id")?;
@@ -2267,12 +2252,9 @@ struct HoldRequest {
 async fn place_emergency_hold(
     State(state): State<AppState>,
     Path((slug, call)): Path<(String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<HoldRequest>,
 ) -> Result<(axum::http::StatusCode, Json<Value>), ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let _url_project = project_for(&state, &slug).await?;
     let call_id = parse_id(&call, "call id")?;
     let owner = concord_db::consensus::call(&state.pool, call_id)
@@ -6586,11 +6568,9 @@ async fn set_work_item_label(
 async fn claim_work_item(
     State(state): State<AppState>,
     Path((project_segment, feature)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to claim work"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "contributor", &user).await?;
     let feature_id = caller_feature(&state, &project, &feature).await?;
@@ -9325,11 +9305,8 @@ async fn consent_taxonomy_proposal(
 async fn recompute_arena(
     State(state): State<AppState>,
     Path((slug, arena_id)): Path<(String, i64)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?

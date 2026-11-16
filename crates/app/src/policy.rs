@@ -183,7 +183,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/projects/{slug}/alternatives/{arena}/vote", Policy::Session, true),
     ("DELETE", "/api/v1/projects/{slug}/archive", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/archive", Policy::Session, false),
-    ("POST", "/api/v1/projects/{slug}/arenas/{arena_id}/recompute", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/arenas/{arena_id}/recompute", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/audit", Policy::Optional, false),
     ("GET", "/api/v1/projects/{slug}/audit/actions", Policy::Public, false),
     ("GET", "/api/v1/projects/{slug}/board", Policy::Optional, false),
@@ -199,15 +199,15 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/projects/{slug}/consensus", Policy::Session, true),
     ("PUT", "/api/v1/projects/{slug}/consensus/objections/{objection}/resolve", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/consensus/{call}", Policy::Optional, false),
-    ("POST", "/api/v1/projects/{slug}/consensus/{call}/close", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/consensus/{call}/close", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/consensus/{call}/fallback", Policy::Public, false),
     ("GET", "/api/v1/projects/{slug}/consensus/{call}/hold", Policy::Public, false),
-    ("POST", "/api/v1/projects/{slug}/consensus/{call}/hold", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/consensus/{call}/hold", Policy::Session, true),
     ("POST", "/api/v1/projects/{slug}/consensus/{call}/objection", Policy::Session, true),
     ("POST", "/api/v1/projects/{slug}/consensus/{call}/outcome", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/consensus/{call}/override", Policy::Optional, false),
-    ("POST", "/api/v1/projects/{slug}/consensus/{call}/override", Policy::Session, false),
-    ("POST", "/api/v1/projects/{slug}/consensus/{call}/override/close", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/consensus/{call}/override", Policy::Session, true),
+    ("POST", "/api/v1/projects/{slug}/consensus/{call}/override/close", Policy::Session, true),
     ("POST", "/api/v1/projects/{slug}/consensus/{call}/override/position", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/consensus/{call}/position", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/documents", Policy::Optional, false),
@@ -221,10 +221,10 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/projects/{slug}/features/{feature}", Policy::Public, false),
     ("PUT", "/api/v1/projects/{slug}/features/{feature}", Policy::Account, false),
     ("DELETE", "/api/v1/projects/{slug}/features/{feature}/claim", Policy::Session, false),
-    ("POST", "/api/v1/projects/{slug}/features/{feature}/claim", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/features/{feature}/claim", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/features/{feature}/complaints", Policy::Session, false),
-    ("POST", "/api/v1/projects/{slug}/features/{feature}/complaints", Policy::Session, false),
-    ("DELETE", "/api/v1/projects/{slug}/features/{feature}/complaints/{complaint}", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/features/{feature}/complaints", Policy::Session, true),
+    ("DELETE", "/api/v1/projects/{slug}/features/{feature}/complaints/{complaint}", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/features/{feature}/consensus", Policy::Public, false),
     ("POST", "/api/v1/projects/{slug}/features/{feature}/consensus", Policy::Session, false),
     ("DELETE", "/api/v1/projects/{slug}/features/{feature}/deps", Policy::Session, true),
@@ -314,7 +314,7 @@ mod tests {
 
     /// 5 on 2026-11-15 (four routes that already refused a stranger, plus the admin ledger that did not); 6 on
     /// 2026-11-16 when `POST /api/v1/projects` moved its refusal into the gate. It may grow, never shrink.
-    const ENFORCED: usize = 69;
+    const ENFORCED: usize = 77;
 
     /// The source with string literals and comments replaced by spaces, so a brace or a paren inside either
     /// cannot move the scan. Same length as the input, so an index means the same thing in both.
@@ -658,6 +658,14 @@ mod tests {
             "create_instance_request",
             "answer_request",
             "set_request_tags",
+            "recompute_arena",
+            "close_consensus",
+            "open_override_window",
+            "close_override_window",
+            "place_emergency_hold",
+            "link_complaint",
+            "unlink_complaint",
+            "claim_work_item",
             "auth_me",
             "list_notifications",
             "list_invites",
