@@ -2942,12 +2942,9 @@ struct CurationVoteRequest {
 async fn curation_vote(
     State(state): State<AppState>,
     Path((kind, id)): Path<(String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<CurationVoteRequest>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let ref_id = parse_id(&id, "id")?;
     let raw = body.vote.as_deref().unwrap_or("");
     let rationale = body.rationale.as_deref().unwrap_or("");
@@ -5824,12 +5821,10 @@ async fn set_project_languages(
 async fn set_intake_mode(
     State(state): State<AppState>,
     Path(project_segment): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to change the intake mode"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "maintainer", &user).await?;
     let mut mode = body.get("mode").and_then(|v| v.as_str()).unwrap_or_default().to_string();
@@ -5909,12 +5904,10 @@ async fn create_criterion(
 async fn set_criterion_active(
     State(state): State<AppState>,
     Path((project_segment, criterion)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to change a criterion"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "maintainer", &user).await?;
     let id: i64 = criterion
@@ -6359,12 +6352,9 @@ async fn set_project_metrics(
 async fn set_project_visibility(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to change visibility"))?;
     let project = match concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -7417,12 +7407,9 @@ async fn revoke_invite(
 /// granted, because a client that has just joined should not have to ask what it joined as.
 async fn redeem_invite(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<RedeemInviteRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to redeem an invite"))?;
     if body.token.trim().is_empty() {
         return Err(ApiError::invalid_request("a token is required"));
     }

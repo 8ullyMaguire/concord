@@ -91,13 +91,13 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/auth/login", Policy::Public, false),
     ("POST", "/api/v1/auth/logout", Policy::Optional, false),
     ("GET", "/api/v1/auth/me", Policy::Session, true),
-    ("POST", "/api/v1/auth/redeem-invite", Policy::Session, false),
+    ("POST", "/api/v1/auth/redeem-invite", Policy::Session, true),
     ("POST", "/api/v1/auth/register", Policy::Public, false),
     ("POST", "/api/v1/consent", Policy::Public, false),
     ("GET", "/api/v1/contribute/next", Policy::Optional, false),
     ("GET", "/api/v1/curation", Policy::Optional, false),
     ("GET", "/api/v1/curation/", Policy::Optional, false),
-    ("POST", "/api/v1/curation/{kind}/{id}/vote", Policy::Session, false),
+    ("POST", "/api/v1/curation/{kind}/{id}/vote", Policy::Session, true),
     ("POST", "/api/v1/emergency-holds/{hold_id}/release", Policy::Session, false),
     ("GET", "/api/v1/finder/questions", Policy::Public, false),
     ("POST", "/api/v1/finder/sessions", Policy::Public, false),
@@ -130,7 +130,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/projects/{project_id}/criteria-profiles", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/criteria-profiles/", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/criteria/", Policy::Optional, false),
-    ("PUT", "/api/v1/projects/{project_id}/criteria/{criterion}/active", Policy::Session, false),
+    ("PUT", "/api/v1/projects/{project_id}/criteria/{criterion}/active", Policy::Session, true),
     ("POST", "/api/v1/projects/{project_id}/criteria/{criterion}/vote", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/features/{id}/solutions", Policy::Optional, false),
     ("POST", "/api/v1/projects/{project_id}/features/{id}/solutions", Policy::Session, false),
@@ -141,7 +141,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/projects/{project_id}/field-reports", Policy::Optional, false),
     ("POST", "/api/v1/projects/{project_id}/field-reports", Policy::Session, false),
     ("POST", "/api/v1/projects/{project_id}/field-reports/{report_id}/responses", Policy::Session, false),
-    ("PUT", "/api/v1/projects/{project_id}/intake-mode", Policy::Session, false),
+    ("PUT", "/api/v1/projects/{project_id}/intake-mode", Policy::Session, true),
     ("GET", "/api/v1/projects/{project_id}/lists", Policy::Optional, false),
     ("POST", "/api/v1/projects/{project_id}/lists", Policy::Session, false),
     ("GET", "/api/v1/projects/{project_id}/lists/", Policy::Optional, false),
@@ -264,7 +264,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/projects/{slug}/tags", Policy::Optional, false),
     ("PUT", "/api/v1/projects/{slug}/tags", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/tags/completeness", Policy::Optional, false),
-    ("PUT", "/api/v1/projects/{slug}/visibility", Policy::Session, false),
+    ("PUT", "/api/v1/projects/{slug}/visibility", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/votes/next", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/work-items", Policy::Optional, false),
     ("GET", "/api/v1/requests", Policy::Public, false),
@@ -314,7 +314,7 @@ mod tests {
 
     /// 5 on 2026-11-15 (four routes that already refused a stranger, plus the admin ledger that did not); 6 on
     /// 2026-11-16 when `POST /api/v1/projects` moved its refusal into the gate. It may grow, never shrink.
-    const ENFORCED: usize = 8;
+    const ENFORCED: usize = 13;
 
     /// The source with string literals and comments replaced by spaces, so a brace or a paren inside either
     /// cannot move the scan. Same length as the input, so an index means the same thing in both.
@@ -597,6 +597,11 @@ mod tests {
             "create_project",
             "declare_ai_involvement",
             "claim_project",
+            "redeem_invite",
+            "curation_vote",
+            "set_project_visibility",
+            "set_criterion_active",
+            "set_intake_mode",
             "auth_me",
             "list_notifications",
             "list_invites",

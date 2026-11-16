@@ -12,6 +12,12 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-16 — five private mutations move behind the gate in one commit** (step 1b, sixth slice). Five anonymous probes
+  with a consent cookie each returned `401` from their handler: `redeem_invite` (`sign in to redeem an invite`),
+  `curation_vote`, `set_project_visibility`, `set_criterion_active`, `set_intake_mode`. Their rows are enforced (8→13) and
+  their handlers take `Extension<User>`; `require_role`/member checks remain in the handlers. No new decision — D-6 applies.
+  Batching avoids five separate 10–20 minute builds for the same proof.
+
 - **2026-11-16 — project adoption moves behind the gate** (step 1b, fifth slice). `curl -X POST
   https://concord.polarisocial.xyz/api/v1/projects/lorebook/claim -H 'Cookie: concord_consent=1' …` →
   `401 {"code":"unauthenticated","error":"sign in to adopt a project"}` from `claim_project`. The row is enforced (7→8),
