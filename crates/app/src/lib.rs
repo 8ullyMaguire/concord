@@ -1219,14 +1219,12 @@ pub(crate) async fn bearer_user(
     state: &AppState,
     headers: &HeaderMap,
 ) -> Result<Option<concord_db::auth::User>, ApiError> {
-    let Some(token) = headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|value| value.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "))
-    else {
+    // Through `presented_token` rather than reading the header again: the cookie is a credential, and a handler that only
+    // understood the header would refuse a browser that has the cookie and no reason to keep a token in `localStorage`.
+    let Some(token) = presented_token(headers) else {
         return Ok(None);
     };
-    concord_db::auth::user_for_token(&state.pool, token)
+    concord_db::auth::user_for_token(&state.pool, &token)
         .await
         .map_err(|error| match error {
             concord_db::auth::AuthError::Database(e) => internal(e),
@@ -8081,12 +8079,20 @@ fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
 /// accepted only for a GET outside `/api/` — see [`presented_token_for_logout`] for the one exception. Reading it for API calls
 /// would make every mutating API route reachable from a cross-site form post with the visitor's cookie attached, which is the
 /// CSRF hole the split exists to prevent, and the header is what every script sends anyway.
+/// The credential this request presents: the `Authorization: Bearer` header, else the `concord_nav` cookie.
+///
+/// The header came first historically because the page kept its token in `localStorage` — which is readable by any script that
+/// gets to run, the exact thing `script-src 'self'` narrows but cannot promise. The cookie the login route already sets is
+/// `HttpOnly; SameSite=Lax`, so it is unreadable from a script and not sent on a cross-site POST: accepting it as a credential is
+/// what lets the page stop storing the token at all. Header first so every existing client and every suite keeps working while the
+/// two credentials are both live; the cookie is not weaker, it is the same token.
 fn presented_token(headers: &HeaderMap) -> Option<String> {
     headers
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Bearer "))
         .map(str::to_string)
+        .or_else(|| cookie_value(headers, NAV_COOKIE))
 }
 
 /// The token to revoke: the header if present, else the navigation cookie.
