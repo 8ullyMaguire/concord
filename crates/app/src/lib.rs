@@ -2077,12 +2077,9 @@ struct ResolveObjectionRequest {
 async fn resolve_consensus_objection(
     State(state): State<AppState>,
     Path((slug, objection)): Path<(String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<ResolveObjectionRequest>,
 ) -> Result<Json<Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = project_for(&state, &slug).await?;
     require_maintainer(&state.pool, project.id, user.id).await?;
     let objection_id = parse_id(&objection, "objection id")?;
@@ -2160,12 +2157,9 @@ struct OverridePositionRequest {
 async fn cast_override_position(
     State(state): State<AppState>,
     Path((slug, call)): Path<(String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<OverridePositionRequest>,
 ) -> Result<(axum::http::StatusCode, Json<Value>), ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let _project = project_for(&state, &slug).await?;
     let call_id = parse_id(&call, "call id")?;
     concord_db::override_window::cast_position(
@@ -2334,12 +2328,9 @@ fn default_solution_type() -> String {
 async fn record_call_outcome(
     State(state): State<AppState>,
     Path((slug, call)): Path<(String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<CallOutcomeRequest>,
 ) -> Result<Json<Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = project_for(&state, &slug).await?;
     require_maintainer(&state.pool, project.id, user.id).await?;
     let call_id = parse_id(&call, "call id")?;
@@ -2430,12 +2421,9 @@ struct SolutionCallRequest {
 async fn open_solution_call(
     State(state): State<AppState>,
     Path((slug, feature)): Path<(String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     body: Option<Json<SolutionCallRequest>>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = project_for(&state, &slug).await?;
     let feature = feature_for(&state, project.id, &feature).await?;
     let body = body.map(|Json(body)| body).unwrap_or_default();
@@ -2540,11 +2528,8 @@ async fn list_notifications(
 async fn mark_notification_read(
     State(state): State<AppState>,
     Path(id): Path<String>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let id = parse_id(&id, "notification id")?;
     match concord_db::notifications::mark_read(&state.pool, user.id, id).await {
         Ok(()) => Ok(Json(serde_json::json!({ "id": id, "read": true }))),
@@ -2800,12 +2785,9 @@ async fn permit_moderation(
 async fn arena_remove(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<ArenaActRequest>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = project_for(&state, &slug).await?;
     permit_moderation(&state, project.id, user.id).await?;
     if !body.confirmed() {
@@ -5431,11 +5413,9 @@ async fn reject_complaint(
 async fn merge_complaints(
     State(state): State<AppState>,
     Path((slug, id, target_id)): Path<(String, String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to merge complaints"))?;
     let project = readable_project_segment(&state, &slug, &headers).await?;
     let source = caller_complaint(&state, &project, &id).await?;
     require_role(&state, &project, "maintainer", &user).await?;
@@ -6450,12 +6430,10 @@ async fn set_feature_milestone(
 async fn propose_strategic_weight(
     State(state): State<AppState>,
     Path((project_segment, feature)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to propose a weight"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "contributor", &user).await?;
     let feature_id = caller_feature(&state, &project, &feature).await?;
@@ -6587,11 +6565,9 @@ async fn claim_work_item(
 async fn release_claim(
     State(state): State<AppState>,
     Path((project_segment, feature)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to release a claim"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     let feature_id = caller_feature(&state, &project, &feature).await?;
     concord_db::feature_work::release_claim(&state.pool, project.id, feature_id, user.id)
@@ -7746,12 +7722,10 @@ struct AddCompetitor {
 async fn add_alternative_competitor(
     State(state): State<AppState>,
     Path((project_segment, arena)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     body: Option<Json<AddCompetitor>>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "contributor", &user).await?;
     let arena_id = alternative_arena_id(&state, &project, &arena).await?;

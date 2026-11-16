@@ -12,6 +12,11 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-16 — final large write batch enforced** (step 1b, nineteenth slice, ten routes). Notification read,
+  alternative entry, complaint merge, objection resolve, call outcome, override position, solution call, strategic weight,
+  arena remove and claim release all refused anonymous callers; three needed valid bodies first. Rows enforced (85→95),
+  handlers take `Extension<User>`, 94 pinned, `bearer_user` 51→41. Six no longer take `HeaderMap`.
+
 - **2026-11-16 — solution, list, document and taxonomy writes enforced** (step 1b, eighteenth slice, eight routes). All
   eight answered anonymous `401`; rows enforced (77→85), handlers take `Extension<User>`, 84 pinned, `bearer_user` 59→51.
   `consent_taxonomy_proposal` no longer takes `HeaderMap`.
