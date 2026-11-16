@@ -489,8 +489,13 @@ the way the docs gate already knows how to read.
 
 ## From scratch, round two: the shape of the code (2026-11-15)
 
-The ten sections above are about the product. This one is about the code, and it exists because the
-numbers are worse than the prose. Measured on `64cb134`:
+The ten sections above are about the product. This one is about the code. **The implementation critique proper is
+`docs/reviews/2026-11-15-implementation-critique.md`** — nine criticisms, each with the command that produced its number, and it is
+where the debt this file cannot express is written down (122 opt-in `bearer_user` call sites, 0 of 330 SQL queries compile-checked, no
+CSP and no rate limiting, a session token in `localStorage`). What follows is only the part that belongs to *this* review: what I would
+have done differently from the first handler, and what that implies for the plan (`docs/plans/refactor-roadmap.md`).
+
+Measured on `64cb134`:
 
 ```
 crates/app/src/lib.rs              10,035 lines · 179 routes · 219 functions · 526 `concord_db::` calls · 4 tests

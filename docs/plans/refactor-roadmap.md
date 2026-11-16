@@ -5,8 +5,9 @@ The post-port roadmap is closed: rows open 0, the review's ten engineering items
 the shape of the code, and it was measured before it was written down —
 `docs/reviews/2026-11-15-implementation-critique.md` carries every number and the command behind it.
 
-This file is the **plan** for that work: eight steps, each deployable on its own, each with the measurement that justifies it
-and the command that proves it landed. It is ordered by risk removed per hour, not by tidiness.
+This file is the **plan** for that work: nine steps, each deployable on its own, each with the measurement that justifies it
+and the command that proves it landed. It is ordered by risk removed per hour, not by tidiness. (Step 9 was added on 2026-11-15 when
+the meta-tests were repaired and measured that the gate runs 8 of the tree's 29 e2e suites.)
 
 ## Non-goals
 
@@ -36,6 +37,7 @@ Written down because a refactor is where scope goes to die.
 | collection endpoints paginated | 0 (`list_projects` takes no query) | a list already shipped 11.7 MB |
 | observability | 10 `tracing` calls, no `/metrics` | a 16-deferred ingests is a stderr line, not a metric |
 | vendored crates imported by nothing | 4 of 7 (1,383 lines) | a copy that will drift, indistinguishable from a dependency |
+| e2e suites the gate runs | 8 of 29 (`RECORDED_UNRUN = 21`) | the suites that could catch a refusal path are the ones nobody runs |
 
 ## Step 0 — the repo carries its own review
 
@@ -202,6 +204,29 @@ for c in vendor/*/; do n=$(grep -rl "$(basename $c | tr - _)" --include=*.rs cra
 # every remaining vendored crate: n > 0
 ```
 
+## Step 9 — the suites nobody runs
+
+**Why.** `scripts/gate.sh` executes 8 of the tree's 29 `*_e2e.py` suites; the other 21 are run by nobody, and the ratchet in
+`tests/e2e/harness_selftest_test.py` (`RECORDED_UNRUN = 21`) exists so that number cannot grow silently. Steps 1, 2 and 5 of this
+program add refusal paths — 401/403, 429, event writes — that can only be proved from outside the process, and several of the
+suites that would prove them are in the unwired set.
+
+**Method.** One suite per commit, in an order chosen by what the earlier steps need rather than by alphabet: `lifecycle_e2e`
+(a refusal path), `settings_e2e` and `settings_themes_e2e` (auth), `lists_e2e`, `milestones_e2e`, `workitems_e2e`, `criteria_e2e`,
+`curation_e2e`, `feeds_e2e`, `notifications_e2e`, `taxonomy_e2e`, `merge_e2e`, `new_project_e2e`, `readers_e2e`, `rank_links_e2e`,
+`scout_e2e`, `finder_e2e`, `guest_e2e`, `arena_e2e`, `audit_e2e`, `audit_undo_e2e`. Each is wired into `gate.sh`'s live loop and
+`RECORDED_UNRUN` drops by one in the same commit. A suite that cannot run for a reason outside the code is recorded in the Blocked
+list with that reason, and the ratchet drops anyway — an unwired suite nobody can wire is a decision, not a failure.
+
+**Verification:**
+
+```sh
+grep -c 'RECORDED_UNRUN = ' tests/e2e/harness_selftest_test.py   # the number, falling by one per commit
+cargo test -p concord-app --lib 2>/dev/null; true
+CONCORD_E2E_CANDIDATE=$PWD/target/debug/concord-cli scripts/gate.sh --live https://concord.polarisocial.xyz | tail -3
+# before: "suites: 26 · 15 · 8 · 5 · 18 · 15 · 7 · 5 passed"  after: 29 suites, RECORDED_UNRUN 0
+```
+
 ## Status
 
 | step | what | status |
@@ -215,6 +240,7 @@ for c in vendor/*/; do n=$(grep -rl "$(basename $c | tr - _)" --include=*.rs cra
 | 6 | one pagination convention, gate-enforced | open |
 | 7 | domain crate for stage / consensus / claim; `query!` on new SQL | open |
 | 8 | publish or delete the four dead vendored crates | open |
+| 9 | wire the 21 unrun e2e suites (`RECORDED_UNRUN` → 0) | open — proves steps 1, 2 and 5 from outside |
 
 ## Decisions proposed (not taken)
 

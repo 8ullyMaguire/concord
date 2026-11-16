@@ -97,13 +97,10 @@ never inferred. Gate: probe + page check, and a refusal test (an undeclared proj
 measured activity and lists them for adoption, with notification. Gate: the sweep against a fixture project aged forward, asserting
 it never marks a project whose activity is *unmeasured*.
 
-**Step 6 — the shape of the code (decided 2026-11-15, ADR 0014).** Steps 1–5 shipped the product's ideas into a shape the port
-inherited: `crates/app/src/lib.rs` is 10,035 lines holding 179 routes, 219 functions and 526 `concord_db::` call sites, with **four
-unit tests**; `crates/domain` is one doc comment; the frontend is 12,477 lines across 42 files with no build. Every remaining idea
-(problem spaces, vitality's missing components, a cross-project fingerprint) lands in that file, which is why this step comes before
-them. It is a **split, not a rewrite**: one module per surface, twelve typed response shapes, one error contract, ES modules, and the
-21 unrun e2e suites wired last — every step gated by the recorded parity corpus (`0 disagreed of 21 checked`) and the probes, so the
-wire cannot move while the files do. Full table of steps and gates: `docs/adr/0014-the-app-layer-is-split-by-surface.md`.
+**Step 6 — the shape of the code.** This step outgrew this file and has its own ledger: **`docs/plans/refactor-roadmap.md`** (eight
+steps, each deployable alone, each with the measurement that motivates it and the command that proves it landed), with
+`docs/reviews/2026-11-15-implementation-critique.md` carrying the numbers and `docs/adr/0014-the-app-layer-is-split-by-surface.md`
+recording the method for the split. Read those instead of a summary of them; this file's job ends at rows open 0.
 
 **Deliberately not scheduled:** fragments (refused above), problem spaces as a first-class table (taxonomy has to prove it cannot
 carry the ordering first), paid maintenance tiers (licence question), and resurrection (needs steps 1 and 5 to exist).
@@ -609,39 +606,28 @@ projects, in the same order, because two callers deriving one answer is how they
   is gate layer 0b with three reviewed exceptions, and `duplicates_e2e` — which had been erroring in setup against SQLite since
   cutover (`no such table: users`, 5 errors, 0 tests) — now runs on `harness.connect` and says 5 passed.
 
-## Step 6 — the refactor, decided 2026-11-15 (ADR 0014)
+## Step 6 — the shape of the code: the ledger is `docs/plans/refactor-roadmap.md`
 
-The measurement that forced it, on `64cb134`:
+Recorded here only so a reader of this file is not left guessing, and deliberately short: the program has its own file, its own
+measurements and its own status table, and a summary here would become a second version of the truth.
 
-```
-crates/app/src/lib.rs        10,035 lines · 179 routes · 219 functions · 526 concord_db:: calls · 4 tests
-crates/domain/src/lib.rs     1 line (a doc comment)
-crates/db/                   21,681 lines over 64 files · 47 tests
-crates/web/assets/js/        12,477 lines over 42 files · no build step · 3 tests in the crate
-crates/db/sql/               2 migrations; the baseline holds 79 tables
-```
+* **The plan:** `docs/plans/refactor-roadmap.md` — eight steps, ordered by risk removed per hour: authorization as a table (122
+  opt-in `bearer_user` sites today), the security baseline (no CSP, no rate limiting, token in `localStorage`), the split of
+  `crates/app/src/lib.rs` (427 KB, 217 handlers), typed responses + OpenAPI for the 20 routes the UI calls, an append-only `events`
+  table behind the audit trail, one pagination convention, the three rules worth extracting into `crates/domain`, and publishing or
+  deleting the four vendored crates imported by nothing.
+* **The evidence:** `docs/reviews/2026-11-15-implementation-critique.md` — every number with the command that produced it.
+* **The split's method:** `docs/adr/0014-the-app-layer-is-split-by-surface.md` — pure moves, one module per commit, gated by the
+  recorded corpus rather than by hope. The corpus was re-recorded as that baseline on 2026-11-15 before any of this work:
+  `22 shapes -> crates/parity/corpus.json`, replayed `0 shape(s) disagreed of 15 checked, 6 skipped`.
+* **One addition to the program, proposed here because it was measured here:** its ninth step should be **wiring the 21 unrun e2e
+  suites** (`scripts/gate.sh` runs 8 of the tree's 29 `*_e2e.py` suites; `tests/e2e/harness_selftest_test.py` ratchets the gap as
+  `RECORDED_UNRUN = 21`). The program's steps 1, 2 and 5 add refusal paths — 401/403, 429, event writes — that only a suite can
+  prove from outside the process, and several of the suites they need are among the unwired ones.
 
-The layer that decides the product's behaviour has fewer tests than `concord-ranking` has (43). The wire contract is a `json!`
-literal repeated 179 times, and the parity corpus exists because of it (`3 shape(s) disagreed of 21 checked`). Six steps, in this
-order, each with the gate that proves it changed no behaviour:
-
-| # | change | files | gate |
-|---|---|---|---|
-| R1 | record the surface as the refactor's baseline, commit the recording | `scripts/parity/probe_requests.py` | `0 disagreed of 21 checked` |
-| R2 | `lib.rs` becomes a router composer; one module per surface | `crates/app/src/lib.rs`, `crates/app/src/routes/{projects,features,board,requests,documents,consensus,criteria,curation,taxonomy,admin,auth,search,stats,notifications,feeds}.rs` | `probe_pages 136/136` · `segments 86/86` · replay `0 disagreed` · `cargo test --workspace` · no file over 700 lines |
-| R3 | the twelve most-read shapes become `Serialize` structs with a round-trip test each | `crates/app/src/shapes.rs` | replay `0 disagreed` · `scripts/parity/api_surface.py` |
-| R4 | one error contract, stated once, and `api.js` reads exactly one | `crates/app/src/error.rs`, `crates/web/assets/js/api.js` | a refused request answers `{error, code}` · replay `0 disagreed` |
-| R5 | the frontend becomes ES modules with explicit imports; one bundle/typecheck step | `crates/web/assets/js/*.js` (42) | `js: all 42 assets parse` · `probe_pages 136/136` · `probe_claim_button` |
-| R6 | wire the 21 unrun e2e suites | `scripts/gate.sh`, `tests/e2e/harness_selftest_test.py` | `RECORDED_UNRUN` → 0 · all suites green in one `make gate-live` |
-
-What R1–R6 deliberately do **not** touch: the db crate (organised per aggregate, 47 tests, can wait), the 79-table schema (breadth is
-the product; editing the baseline is how a deploy works on a laptop and fails on the host), the frontend's architecture (12,477
-shipping lines behind 44 e2e suites is an asset), and no service/use-case layer between app and db (two-line pass-throughs, no new test
-surface).
-
-**Why this comes before the remaining product ideas.** Problem spaces, vitality's bus factor and a cross-project fingerprint are each a
-few hundred lines of new behaviour, and each one lands in `crates/app/src/lib.rs`. Adding them first grows the file that no one can
-safely change; adding them after R2 means each lands in a 600-line module with a test file beside it.
+**Why the shape work comes before the remaining product ideas.** Problem spaces, vitality's bus factor and a cross-project fingerprint
+are each a few hundred lines of new behaviour, and each one lands in the file nobody can safely change today. After the split each
+lands in a small module with a test file beside it.
 
 ## Repository state (2026-11-15, measured)
 

@@ -1,101 +1,76 @@
-# 0014 — The app layer is split by surface, not rewritten
+# 0014 — The split of `crates/app` is pure moves, gated by the recorded corpus
 
-Date: 2026-11-15. Status: accepted. Supersedes nothing; extends ADR 0012 (the API is a designed surface).
+Date: 2026-11-15. Status: accepted. Scope: **the method for step 3 of `docs/plans/refactor-roadmap.md`**, and the
+alternatives it refuses. The program itself (eight steps, ordered by risk removed per hour) is that file, not this one —
+`docs/reviews/2026-11-15-implementation-critique.md` carries the measurements behind it.
 
-## The measurement that forced this
+## What this ADR exists to settle
 
-Taken on `64cb134`, on `port-rust`, from the tree rather than from memory:
+Two questions about one file, and both have a cheap wrong answer.
+
+`crates/app/src/lib.rs` is 427 KB: 217 handlers, 179 routes, 82 of them answering `Json<Value>`, 152 `json!` sites, 122
+`bearer_user(...)` call sites, and 4 unit tests. It is the layer where the product's decisions are made, and it has less
+coverage than `concord-ranking` (43 tests) and less type discipline than the schema (which at least has `CHECK`s).
 
 ```
-$ wc -l crates/app/src/lib.rs              -> 10035
-$ grep -c '\.route(' crates/app/src/lib.rs  -> 179
-$ grep -c '^pub async fn \|^async fn \|^pub fn ' crates/app/src/lib.rs -> 219
-$ grep -c 'concord_db::' crates/app/src/lib.rs -> 526
-$ grep -rc '#\[test\]\|#\[tokio::test\]' crates/app/src/lib.rs -> 4
-$ cat crates/domain/src/lib.rs             -> one line: a doc comment naming a plan
-$ wc -l crates/web/assets/js/*.js | tail -1  -> 12477 in 42 files, no build step
-$ grep -c 'create table' crates/db/sql/0001_baseline.sql -> 79
-$ ls crates/db/sql/*.sql                   -> 2 (baseline + one migration)
+$ wc -c crates/app/src/lib.rs                                   -> 427 KB
+$ grep -c '\.route(' crates/app/src/lib.rs                       -> 179
+$ grep -c 'bearer_user' crates/app/src/lib.rs                    -> 122
+$ grep -c 'Json<Value>' crates/app/src/lib.rs                    -> 82
+$ grep -rc '#\[test\]\|#\[tokio::test\]' crates/app/src/lib.rs   -> 4
 ```
 
-One file holds the router, 179 handlers, the policy that decides what those handlers may do, and the
-JSON literals that shape every response. It is tested by four unit tests. The layer that decides the
-product's behaviour has less test coverage than the ranking crate has tests (43).
-
-This is the Go service's shape, faithfully carried across by the port — the port did what it set out to
-do, and the plan it followed said "S1: routes, then S2: routes" rather than "a surface, then the same
-surface with types". Two years of a monolith became two weeks of the same monolith in a better language.
+The wrong answers are (a) rewrite it, and (b) split it "properly" — meaning while also fixing the auth model, the types, the
+error shape and the audit trail. Both turn a mechanical move into a change, and a change into something that cannot be
+reviewed line by line.
 
 ## Decision
 
-Split `crates/app` by **surface**, in steps that cannot change behaviour, and refuse the two refactors
-that look bigger and are worse.
+1. **The split is pure moves, one module per commit.** `api/projects.rs`, `api/board.rs`, `api/consensus.rs`, `api/work.rs`,
+   `api/identity.rs`, `api/records.rs` (step 3's names), each with its own `routes()`, assembled by `router()`. No renames,
+   no re-formatting, no opportunistic fixes in the same commit. `git show --stat` must show a move: the same lines in,
+   the same lines out, `lib.rs` under 20 KB at the end.
+2. **The gate for a move is the recorded corpus, replayed.** Behaviour-preserving is a claim; the corpus is the measurement.
+   Re-record it, then replay it:
 
-1. **`lib.rs` becomes a router composer and nothing else.** One module per surface under
-   `crates/app/src/routes/`: `projects, features, board, requests, documents, consensus, criteria,
-   curation, taxonomy, admin, auth, search, stats, notifications, feeds`. Each owns its handler
-   signatures; none owns a table. Target: no file over 700 lines, `lib.rs` under 150.
-2. **Response shapes become types.** The `json!({ ... })` literals are the wire contract written as a
-   string — a rename in one place is a silent shape change everywhere, and today the parity corpus
-   finds out afterwards. The twelve most-read shapes move to `crates/app/src/shapes.rs` as
-   `#[derive(Serialize)]` structs with a round-trip test each. Everything else keeps its literal until
-   it is touched; this is a ratchet, not a sweep.
-3. **One error contract.** The estate answers `{"error": {"code", "message"}}`; the Go service answered
-   `{"error": "message", "code": "code"}`; nginx adds a third for unknown API paths. The app keeps the
-   flat Go shape (every client already reads it), states it in one place, and `api.js` accepts exactly
-   that plus nginx's — no third reader path, no `sentence()` guessing.
-4. **Do not create a domain layer for its own sake.** `crates/domain` is an empty crate and it should
-   stay empty or be deleted: the rules worth isolating are already pure and already live where they
-   belong (`concord_ranking::lifecycle`, `concord_ranking::health`). A domain crate that re-declares
-   the same structs is the refactor that consumes a quarter and returns a layer of mapping code.
-5. **Do not rewrite the frontend.** 12,477 lines of shipping scripts behind 44 e2e suites are an asset,
-   not a debt to be paid down wholesale. What they need is modules: explicit imports instead of
-   `window` registration, one bundling/typecheck step instead of `node --check` per file. That is a
-   conversion, file by file, with `probe_pages` 136/136 as the gate.
-6. **Do not consolidate the 79 tables.** A live schema's table count is not a defect; the defect was
-   having one baseline file and no migration mechanism, and that is fixed (ADR 0011's mechanism, used
-   by `0002`). Editing a baseline that production already ran is how a deploy works on a laptop and
-   fails on the host.
+   ```sh
+   python3 scripts/parity/record.py --seed scripts/parity/seed.txt --out crates/parity/corpus.json --previous crates/parity/corpus.json
+   CANDIDATE=https://concord.polarisocial.xyz cargo run -p concord-parity -- --corpus crates/parity/corpus.json
+   ```
+
+   Baseline taken 2026-11-15 before any of this work: `22 shapes -> crates/parity/corpus.json`, then
+   `0 shape(s) disagreed of 15 checked, 6 skipped` (the skips are declared `unstable`/`expected_change`). Plus
+   `probe_pages 136/136`, `probe_project_segments 86/86`, `make gate`. A step that cannot hold those is reverted, not
+   argued with.
+3. **The auth model, the types, the error contract and the audit trail are steps 1, 4, 5 and 6 of the program** — separate,
+   ordered, each with its own measurement. Doing them inside the move would make `git show --stat` unreadable and the
+   regression unattributable.
+4. **The 21 unrun e2e suites are part of the program, and they are step 9.** `scripts/gate.sh` runs 8 of the tree's 29
+   `*_e2e.py` suites; `tests/e2e/harness_selftest_test.py` now ratchets the number (`RECORDED_UNRUN = 21`). Steps 1, 2 and 5
+   add refusal paths (401/403, 429, event writes) that only a suite can prove from outside; the suites they need are among
+   the unwired ones.
 
 ## Rejected alternatives, and why each lost
 
-* **A rewrite into SvelteKit + an OpenAPI-typed client.** The strongest-sounding option and the worst
-  measured one: 44 e2e suites encode three weeks of found defects (the claim button's GET, four
-  trailing slashes, the un-mounted roots, `[data-slug]`), and a rewrite discards the code and keeps the
-  knowledge in prose. It also cannot be done in steps, so it cannot be stopped halfway.
-* **Leave it.** The cost is measured: the last four defects found in this file (item 9 of the review)
-  were found by probes, not by tests, and each took a browser to see. A 10k-line file with four tests
-  is a file nobody changes unless they must.
-* **A `service`/`usecase` layer between app and db.** Every handler would become a two-line pass-through
-  plus a struct mapping, which is the same file count with more indirection and no new test surface. The
-  thing that makes handlers testable is a scratch database and `State<PgPool>`, both of which exist;
-  the thing that makes them readable is 20 lines instead of 200. Nothing else is needed.
-* **Split `concord-db` (64 files, 21.7k lines) at the same time.** One refactor at a time. `db` is
-  already organised per aggregate, and its 47 tests are the reason it can wait.
+* **A rewrite (SvelteKit + OpenAPI-typed client, or a fresh Axum app).** 44 e2e suites and eight wired probes encode three
+  weeks of found defects — the claim button's GET, four trailing slashes, un-mounted roots, `[data-slug]`. A rewrite keeps
+  that knowledge in prose and throws away the code that proves it, and it cannot be stopped halfway.
+* **Splitting *and* fixing in the same commits.** The move is the one change in this program that can be proved correct by
+  `git show --stat` and a corpus replay. Mixing in a behaviour change makes both claims weaker: nobody can tell whether a
+  disagreement is the split or the fix.
+* **A service/use-case layer between `concord-app` and `concord-db`.** Every handler becomes a two-line pass-through plus a
+  struct mapping: the same file count, more indirection, no new test surface. Handlers are testable today (`State<PgPool>`
+  and a scratch database); what makes them readable is 20 lines instead of 200, which the split delivers.
+* **Consolidating the 79 tables.** A live schema's table count is not a defect, and editing a baseline production already
+  ran is how a deploy works on a laptop and fails on the host. The defect was schema evolution without a mechanism, fixed by
+  `0002`.
+* **Filling `crates/domain` for its own sake.** Program step 7 extracts the three rules that are the product (stage
+  transitions, consensus tallies, claim eligibility) and nothing else. A domain crate that re-declares the store's structs
+  is a quarter of work returning a layer of mapping code.
 
 ## Consequences
 
-* **The wire does not change.** Every step is behaviour-preserving and is proved by replaying the
-  recorded corpus: `scripts/parity/probe_requests.py` currently holds 21 shapes and reports
-  `0 disagreed`. That recording is the refactor's regression suite, and it is the reason the split can
-  be done file by file with real evidence rather than hope.
-* **Each step is reversible on its own** — a module move reverted is a file move, not a deploy.
-* **Order matters:** freeze the corpus → split the router → type the shapes → one error contract →
-  modules in the frontend → wire the 21 unrun suites. Test wiring is last because the suites it wires
-  then cover the new file layout, not the old one.
-* **What this does not buy:** new features, better performance, or fewer tables. It buys the ability to
-  change the product without a browser, which is the only thing that makes the other nine ideas
-  affordable.
-
-## Order, files and gates
-
-| step | change | files | gate |
-|---|---|---|---|
-| R1 | record the surface as the refactor's baseline | `scripts/parity/probe_requests.py` corpus | `0 disagreed of 21 checked` |
-| R2 | `lib.rs` → `routes/*.rs`, one surface per file | `crates/app/src/lib.rs`, `crates/app/src/routes/` | `probe_pages 136/136` · `probe_project_segments 86/86` · replay `0 disagreed` · `cargo test --workspace` |
-| R3 | the twelve most-read shapes become structs | `crates/app/src/shapes.rs` | replay `0 disagreed` · `scripts/parity/api_surface.py` |
-| R4 | one error contract, stated once | `crates/app/src/error.rs`, `crates/web/assets/js/api.js` | a refused request answers `{error, code}` · replay `0 disagreed` |
-| R5 | the frontend becomes ES modules | `crates/web/assets/js/*.js` (42 files) | `js: all 42 assets parse` · `probe_pages 136/136` · `probe_claim_button` |
-| R6 | the 21 unrun suites are wired | `scripts/gate.sh`, `tests/e2e/harness_selftest_test.py` | `RECORDED_UNRUN` falls to 0 · every suite green in one `make gate-live` |
-
-Nothing in this ADR is "complete" until R6's ratchet reads 0.
+* The wire does not move while the files do; the corpus replay is the proof and it runs in seconds.
+* Each module move is independently revertible.
+* The split buys no features. It buys the ability to change the product without a browser, which is what makes the program's
+  other steps — and the three unbuilt product ideas — affordable.
