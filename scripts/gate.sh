@@ -126,6 +126,18 @@ else
   echo "js: skipped (node not installed)"
 fi
 
+# Parsing proves the asset loads, not that the page still keeps the credential where any script can read it. This executes the
+# shipped session.js against a fake browser: a reloaded page must stay signed in without a bearer header, and no code path may
+# put the token back into localStorage. Mutating `store` to write the key again reddens this arm (measured 2026-11-16).
+if command -v node >/dev/null 2>&1; then
+  if node scripts/parity/check_session_storage.js crates/web/assets/js/session.js >"$SCRATCH/session-storage.log" 2>&1; then
+    tail -1 "$SCRATCH/session-storage.log" | sed 's/^/js: /'
+  else
+    cat "$SCRATCH/session-storage.log"
+    bad "the session page persisted a token in localStorage (or lost the cookie-only session)"
+  fi
+fi
+
 # Parsing is not the same as reaching a route. The port matches exactly, so a path with a trailing slash is a 404 -- and
 # three call sites carried one for a day (`/similar/{kind}/`, `/documents/`, `/features/`), each wrapped in a `.catch` or a
 # `getOrNull`, so the page looked fine and the feature was dead. See scripts/parity/api_paths.py.
@@ -176,7 +188,10 @@ else
   else
     echo "migrating the scratch database:"
     CONCORD_DB_URL="$CONCORD_TEST_DSN" "$BIN" migrate 2>&1 | tail -2 || bad "migrate"
-    CONCORD_DB_URL="$CONCORD_TEST_DSN" CONCORD_BASE_URL="http://127.0.0.1:$PORT" \
+    # `CONCORD_RATE_LOGIN=3` for the same reason the scratch database is named `_test`: the budget probe has to be told
+    # what the server's budget is, and proving a 429 must not mean flooding a real one. Three is enough to show the
+    # fourth request refused and too few to matter to any other probe in this layer.
+    CONCORD_DB_URL="$CONCORD_TEST_DSN" CONCORD_BASE_URL="http://127.0.0.1:$PORT" CONCORD_RATE_LOGIN=3 \
       "$BIN" serve --addr "127.0.0.1:$PORT" >"$SCRATCH/server.log" 2>&1 &
     SERVER_PID=$!
     for _ in $(seq 1 40); do
@@ -218,6 +233,18 @@ else
       else
         cat "$SCRATCH/fixture.log"
         bad "the page fixture could not be seeded"
+      fi
+
+      # 4. the budget: is a login loop refused, and does the refusal say when to come back? `--budget 3` must match the
+      # `CONCORD_RATE_LOGIN=3` above; the probe checks the server's own X-RateLimit-Limit against it, so a mismatch is a
+      # failure rather than a silent pass.
+      if python3 scripts/parity/probe_rate_limit.py --candidate "http://127.0.0.1:$PORT" --budget 3 \
+           >"$SCRATCH/rate.log" 2>&1; then
+        grep -E '429|second client|api read' "$SCRATCH/rate.log" | sed 's/^/  /'
+        tail -1 "$SCRATCH/rate.log" | sed 's/^/rate: /'
+      else
+        tail -12 "$SCRATCH/rate.log"
+        bad "probe_rate_limit (a login loop was not refused, or the refusal is unusable)"
       fi
     fi
   fi

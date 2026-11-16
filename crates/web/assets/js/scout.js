@@ -29,13 +29,9 @@
     return Math.round(x * 100) + '%';
   }
 
-  // The bearer token, for the save path. Scout's own GET needs no auth -- it works
-  // logged out -- so this did not exist until saving did, and a save without it
-  // posts as anonymous and is refused by the document handler's role check.
-  function token() {
-    try { return window.localStorage.getItem('concord.token') || ''; }
-    catch (e) { return ''; }
-  }
+  // (There used to be a `token()` helper here reading `concord.token` out of localStorage; it was never called, and the
+  // key it read is gone now that the session is an HttpOnly cookie. The save path authenticates with the cookie, which
+  // the browser attaches to a same-origin request without any JavaScript.)
 
   var root = document.getElementById('scout-root');
   if (!root) return;

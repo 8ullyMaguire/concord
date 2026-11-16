@@ -12,9 +12,8 @@
   // another page about which characters are dangerous.
   var esc = window.ConcordEscape.esc;
 
-  function token() {
-    try { return window.localStorage.getItem('concord.token') || ''; } catch (e) { return ''; }
-  }
+  // (No `token()` helper: the session is an HttpOnly cookie now, so a same-origin request authenticates without
+  // JavaScript reading anything. The helper that used to sit here was never called.)
 
   function slugFromPath() {
     var parts = window.location.pathname.split('/').filter(Boolean);

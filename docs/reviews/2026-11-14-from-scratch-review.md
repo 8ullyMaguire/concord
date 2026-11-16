@@ -8,6 +8,21 @@ Every claim below is a measurement, and the command that produced it is in the s
 
 ## Work log
 
+- **2026-11-16 — the page half of the cookie, and two gates that can fail** (this session took over the still-running goal
+  session after releasing its turn lease; its uncommitted files were verified here, not discarded). `session.js` stopped reading
+  and writing `concord.token`: a stale token is deleted on load, `signedIn()` uses the user record after a reload,
+  `authHeaders()` returns no header, and sign-out always calls the server even when no token is held in memory. The dead
+  `token()` helpers in `rank.js` and `scout.js` are gone, and `presented_token` ignores an empty `Bearer ` so it cannot shadow
+  a valid cookie. Four `credential_tests` cover that contract; `scripts/parity/check_session_storage.js` executes the shipped
+  `session.js` in a fake browser and is wired into the gate's frontend arm beside `node --check`.
+
+  Both new instruments were seen to fail. Removing the empty-Bearer filter gave
+  `test result: FAILED. 3 passed; 1 failed` with `left: Some("") / right: Some("cookie-token")`; restoring it gave
+  `test result: ok. 15 passed; 0 failed`. Re-adding `localStorage.setItem(TOKEN_KEY, token)` gave
+  `AssertionError: store() persisted the token to localStorage`; restoring the file gave
+  `session storage: PASS — no token in localStorage, reload stays signed in, no bearer header without a token`.
+  `probe_rate_limit.py` is now wired into the gate's smoke layer with `CONCORD_RATE_LOGIN=3` and `--budget 3`.
+
 - **2026-11-16 — rate limiting, reconciled from the session that was writing it** (second session, finished here). Two
   sessions were developing this repo at once and both reached step 2b; that session is stopped and its work is verified and
   committed here rather than discarded. What it wrote: `crates/app/src/rate.rs` (class chosen by the **matched route**, client
@@ -26,9 +41,10 @@ Every claim below is a measurement, and the command that produced it is in the s
   ```
 
   The 422s are the route refusing bad credentials, which is the point: three attempts are *answered*, the fourth never reaches
-  the handler. `cargo test -p concord-app --lib` → **`11 passed; 0 failed`**, the two new tests being
-  `rate::tests::the_class_follows_the_route_not_the_caller` and `rate::tests::the_login_bucket_refuses_and_says_when_to_retry`. `probe_rate_limit.py` is **not yet in `scripts/gate.sh`** — wiring it is the next commit, and it belongs in the
-  smoke layer next to `probe_pages` because it needs a server whose budget it was told.
+  the handler. At the time, `cargo test -p concord-app --lib` → **`11 passed; 0 failed`**, the two new tests being
+  `rate::tests::the_class_follows_the_route_not_the_caller` and `rate::tests::the_login_bucket_refuses_and_says_when_to_retry`.
+  `probe_rate_limit.py` is now **in `scripts/gate.sh`**'s smoke layer, next to `probe_pages` because it needs a server whose
+  budget it was told (`CONCORD_RATE_LOGIN=3`, `--budget 3`). The count later moved to `15 passed; 0 failed` with the cookie's four tests.
 
 - **2026-11-16 — the session cookie became a credential** (`df6f881`). `login` had been setting `concord_nav` as
   `HttpOnly; SameSite=Lax` since the port, and nothing read it: identity came only from `Authorization: Bearer`, which the page

@@ -8079,12 +8079,10 @@ fn cookie_value(headers: &HeaderMap, name: &str) -> Option<String> {
         .find_map(|pair| pair.strip_prefix(&format!("{name}=")).map(str::to_string))
 }
 
-/// The token this request presents in the `Authorization` header.
+/// An empty header is NOT a credential: the page used to build it from `localStorage`, so a caller holding an empty string must
+/// fall through to the cookie instead of shadowing it. The cookie is `SameSite=Lax`, so a cross-site form post does not carry it —
+/// the CSRF boundary is the cookie attribute, not a refusal to read the cookie.
 ///
-/// **The navigation cookie is deliberately NOT read here.** It exists so a browser navigation renders as the member, and it is
-/// accepted only for a GET outside `/api/` — see [`presented_token_for_logout`] for the one exception. Reading it for API calls
-/// would make every mutating API route reachable from a cross-site form post with the visitor's cookie attached, which is the
-/// CSRF hole the split exists to prevent, and the header is what every script sends anyway.
 /// The credential this request presents: the `Authorization: Bearer` header, else the `concord_nav` cookie.
 ///
 /// The header came first historically because the page kept its token in `localStorage` — which is readable by any script that
@@ -8097,6 +8095,10 @@ fn presented_token(headers: &HeaderMap) -> Option<String> {
         .get(axum::http::header::AUTHORIZATION)
         .and_then(|value| value.to_str().ok())
         .and_then(|value| value.strip_prefix("Bearer "))
+        // An empty `Bearer ` is not a credential, and treating it as one would let it SHADOW a valid cookie: the page
+        // used to build that header from `localStorage`, and any caller with an empty token would otherwise be refused
+        // while holding a perfectly good session cookie.
+        .filter(|token| !token.is_empty())
         .map(str::to_string)
         .or_else(|| cookie_value(headers, NAV_COOKIE))
 }
@@ -8108,6 +8110,55 @@ fn presented_token(headers: &HeaderMap) -> Option<String> {
 /// that accepting it on a write would.
 fn presented_token_for_logout(headers: &HeaderMap) -> Option<String> {
     presented_token(headers).or_else(|| cookie_value(headers, NAV_COOKIE))
+}
+
+#[cfg(test)]
+mod credential_tests {
+    use super::{presented_token, presented_token_for_logout, NAV_COOKIE};
+    use axum::http::{header, HeaderMap, HeaderValue};
+
+    fn headers(bearer: Option<&str>, cookie: Option<&str>) -> HeaderMap {
+        let mut h = HeaderMap::new();
+        if let Some(token) = bearer {
+            h.insert(
+                header::AUTHORIZATION,
+                HeaderValue::from_str(&format!("Bearer {token}")).unwrap(),
+            );
+        }
+        if let Some(value) = cookie {
+            h.insert(
+                header::COOKIE,
+                HeaderValue::from_str(&format!("{NAV_COOKIE}={value}")).unwrap(),
+            );
+        }
+        h
+    }
+
+    /// The regression the page half depends on: a script that used to read `localStorage` can still send `Bearer ` with an empty
+    /// token after a reload. Treating that as a credential would refuse a browser that holds a perfectly good session cookie.
+    #[test]
+    fn an_empty_bearer_does_not_shadow_the_cookie() {
+        let h = headers(Some(""), Some("cookie-token"));
+        assert_eq!(presented_token(&h).as_deref(), Some("cookie-token"));
+    }
+
+    #[test]
+    fn a_real_header_still_wins_over_the_cookie() {
+        let h = headers(Some("header-token"), Some("cookie-token"));
+        assert_eq!(presented_token(&h).as_deref(), Some("header-token"));
+    }
+
+    #[test]
+    fn a_cookie_without_a_header_is_a_credential() {
+        let h = headers(None, Some("cookie-token"));
+        assert_eq!(presented_token(&h).as_deref(), Some("cookie-token"));
+        assert_eq!(presented_token_for_logout(&h).as_deref(), Some("cookie-token"));
+    }
+
+    #[test]
+    fn neither_credential_is_none() {
+        assert!(presented_token(&headers(None, None)).is_none());
+    }
 }
 
 /// The user this request acts as, by either credential.

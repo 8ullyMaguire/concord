@@ -15,12 +15,18 @@
   var USER_KEY = 'concord.user';
 
   function ConcordSession() {
+    // `this.token` is the credential ONLY for the life of the page that received it: it is set by `store` after a
+    // login and never written to storage. The durable credential is the `concord_nav` cookie the login response sets,
+    // which is `HttpOnly` — so script cannot read it, and script does not need to: the browser sends it with every
+    // same-origin request, which is why `authHeaders()` may return `{}` and the request is still authenticated.
     this.token = null;
     this.user = null;
     try {
-      this.token = localStorage.getItem(TOKEN_KEY);
       var raw = localStorage.getItem(USER_KEY);
       this.user = raw ? JSON.parse(raw) : null;
+      // A token left by an older build is deleted rather than migrated: it is a credential in a place script can read,
+      // and the cookie that replaced it is already in the browser.
+      localStorage.removeItem(TOKEN_KEY);
     } catch (e) {
       // Storage can be unavailable (private mode, or a policy that blocks it).
       // That means "not signed in" for our purposes, not an error worth
@@ -30,8 +36,12 @@
     }
   }
 
+  // Signed in means "this browser has a session", and the page's evidence for that is the user record: the cookie is
+  // unreadable by design, so `!!this.token` would call a reloaded page signed out while the server still knows the
+  // visitor. A freshly minted token without a user record still counts, so a login that arrives without one is not
+  // silently treated as anonymous.
   ConcordSession.prototype.signedIn = function () {
-    return !!this.token;
+    return !!this.user || !!this.token;
   };
 
   ConcordSession.prototype.name = function () {
@@ -70,7 +80,9 @@
   };
 
   // store adopts a credential — from a login, a registration, or a guest mint —
-  // and makes it this session's, writing the two keys this file owns.
+  // and makes it this session's. It writes ONE key now (`concord.user`, so the
+  // header can greet a reloaded page); the token stays in memory, because the
+  // login response's `HttpOnly` cookie is what outlives the page.
   //
   // It exists because the alternative was worse in a specific way: auth.js and
   // consent.js both wrote `localStorage.setItem('concord.token', …)` themselves,
@@ -88,7 +100,9 @@
     this.token = token || null;
     this.user = user || null;
     try {
-      localStorage.setItem(TOKEN_KEY, token);
+      // The token is deliberately NOT persisted (see the constructor): the login response also sets an `HttpOnly`
+      // cookie, which is the credential a reloaded page uses. Holding it in memory covers the requests this page makes
+      // before it navigates.
       localStorage.setItem(USER_KEY, JSON.stringify(user || {}));
       return true;
     } catch (e) {
@@ -100,7 +114,6 @@
   // page. Reloading from storage on demand makes the value current.
   ConcordSession.prototype.refresh = function () {
     try {
-      this.token = localStorage.getItem(TOKEN_KEY);
       var raw = localStorage.getItem(USER_KEY);
       this.user = raw ? JSON.parse(raw) : null;
     } catch (e) {
@@ -176,8 +189,9 @@
       }
     };
 
-    if (!s.token) { done(false); return; }
-
+    // No early return for "no token in memory": after a reload the credential is the cookie, and revoking it is a
+    // server action. Skipping the request because `this.token` was null would clear the page's label while leaving a
+    // live session behind — the exact failure the comment above this function is about.
     try {
       fetch('/api/v1/auth/logout', {
         method: 'POST',
