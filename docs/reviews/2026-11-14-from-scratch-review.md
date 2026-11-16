@@ -17,6 +17,13 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   handlers take `Extension<User>`, 55 pinned, `bearer_user` 85→80. `arena_restore` and `release_emergency_hold` no longer
   take `HeaderMap` at all.
 
+  ```
+  cargo test -p concord-app --lib policy: 7 passed; 0 failed
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live 5d7d952: five routes anon 401 · guest languages 403 contributor
+                walk 0 holes · headers PASS · served JS PASS · CI 43967272783 success
+  ```
+
 - **2026-11-16 — ten-parameter cleanup plus six feature/thread writes** (step 1b, thirteenth slice). Removed the ten
   unused `headers: HeaderMap` handler parameters recorded after `c1411d1`. Six routes — post comment, feature status,
   add/remove evidence, add/remove dep — all answered anonymous `401` (feature status only after a valid body, as in the
