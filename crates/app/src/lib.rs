@@ -1432,12 +1432,9 @@ struct SetStatusRequest {
 async fn set_feature_status(
     State(state): State<AppState>,
     Path((slug, feature)): Path<(String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<SetStatusRequest>,
 ) -> Result<Json<Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -2688,12 +2685,9 @@ struct CommentRequest {
 async fn post_comment(
     State(state): State<AppState>,
     Path((project_id, kind, thread_id)): Path<(String, String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<CommentRequest>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = project_by_id(&state, &project_id).await?;
     let thread_id = parse_id(&thread_id, "thread id")?;
     let comment = concord_db::comments::create(
@@ -2719,7 +2713,6 @@ async fn delete_comment(
     State(state): State<AppState>,
     Path((project_id, _kind, _thread_id, id)): Path<(String, String, String, String)>,
     Extension(user): Extension<concord_db::auth::User>,
-    headers: HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
     let project = project_by_id(&state, &project_id).await?;
     let comment_id = parse_id(&id, "comment id")?;
@@ -3250,7 +3243,6 @@ async fn list_weight_proposals(
     State(state): State<AppState>,
     Path(project): Path<String>,
     Extension(user): Extension<concord_db::auth::User>,
-    headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
     // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
@@ -3267,7 +3259,6 @@ async fn list_theme_proposals(
     State(state): State<AppState>,
     Path(project): Path<String>,
     Extension(user): Extension<concord_db::auth::User>,
-    headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
     // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
@@ -3284,7 +3275,6 @@ async fn list_themes(
     State(state): State<AppState>,
     Path(project): Path<String>,
     Extension(user): Extension<concord_db::auth::User>,
-    headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
     // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
@@ -3301,7 +3291,6 @@ async fn propose_weight(
     State(state): State<AppState>,
     Path(project_id): Path<i64>,
     Extension(user): Extension<concord_db::auth::User>,
-    headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
     let who = strategy_project(&state, project_id, &user).await?;
@@ -3325,7 +3314,6 @@ async fn propose_theme(
     State(state): State<AppState>,
     Path(project_id): Path<i64>,
     Extension(user): Extension<concord_db::auth::User>,
-    headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
     let who = strategy_project(&state, project_id, &user).await?;
@@ -3361,7 +3349,6 @@ async fn consent_theme(
     State(state): State<AppState>,
     Path((project_id, id)): Path<(i64, i64)>,
     Extension(user): Extension<concord_db::auth::User>,
-    headers: HeaderMap,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
     let who = strategy_project(&state, project_id, &user).await?;
     match concord_db::themes::consent(&state.pool, id, who.user.id).await {
@@ -3395,7 +3382,6 @@ async fn consent_weight(
     State(state): State<AppState>,
     Path((project_id, id)): Path<(i64, i64)>,
     Extension(user): Extension<concord_db::auth::User>,
-    headers: HeaderMap,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
     let who = strategy_project(&state, project_id, &user).await?;
     match concord_db::strategy::consent(&state.pool, id, who.user.id).await {
@@ -3418,7 +3404,6 @@ async fn withdraw_theme(
     State(state): State<AppState>,
     Path((project_id, id)): Path<(i64, i64)>,
     Extension(user): Extension<concord_db::auth::User>,
-    headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
     let who = strategy_project(&state, project_id, &user).await?;
     let maintainer = who.role == "maintainer" || who.role == "owner";
@@ -3432,7 +3417,6 @@ async fn withdraw_weight(
     State(state): State<AppState>,
     Path((project_id, id)): Path<(i64, i64)>,
     Extension(user): Extension<concord_db::auth::User>,
-    headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
     let who = strategy_project(&state, project_id, &user).await?;
     let maintainer = who.role == "maintainer" || who.role == "owner";
@@ -6676,12 +6660,10 @@ async fn release_claim(
 async fn add_feature_dep(
     State(state): State<AppState>,
     Path((project_segment, feature)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to change dependencies"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "maintainer", &user).await?;
     let blocked = caller_feature(&state, &project, &feature).await?;
@@ -6714,11 +6696,9 @@ async fn remove_feature_dep(
     State(state): State<AppState>,
     Path((project_segment, feature)): Path<(String, String)>,
     Query(query): Query<std::collections::HashMap<String, String>>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to change dependencies"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "maintainer", &user).await?;
     let blocked = caller_feature(&state, &project, &feature).await?;
@@ -6750,12 +6730,10 @@ async fn remove_feature_dep(
 async fn add_feature_evidence(
     State(state): State<AppState>,
     Path((project_segment, feature)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to add evidence"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "maintainer", &user).await?;
     let feature_id = caller_feature(&state, &project, &feature).await?;
@@ -6792,11 +6770,9 @@ async fn remove_feature_evidence(
     State(state): State<AppState>,
     Path((project_segment, feature)): Path<(String, String)>,
     Query(query): Query<std::collections::HashMap<String, String>>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to change evidence"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "maintainer", &user).await?;
     let feature_id = caller_feature(&state, &project, &feature).await?;

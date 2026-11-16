@@ -172,7 +172,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/projects/{project_id}/strategy/weight-proposals/{id}/withdraw", Policy::Session, true),
     ("GET", "/api/v1/projects/{project_id}/tallies", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/threads/{thread_kind}/{thread_id}", Policy::Optional, false),
-    ("POST", "/api/v1/projects/{project_id}/threads/{thread_kind}/{thread_id}", Policy::Session, false),
+    ("POST", "/api/v1/projects/{project_id}/threads/{thread_kind}/{thread_id}", Policy::Session, true),
     ("DELETE", "/api/v1/projects/{project_id}/threads/{thread_kind}/{thread_id}/{id}", Policy::Session, true),
     ("POST", "/api/v1/projects/{project_id}/threads/{thread_kind}/{thread_id}/{id}/vote", Policy::Optional, false),
     ("GET", "/api/v1/projects/{slug}", Policy::Public, false),
@@ -227,16 +227,16 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("DELETE", "/api/v1/projects/{slug}/features/{feature}/complaints/{complaint}", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/features/{feature}/consensus", Policy::Public, false),
     ("POST", "/api/v1/projects/{slug}/features/{feature}/consensus", Policy::Session, false),
-    ("DELETE", "/api/v1/projects/{slug}/features/{feature}/deps", Policy::Session, false),
+    ("DELETE", "/api/v1/projects/{slug}/features/{feature}/deps", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/features/{feature}/deps", Policy::Session, false),
-    ("POST", "/api/v1/projects/{slug}/features/{feature}/deps", Policy::Session, false),
-    ("DELETE", "/api/v1/projects/{slug}/features/{feature}/evidence", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/features/{feature}/deps", Policy::Session, true),
+    ("DELETE", "/api/v1/projects/{slug}/features/{feature}/evidence", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/features/{feature}/evidence", Policy::Session, false),
-    ("POST", "/api/v1/projects/{slug}/features/{feature}/evidence", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/features/{feature}/evidence", Policy::Session, true),
     ("PUT", "/api/v1/projects/{slug}/features/{feature}/milestone", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/features/{feature}/solution-call", Policy::Public, false),
     ("POST", "/api/v1/projects/{slug}/features/{feature}/solution-call", Policy::Session, false),
-    ("PUT", "/api/v1/projects/{slug}/features/{feature}/status", Policy::Session, false),
+    ("PUT", "/api/v1/projects/{slug}/features/{feature}/status", Policy::Session, true),
     ("PUT", "/api/v1/projects/{slug}/features/{feature}/strategic-weight", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/features/{feature}/tags", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/features/{feature}/tags", Policy::Session, false),
@@ -314,7 +314,7 @@ mod tests {
 
     /// 5 on 2026-11-15 (four routes that already refused a stranger, plus the admin ledger that did not); 6 on
     /// 2026-11-16 when `POST /api/v1/projects` moved its refusal into the gate. It may grow, never shrink.
-    const ENFORCED: usize = 45;
+    const ENFORCED: usize = 51;
 
     /// The source with string literals and comments replaced by spaces, so a brace or a paren inside either
     /// cannot move the scan. Same length as the input, so an index means the same thing in both.
@@ -634,6 +634,12 @@ mod tests {
             "remove_feature_tag",
             "create_criterion",
             "set_work_item_label",
+            "post_comment",
+            "set_feature_status",
+            "add_feature_evidence",
+            "remove_feature_evidence",
+            "add_feature_dep",
+            "remove_feature_dep",
             "auth_me",
             "list_notifications",
             "list_invites",
