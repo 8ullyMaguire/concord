@@ -23,6 +23,11 @@ Every claim below is a measurement, and the command that produced it is in the s
   `session storage: PASS — no token in localStorage, reload stays signed in, no bearer header without a token`.
   `probe_rate_limit.py` is now wired into the gate's smoke layer with `CONCORD_RATE_LOGIN=3` and `--budget 3`.
 
+  Deployed `085cf01`: `/api/v1/version` → `concord-rs 0.0.0+085cf01+vendor`, `concord-rs.service` active and
+  `concord.service` inactive. Live probes: `anonymous_walk: 89 route(s) walked with no token · 0 unreachable · 0 hole(s) · PASS`,
+  `probe_security_headers: PASS`, and the **served** `/assets/js/session.js` passed the same checker
+  (`session storage: PASS`). The walk also measured the next debt: `19 declared but not enforced` routes (step 1b).
+
 - **2026-11-16 — rate limiting, reconciled from the session that was writing it** (second session, finished here). Two
   sessions were developing this repo at once and both reached step 2b; that session is stopped and its work is verified and
   committed here rather than discarded. What it wrote: `crates/app/src/rate.rs` (class chosen by the **matched route**, client
