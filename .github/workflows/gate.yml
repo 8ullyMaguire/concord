@@ -39,6 +39,11 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      # The page probe (`scripts/parity/probe_fixture.py`) seeds a fixture through the e2e harness, and the harness
+      # speaks libpq from Python. Without this the gate fails at "the page fixture could not be seeded" with
+      # `ModuleNotFoundError: No module named 'psycopg2'` — a missing dependency read as a missing feature.
+      - name: python dependencies
+        run: python -m pip install --quiet "psycopg2-binary>=2.9"
       # `mkfifo`/`psql` are preinstalled on the runner image; nothing else is needed because the gate shells out to the same commands a
       # person runs by hand. The point of CI here is not to invent a second gate, it is to run the one gate where nobody can skip it.
       - name: gate
