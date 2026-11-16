@@ -5690,12 +5690,10 @@ async fn reorder_milestone(
 async fn apply_project_tags(
     State(state): State<AppState>,
     Path(slug): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to apply tags"))?;
     let project = readable_project_segment(&state, &slug, &headers).await?;
     require_role(&state, &project, "contributor", &user).await?;
     let tags: Vec<String> = body
@@ -8988,12 +8986,10 @@ fn why_ranked(
 async fn create_field_report(
     State(state): State<AppState>,
     Path(project_segment): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     let field = |name: &str| -> String {
         body.get(name)

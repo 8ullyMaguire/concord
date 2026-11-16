@@ -139,7 +139,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/projects/{project_id}/features/{id}/solutions/{solution_id}/coverage", Policy::Session, false),
     ("POST", "/api/v1/projects/{project_id}/features/{id}/solutions/{solution_id}/coverage/{complaint_id}/contest", Policy::Session, false),
     ("GET", "/api/v1/projects/{project_id}/field-reports", Policy::Optional, false),
-    ("POST", "/api/v1/projects/{project_id}/field-reports", Policy::Session, false),
+    ("POST", "/api/v1/projects/{project_id}/field-reports", Policy::Session, true),
     ("POST", "/api/v1/projects/{project_id}/field-reports/{report_id}/responses", Policy::Session, false),
     ("PUT", "/api/v1/projects/{project_id}/intake-mode", Policy::Session, true),
     ("GET", "/api/v1/projects/{project_id}/lists", Policy::Optional, false),
@@ -262,7 +262,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/projects/{slug}/priorities", Policy::Public, false),
     ("GET", "/api/v1/projects/{slug}/roadmap", Policy::Public, false),
     ("GET", "/api/v1/projects/{slug}/tags", Policy::Optional, false),
-    ("PUT", "/api/v1/projects/{slug}/tags", Policy::Session, false),
+    ("PUT", "/api/v1/projects/{slug}/tags", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/tags/completeness", Policy::Optional, false),
     ("PUT", "/api/v1/projects/{slug}/visibility", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/votes/next", Policy::Session, true),
@@ -314,7 +314,7 @@ mod tests {
 
     /// 5 on 2026-11-15 (four routes that already refused a stranger, plus the admin ledger that did not); 6 on
     /// 2026-11-16 when `POST /api/v1/projects` moved its refusal into the gate. It may grow, never shrink.
-    const ENFORCED: usize = 23;
+    const ENFORCED: usize = 25;
 
     /// The source with string literals and comments replaced by spaces, so a brace or a paren inside either
     /// cannot move the scan. Same length as the input, so an index means the same thing in both.
@@ -612,6 +612,8 @@ mod tests {
             "file_feature",
             "create_invite",
             "open_consensus",
+            "apply_project_tags",
+            "create_field_report",
             "auth_me",
             "list_notifications",
             "list_invites",

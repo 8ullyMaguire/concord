@@ -12,6 +12,11 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-16 — tags and field reports move behind the gate** (step 1b, ninth slice). Anonymous probes returned `401` from
+  `apply_project_tags` and `create_field_report`; both rows are enforced (23→25), both handlers take `Extension<User>`, and
+  contributor/visibility checks stay. Milestone and theme routes also refuse anonymous but resolve identity through shared
+  helpers; D-8 records why they are not flipped in this batch.
+
 - **2026-11-16 — charter, features, invites and consensus move behind the gate** (step 1b, eighth slice, four routes).
   Anonymous probes with a consent cookie returned `401` from their handlers; `features` needed a valid body (`{}` failed
   deserialisation with `422 missing field title` before the identity check). All four rows are enforced (19→23), the
