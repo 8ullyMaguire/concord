@@ -37,10 +37,24 @@ release:
 
 # The deploy is four commands that have gone wrong in four different ways; they live here so the next person does not rediscover them.
 # `concord.service` (the Go rollback) stays disabled at boot; `concord-rs.service` is the one that serves.
+# `scp thinkcentre:` FROM thinkcentre goes out to sshd and back, and under load sshd drops the self-connection:
+# `scp: Connection closed` with the binary already built, which reads as a broken deploy. On the host the copy is a
+# `cp` and the restart is local; anywhere else it is the ssh path. Decided here rather than in the caller's head.
+# The host calls itself `M720q` in `hostname` and `thinkcentre` in ssh config; both mean "this is the machine".
+ON_TARGET := $(shell hostname | grep -qiE '^(m720q|thinkcentre)$$' && echo yes || echo no)
+DEPLOY_DIR := $(if $(filter yes,$(ON_TARGET)),$(HOME)/concord-deploy,/home/alvaro/concord-deploy)
 deploy: release
 	@test -x "$(BIN)" || { echo "deploy: $(BIN) does not exist; run \`make release\` first"; exit 1; }
+ifeq ($(ON_TARGET),yes)
+	@echo "deploy: on the target host, copying $(BIN) to $(DEPLOY_DIR)/concord-rs.new"
+	cp "$(BIN)" "$(DEPLOY_DIR)/concord-rs.new" && chmod 755 "$(DEPLOY_DIR)/concord-rs.new"
+	@systemctl --user stop concord-rs.service && mv "$(DEPLOY_DIR)/concord-rs.new" "$(DEPLOY_DIR)/concord-rs" \
+	  && systemctl --user start concord-rs.service && sleep 4 \
+	  && curl -s -m 8 https://concord.polarisocial.xyz/api/v1/version
+else
 	scp -q "$(BIN)" thinkcentre:/home/alvaro/concord-deploy/concord-rs.new
 	ssh thinkcentre 'chmod 755 ~/concord-deploy/concord-rs.new && systemctl --user stop concord-rs.service \
 	  && mv ~/concord-deploy/concord-rs.new ~/concord-deploy/concord-rs \
 	  && systemctl --user start concord-rs.service && sleep 4 \
 	  && curl -s -m 8 https://concord.polarisocial.xyz/api/v1/version'
+endif
