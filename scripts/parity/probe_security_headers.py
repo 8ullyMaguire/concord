@@ -47,14 +47,49 @@ PATHS = ("/", "/projects", "/api/v1/version", "/no-such-page", "/v/nsfw")
 SCRIPT_TAG = re.compile(rb"<script\b([^>]*)>", re.I)
 
 
+def directives(policy: str) -> dict[str, set[str]]:
+    """`script-src 'self' https:` -> {"script-src": {"'self'", "https:"}}."""
+    out: dict[str, set[str]] = {}
+    for part in policy.split(";"):
+        words = part.split()
+        if words:
+            out[words[0].lower()] = set(words[1:])
+    return out
+
+
+def effective(policies: list[str], name: str) -> set[str]:
+    """What the browser enforces for one directive when several policies are present.
+
+    A browser applies **every** `Content-Security-Policy` header it receives, so a source is allowed only if every policy
+    that mentions the directive allows it. An empty set means "no policy constrains it".
+    """
+    seen = [directives(p) for p in policies]
+    mentioned = [d[name] for d in seen if name in d]
+    if not mentioned:
+        return set()
+    out = set(mentioned[0])
+    for sources in mentioned[1:]:
+        out &= sources
+    return out
+
+
 def fetch(candidate: str, path: str) -> tuple[int, dict[str, str], bytes]:
     request = urllib.request.Request(candidate.rstrip("/") + path, method="GET")
     request.add_header("User-Agent", "concord-security-probe/1")
+    def headers_of(message) -> dict[str, str]:  # noqa: ANN001 - http.client.HTTPMessage
+        merged: dict[str, str] = {}
+        for key, value in message.items():
+            key = key.lower()
+            # Several `Content-Security-Policy` headers arrive as one comma-joined value; keep them separate because a
+            # browser enforces each one. Everything else is last-wins, which is what a browser does too.
+            merged[key] = f"{merged[key]}\n{value}" if key in merged else value
+        return merged
+
     try:
         with urllib.request.urlopen(request, timeout=20) as response:
-            return response.status, {k.lower(): v for k, v in response.headers.items()}, response.read()
+            return response.status, headers_of(response.headers), response.read()
     except urllib.error.HTTPError as error:  # a 404 still has headers, and it is the interesting one
-        return error.code, {k.lower(): v for k, v in error.headers.items()}, error.read()
+        return error.code, headers_of(error.headers), error.read()
 
 
 def main() -> int:
@@ -73,16 +108,32 @@ def main() -> int:
         missing = [name for name in REQUIRED if name not in headers]
         for name in missing:
             failures.append(f"{path} ({status}): missing {name}")
-        policy = headers.get("content-security-policy", "")
-        if "script-src 'self'" not in policy:
-            failures.append(f"{path} ({status}): script-src is not 'self' ({policy or 'no policy'})")
-        # The whole point: a policy that permits inline script permits exactly the injection it exists to stop.
-        script_src = re.search(r"script-src([^;]*)", policy)
-        if script_src and "'unsafe-inline'" in script_src.group(1):
-            failures.append(f"{path} ({status}): script-src allows 'unsafe-inline' — the policy refuses nothing")
-        if "frame-ancestors 'none'" not in policy:
-            failures.append(f"{path} ({status}): frame-ancestors is not 'none' ({policy or 'no policy'})")
-        print(f"  {path:18} {status}  headers {'complete' if not missing else 'MISSING ' + ','.join(missing)}")
+        raw = headers.get("content-security-policy", "")
+        policies = [p for p in raw.split("\n") if p.strip()]
+        script = effective(policies, "script-src")
+        frame = effective(policies, "frame-ancestors")
+        # The whole point: a policy that permits inline script permits exactly the injection it exists to stop, and a
+        # browser enforces every header it is given, so the *intersection* is what protects the page.
+        if not script:
+            failures.append(f"{path} ({status}): no script-src in any policy")
+        elif "'unsafe-inline'" in script:
+            failures.append(
+                f"{path} ({status}): effective script-src allows 'unsafe-inline' ({' '.join(sorted(script))})"
+            )
+        elif "self" not in {s.strip("'") for s in script}:
+            failures.append(f"{path} ({status}): effective script-src is not 'self' ({' '.join(sorted(script))})")
+        # `'none'` in any one policy blocks every frame on its own, so it is already the strictest outcome; an empty
+        # intersection means the same thing (a source must be allowed by every policy, and one allows nothing).
+        frame_none = any("none" in directives(p).get("frame-ancestors", set()) for p in policies)
+        if not frame_none and frame:
+            failures.append(
+                f"{path} ({status}): frame-ancestors permits framing ({' '.join(sorted(frame))})"
+            )
+        note = ""
+        if len(policies) > 1:
+            weak = [p for p in policies if "'unsafe-inline'" in " ".join(directives(p).get("script-src", ()))]
+            note = f"  [{len(policies)} policies; {len(weak)} permissive]"
+        print(f"  {path:18} {status}  headers {'complete' if not missing else 'MISSING ' + ','.join(missing)}{note}")
 
         if "text/html" not in headers.get("content-type", ""):
             continue

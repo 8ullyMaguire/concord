@@ -97,3 +97,39 @@ Before: `probe_security_headers: FAIL (10 problem(s))` against the live instance
 * Still open in step 2: the session cookie (`HttpOnly; SameSite=Lax`, so an XSS cannot read the token), rate limiting
   through the vendored `polaris_ratelimit` (592 lines, still imported by zero files), and the `el(tag, props, children)`
   renderer that makes `innerHTML` unavailable rather than merely discouraged.
+
+## Addendum, same day: two policies, and why the probe had to say "intersection"
+
+The first live run after deploying found something the candidate could not: the response carried **two**
+`Content-Security-Policy` headers — the app's strict one and nginx's estate-wide one from
+`/etc/nginx/snippets/estate-security-headers.conf`:
+
+```
+script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'; frame-ancestors 'self'
+```
+
+Every estate vhost inherits that snippet, and nginx *appends* its `add_header` to whatever the upstream sent rather than
+replacing it. So the header this ADR is about was one of two, and the probe — reading one header per name — reported the
+wrong one.
+
+What a browser does with two policies is **enforce both**, which means the effective `script-src` is the intersection:
+`'self'`, with no `'unsafe-inline'`, because the strict policy does not allow it. The page is protected. But it is
+protected *by accident of aggregation*, and that is not a property to leave to chance: delete the app's header and the
+remaining policy refuses nothing.
+
+So the probe now:
+
+* keeps every CSP header apart instead of taking one per name,
+* computes each directive's **effective** source set as the intersection across policies (a source must be allowed by
+  every policy that mentions the directive), and judges that,
+* treats `frame-ancestors 'none'` in *any* policy as the strictest outcome, because one policy forbidding every frame is
+  already absolute — and an empty intersection means the same thing,
+* prints `[N policies; M permissive]` beside each URL, so a second policy cannot become invisible again.
+
+Its failure mode is the one that matters: with the app header gone, the only policy left is the permissive one and every
+URL fails with `effective script-src allows 'unsafe-inline'`.
+
+**Not fixed here, deliberately:** the estate snippet itself. Dropping `'unsafe-inline'` from it would need every one of
+the sixteen estate sites to be inline-script-free, and this change cannot claim that about any site but concord. The
+snippet is the estate's single point of policy and deserves its own audit, one site at a time, with this probe pointed at
+each. Recorded in the plan as an estate-level item, not a concord one.
