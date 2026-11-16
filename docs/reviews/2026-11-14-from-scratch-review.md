@@ -8,6 +8,16 @@ Every claim below is a measurement, and the command that produced it is in the s
 
 ## Work log
 
+- **2026-11-16 — four more duplicate identity checks removed** (step 1b, third slice). The four enforced handlers that still
+  opened their own store read — `auth_me`, `list_notifications`, `list_invites`, `next_vote_pair` — now take the `User` the
+  gate already resolved. `grep -c 'bearer_user(' crates/app/src/lib.rs`: 121 → 117. The structural test was widened from one
+  handler to the list of five converted handlers and matches braces on the comment-blanked source so the check cannot stop
+  at a brace inside a string.
+
+  ```
+  cargo test -p concord-app --lib policy: 7 passed; 0 failed
+  ```
+
 - **2026-11-16 — first in-handler refusal moved to the gate** (step 1b, second slice). Reproduced with consent cookie on the
   live host (a bare mutation is stopped earlier by `interaction_gate`):
   `curl -X POST https://concord.polarisocial.xyz/api/v1/projects -H 'Cookie: concord_consent=1' …` →

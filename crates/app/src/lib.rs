@@ -2563,11 +2563,8 @@ async fn call_fallback(
 async fn list_notifications(
     State(state): State<AppState>,
     Query(query): Query<std::collections::HashMap<String, String>>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let limit = query
         .get("limit")
         .and_then(|value| value.parse::<i64>().ok())
@@ -3510,11 +3507,8 @@ pub(crate) async fn readable(
 /// `GET /api/v1/auth/me` — the caller, by id: the token carries only an id, so the name is looked up here.
 async fn auth_me(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     // The Go answers `role: "member"` for every caller — it is not this project's role, it is "you are signed
     // in". Kept identical rather than improved: a client that switches on it exists.
     Ok(Json(serde_json::json!({
@@ -7368,11 +7362,9 @@ async fn create_invite(
 async fn list_invites(
     State(state): State<AppState>,
     Path(project_segment): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<Json<Vec<concord_db::invite_writes::Invite>>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to see invites"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "contributor", &user)
         .await
@@ -8682,12 +8674,10 @@ async fn join_project(
 async fn next_vote_pair(
     State(state): State<AppState>,
     Path(project_segment): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
     use concord_db::feed_reads::NoPair;
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     concord_db::feed_reads::join(&state.pool, project.id, user.id)
         .await

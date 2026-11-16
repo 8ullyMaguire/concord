@@ -570,15 +570,47 @@ mod tests {
     /// extractor — this fails at build time instead of leaving a route that silently trusts a caller-supplied extension.
     #[test]
     fn the_enforced_gate_supplies_identity_to_its_handler() {
-        let start = SOURCE.find("async fn create_project(").expect("the handler exists");
-        let end = start + SOURCE[start..].find("/// The user behind").expect("the next item follows");
-        let handler = &SOURCE[start..end];
+        /// The whole function, braces matched on the comment-blanked source so a brace in a string cannot end it early.
+        fn function(source: &str, name: &str) -> String {
+            let start = source.find(&format!("async fn {name}(")).unwrap_or_else(|| panic!("{name} exists"));
+            let blanked = blank_out(source);
+            let open = start + blanked[start..].find('{').expect("a function body opens");
+            let mut depth = 0usize;
+            let mut close = open;
+            for (offset, ch) in blanked[open..].char_indices() {
+                match ch {
+                    '{' => depth += 1,
+                    '}' => {
+                        depth -= 1;
+                        if depth == 0 {
+                            close = open + offset;
+                            break;
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            source[start..=close].to_string()
+        }
+
+        for name in [
+            "create_project",
+            "auth_me",
+            "list_notifications",
+            "list_invites",
+            "next_vote_pair",
+        ] {
+            let body = function(SOURCE, name);
+            assert!(
+                body.contains("Extension(user): Extension<concord_db::auth::User>"),
+                "{name} no longer consumes the identity the gate supplies"
+            );
+            assert!(!body.contains("bearer_user("), "{name} kept its duplicate in-handler refusal");
+        }
         assert!(
-            handler.contains("Extension(user): Extension<concord_db::auth::User>"),
-            "create_project no longer consumes the identity the gate supplies"
+            function(SOURCE, "create_project").contains("is_guest("),
+            "the guest check stays: the gate proves identity, not an account"
         );
-        assert!(!handler.contains("bearer_user("), "the duplicate in-handler refusal came back");
-        assert!(handler.contains("is_guest("), "the guest check stays: the gate proves identity, not an account");
 
         let gate_start = SOURCE.find("async fn auth_gate(").expect("the gate exists");
         let gate = &SOURCE[gate_start..gate_start + 3000];
