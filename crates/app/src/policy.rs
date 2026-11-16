@@ -98,7 +98,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/curation", Policy::Optional, false),
     ("GET", "/api/v1/curation/", Policy::Optional, false),
     ("POST", "/api/v1/curation/{kind}/{id}/vote", Policy::Session, true),
-    ("POST", "/api/v1/emergency-holds/{hold_id}/release", Policy::Session, false),
+    ("POST", "/api/v1/emergency-holds/{hold_id}/release", Policy::Session, true),
     ("GET", "/api/v1/finder/questions", Policy::Public, false),
     ("POST", "/api/v1/finder/sessions", Policy::Public, false),
     ("GET", "/api/v1/finder/sessions/{session}", Policy::Public, false),
@@ -140,7 +140,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/projects/{project_id}/features/{id}/solutions/{solution_id}/coverage/{complaint_id}/contest", Policy::Session, false),
     ("GET", "/api/v1/projects/{project_id}/field-reports", Policy::Optional, false),
     ("POST", "/api/v1/projects/{project_id}/field-reports", Policy::Session, true),
-    ("POST", "/api/v1/projects/{project_id}/field-reports/{report_id}/responses", Policy::Session, false),
+    ("POST", "/api/v1/projects/{project_id}/field-reports/{report_id}/responses", Policy::Session, true),
     ("PUT", "/api/v1/projects/{project_id}/intake-mode", Policy::Session, true),
     ("GET", "/api/v1/projects/{project_id}/lists", Policy::Optional, false),
     ("POST", "/api/v1/projects/{project_id}/lists", Policy::Session, false),
@@ -248,9 +248,9 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/projects/{slug}/invites/{invite}/revoke", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/join", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/languages", Policy::Optional, false),
-    ("PUT", "/api/v1/projects/{slug}/languages", Policy::Session, false),
+    ("PUT", "/api/v1/projects/{slug}/languages", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/merge", Policy::Optional, false),
-    ("POST", "/api/v1/projects/{slug}/merge", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/merge", Policy::Session, true),
     ("PUT", "/api/v1/projects/{slug}/merge/{merge}/approve", Policy::Session, true),
     ("PUT", "/api/v1/projects/{slug}/merge/{merge}/execute", Policy::Session, true),
     ("PUT", "/api/v1/projects/{slug}/merge/{merge}/reject", Policy::Session, true),
@@ -258,7 +258,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/projects/{slug}/milestones", Policy::Public, false),
     ("POST", "/api/v1/projects/{slug}/milestones", Policy::Session, true),
     ("POST", "/api/v1/projects/{slug}/moderation/arena/remove", Policy::Session, false),
-    ("POST", "/api/v1/projects/{slug}/moderation/arena/restore", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/moderation/arena/restore", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/priorities", Policy::Public, false),
     ("GET", "/api/v1/projects/{slug}/roadmap", Policy::Public, false),
     ("GET", "/api/v1/projects/{slug}/tags", Policy::Optional, false),
@@ -314,7 +314,7 @@ mod tests {
 
     /// 5 on 2026-11-15 (four routes that already refused a stranger, plus the admin ledger that did not); 6 on
     /// 2026-11-16 when `POST /api/v1/projects` moved its refusal into the gate. It may grow, never shrink.
-    const ENFORCED: usize = 51;
+    const ENFORCED: usize = 56;
 
     /// The source with string literals and comments replaced by spaces, so a brace or a paren inside either
     /// cannot move the scan. Same length as the input, so an index means the same thing in both.
@@ -640,6 +640,11 @@ mod tests {
             "remove_feature_evidence",
             "add_feature_dep",
             "remove_feature_dep",
+            "arena_restore",
+            "release_emergency_hold",
+            "respond_to_field_report",
+            "set_project_languages",
+            "create_merge_request",
             "auth_me",
             "list_notifications",
             "list_invites",

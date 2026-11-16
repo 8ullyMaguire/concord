@@ -2879,12 +2879,9 @@ async fn arena_remove(
 async fn arena_restore(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<ArenaActRequest>,
 ) -> Result<Json<Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = project_for(&state, &slug).await?;
     permit_moderation(&state, project.id, user.id).await?;
     if !body.confirmed() {
@@ -5758,12 +5755,10 @@ async fn tag_completeness(
 async fn set_project_languages(
     State(state): State<AppState>,
     Path(slug): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to set languages"))?;
     let project = readable_project_segment(&state, &slug, &headers).await?;
     require_role(&state, &project, "contributor", &user).await?;
     let languages: Vec<(String, f64)> = body
@@ -7459,12 +7454,10 @@ async fn list_merge_requests(
 async fn create_merge_request(
     State(state): State<AppState>,
     Path(project_segment): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<CreateMergeRequest>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "contributor", &user).await?;
     if body.feature_id == 0 {
@@ -9032,12 +9025,10 @@ async fn create_field_report(
 async fn respond_to_field_report(
     State(state): State<AppState>,
     Path((project_segment, report_id)): Path<(String, i64)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<Value>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     let text = body.get("body").and_then(Value::as_str).unwrap_or_default();
     let response = match concord_db::field_report_writes::respond(&state.pool, &project, report_id, user.id, text)
@@ -9126,12 +9117,9 @@ async fn instance_lists(State(state): State<AppState>) -> Result<Json<Value>, Ap
 async fn release_emergency_hold(
     State(state): State<AppState>,
     Path(hold_id): Path<i64>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let hold = concord_db::holds::one(&state.pool, hold_id)
         .await
         .map_err(|error| match error {

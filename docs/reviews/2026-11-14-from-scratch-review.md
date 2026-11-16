@@ -12,6 +12,11 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-16 — five more private writes enforced** (step 1b, fourteenth slice). Emergency-hold release, field-report
+  response, project languages, merge request and arena restore all answered anonymous `401`; rows enforced (51→56),
+  handlers take `Extension<User>`, 55 pinned, `bearer_user` 85→80. `arena_restore` and `release_emergency_hold` no longer
+  take `HeaderMap` at all.
+
 - **2026-11-16 — ten-parameter cleanup plus six feature/thread writes** (step 1b, thirteenth slice). Removed the ten
   unused `headers: HeaderMap` handler parameters recorded after `c1411d1`. Six routes — post comment, feature status,
   add/remove evidence, add/remove dep — all answered anonymous `401` (feature status only after a valid body, as in the
