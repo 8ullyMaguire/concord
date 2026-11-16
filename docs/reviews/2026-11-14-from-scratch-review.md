@@ -18,6 +18,13 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   their handlers take `Extension<User>`; `require_role`/member checks remain in the handlers. No new decision — D-6 applies.
   Batching avoids five separate 10–20 minute builds for the same proof.
 
+  ```
+  cargo test -p concord-app --lib policy: 7 passed; 0 failed
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live fc71a02: five routes anon 401 · guest criterion 403 maintainer role
+                walk 0 holes · headers PASS · served JS PASS · CI 43930380335 success
+  ```
+
 - **2026-11-16 — project adoption moves behind the gate** (step 1b, fifth slice). `curl -X POST
   https://concord.polarisocial.xyz/api/v1/projects/lorebook/claim -H 'Cookie: concord_consent=1' …` →
   `401 {"code":"unauthenticated","error":"sign in to adopt a project"}` from `claim_project`. The row is enforced (7→8),
