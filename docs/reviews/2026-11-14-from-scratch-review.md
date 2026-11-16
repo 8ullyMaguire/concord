@@ -8,6 +8,14 @@ Every claim below is a measurement, and the command that produced it is in the s
 
 ## Work log
 
+- **2026-11-15 — the critique turned on the code, and the numbers were worse than the prose.** Measured on `64cb134`:
+  `crates/app/src/lib.rs` is **10,035 lines** holding 179 routes, 219 functions and 526 `concord_db::` call sites, tested by
+  **4 unit tests**; `crates/domain` is one doc comment; the frontend is 12,477 lines across 42 files with no build; `crates/db/sql`
+  has two migrations for 79 tables. The port moved the product and kept the shape — the right call then, and the reason the layer with
+  the most decisions has the fewest tests. Decided in ADR 0014: split by surface, not rewrite; type the twelve most-read shapes;
+  one error contract; ES modules for the frontend; keep the db crate and the schema; no domain layer. Every step is gated by the
+  recorded parity corpus (`0 disagreed of 21 checked`) and the probes, so the wire cannot move while the files do.
+
 - **2026-11-15 — the catalogue was 25% fixtures, and the gate runs 8 of 29 suites.** Two findings from one question ("what does the site
   actually publish"). First: `/projects` listed 24 projects nobody wrote — `archive-probe-220154/220933/222202` and 21 ULID-tailed slugs
   (`f-01m7dw…`, `w-01m7dw…`, `d-`, `l-`, `m-`, `p-`, `dup-`), named `Fixture`, `Writable`, `A project`. They were seeded on 2026-11-14 by
@@ -478,6 +486,63 @@ for the *product* (not the Go implementation), and the ledger for the port as hi
 the way the docs gate already knows how to read.
 
 **Cost to change now:** low, purely editorial, and it prevents the next wrong turn.
+
+## From scratch, round two: the shape of the code (2026-11-15)
+
+The ten sections above are about the product. This one is about the code, and it exists because the
+numbers are worse than the prose. Measured on `64cb134`:
+
+```
+crates/app/src/lib.rs              10,035 lines · 179 routes · 219 functions · 526 `concord_db::` calls · 4 tests
+crates/domain/src/lib.rs           1 line (a doc comment naming a plan that never filled it)
+crates/db/                         21,681 lines over 64 files · 47 tests
+crates/web/assets/js/              12,477 lines over 42 files · no build step · 3 tests in the crate
+crates/db/sql/                     2 migrations; the baseline holds 79 tables and its own BEGIN/COMMIT
+```
+
+**The port moved the product and kept the shape.** That was the right call at the time — a rewrite
+that also changed behaviour could not be judged — and it means the sins are the Go service's, faithfully
+carried: one file is the router, the policy, the persistence call sites and the wire format; the layer
+with the most decisions has the fewest tests; the wire contract is a `json!` literal, so it is written
+in 179 places and documented in none. The port's own plan said "S1: projects", "S2: the board", which
+is a *feature* decomposition. A surface decomposition would have produced fifteen files of 600 lines
+and a router, and the same two weeks.
+
+What I would have done differently, in order of how much it would have saved:
+
+1. **One module per surface from the first handler**, with `lib.rs` as a composer. The cost is a
+   directory; the saving is that a 10k-line file never exists, so "where does this go" is never a
+   question and a diff can be read.
+2. **Response types on the first route.** `#[derive(Serialize)]` per shape, with a round-trip test.
+   The parity corpus exists precisely because shapes were strings: `3 shape(s) disagreed of 21 checked`
+   is what a string contract costs, and it was found by a replay, not by a compiler.
+3. **Handler tests against a scratch database, from the first route.** `State<PgPool>` already makes
+   this possible; the four tests in a 10k-line file are the evidence that it was never done. The e2e
+   suites are excellent and they are the *second* layer; 21 of 29 of them are run by nobody, which is
+   what happens when the pyramid is inverted and the base is a browser.
+4. **Delete `crates/domain` on day one, or fill it.** An empty crate is a promise the tree cannot keep;
+   every reader spends a minute wondering what belongs there. The rules worth isolating were
+   `lifecycle` and `health`, and they landed in `concord_ranking` where they are pure and tested
+   (43 tests) — that is the right home, so the empty crate is pure cost.
+5. **One error contract, chosen once, written in one file.** Two shapes on one origin (the estate's
+   nested, the Go flat) plus nginx's third meant `api.js` grew a `sentence()` that tries three keys —
+   a reader-side workaround for a writer-side indecision.
+6. **ES modules from the first file.** `window` registration is why `project.js` could reach 1,617
+   lines and grow `project-arena.js`, `project-panels.js`, `project-writes.js` as three files that
+   still share one mutable global. The split happened; the seam is still a window.
+7. **Migrations from the first table.** Done, late (`c590240`), and the two-file baseline still carries
+   its own `BEGIN`/`COMMIT` — subtle, documented, and a trap for whoever wraps it in a transaction.
+8. **The 79-table schema is not a defect.** The breadth is the product (projects, features, arenas,
+   consensus, criteria, curation, taxonomy, trust, notifications). What was missing was a way to change
+   it; that existed at the end and not the start.
+
+**Would I refactor into it now?** Yes — by splitting, not rewriting, and only in steps whose gate is
+the recorded corpus. `docs/adr/0014-the-app-layer-is-split-by-surface.md` is the decision, the six
+steps, the files and the gate for each. What I would *not* do: rewrite the frontend (12,477 shipping
+lines behind 44 e2e suites is an asset), consolidate the tables (a live schema's table count is not a
+defect), or add a service/use-case layer between app and db (two-line pass-throughs, no new test
+surface). The order is: freeze the corpus, split the router, type the shapes, one error contract,
+modules in the frontend, then wire the 21 unrun suites — last, so they cover the new layout.
 
 ## Smaller things, each a one-line fix
 
