@@ -216,7 +216,9 @@ if [ -n "$LIVE" ]; then
   # `ModuleNotFoundError: No module named 'playwright'` on the first full pass of this layer, while the suites beside it passed.
   PY=python3
   [ -x "$HOME/.venvs/concord-e2e/bin/python" ] && PY="$HOME/.venvs/concord-e2e/bin/python"
-  CANDIDATE="$LIVE" run_probe probe_pages python3 scripts/parity/probe_pages.py
+  # probe_pages seeds a hostile-named project and deletes it, so it needs a migrated database: hand it the scratch one
+  # the smoke layer just created rather than letting it fall back to a sqlite file that has no schema.
+  CANDIDATE="$LIVE" CONCORD_E2E_DSN="$CONCORD_TEST_DSN" run_probe probe_pages python3 scripts/parity/probe_pages.py
   CANDIDATE="$LIVE" run_probe probe_project_segments python3 scripts/parity/probe_project_segments.py
   CANDIDATE="$LIVE" run_probe probe_requests "$PY" scripts/parity/probe_requests.py
   # The one layer that asks the policy table's own question of the running instance: does a route declared as refusing

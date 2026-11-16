@@ -143,9 +143,16 @@ $ curl -o /dev/null -w '%{http_code}' …/api/v1/search         -> 200   (unchan
 $ curl -o /dev/null -w '%{http_code}' …/api/v1/projects       -> 200   (unchanged)
 ```
 
-**Two probe notes.** `scripts/parity/probe_pages.py` died locally in its own cleanup (`sqlite3.OperationalError: no such table:
-projects`) — it wants a scratch database this box has no file for, which is a pre-existing harness gap and not this change. What
-was checked instead, against the deployed instance, all `200`: `/`, `/projects`, `/projects/suki`, `/search`, `/stats`, `/scout`,
+**`probe_pages` is broken as a live probe, and here is exactly how.** Run against the deployed instance it died in its own seeding
+step (`sqlite3.OperationalError: no such table: projects`) because it called `harness.connect("unused")` with no
+`CONCORD_E2E_DSN` — creating an empty file in the repo root. That is now refused by name instead of misdiagnosed as a page bug.
+But the DSN is not the whole story: given a migrated scratch database and the release binary serving it, it reports **90/129 ok**
+and every one of the 39 failures is a `404` for `/projects/suki/…` — the probe assumes a project slugged `suki` exists and only
+seeds `probe-page-<stamp>`. Not one failure is a `401` or `403`, so the auth gate changed no page. It therefore cannot pass against
+an empty scratch database, and it cannot run against production either, because seeding a hostile project there is exactly what
+`refuse_a_non_test_database` blocks. **To make it a gate again: seed `suki` (and its board features) into the scratch database
+before the probe runs, then point it at the smoke server** — a fixture, not a rewrite. Until then the page layer is curl against the
+deployed instance, and what was checked, all `200`: `/`, `/projects`, `/projects/suki`, `/search`, `/stats`, `/scout`,
 `/finder`, `/taxonomy`, `/curation`, `/contribute`, `/projects/new`, `/healthz`, `/feed.xml`, `/atom.xml`,
 `/projects/suki/board/feed.xml`, `/projects/suki/consensus/atom.xml`.
 

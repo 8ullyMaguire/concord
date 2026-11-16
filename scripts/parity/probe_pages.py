@@ -72,7 +72,17 @@ def jsonld(document):
 def main():
     import harness
 
-    con = harness.connect("unused")
+    # This probe SEEDS a project with a hostile name and deletes it at the end, so it needs a real migrated
+    # database. Without one it used to `sqlite3.connect("unused")` — creating an empty file in the repo root and
+    # dying with `no such table: projects` after 69 seconds of page checks, which reads like a broken page layer
+    # rather than a missing variable. Name the missing variable instead, the way `scripts/gate.sh` does.
+    if not harness.SEED_DSN:
+        raise SystemExit(
+            "probe_pages: CONCORD_E2E_DSN is not set — this probe seeds a project (and deletes it) to prove the "
+            "page escapes a hostile name. Point it at a scratch PostgreSQL database whose name contains 'test' "
+            "(see scripts/parity/e2e.sh); `scripts/gate.sh --live` passes its own scratch database."
+        )
+    con = harness.connect(harness.SEED_DSN)
     results = []
 
     def mount(page, mount_id, script):
