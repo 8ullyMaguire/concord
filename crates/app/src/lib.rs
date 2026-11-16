@@ -3227,10 +3227,9 @@ async fn strategy_project(
     state: &AppState,
     project_id: i64,
     headers: &HeaderMap,
+    user: &concord_db::auth::User,
 ) -> Result<StrategyCaller, ApiError> {
-    let user = bearer_user(state, headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
+    // The identity comes from auth_gate; this helper keeps only project existence and the member role lookup.
     let exists: Option<i64> = sqlx::query_scalar("select id from projects where id = $1")
         .bind(project_id)
         .fetch_optional(&state.pool)
@@ -3247,19 +3246,23 @@ async fn strategy_project(
     .fetch_one(&state.pool)
     .await
     .map_err(internal)?;
-    Ok(StrategyCaller { user, role })
+    Ok(StrategyCaller {
+        user: user.clone(),
+        role,
+    })
 }
 
 async fn list_weight_proposals(
     State(state): State<AppState>,
     Path(project): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
     // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
     // the top of the handler — the `project_id` the body uses is its id.
     let project_id = project_by_id(&state, &project).await?.id;
-    strategy_project(&state, project_id, &headers).await?;
+    strategy_project(&state, project_id, &headers, &user).await?;
     let rows = concord_db::strategy::proposals(&state.pool, project_id)
         .await
         .map_err(internal)?;
@@ -3269,13 +3272,14 @@ async fn list_weight_proposals(
 async fn list_theme_proposals(
     State(state): State<AppState>,
     Path(project): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
     // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
     // the top of the handler — the `project_id` the body uses is its id.
     let project_id = project_by_id(&state, &project).await?.id;
-    strategy_project(&state, project_id, &headers).await?;
+    strategy_project(&state, project_id, &headers, &user).await?;
     let rows = concord_db::themes::proposals(&state.pool, project_id)
         .await
         .map_err(internal)?;
@@ -3285,13 +3289,14 @@ async fn list_theme_proposals(
 async fn list_themes(
     State(state): State<AppState>,
     Path(project): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
     // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
     // the top of the handler — the `project_id` the body uses is its id.
     let project_id = project_by_id(&state, &project).await?.id;
-    strategy_project(&state, project_id, &headers).await?;
+    strategy_project(&state, project_id, &headers, &user).await?;
     let rows = concord_db::themes::themes(&state.pool, project_id)
         .await
         .map_err(internal)?;
@@ -3301,10 +3306,11 @@ async fn list_themes(
 async fn propose_weight(
     State(state): State<AppState>,
     Path(project_id): Path<i64>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-    let who = strategy_project(&state, project_id, &headers).await?;
+    let who = strategy_project(&state, project_id, &headers, &user).await?;
     let feature_id = body
         .get("feature_id")
         .and_then(serde_json::Value::as_i64)
@@ -3324,10 +3330,11 @@ async fn propose_weight(
 async fn propose_theme(
     State(state): State<AppState>,
     Path(project_id): Path<i64>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-    let who = strategy_project(&state, project_id, &headers).await?;
+    let who = strategy_project(&state, project_id, &headers, &user).await?;
     let tag = body.get("theme_tag").and_then(serde_json::Value::as_str).unwrap_or("");
     let namespace = body
         .get("theme_namespace")
@@ -3359,9 +3366,10 @@ async fn propose_theme(
 async fn consent_theme(
     State(state): State<AppState>,
     Path((project_id, id)): Path<(i64, i64)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-    let who = strategy_project(&state, project_id, &headers).await?;
+    let who = strategy_project(&state, project_id, &headers, &user).await?;
     match concord_db::themes::consent(&state.pool, id, who.user.id).await {
         Ok((proposal, ratified)) => Ok((
             if ratified { StatusCode::OK } else { StatusCode::ACCEPTED },
@@ -3392,9 +3400,10 @@ async fn consent_theme(
 async fn consent_weight(
     State(state): State<AppState>,
     Path((project_id, id)): Path<(i64, i64)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-    let who = strategy_project(&state, project_id, &headers).await?;
+    let who = strategy_project(&state, project_id, &headers, &user).await?;
     match concord_db::strategy::consent(&state.pool, id, who.user.id).await {
         Ok(recorded) => Ok((
             StatusCode::OK,
@@ -3414,9 +3423,10 @@ async fn consent_weight(
 async fn withdraw_theme(
     State(state): State<AppState>,
     Path((project_id, id)): Path<(i64, i64)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
-    let who = strategy_project(&state, project_id, &headers).await?;
+    let who = strategy_project(&state, project_id, &headers, &user).await?;
     let maintainer = who.role == "maintainer" || who.role == "owner";
     concord_db::themes::withdraw(&state.pool, id, who.user.id, maintainer)
         .await
@@ -3427,9 +3437,10 @@ async fn withdraw_theme(
 async fn withdraw_weight(
     State(state): State<AppState>,
     Path((project_id, id)): Path<(i64, i64)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
-    let who = strategy_project(&state, project_id, &headers).await?;
+    let who = strategy_project(&state, project_id, &headers, &user).await?;
     let maintainer = who.role == "maintainer" || who.role == "owner";
     concord_db::strategy::withdraw(&state.pool, id, who.user.id, maintainer)
         .await

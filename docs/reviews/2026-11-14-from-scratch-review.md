@@ -12,6 +12,12 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-16 — D-8 closes with the strategy family** (step 1b, eleventh slice, nine routes). All nine
+  `strategy_project` callers — three list reads, two proposals, two consents, two withdrawals — answered an anonymous
+  caller `401`. The helper now takes the gate's `&User` and keeps project-existence plus member-role checks; the handlers
+  take `Extension<User>` and their rows are enforced (31→40). 39 handlers pinned. The earlier "ten callers" in D-8 was
+  a miscount; the measured number is nine.
+
 - **2026-11-16 — D-8's milestone half lands** (step 1b, tenth slice, six routes). All six milestone writes answered an
   anonymous caller `401 sign in to change a milestone`, emitted by the shared `milestone_write_context`. The helper now takes
   the gate-supplied `&User` and keeps only `readable_project_segment` + maintainer checks; all six handlers take
