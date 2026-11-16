@@ -12,6 +12,11 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-16 — charter, features, invites and consensus move behind the gate** (step 1b, eighth slice, four routes).
+  Anonymous probes with a consent cookie returned `401` from their handlers; `features` needed a valid body (`{}` failed
+  deserialisation with `422 missing field title` before the identity check). All four rows are enforced (19→23), the
+  handlers take `Extension<User>`, and maintainer/contributor checks stay. D-6 applies; 22 handlers pinned.
+
 - **2026-11-16 — merge, vote, metrics and join move behind the gate** (step 1b, seventh slice, six routes). Each answered an
   anonymous caller `401` from its handler; all six rows are enforced (13→19) and the handlers take `Extension<User>`.
   `require_role` and charter checks stay in the handlers, D-6's uniform text applies, and the structural test now pins 18

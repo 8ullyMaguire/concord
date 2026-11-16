@@ -1391,12 +1391,9 @@ fn write_error(error: concord_db::feature_writes::WriteError) -> ApiError {
 async fn file_feature(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<FileFeatureRequest>,
 ) -> Result<(axum::http::StatusCode, Json<Value>), ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -1955,12 +1952,9 @@ struct OpenConsensusRequest {
 async fn open_consensus(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<OpenConsensusRequest>,
 ) -> Result<(axum::http::StatusCode, Json<Value>), ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -6044,12 +6038,10 @@ async fn save_criteria_profile(
 async fn update_charter(
     State(state): State<AppState>,
     Path(project_segment): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to edit the charter"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "maintainer", &user).await?;
     let mut charter = concord_db::charter::charter(&state.pool, project.id)
@@ -7300,14 +7292,10 @@ struct RedeemInviteRequest {
 async fn create_invite(
     State(state): State<AppState>,
     Path(project_segment): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     body: Option<Json<CreateInviteRequest>>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated(
-            "creating an invite needs an account; a guest identity cannot extend membership",
-        ))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "contributor", &user).await.map_err(|_| {
         // The reference answers 404 here rather than 403: a non-member is not told that the project exists under this id.

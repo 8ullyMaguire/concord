@@ -121,7 +121,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/projects/{project_id}/arenas/{arena_id}/votes", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/capabilities", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/charter", Policy::Optional, false),
-    ("PUT", "/api/v1/projects/{project_id}/charter", Policy::Session, false),
+    ("PUT", "/api/v1/projects/{project_id}/charter", Policy::Session, true),
     ("GET", "/api/v1/projects/{project_id}/complaints/{complaint}", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/complaints/{complaint}/features", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/criteria", Policy::Optional, false),
@@ -196,7 +196,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/projects/{slug}/complaints/{id}/reject", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/complaints/{id}/validate", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/consensus", Policy::Public, false),
-    ("POST", "/api/v1/projects/{slug}/consensus", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/consensus", Policy::Session, true),
     ("PUT", "/api/v1/projects/{slug}/consensus/objections/{objection}/resolve", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/consensus/{call}", Policy::Optional, false),
     ("POST", "/api/v1/projects/{slug}/consensus/{call}/close", Policy::Session, false),
@@ -217,7 +217,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("DELETE", "/api/v1/projects/{slug}/documents/{document}", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/documents/{document}", Policy::Public, false),
     ("GET", "/api/v1/projects/{slug}/features", Policy::Public, false),
-    ("POST", "/api/v1/projects/{slug}/features", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/features", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/features/{feature}", Policy::Public, false),
     ("PUT", "/api/v1/projects/{slug}/features/{feature}", Policy::Account, false),
     ("DELETE", "/api/v1/projects/{slug}/features/{feature}/claim", Policy::Session, false),
@@ -244,7 +244,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/projects/{slug}/features/{feature}/vote", Policy::Session, true),
     ("PUT", "/api/v1/projects/{slug}/features/{feature}/work-item", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/invites", Policy::Session, true),
-    ("POST", "/api/v1/projects/{slug}/invites", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/invites", Policy::Session, true),
     ("POST", "/api/v1/projects/{slug}/invites/{invite}/revoke", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/join", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/languages", Policy::Optional, false),
@@ -314,7 +314,7 @@ mod tests {
 
     /// 5 on 2026-11-15 (four routes that already refused a stranger, plus the admin ledger that did not); 6 on
     /// 2026-11-16 when `POST /api/v1/projects` moved its refusal into the gate. It may grow, never shrink.
-    const ENFORCED: usize = 19;
+    const ENFORCED: usize = 23;
 
     /// The source with string literals and comments replaced by spaces, so a brace or a paren inside either
     /// cannot move the scan. Same length as the input, so an index means the same thing in both.
@@ -608,6 +608,10 @@ mod tests {
             "cast_feature_vote",
             "set_project_metrics",
             "join_project",
+            "update_charter",
+            "file_feature",
+            "create_invite",
+            "open_consensus",
             "auth_me",
             "list_notifications",
             "list_invites",
