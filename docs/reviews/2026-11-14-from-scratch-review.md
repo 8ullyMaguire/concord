@@ -14,6 +14,14 @@ Every claim below is a measurement, and the command that produced it is in the s
   The row is now enforced (6→7), the handler takes `Extension<User>`, and the guest-account refusal stays with it. The
   uniform gate message replaces the route-specific one; `auth_me`'s dead `State` parameter was removed in the same commit.
 
+  ```
+  cargo test -p concord-app --lib policy: 7 passed; 0 failed
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live d055c2a: anon PUT 401 authentication required · guest PUT 403 needs an account
+                walk 0 holes · headers PASS · served JS PASS · CI 43919591949 success
+  NOT RUN: tests/e2e/ai_declaration_e2e.py — no pytest or playwright module on this host.
+  ```
+
 - **2026-11-16 — four more duplicate identity checks removed** (step 1b, third slice). The four enforced handlers that still
   opened their own store read — `auth_me`, `list_notifications`, `list_invites`, `next_vote_pair` — now take the `User` the
   gate already resolved. `grep -c 'bearer_user(' crates/app/src/lib.rs`: 121 → 117. The structural test was widened from one
