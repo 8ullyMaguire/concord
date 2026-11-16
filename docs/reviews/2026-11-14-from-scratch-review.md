@@ -18,6 +18,13 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   take `Extension<User>` and their rows are enforced (31→40). 39 handlers pinned. The earlier "ten callers" in D-8 was
   a miscount; the measured number is nine.
 
+  ```
+  cargo test -p concord-app --lib policy: 7 passed; 0 failed
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live 30f035a: nine routes anon 401 · guest themes GET 200 [] · walk 0 holes
+                headers PASS · served JS PASS · CI 43955076347 success
+  ```
+
 - **2026-11-16 — D-8's milestone half lands** (step 1b, tenth slice, six routes). All six milestone writes answered an
   anonymous caller `401 sign in to change a milestone`, emitted by the shared `milestone_write_context`. The helper now takes
   the gate-supplied `&User` and keeps only `readable_project_segment` + maintainer checks; all six handlers take
