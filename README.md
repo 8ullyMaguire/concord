@@ -134,4 +134,8 @@ make run
 ```
 
 The build roadmap for contributors and agents lives in `docs/PLAN.md`;
-start with `docs/HANDOFF.md`.
+start with `docs/HANDOFF.md`. **Current work is not features: it is
+`docs/plans/refactor-roadmap.md`** (eight steps, each deployable on
+its own, each with the measurement that justifies it and the command
+that proves it landed), argued for in
+`docs/reviews/2026-11-15-implementation-critique.md`.

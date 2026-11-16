@@ -40,6 +40,22 @@ The Go database still knows more than the live one about repository identity (23
 — the discovery in the review, decision 4 — and that is now a static fact rather than a moving target, because nothing writes to it
 any more.
 
+## What is left is shape, not features (2026-11-15)
+
+The post-port roadmap is closed (rows open 0) and both of its blockers are outside the code. What remains is implementation
+debt, measured in `docs/reviews/2026-11-15-implementation-critique.md` and sequenced in **`docs/plans/refactor-roadmap.md`** —
+whose status table is the ledger. The three numbers to know before touching anything:
+
+```
+wc -c crates/app/src/lib.rs            # 427 KB, 217 handlers, 179 routes, one file
+grep -c 'bearer_user' crates/app/src/lib.rs   # 122 — authentication is opt-in per handler
+grep -rho 'sqlx::query!' crates/db/src/*.rs | wc -l   # 0 of 330 queries are compile-checked
+```
+
+Step 1 of that plan (a policy table, extractors, a startup assertion that no route boots without a policy) is the highest
+value per hour in this repository. A route added before it lands can be reachable without authentication and nothing will
+say so.
+
 ## What landed after the cutover (all 2026-11-14)
 
 | commit | what |

@@ -32,6 +32,12 @@ which half is missing.
 > `NotPresent` panics from `-p concord-db --test store` instead of naming the missing variable.
 > Nothing in this file is "complete" while either number is above zero.
 > A critical review of the product as it now stands, with what I would do differently, is `docs/reviews/2026-11-14-from-scratch-review.md`.
+> **What is left is shape, not features.** A second review, measured on this tree on 2026-11-15 —
+> `docs/reviews/2026-11-15-implementation-critique.md` — found the implementation debt that this roadmap cannot express
+> (427 KB and 217 handlers in one file, 122 opt-in authentication sites, 0 of 330 queries compile-checked, no security
+> headers, no rate limiting, 16 hand-written audit inserts). Its work is sequenced, step by step, in
+> `docs/plans/refactor-roadmap.md`, and **that file's status table is the ledger for it** — this one stays closed at rows
+> open 0 until refactor step 1 makes authorization structural.
 
 Status vocabulary, and nothing else: **SHIPPED** (a reader can use it today), **PARTIAL** (the engine exists, the surface does not, or
 the reverse — the missing half is named), **NEW** (nothing in the tree), **REFUSED** (concord should not do this, with the reason).
