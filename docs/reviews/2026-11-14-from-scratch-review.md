@@ -16,6 +16,10 @@ Every claim below is a measurement, and the command that produced it is in the s
 
   ```
   cargo test -p concord-app --lib policy: 7 passed; 0 failed
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live bf7afab: guest token → auth/me 200 · notifications 200 · votes/next 200 · invites 404 (visibility)
+                no token → auth/me 401 · notifications 401 · walk 0 holes · headers PASS · served JS PASS
+  CI 43910750496 success
   ```
 
 - **2026-11-16 — first in-handler refusal moved to the gate** (step 1b, second slice). Reproduced with consent cookie on the
