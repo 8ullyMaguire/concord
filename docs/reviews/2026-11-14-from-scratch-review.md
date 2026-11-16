@@ -18,6 +18,10 @@ Every claim below is a measurement, and the command that produced it is in the s
 
   ```
   cargo test -p concord-app --lib policy: 7 passed; 0 failed
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live 005acdf: anon POST /projects 401 unauthenticated · guest POST 403 forbidden (depth intact)
+                anonymous_walk: 0 holes · 0 declared but not enforced · PASS · headers PASS · served JS PASS
+  CI 43895629708 success
   ```
 
 - **2026-11-16 — 19 policy rows were wrong, not unenforced** (step 1b, first slice, commit `b74c75b`). `anonymous_walk.py --candidate
