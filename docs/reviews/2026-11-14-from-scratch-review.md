@@ -12,6 +12,10 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-16 — complaint and request writes enforced** (step 1b, sixteenth slice, six routes). All six answered an
+  anonymous caller `401`; rows enforced (63→69), handlers take `Extension<User>`, 68 pinned, `bearer_user` 73→67.
+  `create_instance_request` no longer takes `HeaderMap`.
+
 - **2026-11-16 — alternatives, consensus and vote writes enforced** (step 1b, fifteenth slice, seven routes). All seven
   refused anonymous callers; consensus position/objection needed valid bodies first. Rows enforced (56→63), handlers take
   `Extension<User>`, 62 pinned, `bearer_user` 80→73. The two consensus handlers no longer take `HeaderMap`.

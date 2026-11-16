@@ -4811,12 +4811,9 @@ async fn create_project_request(
 /// silently improved — matching the service is the job until cutover.
 async fn create_instance_request(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to file a request"))?;
     let title = body.get("title").and_then(|v| v.as_str()).unwrap_or_default().to_string();
     if title.trim().is_empty() {
         return Err(ApiError::invalid_request("title is required"));
@@ -4973,12 +4970,10 @@ fn request_refusal(refusal: concord_db::requests::Refusal, request_id: i64) -> A
 async fn set_request_tags(
     State(state): State<AppState>,
     Path(request_id): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to set a request's tags"))?;
     let request = require_readable_request(&state, &request_id, &headers).await?;
     let tags: Vec<String> = body
         .get("tags")
@@ -5012,12 +5007,10 @@ async fn set_request_tags(
 async fn answer_request(
     State(state): State<AppState>,
     Path(request_id): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to answer a request"))?;
     let request = require_readable_request(&state, &request_id, &headers).await?;
     let text = body.get("body").and_then(|value| value.as_str()).unwrap_or_default().to_string();
     let named = body
@@ -5368,11 +5361,9 @@ async fn add_complaint_impact(
     State(state): State<AppState>,
     Path((slug, id)): Path<(String, String)>,
     Query(query): Query<SeverityQuery>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to record an impact"))?;
     let project = readable_project_segment(&state, &slug, &headers).await?;
     let complaint = caller_complaint(&state, &project, &id).await?;
     let severity = query
@@ -5399,11 +5390,9 @@ struct SeverityQuery {
 async fn validate_complaint(
     State(state): State<AppState>,
     Path((slug, id)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to validate a complaint"))?;
     let project = readable_project_segment(&state, &slug, &headers).await?;
     let complaint = caller_complaint(&state, &project, &id).await?;
     require_role(&state, &project, "contributor", &user).await?;
@@ -5422,11 +5411,9 @@ async fn validate_complaint(
 async fn reject_complaint(
     State(state): State<AppState>,
     Path((slug, id)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to reject a complaint"))?;
     let project = readable_project_segment(&state, &slug, &headers).await?;
     let complaint = caller_complaint(&state, &project, &id).await?;
     require_role(&state, &project, "contributor", &user).await?;

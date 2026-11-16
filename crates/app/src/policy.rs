@@ -191,10 +191,10 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/projects/{slug}/claim", Policy::Account, true),
     ("GET", "/api/v1/projects/{slug}/complaints", Policy::Public, false),
     ("POST", "/api/v1/projects/{slug}/complaints", Policy::Optional, false),
-    ("POST", "/api/v1/projects/{slug}/complaints/{id}/impact", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/complaints/{id}/impact", Policy::Session, true),
     ("POST", "/api/v1/projects/{slug}/complaints/{id}/merge/{target_id}", Policy::Session, false),
-    ("POST", "/api/v1/projects/{slug}/complaints/{id}/reject", Policy::Session, false),
-    ("POST", "/api/v1/projects/{slug}/complaints/{id}/validate", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/complaints/{id}/reject", Policy::Session, true),
+    ("POST", "/api/v1/projects/{slug}/complaints/{id}/validate", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/consensus", Policy::Public, false),
     ("POST", "/api/v1/projects/{slug}/consensus", Policy::Session, true),
     ("PUT", "/api/v1/projects/{slug}/consensus/objections/{objection}/resolve", Policy::Session, false),
@@ -268,14 +268,14 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/projects/{slug}/votes/next", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/work-items", Policy::Optional, false),
     ("GET", "/api/v1/requests", Policy::Public, false),
-    ("POST", "/api/v1/requests", Policy::Session, false),
+    ("POST", "/api/v1/requests", Policy::Session, true),
     ("GET", "/api/v1/requests/{request_id}", Policy::Session, false),
     ("DELETE", "/api/v1/requests/{request_id}/accept", Policy::Optional, false),
     ("PUT", "/api/v1/requests/{request_id}/accept", Policy::Optional, false),
     ("GET", "/api/v1/requests/{request_id}/answers", Policy::Session, false),
-    ("POST", "/api/v1/requests/{request_id}/answers", Policy::Session, false),
+    ("POST", "/api/v1/requests/{request_id}/answers", Policy::Session, true),
     ("GET", "/api/v1/requests/{request_id}/tags", Policy::Session, false),
-    ("PUT", "/api/v1/requests/{request_id}/tags", Policy::Session, false),
+    ("PUT", "/api/v1/requests/{request_id}/tags", Policy::Session, true),
     ("GET", "/api/v1/scout", Policy::Session, false),
     ("GET", "/api/v1/search", Policy::Optional, false),
     ("GET", "/api/v1/similar/{kind}", Policy::Optional, false),
@@ -314,7 +314,7 @@ mod tests {
 
     /// 5 on 2026-11-15 (four routes that already refused a stranger, plus the admin ledger that did not); 6 on
     /// 2026-11-16 when `POST /api/v1/projects` moved its refusal into the gate. It may grow, never shrink.
-    const ENFORCED: usize = 63;
+    const ENFORCED: usize = 69;
 
     /// The source with string literals and comments replaced by spaces, so a brace or a paren inside either
     /// cannot move the scan. Same length as the input, so an index means the same thing in both.
@@ -652,6 +652,12 @@ mod tests {
             "claim_coverage",
             "contest_coverage",
             "vote_list_entry",
+            "add_complaint_impact",
+            "reject_complaint",
+            "validate_complaint",
+            "create_instance_request",
+            "answer_request",
+            "set_request_tags",
             "auth_me",
             "list_notifications",
             "list_invites",
