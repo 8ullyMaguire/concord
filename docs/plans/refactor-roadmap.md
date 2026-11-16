@@ -263,12 +263,23 @@ CONCORD_E2E_CANDIDATE=$PWD/target/debug/concord-cli scripts/gate.sh --live https
 # before: "suites: 26 · 15 · 8 · 5 · 18 · 15 · 7 · 5 passed"  after: 29 suites, RECORDED_UNRUN 0
 ```
 
+## Claims
+
+Two sessions can work this file at the same time; the ledger is the only channel between them, so a row is
+claimed by writing the claim in its status cell before the work starts, and released by writing what landed.
+Unclaimed rows are fair game.
+
+| row | claimed by | since |
+|---|---|---|
+| 1b | session A (10:26 commit `de88ab0` author) | 2026-11-16 10:26 |
+| 2 | session B (this one) | 2026-11-16 10:40 |
+
 ## Status
 
 | step | what | status |
 |---|---|---|
 | 0 | the review lives in the repo | **done 2026-11-15** |
-| 1 | authorization as a table + extractors + startup assertion | **1a done 2026-11-16** (table 203/203, gate, 5 rows enforced); 1b = flip per surface, extractor, `bearer_user` → 0 |
+| 1 | authorization as a table + audit + gate | **1a done 2026-11-16, committed `de88ab0`, CI `43841609784`.** `crates/app/src/policy.rs`: 203 rows, `Public|Optional|Session|Account|Operator`, `enforced` true on 5. The audit is an in-crate test (`include_str!("lib.rs")`) that names a route with no row, a row with no route, and a falling `enforced` count: `cargo test -p concord-app --lib policy` -> 5 passed. `auth_gate` enforces the 5 enforced rows, answers 500 for a matched route with no row, and leaves unknown paths at 404; `scripts/parity/anonymous_walk.py` asks the same question of the deployed instance in the live layer. **1b (open):** widen `enforced` one surface at a time with the e2e suites watching, move `Account`/`Operator` depth in front of the handlers, then delete the 122 in-handler `bearer_user` checks. |
 | 2 | security baseline (cookie, CSP, rate limit, renderer) | open — cheapest risk removed |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
