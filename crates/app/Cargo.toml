@@ -19,6 +19,7 @@ concord-web = { path = "../web" }
 concord-ranking = { path = "../ranking" }
 concord-scout = { path = "../scout" }
 polaris-core.workspace = true
+polaris-ratelimit.workspace = true
 serde.workspace = true
 sha2 = "0.10"
 serde_json.workspace = true

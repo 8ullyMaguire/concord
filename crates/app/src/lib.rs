@@ -19,6 +19,7 @@ use serde::Deserialize;
 pub mod feeds;
 pub mod finder;
 pub mod policy;
+pub mod rate;
 
 use polaris_core::ApiError;
 use serde_json::{json, Value};
@@ -39,6 +40,8 @@ pub struct AppState {
     /// The near-duplicate embedder. Configured from the environment, defaulting to the local hashed one, because a
     /// filing service that refuses to boot when a model server is down is worse than one that degrades.
     pub embedder: std::sync::Arc<dyn concord_embed::Embedder>,
+    /// The per-client budget each route draws from. See `rate.rs` for why the class comes from the route.
+    pub rate: std::sync::Arc<polaris_ratelimit::Limiter>,
 }
 
 /// Read the embedder configuration from the environment, exactly as the deployment sets it.
@@ -630,6 +633,9 @@ pub fn router(state: AppState) -> Router {
         // Outermost, and a plain `from_fn` rather than `map_response`: the headers must be on every response the service
         // can produce — the 404, the gate's refusals, an API error — not only on the ones a page renderer returns.
         .layer(axum::middleware::from_fn(security_headers))
+        // Above the identity gates and below nothing else: a flood must be refused before it costs a session lookup or a
+        // database round trip, and a refusal must not depend on who is calling.
+        .layer(axum::middleware::from_fn_with_state(state.clone(), rate::rate_gate))
         .with_state(state)
 }
 

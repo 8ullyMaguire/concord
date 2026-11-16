@@ -283,6 +283,7 @@ dependencies = [
  "concord-scout",
  "concord-web",
  "polaris-core",
+ "polaris-ratelimit",
  "serde",
  "serde_json",
  "sha2",

@@ -133,6 +133,7 @@ pub async fn run() -> anyhow::Result<()> {
             let state = concord_app::AppState {
                 pool,
                 embedder: concord_app::embedder_from_env(),
+                rate: concord_app::rate::limiter_from_env(),
             };
             // A configuration variable whose absence only shows up as a 503 on twelve routes is a variable nobody will set.
             // `CONCORD_BASE_URL` is what every feed builds its absolute `<id>` and `<guid>` from, and the feeds refuse to invent
