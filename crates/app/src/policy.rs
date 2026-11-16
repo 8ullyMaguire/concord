@@ -115,7 +115,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/notifications/read-all", Policy::Session, false),
     ("POST", "/api/v1/notifications/{id}/read", Policy::Session, false),
     ("GET", "/api/v1/projects", Policy::Public, false),
-    ("POST", "/api/v1/projects", Policy::Account, false),
+    ("POST", "/api/v1/projects", Policy::Account, true),
     ("GET", "/api/v1/projects/{project_id}/arenas/{arena_id}/next-pair", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/arenas/{arena_id}/verification", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/arenas/{arena_id}/votes", Policy::Optional, false),
@@ -312,9 +312,9 @@ mod tests {
     /// The router as written, not as described.
     const SOURCE: &str = include_str!("lib.rs");
 
-    /// 5 on 2026-11-15: the four routes that already refused an anonymous caller, plus the admin ledger that
-    /// did not. It may grow, never shrink.
-    const ENFORCED: usize = 5;
+    /// 5 on 2026-11-15 (four routes that already refused a stranger, plus the admin ledger that did not); 6 on
+    /// 2026-11-16 when `POST /api/v1/projects` moved its refusal into the gate. It may grow, never shrink.
+    const ENFORCED: usize = 6;
 
     /// The source with string literals and comments replaced by spaces, so a brace or a paren inside either
     /// cannot move the scan. Same length as the input, so an index means the same thing in both.
@@ -547,7 +547,7 @@ mod tests {
     #[test]
     fn an_undeclared_route_has_no_policy_rather_than_a_neighbours() {
         assert_eq!(policy_for("GET", "/api/v1/projects"), Some((Policy::Public, false)));
-        assert_eq!(policy_for("POST", "/api/v1/projects"), Some((Policy::Account, false)));
+        assert_eq!(policy_for("POST", "/api/v1/projects"), Some((Policy::Account, true)));
         // Not a prefix rule: a path nobody declared gets nothing, so the gate answers 500 and names it.
         assert_eq!(policy_for("GET", "/api/v1/projects/anything"), None);
         assert_eq!(policy_for("DELETE", "/api/v1/projects"), None);
@@ -564,5 +564,27 @@ mod tests {
         // The reads the front page walks anonymously must stay anonymous, or the site 401s for visitors.
         assert!(!policy_for("GET", "/api/v1/projects").unwrap().1);
         assert!(!policy_for("GET", "/api/v1/search").unwrap().1);
+    }
+
+    /// The first handler to give up its own refusal. If either half is removed — the gate's insertion or the handler's
+    /// extractor — this fails at build time instead of leaving a route that silently trusts a caller-supplied extension.
+    #[test]
+    fn the_enforced_gate_supplies_identity_to_its_handler() {
+        let start = SOURCE.find("async fn create_project(").expect("the handler exists");
+        let end = start + SOURCE[start..].find("/// The user behind").expect("the next item follows");
+        let handler = &SOURCE[start..end];
+        assert!(
+            handler.contains("Extension(user): Extension<concord_db::auth::User>"),
+            "create_project no longer consumes the identity the gate supplies"
+        );
+        assert!(!handler.contains("bearer_user("), "the duplicate in-handler refusal came back");
+        assert!(handler.contains("is_guest("), "the guest check stays: the gate proves identity, not an account");
+
+        let gate_start = SOURCE.find("async fn auth_gate(").expect("the gate exists");
+        let gate = &SOURCE[gate_start..gate_start + 3000];
+        assert!(
+            gate.contains("extensions_mut().insert(user)"),
+            "the gate stopped supplying identity to enforced handlers"
+        );
     }
 }

@@ -10,7 +10,7 @@
 
 use axum::response::IntoResponse;
 use axum::{
-    extract::{DefaultBodyLimit, Path, Query, State},
+    extract::{DefaultBodyLimit, Extension, Path, Query, State},
     http::{HeaderMap, StatusCode},
     routing::{get, post, put},
     Json, Router,
@@ -1173,16 +1173,16 @@ async fn declare_ai_involvement(
 ///
 /// Needs an account, not merely a token: a nameless party holding namespaces is a squatting vector,
 /// which is why the Go handler refuses a guest identity here and nowhere else in the read path.
+///
+/// The anonymous refusal is no longer here: `POST /api/v1/projects` is an enforced row, so `auth_gate` resolves the
+/// identity once and supplies it in the request extensions. The guest check stays — the gate proves *somebody* is here,
+/// not that they have an account, and that depth belongs to this handler.
 async fn create_project(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<CreateProjectRequest>,
 ) -> Result<(axum::http::StatusCode, Json<Value>), ApiError> {
     use concord_db::projects::CreateError;
-    let user = match bearer_user(&state, &headers).await? {
-        Some(user) => user,
-        None => return Err(ApiError::unauthenticated("authentication required")),
-    };
     // A GUEST identity is not an account, and the comment above says the Go handler refuses one here and nowhere else in the read path.
     // It was not refused: measured on 2026-11-14, a browser that had just been issued a guest session by `POST /api/v1/guest` got
     // `201 Created` from this route — the squatting vector the rule exists to prevent, reachable by clicking submit on a page nobody
@@ -8342,7 +8342,13 @@ async fn auth_gate(
         return next.run(request).await;
     }
     match acting_user(&state, request.headers()).await {
-        Ok(Some(_user)) => next.run(request).await,
+        Ok(Some(user)) => {
+            // Only enforced rows reach here. The handler consumes this identity from its extensions rather than
+            // opening a second store read and writing its own refusal — the 122-copy pattern this step removes.
+            let mut request = request;
+            request.extensions_mut().insert(user);
+            next.run(request).await
+        }
         Ok(None) => ApiError::unauthenticated("authentication required").into_response(),
         Err(error) => {
             // A store failure is not "you are not signed in". Report it as what it is rather than turning a database

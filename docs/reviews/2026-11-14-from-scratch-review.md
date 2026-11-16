@@ -8,6 +8,18 @@ Every claim below is a measurement, and the command that produced it is in the s
 
 ## Work log
 
+- **2026-11-16 — first in-handler refusal moved to the gate** (step 1b, second slice). Reproduced with consent cookie on the
+  live host (a bare mutation is stopped earlier by `interaction_gate`):
+  `curl -X POST https://concord.polarisocial.xyz/api/v1/projects -H 'Cookie: concord_consent=1' …` →
+  `401 {"code":"unauthenticated","error":"authentication required"}`, emitted by `create_project`'s own
+  `bearer_user(...)?` branch — one of the 122 copies the critique counts. The row is now `enforced`, `auth_gate` inserts the
+  resolved `User`, and the handler takes `Extension<User>`; the guest check remains in the handler because the gate proves
+  identity, not an account.
+
+  ```
+  cargo test -p concord-app --lib policy: 7 passed; 0 failed
+  ```
+
 - **2026-11-16 — 19 policy rows were wrong, not unenforced** (step 1b, first slice, commit `b74c75b`). `anonymous_walk.py --candidate
   https://concord.polarisocial.xyz --json` answered a stranger on `89` routes: `0 holes`, `19 declared but not enforced`,
   e.g. `GET /api/v1/projects/{slug}/merge (Session)` and `GET .../arenas/{arena_id}/verification (Session)`. Reading the
