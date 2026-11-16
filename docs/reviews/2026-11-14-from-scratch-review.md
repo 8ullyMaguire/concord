@@ -17,6 +17,13 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   `require_role` and charter checks stay in the handlers, D-6's uniform text applies, and the structural test now pins 18
   handlers. Another batch so one build covers six conversions.
 
+  ```
+  cargo test -p concord-app --lib policy: 7 passed; 0 failed
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live 1ba7c21: six routes anon 401 · guest metrics/execute 403 role depth
+                walk 0 holes · headers PASS · served JS PASS · CI 43935004893 success
+  ```
+
 - **2026-11-16 — five private mutations move behind the gate in one commit** (step 1b, sixth slice). Five anonymous probes
   with a consent cookie each returned `401` from their handler: `redeem_invite` (`sign in to redeem an invite`),
   `curation_vote`, `set_project_visibility`, `set_criterion_active`, `set_intake_mode`. Their rows are enforced (8→13) and
