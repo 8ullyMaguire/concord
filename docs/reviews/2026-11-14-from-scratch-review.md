@@ -26,7 +26,8 @@ Every claim below is a measurement, and the command that produced it is in the s
   ```
 
   The 422s are the route refusing bad credentials, which is the point: three attempts are *answered*, the fourth never reaches
-  the handler. `probe_rate_limit.py` is **not yet in `scripts/gate.sh`** — wiring it is the next commit, and it belongs in the
+  the handler. `cargo test -p concord-app --lib` → **`11 passed; 0 failed`**, the two new tests being
+  `rate::tests::the_class_follows_the_route_not_the_caller` and `rate::tests::the_login_bucket_refuses_and_says_when_to_retry`. `probe_rate_limit.py` is **not yet in `scripts/gate.sh`** — wiring it is the next commit, and it belongs in the
   smoke layer next to `probe_pages` because it needs a server whose budget it was told.
 
 - **2026-11-16 — the session cookie became a credential** (`df6f881`). `login` had been setting `concord_nav` as
