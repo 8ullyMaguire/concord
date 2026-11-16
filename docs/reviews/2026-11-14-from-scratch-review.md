@@ -17,6 +17,13 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   the gate-supplied `&User` and keeps only `readable_project_segment` + maintainer checks; all six handlers take
   `Extension<User>` and their rows are enforced (25→31). 30 handlers pinned. `strategy_project`'s ten callers remain.
 
+  ```
+  cargo test -p concord-app --lib policy: 7 passed; 0 failed
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live 4175b9c: six routes anon 401 · guest milestone 403 maintainer
+                walk 0 holes · headers PASS · served JS PASS · CI 43950166710 success
+  ```
+
 - **2026-11-16 — tags and field reports move behind the gate** (step 1b, ninth slice). Anonymous probes returned `401` from
   `apply_project_tags` and `create_field_report`; both rows are enforced (23→25), both handlers take `Extension<User>`, and
   contributor/visibility checks stay. Milestone and theme routes also refuse anonymous but resolve identity through shared
