@@ -8,6 +8,11 @@ Every claim below is a measurement, and the command that produced it is in the s
 
 ## Work log
 
+- **2026-11-16 — project adoption moves behind the gate** (step 1b, fifth slice). `curl -X POST
+  https://concord.polarisocial.xyz/api/v1/projects/lorebook/claim -H 'Cookie: concord_consent=1' …` →
+  `401 {"code":"unauthenticated","error":"sign in to adopt a project"}` from `claim_project`. The row is enforced (7→8),
+  the handler takes `Extension<User>`, and the guest refusal stays. No new decision: D-6's uniform gate text applies.
+
 - **2026-11-16 — AI declaration moves behind the gate** (step 1b, fourth slice). `curl -X PUT
   https://concord.polarisocial.xyz/api/v1/projects/lorebook/ai-involvement -H 'Cookie: concord_consent=1' …` →
   `401 {"code":"unauthenticated","error":"sign in to declare a project's AI involvement"}` from `declare_ai_involvement`.
