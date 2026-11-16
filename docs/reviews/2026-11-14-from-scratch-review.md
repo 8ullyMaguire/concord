@@ -8,6 +8,18 @@ Every claim below is a measurement, and the command that produced it is in the s
 
 ## Work log
 
+- **2026-11-16 — 19 policy rows were wrong, not unenforced** (step 1b, first slice). `anonymous_walk.py --candidate
+  https://concord.polarisocial.xyz --json` answered a stranger on `89` routes: `0 holes`, `19 declared but not enforced`,
+  e.g. `GET /api/v1/projects/{slug}/merge (Session)` and `GET .../arenas/{arena_id}/verification (Session)`. Reading the
+  handlers settled what the table could not: `list_merge_requests` never reads identity, `arena_verification` says
+  "any reader may run", and `project.js` fetches `/lists` and `/work-items` anonymously with a non-fatal catch. All 19 are
+  reads where identity narrows visibility or is unused, so they are `Optional`; enforcement would have broken public pages.
+  `crates/app/src/policy.rs` now reclassifies all 19 and pins them in `anonymous_reads_are_not_declared_private`.
+
+  ```
+  route_policies: PASS — every registered route declares who may call it   (203/203, 0 undeclared)
+  ```
+
 - **2026-11-16 — the page half of the cookie, and two gates that can fail** (this session took over the still-running goal
   session after releasing its turn lease; its uncommitted files were verified here, not discarded). `session.js` stopped reading
   and writing `concord.token`: a stale token is deleted on load, `signedIn()` uses the user record after a reload,

@@ -80,6 +80,11 @@ impl Policy {
 ///
 /// Page routes (`/`, `/projects/{slug}`, the thirteen `.xml` documents) are not here: they are `concord_web`'s
 /// and they decide their own visibility. The API is where the middleware gates.
+/// **19 GET rows were reclassified on 2026-11-16 from `Session` to `Optional`.** `anonymous_walk.py` against the live host
+/// answered 200/404 anonymously for each, and their handlers either read no identity or use it only through `readable()` to
+/// narrow private projects — `arena_verification` says "any reader may run". They are not unenforced holes: flipping them
+/// would 401 the project page's own panels (`project.js` fetches `/lists` and `/work-items` on every page). The
+/// `anonymous_reads_are_not_declared_private` test pins the list.
 pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/admin-ledger", Policy::Operator, true),
     ("POST", "/api/v1/answers/{request_id}/vote", Policy::Optional, false),
@@ -112,13 +117,13 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/projects", Policy::Public, false),
     ("POST", "/api/v1/projects", Policy::Account, false),
     ("GET", "/api/v1/projects/{project_id}/arenas/{arena_id}/next-pair", Policy::Optional, false),
-    ("GET", "/api/v1/projects/{project_id}/arenas/{arena_id}/verification", Policy::Session, false),
-    ("GET", "/api/v1/projects/{project_id}/arenas/{arena_id}/votes", Policy::Session, false),
+    ("GET", "/api/v1/projects/{project_id}/arenas/{arena_id}/verification", Policy::Optional, false),
+    ("GET", "/api/v1/projects/{project_id}/arenas/{arena_id}/votes", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/capabilities", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/charter", Policy::Optional, false),
     ("PUT", "/api/v1/projects/{project_id}/charter", Policy::Session, false),
-    ("GET", "/api/v1/projects/{project_id}/complaints/{complaint}", Policy::Session, false),
-    ("GET", "/api/v1/projects/{project_id}/complaints/{complaint}/features", Policy::Session, false),
+    ("GET", "/api/v1/projects/{project_id}/complaints/{complaint}", Policy::Optional, false),
+    ("GET", "/api/v1/projects/{project_id}/complaints/{complaint}/features", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/criteria", Policy::Optional, false),
     ("POST", "/api/v1/projects/{project_id}/criteria", Policy::Session, false),
     ("GET", "/api/v1/projects/{project_id}/criteria-profiles", Policy::Optional, false),
@@ -127,7 +132,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/projects/{project_id}/criteria/", Policy::Optional, false),
     ("PUT", "/api/v1/projects/{project_id}/criteria/{criterion}/active", Policy::Session, false),
     ("POST", "/api/v1/projects/{project_id}/criteria/{criterion}/vote", Policy::Optional, false),
-    ("GET", "/api/v1/projects/{project_id}/features/{id}/solutions", Policy::Session, false),
+    ("GET", "/api/v1/projects/{project_id}/features/{id}/solutions", Policy::Optional, false),
     ("POST", "/api/v1/projects/{project_id}/features/{id}/solutions", Policy::Session, false),
     ("POST", "/api/v1/projects/{project_id}/features/{id}/solutions/vote", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/features/{id}/solutions/{solution_id}", Policy::Session, false),
@@ -137,15 +142,15 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/projects/{project_id}/field-reports", Policy::Session, false),
     ("POST", "/api/v1/projects/{project_id}/field-reports/{report_id}/responses", Policy::Session, false),
     ("PUT", "/api/v1/projects/{project_id}/intake-mode", Policy::Session, false),
-    ("GET", "/api/v1/projects/{project_id}/lists", Policy::Session, false),
+    ("GET", "/api/v1/projects/{project_id}/lists", Policy::Optional, false),
     ("POST", "/api/v1/projects/{project_id}/lists", Policy::Session, false),
-    ("GET", "/api/v1/projects/{project_id}/lists/", Policy::Session, false),
-    ("GET", "/api/v1/projects/{project_id}/lists/{list}", Policy::Session, false),
-    ("GET", "/api/v1/projects/{project_id}/lists/{list}/", Policy::Session, false),
-    ("GET", "/api/v1/projects/{project_id}/lists/{list}/entries", Policy::Session, false),
+    ("GET", "/api/v1/projects/{project_id}/lists/", Policy::Optional, false),
+    ("GET", "/api/v1/projects/{project_id}/lists/{list}", Policy::Optional, false),
+    ("GET", "/api/v1/projects/{project_id}/lists/{list}/", Policy::Optional, false),
+    ("GET", "/api/v1/projects/{project_id}/lists/{list}/entries", Policy::Optional, false),
     ("POST", "/api/v1/projects/{project_id}/lists/{list}/entries", Policy::Optional, false),
     ("POST", "/api/v1/projects/{project_id}/lists/{list}/entries/vote", Policy::Session, false),
-    ("GET", "/api/v1/projects/{project_id}/members", Policy::Session, false),
+    ("GET", "/api/v1/projects/{project_id}/members", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/milestones/{milestone}", Policy::Session, false),
     ("PATCH", "/api/v1/projects/{project_id}/milestones/{milestone}", Policy::Session, false),
     ("POST", "/api/v1/projects/{project_id}/milestones/{milestone}/close", Policy::Session, false),
@@ -172,7 +177,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/projects/{project_id}/threads/{thread_kind}/{thread_id}/{id}/vote", Policy::Optional, false),
     ("GET", "/api/v1/projects/{slug}", Policy::Public, false),
     ("PUT", "/api/v1/projects/{slug}/ai-involvement", Policy::Account, false),
-    ("GET", "/api/v1/projects/{slug}/alternatives", Policy::Session, false),
+    ("GET", "/api/v1/projects/{slug}/alternatives", Policy::Optional, false),
     ("POST", "/api/v1/projects/{slug}/alternatives", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/alternatives/{arena}/entries", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/alternatives/{arena}/vote", Policy::Session, false),
@@ -207,7 +212,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/projects/{slug}/consensus/{call}/position", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/documents", Policy::Optional, false),
     ("PUT", "/api/v1/projects/{slug}/documents", Policy::Session, false),
-    ("GET", "/api/v1/projects/{slug}/documents/kinds", Policy::Session, false),
+    ("GET", "/api/v1/projects/{slug}/documents/kinds", Policy::Optional, false),
     ("GET", "/api/v1/projects/{slug}/documents/search", Policy::Optional, false),
     ("DELETE", "/api/v1/projects/{slug}/documents/{document}", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/documents/{document}", Policy::Public, false),
@@ -242,9 +247,9 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/projects/{slug}/invites", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/invites/{invite}/revoke", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/join", Policy::Session, false),
-    ("GET", "/api/v1/projects/{slug}/languages", Policy::Session, false),
+    ("GET", "/api/v1/projects/{slug}/languages", Policy::Optional, false),
     ("PUT", "/api/v1/projects/{slug}/languages", Policy::Session, false),
-    ("GET", "/api/v1/projects/{slug}/merge", Policy::Session, false),
+    ("GET", "/api/v1/projects/{slug}/merge", Policy::Optional, false),
     ("POST", "/api/v1/projects/{slug}/merge", Policy::Session, false),
     ("PUT", "/api/v1/projects/{slug}/merge/{merge}/approve", Policy::Session, false),
     ("PUT", "/api/v1/projects/{slug}/merge/{merge}/execute", Policy::Session, false),
@@ -256,12 +261,12 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/projects/{slug}/moderation/arena/restore", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/priorities", Policy::Public, false),
     ("GET", "/api/v1/projects/{slug}/roadmap", Policy::Public, false),
-    ("GET", "/api/v1/projects/{slug}/tags", Policy::Session, false),
+    ("GET", "/api/v1/projects/{slug}/tags", Policy::Optional, false),
     ("PUT", "/api/v1/projects/{slug}/tags", Policy::Session, false),
-    ("GET", "/api/v1/projects/{slug}/tags/completeness", Policy::Session, false),
+    ("GET", "/api/v1/projects/{slug}/tags/completeness", Policy::Optional, false),
     ("PUT", "/api/v1/projects/{slug}/visibility", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/votes/next", Policy::Session, true),
-    ("GET", "/api/v1/projects/{slug}/work-items", Policy::Session, false),
+    ("GET", "/api/v1/projects/{slug}/work-items", Policy::Optional, false),
     ("GET", "/api/v1/requests", Policy::Public, false),
     ("POST", "/api/v1/requests", Policy::Session, false),
     ("GET", "/api/v1/requests/{request_id}", Policy::Session, false),
@@ -272,7 +277,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/requests/{request_id}/tags", Policy::Session, false),
     ("PUT", "/api/v1/requests/{request_id}/tags", Policy::Session, false),
     ("GET", "/api/v1/scout", Policy::Session, false),
-    ("GET", "/api/v1/search", Policy::Session, false),
+    ("GET", "/api/v1/search", Policy::Optional, false),
     ("GET", "/api/v1/similar/{kind}", Policy::Optional, false),
     ("GET", "/api/v1/stats", Policy::Public, false),
     ("GET", "/api/v1/stats/history", Policy::Optional, false),
@@ -450,6 +455,40 @@ mod tests {
             cursor = close;
         }
         out
+    }
+
+    /// The oracle is the anonymous walk against the running instance, not a reading of this table: these reads answered a
+    /// stranger on 2026-11-15. A `Session` label claims the product refuses them when it does not.
+    #[test]
+    fn anonymous_reads_are_not_declared_private() {
+        let reads = [
+            "/api/v1/projects/{project_id}/arenas/{arena_id}/verification",
+            "/api/v1/projects/{project_id}/arenas/{arena_id}/votes",
+            "/api/v1/projects/{project_id}/complaints/{complaint}",
+            "/api/v1/projects/{project_id}/complaints/{complaint}/features",
+            "/api/v1/projects/{project_id}/features/{id}/solutions",
+            "/api/v1/projects/{project_id}/lists",
+            "/api/v1/projects/{project_id}/lists/",
+            "/api/v1/projects/{project_id}/lists/{list}",
+            "/api/v1/projects/{project_id}/lists/{list}/",
+            "/api/v1/projects/{project_id}/lists/{list}/entries",
+            "/api/v1/projects/{project_id}/members",
+            "/api/v1/projects/{slug}/alternatives",
+            "/api/v1/projects/{slug}/documents/kinds",
+            "/api/v1/projects/{slug}/languages",
+            "/api/v1/projects/{slug}/merge",
+            "/api/v1/projects/{slug}/tags",
+            "/api/v1/projects/{slug}/tags/completeness",
+            "/api/v1/projects/{slug}/work-items",
+            "/api/v1/search",
+        ];
+        for path in reads {
+            let Some((policy, enforced)) = policy_for("GET", path) else {
+                panic!("{path} lost its policy row");
+            };
+            assert_eq!(policy, Policy::Optional, "{path} is an anonymous read, not session-only");
+            assert!(!enforced, "{path} narrows by readable(); it cannot enforce identity");
+        }
     }
 
     #[test]
