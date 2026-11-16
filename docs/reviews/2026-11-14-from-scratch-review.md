@@ -12,6 +12,13 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-16 — cleanup plus five direct-identity writes** (step 1b, twelfth slice). Removed the unused `headers`
+  parameter from `strategy_project` and its nine call sites (the warning recorded after `30f035a`). Five routes —
+  read-all notifications, delete comment, remove feature tag, create criterion and work-item label — all answered an
+  anonymous caller `401`; their rows are enforced (40→45), their handlers take `Extension<User>`, 44 handlers pinned.
+  During the edit a broad `replace_all` also added an extension param to `vote_comment`; that was reverted before test,
+  and `delete_comment`'s old lookup was removed. `bearer_user` 96→91.
+
 - **2026-11-16 — D-8 closes with the strategy family** (step 1b, eleventh slice, nine routes). All nine
   `strategy_project` callers — three list reads, two proposals, two consents, two withdrawals — answered an anonymous
   caller `401`. The helper now takes the gate's `&User` and keeps project-existence plus member-role checks; the handlers

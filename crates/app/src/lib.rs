@@ -2584,11 +2584,8 @@ async fn mark_notification_read(
 /// `POST /api/v1/notifications/read-all` — clears the badge and says how many rows it took.
 async fn mark_all_notifications_read(
     State(state): State<AppState>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let cleared = concord_db::notifications::mark_all_read(&state.pool, user.id)
         .await
         .map_err(internal)?;
@@ -2721,11 +2718,9 @@ async fn post_comment(
 async fn delete_comment(
     State(state): State<AppState>,
     Path((project_id, _kind, _thread_id, id)): Path<(String, String, String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = project_by_id(&state, &project_id).await?;
     let comment_id = parse_id(&id, "comment id")?;
     concord_db::comments::delete(&state.pool, project.id, comment_id, user.id)
@@ -3226,7 +3221,6 @@ struct StrategyCaller {
 async fn strategy_project(
     state: &AppState,
     project_id: i64,
-    headers: &HeaderMap,
     user: &concord_db::auth::User,
 ) -> Result<StrategyCaller, ApiError> {
     // The identity comes from auth_gate; this helper keeps only project existence and the member role lookup.
@@ -3262,7 +3256,7 @@ async fn list_weight_proposals(
     // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
     // the top of the handler — the `project_id` the body uses is its id.
     let project_id = project_by_id(&state, &project).await?.id;
-    strategy_project(&state, project_id, &headers, &user).await?;
+    strategy_project(&state, project_id, &user).await?;
     let rows = concord_db::strategy::proposals(&state.pool, project_id)
         .await
         .map_err(internal)?;
@@ -3279,7 +3273,7 @@ async fn list_theme_proposals(
     // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
     // the top of the handler — the `project_id` the body uses is its id.
     let project_id = project_by_id(&state, &project).await?.id;
-    strategy_project(&state, project_id, &headers, &user).await?;
+    strategy_project(&state, project_id, &user).await?;
     let rows = concord_db::themes::proposals(&state.pool, project_id)
         .await
         .map_err(internal)?;
@@ -3296,7 +3290,7 @@ async fn list_themes(
     // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
     // the top of the handler — the `project_id` the body uses is its id.
     let project_id = project_by_id(&state, &project).await?.id;
-    strategy_project(&state, project_id, &headers, &user).await?;
+    strategy_project(&state, project_id, &user).await?;
     let rows = concord_db::themes::themes(&state.pool, project_id)
         .await
         .map_err(internal)?;
@@ -3310,7 +3304,7 @@ async fn propose_weight(
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-    let who = strategy_project(&state, project_id, &headers, &user).await?;
+    let who = strategy_project(&state, project_id, &user).await?;
     let feature_id = body
         .get("feature_id")
         .and_then(serde_json::Value::as_i64)
@@ -3334,7 +3328,7 @@ async fn propose_theme(
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-    let who = strategy_project(&state, project_id, &headers, &user).await?;
+    let who = strategy_project(&state, project_id, &user).await?;
     let tag = body.get("theme_tag").and_then(serde_json::Value::as_str).unwrap_or("");
     let namespace = body
         .get("theme_namespace")
@@ -3369,7 +3363,7 @@ async fn consent_theme(
     Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-    let who = strategy_project(&state, project_id, &headers, &user).await?;
+    let who = strategy_project(&state, project_id, &user).await?;
     match concord_db::themes::consent(&state.pool, id, who.user.id).await {
         Ok((proposal, ratified)) => Ok((
             if ratified { StatusCode::OK } else { StatusCode::ACCEPTED },
@@ -3403,7 +3397,7 @@ async fn consent_weight(
     Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-    let who = strategy_project(&state, project_id, &headers, &user).await?;
+    let who = strategy_project(&state, project_id, &user).await?;
     match concord_db::strategy::consent(&state.pool, id, who.user.id).await {
         Ok(recorded) => Ok((
             StatusCode::OK,
@@ -3426,7 +3420,7 @@ async fn withdraw_theme(
     Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
-    let who = strategy_project(&state, project_id, &headers, &user).await?;
+    let who = strategy_project(&state, project_id, &user).await?;
     let maintainer = who.role == "maintainer" || who.role == "owner";
     concord_db::themes::withdraw(&state.pool, id, who.user.id, maintainer)
         .await
@@ -3440,7 +3434,7 @@ async fn withdraw_weight(
     Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<StatusCode, ApiError> {
-    let who = strategy_project(&state, project_id, &headers, &user).await?;
+    let who = strategy_project(&state, project_id, &user).await?;
     let maintainer = who.role == "maintainer" || who.role == "owner";
     concord_db::strategy::withdraw(&state.pool, id, who.user.id, maintainer)
         .await
@@ -5874,12 +5868,10 @@ fn criteria_refusal(refused: concord_db::criteria_writes::Refused) -> ApiError {
 async fn create_criterion(
     State(state): State<AppState>,
     Path(project_segment): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to add a criterion"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "maintainer", &user).await?;
     let slug = body.get("slug").and_then(|v| v.as_str()).unwrap_or_default();
@@ -6447,12 +6439,10 @@ async fn add_feature_tag(
 async fn remove_feature_tag(
     State(state): State<AppState>,
     Path((project_segment, feature)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to change a feature's tags"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "contributor", &user).await?;
     let feature_id = caller_feature(&state, &project, &feature).await?;
@@ -6597,12 +6587,10 @@ fn feature_work_refusal(refused: concord_db::feature_work::Refused) -> ApiError 
 async fn set_work_item_label(
     State(state): State<AppState>,
     Path((project_segment, feature)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to label work"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "maintainer", &user).await?;
     let feature_id = caller_feature(&state, &project, &feature).await?;

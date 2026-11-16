@@ -112,7 +112,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/hooks/forgejo", Policy::Optional, false),
     ("GET", "/api/v1/lists", Policy::Public, false),
     ("GET", "/api/v1/notifications", Policy::Session, true),
-    ("POST", "/api/v1/notifications/read-all", Policy::Session, false),
+    ("POST", "/api/v1/notifications/read-all", Policy::Session, true),
     ("POST", "/api/v1/notifications/{id}/read", Policy::Session, false),
     ("GET", "/api/v1/projects", Policy::Public, false),
     ("POST", "/api/v1/projects", Policy::Account, true),
@@ -125,7 +125,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/projects/{project_id}/complaints/{complaint}", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/complaints/{complaint}/features", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/criteria", Policy::Optional, false),
-    ("POST", "/api/v1/projects/{project_id}/criteria", Policy::Session, false),
+    ("POST", "/api/v1/projects/{project_id}/criteria", Policy::Session, true),
     ("GET", "/api/v1/projects/{project_id}/criteria-profiles", Policy::Optional, false),
     ("POST", "/api/v1/projects/{project_id}/criteria-profiles", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/criteria-profiles/", Policy::Optional, false),
@@ -173,7 +173,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/projects/{project_id}/tallies", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/threads/{thread_kind}/{thread_id}", Policy::Optional, false),
     ("POST", "/api/v1/projects/{project_id}/threads/{thread_kind}/{thread_id}", Policy::Session, false),
-    ("DELETE", "/api/v1/projects/{project_id}/threads/{thread_kind}/{thread_id}/{id}", Policy::Session, false),
+    ("DELETE", "/api/v1/projects/{project_id}/threads/{thread_kind}/{thread_id}/{id}", Policy::Session, true),
     ("POST", "/api/v1/projects/{project_id}/threads/{thread_kind}/{thread_id}/{id}/vote", Policy::Optional, false),
     ("GET", "/api/v1/projects/{slug}", Policy::Public, false),
     ("PUT", "/api/v1/projects/{slug}/ai-involvement", Policy::Account, true),
@@ -240,9 +240,9 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("PUT", "/api/v1/projects/{slug}/features/{feature}/strategic-weight", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/features/{feature}/tags", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/features/{feature}/tags", Policy::Session, false),
-    ("POST", "/api/v1/projects/{slug}/features/{feature}/tags/remove", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/features/{feature}/tags/remove", Policy::Session, true),
     ("POST", "/api/v1/projects/{slug}/features/{feature}/vote", Policy::Session, true),
-    ("PUT", "/api/v1/projects/{slug}/features/{feature}/work-item", Policy::Session, false),
+    ("PUT", "/api/v1/projects/{slug}/features/{feature}/work-item", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/invites", Policy::Session, true),
     ("POST", "/api/v1/projects/{slug}/invites", Policy::Session, true),
     ("POST", "/api/v1/projects/{slug}/invites/{invite}/revoke", Policy::Session, false),
@@ -314,7 +314,7 @@ mod tests {
 
     /// 5 on 2026-11-15 (four routes that already refused a stranger, plus the admin ledger that did not); 6 on
     /// 2026-11-16 when `POST /api/v1/projects` moved its refusal into the gate. It may grow, never shrink.
-    const ENFORCED: usize = 40;
+    const ENFORCED: usize = 45;
 
     /// The source with string literals and comments replaced by spaces, so a brace or a paren inside either
     /// cannot move the scan. Same length as the input, so an index means the same thing in both.
@@ -629,6 +629,11 @@ mod tests {
             "consent_weight",
             "withdraw_theme",
             "withdraw_weight",
+            "mark_all_notifications_read",
+            "delete_comment",
+            "remove_feature_tag",
+            "create_criterion",
+            "set_work_item_label",
             "auth_me",
             "list_notifications",
             "list_invites",
