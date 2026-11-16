@@ -16,6 +16,13 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   refused anonymous callers; consensus position/objection needed valid bodies first. Rows enforced (56→63), handlers take
   `Extension<User>`, 62 pinned, `bearer_user` 80→73. The two consensus handlers no longer take `HeaderMap`.
 
+  ```
+  cargo test -p concord-app --lib policy: 7 passed; 0 failed
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live 1470834: seven routes anon 401 · guest list vote 403 contributor
+                walk 0 holes · headers PASS · served JS PASS · CI 43970446455 success
+  ```
+
 - **2026-11-16 — five more private writes enforced** (step 1b, fourteenth slice). Emergency-hold release, field-report
   response, project languages, merge request and arena restore all answered anonymous `401`; rows enforced (51→56),
   handlers take `Extension<User>`, 55 pinned, `bearer_user` 85→80. `arena_restore` and `release_emergency_hold` no longer
