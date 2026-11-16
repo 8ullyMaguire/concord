@@ -110,6 +110,27 @@ already answered `401` (`auth/me`, `notifications`, `projects/{slug}/invites`, `
 `GET /api/v1/admin-ledger`, which answered **`200` to an anonymous caller**: the one hole in the 216 routes. The
 count of enforced rows is a ratchet in `policy.rs`'s tests: it may grow, never shrink.
 
+**Evidence, on the commit the deploy ships (`de88ab0`), from GitHub's runner** — thinkcentre was at load average 82 from
+unrelated work, so the local `make gate` was starved and the same gate was run there instead:
+
+```
+unit: ok
+gate: PASS                       # run 43841609784 · github.com/8ullyMaguire/concord/actions/runs/43841609784
+```
+
+and the two commands the table exists for:
+
+```
+$ python3 scripts/parity/route_policies.py
+api routes registered: 203 · routes with a declared policy: 203 · routes with no policy: 0
+route_policies: PASS — every registered route declares who may call it
+
+$ python3 scripts/parity/anonymous_walk.py          # before the deploy
+anonymous_walk: 89 route(s) walked with no token
+anonymous_walk: 0 unreachable · 1 hole(s) · 19 declared but not enforced · 0 wrongly refused
+  HOLE     GET /api/v1/admin-ledger is enforced as Operator and answered 200
+```
+
 **Step 1b, what is left in this step** (in this order, each with the suites watching):
 
 1. Flip enforcement per surface, and 401 before the body is read: the 120 `Session` rows first, then `Account`
