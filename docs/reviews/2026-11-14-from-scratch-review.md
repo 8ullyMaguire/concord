@@ -8,7 +8,7 @@ Every claim below is a measurement, and the command that produced it is in the s
 
 ## Work log
 
-- **2026-11-16 — 19 policy rows were wrong, not unenforced** (step 1b, first slice). `anonymous_walk.py --candidate
+- **2026-11-16 — 19 policy rows were wrong, not unenforced** (step 1b, first slice, commit `b74c75b`). `anonymous_walk.py --candidate
   https://concord.polarisocial.xyz --json` answered a stranger on `89` routes: `0 holes`, `19 declared but not enforced`,
   e.g. `GET /api/v1/projects/{slug}/merge (Session)` and `GET .../arenas/{arena_id}/verification (Session)`. Reading the
   handlers settled what the table could not: `list_merge_requests` never reads identity, `arena_verification` says
@@ -18,6 +18,9 @@ Every claim below is a measurement, and the command that produced it is in the s
 
   ```
   route_policies: PASS — every registered route declares who may call it   (203/203, 0 undeclared)
+  cargo test -p concord-app --lib policy: 6 passed; 0 failed
+  live b74c75b: anonymous_walk: 89 walked · 0 unreachable · 0 hole(s) · 0 declared but not enforced · PASS
+                probe_security_headers: PASS · served session.js: PASS · concord-rs active / concord inactive
   ```
 
 - **2026-11-16 — the page half of the cookie, and two gates that can fail** (this session took over the still-running goal
