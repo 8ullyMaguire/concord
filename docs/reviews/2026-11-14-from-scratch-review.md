@@ -16,6 +16,13 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   refused anonymous callers; complaint link needed a valid body first. Rows enforced (69→77), handlers take
   `Extension<User>`, 76 pinned, `bearer_user` 67→59. Seven of the eight no longer take `HeaderMap`.
 
+  ```
+  cargo test -p concord-app --lib policy: 7 passed; 0 failed
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live 3fa5326: eight routes anon 401 · guest claim 403 contributor
+                walk 0 holes · headers PASS · served JS PASS · CI 43975188539 success
+  ```
+
 - **2026-11-16 — complaint and request writes enforced** (step 1b, sixteenth slice, six routes). All six answered an
   anonymous caller `401`; rows enforced (63→69), handlers take `Extension<User>`, 68 pinned, `bearer_user` 73→67.
   `create_instance_request` no longer takes `HeaderMap`.
