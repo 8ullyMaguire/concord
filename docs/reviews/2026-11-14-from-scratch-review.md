@@ -8,6 +8,49 @@ Every claim below is a measurement, and the command that produced it is in the s
 
 ## Work log
 
+- **2026-11-16 — rate limiting, reconciled from the session that was writing it** (second session, finished here). Two
+  sessions were developing this repo at once and both reached step 2b; that session is stopped and its work is verified and
+  committed here rather than discarded. What it wrote: `crates/app/src/rate.rs` (class chosen by the **matched route**, client
+  from `polaris_ratelimit::client_key` so a self-declared `CF-Connecting-IP` is only believed from a loopback peer, 429 with
+  `Retry-After`, `X-RateLimit-*` on every response, budgets overridable with `CONCORD_RATE_*`), `AppState.rate`, the middleware
+  layered above the identity gates, `limiter_from_env()` at boot, ADR 0017, and `scripts/parity/probe_rate_limit.py`.
+
+  Verified here, not taken on faith — the release binary built from this tree, a scratch database, `CONCORD_RATE_LOGIN=3`:
+
+  ```
+  rate limits classes=["default", "api", "asset", "login"]
+  login # 1 422 · #2 422 · #3 422 · #4 429 retry-after=19s limit=3
+  second client 422  (own bucket)
+  api read      200  (separate budget)
+  probe_rate_limit: PASS — the budget holds, the refusal says when to retry, and it is per client and per class
+  ```
+
+  The 422s are the route refusing bad credentials, which is the point: three attempts are *answered*, the fourth never reaches
+  the handler. `probe_rate_limit.py` is **not yet in `scripts/gate.sh`** — wiring it is the next commit, and it belongs in the
+  smoke layer next to `probe_pages` because it needs a server whose budget it was told.
+
+- **2026-11-16 — the session cookie became a credential** (`df6f881`). `login` had been setting `concord_nav` as
+  `HttpOnly; SameSite=Lax` since the port, and nothing read it: identity came only from `Authorization: Bearer`, which the page
+  filled from `localStorage` — readable by any script that gets to run, exactly what `script-src 'self'` narrows but cannot
+  promise. `presented_token` now falls back to that cookie, and `bearer_user` goes through it rather than parsing the header a
+  second time, so all 122 call sites follow at once. Header first, so no existing client or suite changed behaviour.
+
+  ```
+  no credential            401  (want 401)
+  cookie only              200  (want 200)
+  header only ("***)  200  (want 200)
+  cookie attributes, plain http          ; Path=/; HttpOnly; SameSite=Lax
+  cookie attributes, behind the tunnel   ; Path=/; HttpOnly; SameSite=Lax; Secure
+  /api/v1/auth/me by cookie  {"display_name":"Cookie Probe","id":1,"role":"member", ...}
+  ```
+
+  The commit had to be cut out of a working tree another session is editing (`crates/app/src/lib.rs`, five hunks, two mine):
+  `git add -p` is unusable in this repo because diffs go through an external differ that dies mid-file, so the two cookie hunks
+  were staged by filtering `git diff --no-ext-diff -U3` on their own added lines — `grep -c 'mod rate|polaris_ratelimit'` on the
+  staged diff = **0**, their work left untouched. **Not deployed:** the release binary that proves this also contains that
+  session's uncommitted rate limiting, and shipping uncommitted work to prove a commit is not a trade worth making. Live proof of
+  the cookie needs a production login, which needs an account nobody has given me — it is in the roadmap's Blocked section.
+
 - **2026-11-16 — one CSP per response, and a probe that could not fail correctly** (`f869676`, estate `9227ce7`). The CSP
   shipped, but every response carried **two** policies — the app's strict `script-src 'self'` and nginx's estate-wide
   `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'` — and a browser enforces every policy it is sent, so the header

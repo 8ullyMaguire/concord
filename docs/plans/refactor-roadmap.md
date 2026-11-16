@@ -348,7 +348,7 @@ Unclaimed rows are fair game.
 |---|---|---|
 | 0 | the review lives in the repo | **done 2026-11-15** |
 | 1 | authorization as a table + audit + gate | **1a done 2026-11-16, committed `de88ab0`, CI `43841609784`.** `crates/app/src/policy.rs`: 203 rows, `Public|Optional|Session|Account|Operator`, `enforced` true on 5. The audit is an in-crate test (`include_str!("lib.rs")`) that names a route with no row, a row with no route, and a falling `enforced` count: `cargo test -p concord-app --lib policy` -> 5 passed. `auth_gate` enforces the 5 enforced rows, answers 500 for a matched route with no row, and leaves unknown paths at 404; `scripts/parity/anonymous_walk.py` asks the same question of the deployed instance in the live layer. **1b (open):** widen `enforced` one surface at a time with the e2e suites watching, move `Account`/`Operator` depth in front of the handlers, then delete the 122 in-handler `bearer_user` checks. |
-| 2 | security baseline (cookie, CSP, rate limit, renderer) | open — cheapest risk removed |
+| 2 | security baseline (cookie, CSP, rate limit, renderer) | **2a done, 2b half done 2026-11-16.** Headers + a strict CSP live and browser-proven (see Claims, row 2). Cookie: `login` always set `concord_nav` as `HttpOnly; SameSite=Lax` and nothing read it — `presented_token` now falls back to it (`df6f881`), proved by `no credential 401 · cookie only 200 · header only 200` and `Path=/; HttpOnly; SameSite=Lax[; Secure]`. Rate limiting is wired through the vendored `polaris_ratelimit` (class from the matched route, client from `client_key`, 429 + `Retry-After`, `X-RateLimit-*` on every response); `probe_rate_limit.py --budget 3` → `login #1..#3 422, #4 429 retry-after=19s limit=3`, `second client 422 (own bucket)`, `api read 200 (separate budget)`, **PASS**. **2b left:** (i) the page half of the cookie — `session.js`/`api.js` stop persisting the token in `localStorage`, with `probe_claim_button.py` as the check that a signed-in interaction still works; (ii) `el(tag, props, children)` and the `innerHTML` sink census. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
@@ -356,6 +356,23 @@ Unclaimed rows are fair game.
 | 7 | domain crate for stage / consensus / claim; `query!` on new SQL | open |
 | 8 | publish or delete the four dead vendored crates | open |
 | 9 | wire the 21 unrun e2e suites (`RECORDED_UNRUN` → 0) | open — proves steps 1, 2 and 5 from outside |
+
+## Blocked
+
+Items nobody working in this repo can finish alone. Each names what would unblock it and on whom, so the next session can
+tell the difference between "not started" and "waiting".
+
+1. **A production login, to prove the session cookie on the live instance** — on the user. The cookie is proved against a
+   scratch database on thinkcentre (`no credential 401 · cookie only 200 · header only 200`), but `concord.polarisocial.xyz`
+   needs real credentials to demonstrate the same thing, and inventing an account on a production instance is not a trade a
+   gate should make. Unblock: an account (or a `CONCORD_PROBE_USER`/`CONCORD_PROBE_PASSWORD` pair in
+   `~/.config/concord/.env`) that a probe may log in as; the probe then asserts the same three codes against the deployment.
+2. **A forge token (`CONCORD_FORGE_TOKEN`)** — on the user. GitHub's anonymous budget is exhausted (7 repos deferred,
+   `403 rate limit exceeded`); enumeration of those upstreams cannot be measured without a token.
+3. **`git.disroot.org` is offline** — on the vendor. 16 projects are hosted there and their commit age is unmeasurable;
+   `dormancysweep` reports them as "with a repository but no readable commit age" rather than inventing a date.
+4. **58 projects state no upstream** — on the user, for the subset only they know. The discoverable subset is exhausted:
+   the family forge's 23 repos match none of them by normalized name, so the rest need an owner to say where the code lives.
 
 ## Decisions taken
 
