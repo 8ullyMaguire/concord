@@ -24,6 +24,9 @@ Every claim below is a measurement, and the command that produced it is in the s
   Evidence on `de88ab0`, from GitHub's runner (`unit: ok`, then `gate: PASS`, run 43841609784) because thinkcentre sat at load
   average 82 from unrelated jobs; plus `route_policies: PASS — every registered route declares who may call it` (203/203) and
   `anonymous_walk: 1 hole(s) · 19 declared but not enforced · 0 wrongly refused`, the hole being `/api/v1/admin-ledger`.
+  Deployed (`concord-rs 0.0.0+df9bb08+vendor`), the same walk reports **`0 hole(s)`** and the route itself answers
+  `401 {"code":"unauthenticated","error":"authentication required"}` where it answered 200, with `/api/v1/search` and
+  `/api/v1/projects` still 200 for an anonymous caller.
 
   The derivation said 120 routes need a session. Measured against the live instance with no token, **22 of the 34 looks-like-a-session
   reads answered 200** — `/api/v1/search`, `projects/{slug}/tags`, `{project_id}/lists`, `documents/kinds`. A table like that is a

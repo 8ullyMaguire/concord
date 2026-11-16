@@ -131,6 +131,24 @@ anonymous_walk: 0 unreachable · 1 hole(s) · 19 declared but not enforced · 0 
   HOLE     GET /api/v1/admin-ledger is enforced as Operator and answered 200
 ```
 
+**Deployed and walked (`df9bb08`, 2026-11-16 11:02).** Live serves `concord-rs 0.0.0+df9bb08+vendor` and the same walk against it:
+
+```
+$ python3 scripts/parity/anonymous_walk.py          # after the deploy
+anonymous_walk: 0 unreachable · 0 hole(s) · 19 declared but not enforced · 0 wrongly refused
+anonymous_walk: PASS — nothing declared as refused answers a stranger, nothing declared public refuses one
+
+$ curl -o /dev/null -w '%{http_code}' …/api/v1/admin-ledger   -> 401   (“authentication required”; was 200)
+$ curl -o /dev/null -w '%{http_code}' …/api/v1/search         -> 200   (unchanged)
+$ curl -o /dev/null -w '%{http_code}' …/api/v1/projects       -> 200   (unchanged)
+```
+
+**Deploy note for the next session.** `make deploy`'s `scp "$(BIN)" thinkcentre:…` fails with `scp: Connection closed` when the
+recipe runs *on* thinkcentre: the host copies to itself through sshd, and under load sshd drops it. The three steps work
+locally — `cp target/release/concord-cli ~/concord-deploy/concord-rs.new`, `systemctl --user stop concord-rs.service`,
+`mv`, `systemctl --user start concord-rs.service`. Teaching `make deploy` to skip the copy when the target is `$(hostname)`
+is a two-line fix worth making the next time that recipe is touched.
+
 **Step 1b, what is left in this step** (in this order, each with the suites watching):
 
 1. Flip enforcement per surface, and 401 before the body is read: the 120 `Session` rows first, then `Account`
