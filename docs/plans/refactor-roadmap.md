@@ -324,7 +324,7 @@ Unclaimed rows are fair game.
 | row | claimed by | since |
 |---|---|---|
 | 1b | session A (10:26 commit `de88ab0` author) | 2026-11-16 10:26 |
-| 2 | session B (this one) | 2026-11-16 10:40 |
+| 2 | security baseline (headers, cookie, CSP, rate limit, renderer) | **2a done 2026-11-16 — headers and a CSP that refuses something.** `security_headers` sets CSP, `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy`, HSTS on every response, with `script-src 'self'` and **no `'unsafe-inline'`** (the live instance sent `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'`, a policy that refuses nothing). The inline scripts that made that possible are gone: seven dead placeholder passes and the archive control (now `assets/js/project-archive.js`, tag still emitted only for a maintainer), plus the load-bearing `onsubmit="return false;"` on the milestone form, replaced by `preventDefault()`. Instrument: `scripts/parity/probe_security_headers.py` — **10 problems on live before, PASS on the built candidate after**; browser proof: `milestones_e2e` 5 passed, `board_e2e` 8 passed, `documents_e2e` 6 passed. ADR 0016. **Remaining (2b):** session cookie `HttpOnly; SameSite=Lax` so an XSS cannot read the token; rate limiting through the vendored `polaris_ratelimit` (still imported by zero files) with a separate login bucket; the `el(tag, props, children)` renderer so `innerHTML` is unavailable rather than discouraged. |
 
 ## Status
 

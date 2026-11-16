@@ -498,36 +498,19 @@ async fn project_overview(
 
     // The control's script is emitted only when the control is: an anonymous reader was "seeing the control" in a probe because the script
     // that wires it was on every page, id and all. A page should not ship the JavaScript for a button it does not render.
+    // Inline before the CSP: a `script-src 'self'` policy refuses an inline block, and the point of that policy is that a
+    // missing script fails loudly here rather than silently in a browser. `defer` keeps it behind `api.js`.
     let archive_script = if maintainer {
-        r#"<script>
-(function () {
-  var form = document.getElementById("project-archive");
-  if (!form || !window.ConcordApi) return;
-  var toggle = document.getElementById("project-archive-toggle");
-  var status = form.querySelector("[data-archive-status]");
-  var slug = toggle.getAttribute("data-archive-slug");
-  var archived = toggle.getAttribute("data-archived") === "1";
-  toggle.addEventListener("click", function () {
-    form.hidden = !form.hidden;
-    if (!form.hidden) form.querySelector("input[name=reason]").focus();
-  });
-  form.addEventListener("submit", function (event) {
-    event.preventDefault();
-    var reason = form.querySelector("input[name=reason]").value.trim();
-    var path = "/api/v1/projects/" + encodeURIComponent(slug) + "/archive";
-    var call = archived ? window.ConcordApi.del(path) : window.ConcordApi.post(path, { reason: reason });
-    call.then(function () { location.reload(); })
-        .catch(function (error) { status.textContent = (error && error.message) || "the request failed"; });
-  });
-})();
-</script>"#
+        format!(
+            r#"<script src="{}" defer></script>"#,
+            shell::asset("/assets/js/project-archive.js")
+        )
     } else {
-        ""
+        String::new()
     };
     let body = format!(
         r#"{}<div id="project-detail" aria-busy="true"></div>
 <script src="{}"></script>
-<script>(function(){{var b=document.getElementById("project-detail");if(b&&window.ConcordSkeleton){{b.innerHTML='<div class="card mb-6">'+window.ConcordSkeleton.title()+window.ConcordSkeleton.text(3)+'</div>'+window.ConcordSkeleton.rows(4);}}}})();</script>
 <script src="{}"></script>
 <script src="{}"></script>
 <script src="{}"></script>

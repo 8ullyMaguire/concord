@@ -55,7 +55,6 @@ pub async fn rank(
 </div>
 <div id="rank-root" aria-busy="true">
 <script src="{skeleton}"></script>
-<script>(function(){{var b=document.getElementById("rank-root");if(b&&window.ConcordSkeleton){{b.innerHTML=window.ConcordSkeleton.rows(1);}}}})();</script>
   <div class="empty-state"><p class="empty-state-title">Loading a comparison&hellip;</p></div>
 </div>
 <div id="rank-progress" class="rank-progress" hidden>
@@ -106,7 +105,6 @@ pub async fn ranking(
 </div>
 <div id="ranking-root" aria-busy="true" data-can-moderate="{can_moderate}">
 <script src="{skeleton}"></script>
-<script>(function(){{var b=document.getElementById("ranking-root");if(b&&window.ConcordSkeleton){{b.innerHTML=window.ConcordSkeleton.rows(6);}}}})();</script>
   <div class="empty-state"><p class="empty-state-title">Loading the ranking&hellip;</p></div>
 </div>
 <script src="{ranking_js}"></script>

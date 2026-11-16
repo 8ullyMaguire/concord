@@ -97,7 +97,7 @@
         '<span>' + (data.totals.open || 0) + ' open</span>' +
         '<span>' + (data.totals.shipped || 0) + ' shipped</span></div>';
 
-      html += '<form class="ms-create" data-ms-create="" onsubmit="return false;">' +
+      html += '<form class="ms-create" data-ms-create="">' +
         '<input name="title" placeholder="Milestone title" aria-label="Milestone title" required>' +
         '<input name="target_date" type="date" aria-label="Target date">' +
         '<button type="submit" class="btn">Create milestone</button>' +
@@ -125,7 +125,10 @@
       box.setAttribute('aria-busy', 'false');
 
       var form = box.querySelector('[data-ms-create]');
-      form.addEventListener('submit', function () {
+      form.addEventListener('submit', function (event) {
+        // The inline `onsubmit="return false;"` this replaced was load-bearing: without it the browser navigates and the
+        // milestone the fetch just created is shown by a full page load instead of by `renderRoadmap` below.
+        event.preventDefault();
         var title = form.querySelector('[name=title]').value.trim();
         var date = form.querySelector('[name=target_date]').value;
         if (!title) return;

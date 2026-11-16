@@ -627,6 +627,9 @@ pub fn router(state: AppState) -> Router {
         .fallback(not_found)
         // LAST, so it sees the body every layer above produced — including the gate's own refusals.
         .layer(axum::middleware::map_response(flatten_error_bodies))
+        // Outermost, and a plain `from_fn` rather than `map_response`: the headers must be on every response the service
+        // can produce — the 404, the gate's refusals, an API error — not only on the ones a page renderer returns.
+        .layer(axum::middleware::from_fn(security_headers))
         .with_state(state)
 }
 
@@ -8166,6 +8169,58 @@ fn coded(status: StatusCode, code: &str, message: &str) -> axum::response::Respo
         Json(serde_json::json!({ "code": code, "error": message })),
     )
         .into_response()
+}
+
+/// The response headers that turn a page into something a browser is allowed to trust.
+///
+/// Measured on 2026-11-15: the deployed instance sent **no** `Content-Security-Policy`, no `X-Frame-Options`, no
+/// `X-Content-Type-Options` and no `Strict-Transport-Security` — `curl -sI https://concord.polarisocial.xyz/` was the
+/// whole proof. With the session token in `localStorage` and 137 `innerHTML` sites in the page scripts, one injected
+/// string is a full account takeover, and nothing in the response told the browser to refuse one.
+///
+/// `script-src 'self'` with **no `'unsafe-inline'`** — the live instance on 2026-11-16 sent
+/// `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval'`, which permits exactly the injected `<script>` the policy
+/// exists to refuse. `'unsafe-inline'` is not a lesser evil here, it is the evil: with it a CSP does nothing for XSS.
+///
+/// No nonce either. A nonce has to be threaded through every one of the 39 `<script>` tags this renderer emits, and its
+/// absence is invisible until a page silently stops working. Removing the inline blocks instead (`crates/web` — the
+/// seven dead placeholder passes and the archive control, now `project-archive.js`) makes the *stricter* policy the one
+/// that needs no plumbing. Styles keep `'unsafe-inline'` because two pages carry a `style=` attribute; scripts do not.
+///
+/// `img-src` allows `https:` because avatars are remote; `connect-src 'self'` because every `fetch` in the page
+/// scripts goes to this origin (measured: `grep -c 'fetch(' assets/js/*.js` finds four call sites, all through
+/// `api.js`). `frame-ancestors 'none'` and `X-Frame-Options: DENY` say the same thing twice on purpose: the older
+/// header is what browsers without `frame-ancestors` understand.
+fn security_headers(request: axum::extract::Request, next: axum::middleware::Next) -> impl std::future::Future<Output = axum::response::Response> {
+    const POLICY: &str = "default-src 'self'; \
+        script-src 'self'; \
+        style-src 'self' 'unsafe-inline'; \
+        img-src 'self' data: https:; \
+        font-src 'self'; \
+        connect-src 'self'; \
+        object-src 'none'; \
+        base-uri 'none'; \
+        form-action 'self'; \
+        frame-ancestors 'none'";
+    async move {
+        let mut response = next.run(request).await;
+        let headers = response.headers_mut();
+        let set = |headers: &mut axum::http::HeaderMap, name: axum::http::HeaderName, value: &str| {
+            if let Ok(value) = axum::http::HeaderValue::from_str(value) {
+                headers.insert(name, value);
+            }
+        };
+        set(headers, axum::http::header::CONTENT_SECURITY_POLICY, POLICY);
+        set(headers, axum::http::HeaderName::from_static("x-frame-options"), "DENY");
+        set(headers, axum::http::header::X_CONTENT_TYPE_OPTIONS, "nosniff");
+        set(headers, axum::http::header::REFERRER_POLICY, "strict-origin-when-cross-origin");
+        set(
+            headers,
+            axum::http::header::STRICT_TRANSPORT_SECURITY,
+            "max-age=31536000; includeSubDomains",
+        );
+        response
+    }
 }
 
 /// Consent and the guest cap, in the one place both are enforced.

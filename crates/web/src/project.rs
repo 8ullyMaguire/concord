@@ -298,7 +298,6 @@ pub async fn audit(State(pool): State<PgPool>, Path(slug): Path<String>, headers
 </div>
 <div id="audit-root" aria-busy="true">
 <script src="{skeleton}"></script>
-<script>(function(){{var b=document.getElementById("audit-root");if(b&&window.ConcordSkeleton){{b.innerHTML=window.ConcordSkeleton.rows(8);}}}})();</script>
   <div class="empty-state"><p class="empty-state-title">Loading the audit log&hellip;</p></div>
 </div>
 <script src="{audit_js}"></script>
@@ -335,7 +334,6 @@ pub async fn board(State(pool): State<PgPool>, Path(slug): Path<String>, headers
 </div>
 <div id="kanban-board" aria-busy="true"></div>
 <script src="{skeleton}"></script>
-<script>(function(){{var b=document.getElementById("kanban-board");if(b&&window.ConcordSkeleton){{b.innerHTML=window.ConcordSkeleton.board(4,2);}}}})();</script>
 <script src="{board_js}"></script>
 "#,
         slug = project.slug,

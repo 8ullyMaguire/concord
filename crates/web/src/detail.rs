@@ -340,7 +340,6 @@ pub async fn feature(
 </div>
 <div id="feature-root" aria-busy="true">
 <script src="{skeleton}"></script>
-<script>(function(){{var b=document.getElementById("feature-root");if(b&&window.ConcordSkeleton){{b.innerHTML=window.ConcordSkeleton.rows(4);}}}})();</script>
   <div class="empty-state"><p class="empty-state-title">Loading the feature&hellip;</p></div>
 </div>
 <section id="moderation-panel" class="moderation-panel" data-project="{slug}" data-feature="{id}" hidden>
@@ -405,7 +404,6 @@ pub async fn complaint(
 </div>
 <div id="complaint-root" aria-busy="true">
 <script src="{skeleton}"></script>
-<script>(function(){{var b=document.getElementById("complaint-root");if(b&&window.ConcordSkeleton){{b.innerHTML=window.ConcordSkeleton.rows(4);}}}})();</script>
   <div class="empty-state"><p class="empty-state-title">Loading the complaint&hellip;</p></div>
 </div>
 <section id="comment-thread" class="comment-thread" data-thread-kind="complaint" data-thread-id="{id}" aria-live="polite">
