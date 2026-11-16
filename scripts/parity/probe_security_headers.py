@@ -124,7 +124,12 @@ def main() -> int:
             failures.append(f"{path} ({status}): effective script-src is not 'self' ({' '.join(sorted(script))})")
         # `'none'` in any one policy blocks every frame on its own, so it is already the strictest outcome; an empty
         # intersection means the same thing (a source must be allowed by every policy, and one allows nothing).
-        frame_none = any("none" in directives(p).get("frame-ancestors", set()) for p in policies)
+        # The source tokens keep their quotes (`directives` returns {"'self'", "https:"} — see its docstring), so the
+        # comparison has to strip them: without this the probe failed on `frame-ancestors 'none'`, i.e. exactly when the
+        # policy was at its strictest, and passed on `'self'`. A gate that is wrong in the safe direction is still wrong.
+        frame_none = any(
+            "none" in {source.strip("'") for source in directives(p).get("frame-ancestors", set())} for p in policies
+        )
         if not frame_none and frame:
             failures.append(
                 f"{path} ({status}): frame-ancestors permits framing ({' '.join(sorted(frame))})"
