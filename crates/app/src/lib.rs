@@ -5536,23 +5536,24 @@ async fn milestone_write_context(
     state: &AppState,
     headers: &HeaderMap,
     segment: &str,
-) -> Result<(concord_db::projects::Project, concord_db::auth::User), ApiError> {
-    let user = bearer_user(state, headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to change a milestone"))?;
+    user: &concord_db::auth::User,
+) -> Result<concord_db::projects::Project, ApiError> {
+    // The identity arrives from auth_gate as a request extension. The helper keeps only the project-visibility and
+    // maintainer checks: two authorities answering "who is calling" would be the defect this step removes.
     let project = readable_project_segment(state, segment, headers).await?;
-    require_role(state, &project, "maintainer", &user).await?;
-    Ok((project, user))
+    require_role(state, &project, "maintainer", user).await?;
+    Ok(project)
 }
 
 /// `POST /projects/{slug}/milestones` — create one, `planned`, dated or not.
 async fn create_milestone(
     State(state): State<AppState>,
     Path(slug): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
-    let (project, user) = milestone_write_context(&state, &headers, &slug).await?;
+    let project = milestone_write_context(&state, &headers, &slug, &user).await?;
     let (title, text, target) = milestone_fields(&body);
     let milestone = concord_db::milestones::create(&state.pool, project.id, &title, &text, target)
         .await
@@ -5567,10 +5568,11 @@ async fn create_milestone(
 async fn update_milestone(
     State(state): State<AppState>,
     Path((slug, milestone_id)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let (project, _) = milestone_write_context(&state, &headers, &slug).await?;
+    let project = milestone_write_context(&state, &headers, &slug, &user).await?;
     let Ok(milestone_id) = milestone_id.parse::<i64>() else {
         return Err(ApiError::not_found("no such milestone"));
     };
@@ -5586,10 +5588,11 @@ async fn update_milestone(
 async fn set_milestone_status(
     State(state): State<AppState>,
     Path((slug, milestone_id)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let (project, user) = milestone_write_context(&state, &headers, &slug).await?;
+    let project = milestone_write_context(&state, &headers, &slug, &user).await?;
     let Ok(milestone_id) = milestone_id.parse::<i64>() else {
         return Err(ApiError::not_found("no such milestone"));
     };
@@ -5607,10 +5610,11 @@ async fn set_milestone_status(
 async fn close_milestone(
     State(state): State<AppState>,
     Path((slug, milestone_id)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let (project, user) = milestone_write_context(&state, &headers, &slug).await?;
+    let project = milestone_write_context(&state, &headers, &slug, &user).await?;
     let Ok(milestone_id) = milestone_id.parse::<i64>() else {
         return Err(ApiError::not_found("no such milestone"));
     };
@@ -5628,10 +5632,11 @@ async fn close_milestone(
 async fn assign_milestone_features(
     State(state): State<AppState>,
     Path((slug, milestone_id)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let (project, user) = milestone_write_context(&state, &headers, &slug).await?;
+    let project = milestone_write_context(&state, &headers, &slug, &user).await?;
     let Ok(milestone_id) = milestone_id.parse::<i64>() else {
         return Err(ApiError::not_found("no such milestone"));
     };
@@ -5658,10 +5663,11 @@ async fn assign_milestone_features(
 async fn reorder_milestone(
     State(state): State<AppState>,
     Path((slug, milestone_id)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<StatusCode, ApiError> {
-    let (project, _) = milestone_write_context(&state, &headers, &slug).await?;
+    let project = milestone_write_context(&state, &headers, &slug, &user).await?;
     let Ok(milestone_id) = milestone_id.parse::<i64>() else {
         return Err(ApiError::not_found("no such milestone"));
     };

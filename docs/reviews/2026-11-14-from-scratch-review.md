@@ -12,6 +12,11 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-16 — D-8's milestone half lands** (step 1b, tenth slice, six routes). All six milestone writes answered an
+  anonymous caller `401 sign in to change a milestone`, emitted by the shared `milestone_write_context`. The helper now takes
+  the gate-supplied `&User` and keeps only `readable_project_segment` + maintainer checks; all six handlers take
+  `Extension<User>` and their rows are enforced (25→31). 30 handlers pinned. `strategy_project`'s ten callers remain.
+
 - **2026-11-16 — tags and field reports move behind the gate** (step 1b, ninth slice). Anonymous probes returned `401` from
   `apply_project_tags` and `create_field_report`; both rows are enforced (23→25), both handlers take `Extension<User>`, and
   contributor/visibility checks stay. Milestone and theme routes also refuse anonymous but resolve identity through shared

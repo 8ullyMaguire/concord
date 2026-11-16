@@ -152,11 +152,11 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("POST", "/api/v1/projects/{project_id}/lists/{list}/entries/vote", Policy::Session, false),
     ("GET", "/api/v1/projects/{project_id}/members", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/milestones/{milestone}", Policy::Session, false),
-    ("PATCH", "/api/v1/projects/{project_id}/milestones/{milestone}", Policy::Session, false),
-    ("POST", "/api/v1/projects/{project_id}/milestones/{milestone}/close", Policy::Session, false),
-    ("POST", "/api/v1/projects/{project_id}/milestones/{milestone}/features", Policy::Session, false),
-    ("PUT", "/api/v1/projects/{project_id}/milestones/{milestone}/order", Policy::Session, false),
-    ("PUT", "/api/v1/projects/{project_id}/milestones/{milestone}/status", Policy::Session, false),
+    ("PATCH", "/api/v1/projects/{project_id}/milestones/{milestone}", Policy::Session, true),
+    ("POST", "/api/v1/projects/{project_id}/milestones/{milestone}/close", Policy::Session, true),
+    ("POST", "/api/v1/projects/{project_id}/milestones/{milestone}/features", Policy::Session, true),
+    ("PUT", "/api/v1/projects/{project_id}/milestones/{milestone}/order", Policy::Session, true),
+    ("PUT", "/api/v1/projects/{project_id}/milestones/{milestone}/status", Policy::Session, true),
     ("POST", "/api/v1/projects/{project_id}/rank/composite", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/requests", Policy::Optional, false),
     ("POST", "/api/v1/projects/{project_id}/requests", Policy::Optional, false),
@@ -256,7 +256,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("PUT", "/api/v1/projects/{slug}/merge/{merge}/reject", Policy::Session, true),
     ("PUT", "/api/v1/projects/{slug}/metrics", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/milestones", Policy::Public, false),
-    ("POST", "/api/v1/projects/{slug}/milestones", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/milestones", Policy::Session, true),
     ("POST", "/api/v1/projects/{slug}/moderation/arena/remove", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/moderation/arena/restore", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/priorities", Policy::Public, false),
@@ -314,7 +314,7 @@ mod tests {
 
     /// 5 on 2026-11-15 (four routes that already refused a stranger, plus the admin ledger that did not); 6 on
     /// 2026-11-16 when `POST /api/v1/projects` moved its refusal into the gate. It may grow, never shrink.
-    const ENFORCED: usize = 25;
+    const ENFORCED: usize = 31;
 
     /// The source with string literals and comments replaced by spaces, so a brace or a paren inside either
     /// cannot move the scan. Same length as the input, so an index means the same thing in both.
@@ -614,6 +614,12 @@ mod tests {
             "open_consensus",
             "apply_project_tags",
             "create_field_report",
+            "create_milestone",
+            "update_milestone",
+            "set_milestone_status",
+            "close_milestone",
+            "assign_milestone_features",
+            "reorder_milestone",
             "auth_me",
             "list_notifications",
             "list_invites",
