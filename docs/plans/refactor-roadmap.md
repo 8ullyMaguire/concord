@@ -150,9 +150,25 @@ But the DSN is not the whole story: given a migrated scratch database and the re
 and every one of the 39 failures is a `404` for `/projects/suki/…` — the probe assumes a project slugged `suki` exists and only
 seeds `probe-page-<stamp>`. Not one failure is a `401` or `403`, so the auth gate changed no page. It therefore cannot pass against
 an empty scratch database, and it cannot run against production either, because seeding a hostile project there is exactly what
-`refuse_a_non_test_database` blocks. **To make it a gate again: seed `suki` (and its board features) into the scratch database
-before the probe runs, then point it at the smoke server** — a fixture, not a rewrite. Until then the page layer is curl against the
-deployed instance, and what was checked, all `200`: `/`, `/projects`, `/projects/suki`, `/search`, `/stats`, `/scout`,
+`refuse_a_non_test_database` blocks. **Done, 2026-11-16.** `scripts/parity/probe_fixture.py` seeds the one row the probe assumes (`suki`, display name `Suki` —
+the title assertion is `<title>Suki: Documents — Concord</title>`), and `gate.sh`'s smoke layer now runs fixture → `probe_pages`
+against the local server it just started, on the scratch database it just migrated. It left the live layer, because the
+requirement is structural: **the instance under test must read the database the probe seeds.**
+
+```
+routes: all 13 answered
+  probe_fixture: project suki #1 in the scratch database
+pages: 132/132 ok
+gate: PASS
+```
+
+Two things this cost, both worth writing down: the scratch database had to be renamed `gate_test_<pid>` (the harness refuses to
+seed a database whose name does not say it is a test database — the refusal was right, the name was wrong), and the fixture's
+display name is `Suki`, not `suki`, because the title assertion is `<title>Suki: Documents — Concord</title>`.
+
+132 checks, not the 136 the roadmap used to claim — that number was from before the probe replaced a dozen content greps with
+mount assertions, and a number a document repeats without measuring is how a gate stops being read. What was checked against the
+deployed instance by curl, all `200`: `/`, `/projects`, `/projects/suki`, `/search`, `/stats`, `/scout`,
 `/finder`, `/taxonomy`, `/curation`, `/contribute`, `/projects/new`, `/healthz`, `/feed.xml`, `/atom.xml`,
 `/projects/suki/board/feed.xml`, `/projects/suki/consensus/atom.xml`.
 

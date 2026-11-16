@@ -20,7 +20,9 @@ cd "$(dirname "$0")/.."
 ROOT=$(pwd)
 PORT=${GATE_PORT:-18099}
 FAILED=0
-DBNAME="gate_$$"
+# `_test` is in the name on purpose: `tests/e2e/harness.py` refuses to seed a database whose name does not say it is a
+# test database, and the page fixture seeds this one. The refusal is right; the name was the thing that was wrong.
+DBNAME="gate_test_$$"
 SCRATCH=$(mktemp -d)
 CREATED_DB=0
 SERVER_PID=""
@@ -199,6 +201,24 @@ else
         esac
       done
       [ "$MISSING" -eq 0 ] && echo "routes: all $(echo $ROUTES | wc -w) answered" || bad "$MISSING route(s) did not answer"
+
+      # 3. the page layer: does each document exist AND carry the mount its script fills? `probe_pages` needs the project
+      # whose tabs it walks, so the fixture is seeded into the scratch database the server just opened — that is the
+      # whole reason this probe belongs here and not in the live layer (a live URL reads production, and seeding that is
+      # what the harness refuses to do).
+      if CONCORD_E2E_DSN="$CONCORD_TEST_DSN" python3 scripts/parity/probe_fixture.py >"$SCRATCH/fixture.log" 2>&1; then
+        tail -1 "$SCRATCH/fixture.log" | sed 's/^/  /'
+        if CANDIDATE="http://127.0.0.1:$PORT" CONCORD_E2E_DSN="$CONCORD_TEST_DSN" \
+             python3 scripts/parity/probe_pages.py >"$SCRATCH/probe-pages.log" 2>&1; then
+          tail -1 "$SCRATCH/probe-pages.log" | sed 's/^/pages: /'
+        else
+          tail -14 "$SCRATCH/probe-pages.log"
+          bad "probe_pages (a document is missing its mount or its title)"
+        fi
+      else
+        cat "$SCRATCH/fixture.log"
+        bad "the page fixture could not be seeded"
+      fi
     fi
   fi
 fi
@@ -216,9 +236,11 @@ if [ -n "$LIVE" ]; then
   # `ModuleNotFoundError: No module named 'playwright'` on the first full pass of this layer, while the suites beside it passed.
   PY=python3
   [ -x "$HOME/.venvs/concord-e2e/bin/python" ] && PY="$HOME/.venvs/concord-e2e/bin/python"
-  # probe_pages seeds a hostile-named project and deletes it, so it needs a migrated database: hand it the scratch one
-  # the smoke layer just created rather than letting it fall back to a sqlite file that has no schema.
-  CANDIDATE="$LIVE" CONCORD_E2E_DSN="$CONCORD_TEST_DSN" run_probe probe_pages python3 scripts/parity/probe_pages.py
+  # probe_pages is NOT here, and the reason is structural: it seeds a hostile-named project and asserts the page it
+  # lands on, so the instance under test must read the database the probe writes to. A live URL reads the production
+  # database, seeding that is what `refuse_a_non_test_database` exists to stop, and pointing the probe's DSN at a
+  # scratch database makes it assert a page the live server cannot serve. It runs in the smoke layer below, against
+  # the binary and database the gate itself owns.
   CANDIDATE="$LIVE" run_probe probe_project_segments python3 scripts/parity/probe_project_segments.py
   CANDIDATE="$LIVE" run_probe probe_requests "$PY" scripts/parity/probe_requests.py
   # The one layer that asks the policy table's own question of the running instance: does a route declared as refusing
