@@ -6077,12 +6077,10 @@ fn apply_charter_fields(charter: &mut concord_governance::Charter, body: &serde_
 async fn create_list(
     State(state): State<AppState>,
     Path(project_segment): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to create a list"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "contributor", &user).await?;
     let instance_wide = body
@@ -6342,12 +6340,10 @@ async fn set_project_visibility(
 async fn add_feature_tag(
     State(state): State<AppState>,
     Path((project_segment, feature)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to tag a feature"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "contributor", &user).await?;
     let feature_id = caller_feature(&state, &project, &feature).await?;
@@ -6413,12 +6409,10 @@ async fn remove_feature_tag(
 async fn set_feature_milestone(
     State(state): State<AppState>,
     Path((project_segment, feature)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to change the roadmap"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "maintainer", &user).await?;
     let feature_id = caller_feature(&state, &project, &feature).await?;
@@ -6778,12 +6772,10 @@ struct CreateSolutionRequest {
 async fn create_solution(
     State(state): State<AppState>,
     Path((project_segment, feature)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<CreateSolutionRequest>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to file a solution"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     let feature_id = caller_feature(&state, &project, &feature).await?;
     let new = concord_db::solution_writes::NewSolution {
@@ -7278,11 +7270,9 @@ async fn list_invites(
 async fn revoke_invite(
     State(state): State<AppState>,
     Path((project_segment, invite)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("revoking an invite needs an account"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "contributor", &user)
         .await
@@ -7574,12 +7564,10 @@ struct PutDocumentRequest {
 async fn put_document(
     State(state): State<AppState>,
     Path(project_segment): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<PutDocumentRequest>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("writing a document needs an account"))?;
     // Visibility before anything is read or written: a private project's spec is exactly the content that must not leak, and
     // this handler resolves its project by slug rather than through a project-id guard.
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
@@ -7612,11 +7600,9 @@ async fn put_document(
 async fn delete_document(
     State(state): State<AppState>,
     Path((project_segment, document)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("deleting a document needs an account"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "maintainer", &user).await?;
     let Ok(id) = document.parse::<i64>() else {
@@ -9244,12 +9230,9 @@ async fn contributor_somewhere(state: &AppState, user_id: i64) -> Result<bool, A
 async fn consent_taxonomy_proposal(
     State(state): State<AppState>,
     Path(proposal_id): Path<i64>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<(StatusCode, Json<Value>), ApiError> {
     use concord_db::taxonomy::Refused;
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     match concord_db::taxonomy::consent(&state.pool, proposal_id, user.id).await {
         Ok(consented) => Ok((
             StatusCode::OK,
