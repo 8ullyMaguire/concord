@@ -12,6 +12,11 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-16 — merge, vote, metrics and join move behind the gate** (step 1b, seventh slice, six routes). Each answered an
+  anonymous caller `401` from its handler; all six rows are enforced (13→19) and the handlers take `Extension<User>`.
+  `require_role` and charter checks stay in the handlers, D-6's uniform text applies, and the structural test now pins 18
+  handlers. Another batch so one build covers six conversions.
+
 - **2026-11-16 — five private mutations move behind the gate in one commit** (step 1b, sixth slice). Five anonymous probes
   with a consent cookie each returned `401` from their handler: `redeem_invite` (`sign in to redeem an invite`),
   `curation_vote`, `set_project_visibility`, `set_criterion_active`, `set_intake_mode`. Their rows are enforced (8→13) and

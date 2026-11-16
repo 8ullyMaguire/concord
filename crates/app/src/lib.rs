@@ -6289,12 +6289,10 @@ async fn vote_list_entry(
 async fn set_project_metrics(
     State(state): State<AppState>,
     Path(slug): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to set metrics"))?;
     let project = readable_project_segment(&state, &slug, &headers).await?;
     require_role(&state, &project, "maintainer", &user).await?;
     let number = |key: &str| body.get(key).and_then(serde_json::Value::as_i64).unwrap_or_default();
@@ -7199,12 +7197,10 @@ struct CastFeatureVoteRequest {
 async fn cast_feature_vote(
     State(state): State<AppState>,
     Path((project_segment, feature)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
     Json(body): Json<CastFeatureVoteRequest>,
 ) -> Result<impl axum::response::IntoResponse, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to vote"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     let feature_id = caller_feature(&state, &project, &feature).await?;
     let charter = concord_db::charter::charter(&state.pool, project.id)
@@ -7548,11 +7544,9 @@ async fn create_merge_request(
 async fn approve_merge(
     State(state): State<AppState>,
     Path((project_segment, merge)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     let mr_id = merge_id(&state, &project, &merge).await?;
     concord_db::merge_writes::approve(&state.pool, mr_id, user.id)
@@ -7576,11 +7570,9 @@ async fn approve_merge(
 async fn execute_merge(
     State(state): State<AppState>,
     Path((project_segment, merge)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "contributor", &user).await?;
     let mr_id = merge_id(&state, &project, &merge).await?;
@@ -7594,11 +7586,9 @@ async fn execute_merge(
 async fn reject_merge(
     State(state): State<AppState>,
     Path((project_segment, merge)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "contributor", &user).await?;
     let mr_id = merge_id(&state, &project, &merge).await?;
@@ -8621,11 +8611,9 @@ async fn list_work_items(
 async fn join_project(
     State(state): State<AppState>,
     Path(project_segment): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     concord_db::feed_reads::join(&state.pool, project.id, user.id)
         .await

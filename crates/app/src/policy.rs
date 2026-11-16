@@ -241,20 +241,20 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/projects/{slug}/features/{feature}/tags", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/features/{feature}/tags", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/features/{feature}/tags/remove", Policy::Session, false),
-    ("POST", "/api/v1/projects/{slug}/features/{feature}/vote", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/features/{feature}/vote", Policy::Session, true),
     ("PUT", "/api/v1/projects/{slug}/features/{feature}/work-item", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/invites", Policy::Session, true),
     ("POST", "/api/v1/projects/{slug}/invites", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/invites/{invite}/revoke", Policy::Session, false),
-    ("POST", "/api/v1/projects/{slug}/join", Policy::Session, false),
+    ("POST", "/api/v1/projects/{slug}/join", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/languages", Policy::Optional, false),
     ("PUT", "/api/v1/projects/{slug}/languages", Policy::Session, false),
     ("GET", "/api/v1/projects/{slug}/merge", Policy::Optional, false),
     ("POST", "/api/v1/projects/{slug}/merge", Policy::Session, false),
-    ("PUT", "/api/v1/projects/{slug}/merge/{merge}/approve", Policy::Session, false),
-    ("PUT", "/api/v1/projects/{slug}/merge/{merge}/execute", Policy::Session, false),
-    ("PUT", "/api/v1/projects/{slug}/merge/{merge}/reject", Policy::Session, false),
-    ("PUT", "/api/v1/projects/{slug}/metrics", Policy::Session, false),
+    ("PUT", "/api/v1/projects/{slug}/merge/{merge}/approve", Policy::Session, true),
+    ("PUT", "/api/v1/projects/{slug}/merge/{merge}/execute", Policy::Session, true),
+    ("PUT", "/api/v1/projects/{slug}/merge/{merge}/reject", Policy::Session, true),
+    ("PUT", "/api/v1/projects/{slug}/metrics", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/milestones", Policy::Public, false),
     ("POST", "/api/v1/projects/{slug}/milestones", Policy::Session, false),
     ("POST", "/api/v1/projects/{slug}/moderation/arena/remove", Policy::Session, false),
@@ -314,7 +314,7 @@ mod tests {
 
     /// 5 on 2026-11-15 (four routes that already refused a stranger, plus the admin ledger that did not); 6 on
     /// 2026-11-16 when `POST /api/v1/projects` moved its refusal into the gate. It may grow, never shrink.
-    const ENFORCED: usize = 13;
+    const ENFORCED: usize = 19;
 
     /// The source with string literals and comments replaced by spaces, so a brace or a paren inside either
     /// cannot move the scan. Same length as the input, so an index means the same thing in both.
@@ -602,6 +602,12 @@ mod tests {
             "set_project_visibility",
             "set_criterion_active",
             "set_intake_mode",
+            "approve_merge",
+            "execute_merge",
+            "reject_merge",
+            "cast_feature_vote",
+            "set_project_metrics",
+            "join_project",
             "auth_me",
             "list_notifications",
             "list_invites",
