@@ -17,6 +17,13 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   deserialisation with `422 missing field title` before the identity check). All four rows are enforced (19→23), the
   handlers take `Extension<User>`, and maintainer/contributor checks stay. D-6 applies; 22 handlers pinned.
 
+  ```
+  cargo test -p concord-app --lib policy: 7 passed; 0 failed
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live 8cbdb27: four routes anon 401 · guest charter 403 maintainer · invites 404 visibility
+                walk 0 holes · headers PASS · served JS PASS · CI 43940504648 success
+  ```
+
 - **2026-11-16 — merge, vote, metrics and join move behind the gate** (step 1b, seventh slice, six routes). Each answered an
   anonymous caller `401` from its handler; all six rows are enforced (13→19) and the handlers take `Extension<User>`.
   `require_role` and charter checks stay in the handlers, D-6's uniform text applies, and the structural test now pins 18
