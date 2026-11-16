@@ -143,6 +143,12 @@ $ curl -o /dev/null -w '%{http_code}' …/api/v1/search         -> 200   (unchan
 $ curl -o /dev/null -w '%{http_code}' …/api/v1/projects       -> 200   (unchanged)
 ```
 
+**Two probe notes.** `scripts/parity/probe_pages.py` died locally in its own cleanup (`sqlite3.OperationalError: no such table:
+projects`) — it wants a scratch database this box has no file for, which is a pre-existing harness gap and not this change. What
+was checked instead, against the deployed instance, all `200`: `/`, `/projects`, `/projects/suki`, `/search`, `/stats`, `/scout`,
+`/finder`, `/taxonomy`, `/curation`, `/contribute`, `/projects/new`, `/healthz`, `/feed.xml`, `/atom.xml`,
+`/projects/suki/board/feed.xml`, `/projects/suki/consensus/atom.xml`.
+
 **Deploy note for the next session.** `make deploy`'s `scp "$(BIN)" thinkcentre:…` fails with `scp: Connection closed` when the
 recipe runs *on* thinkcentre: the host copies to itself through sshd, and under load sshd drops it. The three steps work
 locally — `cp target/release/concord-cli ~/concord-deploy/concord-rs.new`, `systemctl --user stop concord-rs.service`,
