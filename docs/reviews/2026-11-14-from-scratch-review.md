@@ -17,6 +17,13 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   arena remove and claim release all refused anonymous callers; three needed valid bodies first. Rows enforced (85→95),
   handlers take `Extension<User>`, 94 pinned, `bearer_user` 51→41. Six no longer take `HeaderMap`.
 
+  ```
+  cargo test -p concord-app --lib policy: 7 passed; 0 failed
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live 1543ff7: ten routes anon 401 · guest merge 403 maintainer
+                walk 0 holes · headers PASS · served JS PASS · CI 43981319524 success
+  ```
+
 - **2026-11-16 — solution, list, document and taxonomy writes enforced** (step 1b, eighteenth slice, eight routes). All
   eight answered anonymous `401`; rows enforced (77→85), handlers take `Extension<User>`, 84 pinned, `bearer_user` 59→51.
   `consent_taxonomy_proposal` no longer takes `HeaderMap`.
