@@ -17,6 +17,13 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   contributor/visibility checks stay. Milestone and theme routes also refuse anonymous but resolve identity through shared
   helpers; D-8 records why they are not flipped in this batch.
 
+  ```
+  cargo test -p concord-app --lib policy: 7 passed; 0 failed
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live 07bab00: two routes anon 401 · guest tags 403 contributor
+                walk 0 holes · headers PASS · served JS PASS · CI 43944935662 success
+  ```
+
 - **2026-11-16 — charter, features, invites and consensus move behind the gate** (step 1b, eighth slice, four routes).
   Anonymous probes with a consent cookie returned `401` from their handlers; `features` needed a valid body (`{}` failed
   deserialisation with `422 missing field title` before the identity check). All four rows are enforced (19→23), the
