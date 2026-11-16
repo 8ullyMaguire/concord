@@ -19,6 +19,13 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   During the edit a broad `replace_all` also added an extension param to `vote_comment`; that was reverted before test,
   and `delete_comment`'s old lookup was removed. `bearer_user` 96→91.
 
+  ```
+  cargo test -p concord-app --lib policy: 7 passed; 0 failed
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live c1411d1: five routes anon 401 · guest criterion 403 maintainer
+                walk 0 holes · headers PASS · served JS PASS · CI 43959295298 success
+  ```
+
 - **2026-11-16 — D-8 closes with the strategy family** (step 1b, eleventh slice, nine routes). All nine
   `strategy_project` callers — three list reads, two proposals, two consents, two withdrawals — answered an anonymous
   caller `401`. The helper now takes the gate's `&User` and keeps project-existence plus member-role checks; the handlers
