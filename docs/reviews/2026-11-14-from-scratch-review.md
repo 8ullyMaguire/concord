@@ -8,6 +8,26 @@ Every claim below is a measurement, and the command that produced it is in the s
 
 ## Work log
 
+- **2026-11-16 — authorization became a table, and the table was measured before it was enforced** (step 1a of
+  `docs/plans/refactor-roadmap.md`). `crates/app/src/policy.rs` now declares `(method, path, policy, enforced)` for every
+  `/api/…` route, `policy_for` matches the path axum registered exactly, and `auth_gate` answers **500** for a route with no
+  row — the defect, closed: a route can no longer boot without somebody deciding who may call it. `scripts/parity/route_policies.py`
+  derives the table from the handlers and compares it with the router in `gate.sh`:
+
+  ```
+  api routes registered: 203
+  routes with a declared policy: 203
+  routes with no policy: 0
+  route_policies: PASS — every registered route declares who may call it
+  ```
+
+  The derivation said 120 routes need a session. Measured against the live instance with no token, **22 of the 34 looks-like-a-session
+  reads answered 200** — `/api/v1/search`, `projects/{slug}/tags`, `{project_id}/lists`, `documents/kinds`. A table like that is a
+  description of the derivation's confidence, not of the site's behaviour, so enforcement became a per-row column and started at the
+  five rows the measurement was unambiguous about: the four reads that already answered `401` (`auth/me`, `notifications`,
+  `projects/{slug}/invites`, `projects/{slug}/votes/next`) and `GET /api/v1/admin-ledger`, which answered **`200` to an anonymous
+  caller** — the one hole of 216. The enforced count is a ratchet in the tests (may grow, never shrink).
+
 - **2026-11-15 — the critique turned on the code, and the numbers were worse than the prose.** Measured on `64cb134`:
   `crates/app/src/lib.rs` is **10,035 lines** holding 179 routes, 219 functions and 526 `concord_db::` call sites, tested by
   **4 unit tests**; `crates/domain` is one doc comment; the frontend is 12,477 lines across 42 files with no build; `crates/db/sql`

@@ -135,6 +135,11 @@ else
   bad "an API path ends in a stray slash (the server answers 404)"
 fi
 
+# A route with no declared policy is a route nobody decided about: authentication used to be a line inside each
+# handler (122 of them), so a new route without it compiled, booted, answered, and nothing failed. The check is a
+# unit test (`crates/app/src/policy.rs` parses `router()` out of its own source with `include_str!`), so it is
+# enforced by the unit layer below rather than by a second script here — one authority, not two.
+
 say "1. unit tests"
 # `--no-fail-fast` on purpose: one red crate must not hide the four behind it, and the per-crate counts are printed because the number to
 # distrust is the one that says everything ran.
@@ -214,6 +219,10 @@ if [ -n "$LIVE" ]; then
   CANDIDATE="$LIVE" run_probe probe_pages python3 scripts/parity/probe_pages.py
   CANDIDATE="$LIVE" run_probe probe_project_segments python3 scripts/parity/probe_project_segments.py
   CANDIDATE="$LIVE" run_probe probe_requests "$PY" scripts/parity/probe_requests.py
+  # The one layer that asks the policy table's own question of the running instance: does a route declared as refusing
+  # strangers actually refuse one, and does a route declared public still answer? A table nobody walks is a table that
+  # describes the code's shape rather than the deployment's behaviour, which is how step 1 nearly 401'd the project page.
+  run_probe anonymous_walk python3 scripts/parity/anonymous_walk.py --candidate "$LIVE"
 
   # The suites the gate never ran, which is why four of them were found dead on arrival (they had been erroring in setup
   # against SQLite since cutover and nothing that called itself "the gate" ever executed them). Each starts its own candidate

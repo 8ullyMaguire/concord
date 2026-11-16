@@ -18,6 +18,7 @@ use axum::{
 use serde::Deserialize;
 pub mod feeds;
 pub mod finder;
+pub mod policy;
 
 use polaris_core::ApiError;
 use serde_json::{json, Value};
@@ -612,6 +613,13 @@ pub fn router(state: AppState) -> Router {
         // The page routes (row 12). Merged before the gate so a GET is not asked for consent — the gate refuses mutations, and a
         // reader who has not accepted the notice can still read.
         .merge(concord_web::router::<AppState>())
+        // Inside the interaction gate, so an anonymous mutation still gets the consent refusal it gets today and
+        // then the auth refusal, in that order. Authentication is a property of a route, declared in `policy` and
+        // enforced here rather than remembered in 122 handler bodies.
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            auth_gate,
+        ))
         .layer(axum::middleware::from_fn_with_state(
             state.clone(),
             interaction_gate,
@@ -8169,6 +8177,69 @@ fn coded(status: StatusCode, code: &str, message: &str) -> axum::response::Respo
 /// visitor mid-session and keep serving that visitor forever, which is exactly the state the cap exists to end. A guest is the
 /// only identity that can be refused this way, and a store failure while checking fails CLOSED for a guest — an instance that
 /// cannot say how big it is must not keep taking nameless contributions.
+/// Authentication as a property of the route, not a line in the handler.
+///
+/// The route's own declaration is the input (`policy::policy_for`), matched against the path **axum registered**
+/// — `{slug}` and all — so a caller cannot reach a policy by inventing a path. Three outcomes:
+///
+/// * a page route (not `/api/…`): pass. Pages are `concord_web`'s and decide their own visibility;
+/// * a declared route: pass when the policy is `Public`; for `Session`/`Account`/`Operator` require a resolvable
+///   identity, refusing an anonymous caller with the same envelope and message the handlers use;
+/// * an undeclared route: `500`, because a route nobody declared is a deployment bug and silence is what this
+///   layer exists to end. `scripts/parity/route_policies.py` makes this unreachable in a passing build.
+///
+/// What it deliberately does **not** do yet: refuse a guest on an `Account` route, or a non-operator on an
+/// `Operator` one. Those two refusals live inside handlers today, and moving them is step 1b — a change that
+/// wants the e2e suites watching, because it moves a refusal from after the body is read to before it.
+async fn auth_gate(
+    State(state): State<AppState>,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    // No `MatchedPath` means axum matched nothing and the request is headed for the fallback's 404. That is a caller's
+    // mistake, not a missing declaration, and turning it into a 500 would replace every unknown-URL 404 with a bug.
+    let Some(matched) = request.extensions().get::<axum::extract::MatchedPath>() else {
+        return next.run(request).await;
+    };
+    let route = matched.as_str().to_string();
+    if !route.starts_with("/api/") {
+        return next.run(request).await;
+    }
+    let method = request.method().as_str().to_uppercase();
+    let Some((policy, enforced)) = policy::policy_for(&method, &route) else {
+        tracing::error!(%method, %route, "no policy declared for this route");
+        return coded(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            "route_declares_no_policy",
+            "this route declares no policy; the deployment is incomplete",
+        )
+        .into_response();
+    };
+    // Declared is not the same as enforced. Every row says who may call the route; `enforced` says whether this
+    // layer is the one refusing yet. It started at the five routes the live instance was measured on — four that
+    // already answered 401 to an anonymous caller and one, the admin ledger, that answered 200. Widening it is
+    // step 1b: it moves a refusal from inside a handler to in front of it, which changes the message and what
+    // the body costs, so each surface flips with the e2e suites watching. The count is a ratchet in policy.rs.
+    if !enforced || !policy.requires_identity() {
+        return next.run(request).await;
+    }
+    match acting_user(&state, request.headers()).await {
+        Ok(Some(_user)) => next.run(request).await,
+        Ok(None) => ApiError::unauthenticated("authentication required").into_response(),
+        Err(error) => {
+            // A store failure is not "you are not signed in". Report it as what it is rather than turning a database
+            // blip into an authentication failure that the client would answer by logging the user out.
+            tracing::warn!(error = ?error, %route, "identity could not be resolved");
+            coded(
+                StatusCode::SERVICE_UNAVAILABLE,
+                "identity_unavailable",
+                "this instance could not check who is calling; try again",
+            )
+            .into_response()
+        }
+    }
+}
+
 async fn interaction_gate(
     State(state): State<AppState>,
     request: axum::extract::Request,

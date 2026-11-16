@@ -84,6 +84,42 @@ Expected: `policy: 179 routes, 179 policies, 0 unclassified` and `api_surface: 1
 
 **Done when** `grep -c 'bearer_user' crates/app/src/lib.rs` is 0 and the e2e suite is green.
 
+**Landed 2026-11-16 — step 1a: the table, the checker and the gate (this is the half that cannot break the site).**
+
+`crates/app/src/policy.rs` exists, with a different vocabulary than the sketch above and for a measured reason:
+`Policy { Public, Optional, Session, Account, Operator }` and **`ROUTES` as `(method, path, policy, enforced)`**.
+`policy_for` matches the path axum registered, exactly — no prefix rule, so a route cannot inherit a neighbour's
+policy — and `auth_gate` in `lib.rs` reads it: a route with no row answers `500` naming the problem, which is the
+defect this step exists for. `scripts/parity/route_policies.py` derives the table from the handlers (following one
+level of the context helpers this tree uses), prints it, and compares it with the router on every gate run:
+
+```
+api routes registered: 203
+page routes (server-rendered, outside the API policy table): 15
+routes with a declared policy: 203
+routes with no policy: 0
+policies for routes that no longer exist: 0
+route_policies: PASS — every registered route declares who may call it
+```
+
+**Why `enforced` is a column.** The derivation is a description of what each handler does, and on 2026-11-15 it was
+**measured against the live instance**: the 34 routes whose handlers looked like they needed a session were called
+anonymously, and **22 answered 200**. Turning that table into enforcement in one deploy would have 401'd the project
+page's own reads. So enforcement is per row and began where the measurement was unambiguous — the four reads that
+already answered `401` (`auth/me`, `notifications`, `projects/{slug}/invites`, `projects/{slug}/votes/next`) and
+`GET /api/v1/admin-ledger`, which answered **`200` to an anonymous caller**: the one hole in the 216 routes. The
+count of enforced rows is a ratchet in `policy.rs`'s tests: it may grow, never shrink.
+
+**Step 1b, what is left in this step** (in this order, each with the suites watching):
+
+1. Flip enforcement per surface, and 401 before the body is read: the 120 `Session` rows first, then `Account`
+   (guests) and `Operator` (the ledger's role check, not just an identity).
+2. The extractor: handlers take the policy instead of calling `bearer_user`, so `grep -c 'bearer_user'
+   crates/app/src/lib.rs` reaches 0. The table makes this mechanical — the policy is already written down per route.
+3. `python3 tests/e2e/api_surface.py --anonymous` (the roadmap's original verification) still does not exist; until
+   it does, the enforcement ratchet is the measurement, and the corpus replay plus the page probes catch a read that
+   starts refusing strangers.
+
 ## Step 2 — the security baseline (two days, user-visible)
 
 **Why.** No CSP, no frame options, no rate limiting anywhere, session token in `localStorage`, unlimited login attempts.
@@ -232,7 +268,7 @@ CONCORD_E2E_CANDIDATE=$PWD/target/debug/concord-cli scripts/gate.sh --live https
 | step | what | status |
 |---|---|---|
 | 0 | the review lives in the repo | **done 2026-11-15** |
-| 1 | authorization as a table + extractors + startup assertion | open — highest value |
+| 1 | authorization as a table + extractors + startup assertion | **1a done 2026-11-16** (table 203/203, gate, 5 rows enforced); 1b = flip per surface, extractor, `bearer_user` → 0 |
 | 2 | security baseline (cookie, CSP, rate limit, renderer) | open — cheapest risk removed |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
@@ -241,6 +277,15 @@ CONCORD_E2E_CANDIDATE=$PWD/target/debug/concord-cli scripts/gate.sh --live https
 | 7 | domain crate for stage / consensus / claim; `query!` on new SQL | open |
 | 8 | publish or delete the four dead vendored crates | open |
 | 9 | wire the 21 unrun e2e suites (`RECORDED_UNRUN` → 0) | open — proves steps 1, 2 and 5 from outside |
+
+## Decisions taken
+
+* **D-1 (step 1, 2026-11-15): authorization is a table, checked by a test in the same crate, enforced by a gate.**
+  ADR `docs/adr/0015-a-route-declares-who-may-call-it.md`. Rejected: extractor-only (no queryable authority),
+  a hard-coded public list (edited in a hurry), runtime derivation from handler bodies (the disease), and a second
+  Python checker beside the Rust test (two answers to disagree about). The gate enforces **identity** only; depth is
+  step 1b. Two defects the audit found in itself are recorded there, including 38 mutating routes whose methods its
+  parser could not see.
 
 ## Decisions proposed (not taken)
 
