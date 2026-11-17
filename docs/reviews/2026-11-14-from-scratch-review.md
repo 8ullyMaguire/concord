@@ -15,6 +15,11 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
 - **2026-11-17 — step 2b twenty-seventh slice: `curation.js` has no string sink.** The list refresh clear became
   `replaceChildren()`; `check_dom_curation.js` RED/GREEN covered hostile prose, append/refresh, vote, undo and both
   failure paths. Census 8→7 (1 allowlisted).
+  ```
+  check_dom_curation: PASS — hostile prose is text, refresh clears, votes and undo kept
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS · sinks 7 · allowlisted 1
+  live d76a47e: served assets PASS checker · walk 0 holes · CI 44050456868 success
+  ```
 
 - **2026-11-17 — step 2b twenty-sixth slice: `scout.js` and `merge.js` have no string sinks.** Scout clears became
   `replaceChildren()`; merge rows, gate cell, create form and failure state are `el()` trees. Combined checker RED/GREEN
