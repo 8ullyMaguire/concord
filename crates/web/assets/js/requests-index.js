@@ -1,27 +1,27 @@
-// A project's open and settled requests (17).
+// A project's open and settled requests (§17).
 //
 // THE INDEX, and the thing the Requests tab needs. Until this file existed the tab
 // linked to /projects/{slug}/requests, which had no route: the ONLY request page was
 // the DETAIL one at /projects/{slug}/requests/{id}, so there was no way to discover a
 // request id at all -- you could reach a request by knowing its number, and by no other
-// means. The board showed tasks; the request board showed nothing.
+// means.
 //
-// Instance-wide requests (17: a request with no project is open to the whole instance)
-// are INCLUDED, for the same reason lists include instance-wide ones: a question
-// everyone may answer belongs in everyone's view of it. Labelled, so the reader knows
-// the comparison is not confined to this project.
+// Instance-wide requests (§17: a request with no project is open to the whole instance)
+// are INCLUDED and labelled, so the reader knows the comparison is not confined to
+// this project.
+//
+// Rendering (step 2b): `el()` nodes only. Titles, statuses and hrefs are text or
+// setAttribute values; no HTML string sink.
 
 (function () {
   "use strict";
+
+  var el = window.ConcordDom.el;
 
   var root = document.getElementById("requests-root");
   if (!root) return;
   var slugEl = document.querySelector("[data-slug]");
   var slug = slugEl ? slugEl.textContent.trim() : "";
-
-  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it. This file's copy replaced the same
-  // five characters in its own way; a single pass over a character class cannot disagree with another page about which are dangerous.
-  var esc = window.ConcordEscape.esc;
 
   function ago(unix) {
     if (!unix) return "";
@@ -33,9 +33,8 @@
   }
 
   // project_id is omitempty in Go, so an instance-wide request has NO KEY rather than
-  // 0. Reading r.project_id === 0 would therefore never be true and every shared
-  // request would be labelled as this project's own -- the same class of bug as
-  // lists.title/name, one layer down: a Go sentinel that the JSON does not carry.
+  // 0. Reading r.project_id === 0 would never be true and every shared request would
+  // be labelled as this project's own.
   function isInstanceWide(r) {
     return r.project_id === undefined || r.project_id === null || r.project_id === 0;
   }
@@ -44,23 +43,22 @@
     var href = "/projects/" + encodeURIComponent(slug) + "/requests/" +
       encodeURIComponent(r.id);
     var settled = r.status !== "open";
-    return '<article class="card' + (settled ? " is-muted" : "") + '">' +
-      '<h3><a href="' + href + '">' + esc(r.title) + "</a></h3>" +
-      (isInstanceWide(r)
-        ? '<p class="card-meta"><span class="badge badge-instance">instance-wide</span></p>'
-        : "") +
-      '<p class="card-meta">' +
-      '<span class="badge ' +
-      (r.status === "open" ? "badge-blue" : "badge-slate") + '">' +
-      esc(r.status) + "</span>" +
-      // 17: the accepted-fit badge is set only by the request's author, and its
-      // presence is the only thing that distinguishes a settled request from a stale
-      // one -- so a settled request with no badge reads as unresolved.
-      (r.accepted_answer_id
-        ? '<span class="badge badge-green">answer accepted</span>'
-        : (settled ? '<span class="badge badge-slate">no accepted answer</span>' : "")) +
-      "<span>asked " + ago(r.created_at) + "</span>" +
-      "</p></article>";
+    return el("article", { class: "card" + (settled ? " is-muted" : "") }, [
+      el("h3", {}, el("a", { href: href }, r.title)),
+      isInstanceWide(r)
+        ? el("p", { class: "card-meta" },
+          el("span", { class: "badge badge-instance" }, "instance-wide"))
+        : null,
+      el("p", { class: "card-meta" }, [
+        el("span", { class: "badge " + (r.status === "open" ? "badge-blue" : "badge-slate") }, r.status),
+        // §17: the accepted-fit badge is set only by the request's author, and its
+        // presence is the only thing that distinguishes a settled request from a stale one.
+        r.accepted_answer_id
+          ? el("span", { class: "badge badge-green" }, "answer accepted")
+          : (settled ? el("span", { class: "badge badge-slate" }, "no accepted answer") : null),
+        el("span", {}, "asked " + ago(r.created_at))
+      ])
+    ]);
   }
 
   // Open first, then newest. A request board whose settled entries sit above its open
@@ -74,27 +72,25 @@
     });
   }
 
+  function group(label, list) {
+    return el("section", { class: "entry-group" }, [
+      el("h3", { class: "entry-category" }, [label + " ", el("span", { class: "count" }, list.length)]),
+      el("div", { class: "grid-responsive-2" }, list.map(card))
+    ]);
+  }
+
   function sections(list) {
     var open = list.filter(function (r) { return r.status === "open"; });
     var rest = list.filter(function (r) { return r.status !== "open"; });
-    var out = "";
-    if (open.length) {
-      out += '<section class="entry-group"><h3 class="entry-category">open ' +
-        '<span class="count">' + open.length + "</span></h3>" +
-        '<div class="grid-responsive-2">' + open.map(card).join("") + "</div></section>";
-    }
-    if (rest.length) {
-      out += '<section class="entry-group"><h3 class="entry-category">settled ' +
-        '<span class="count">' + rest.length + "</span></h3>" +
-        '<div class="grid-responsive-2">' + rest.map(card).join("") + "</div></section>";
-    }
-    return out;
+    return [
+      open.length ? group("open", open) : null,
+      rest.length ? group("settled", rest) : null
+    ];
   }
 
   function load() {
     // BOTH fetches: a project request index that hid instance-wide requests would hide
-    // exactly the questions that most need an answer. 404 is not an error here --
-    // handleListRequests answers [] when the project has none.
+    // exactly the questions that most need an answer.
     Promise.all([
       window.ConcordApi.get("/api/v1/projects/" + encodeURIComponent(slug) + "/requests").catch(function () { return []; }),
       window.ConcordApi.get("/api/v1/requests").catch(function () { return []; })
@@ -111,19 +107,20 @@
         });
         root.removeAttribute("aria-busy");
         if (!all.length) {
-          root.innerHTML = '<div class="empty-state">' +
-            '<div class="empty-state-icon">\u{1F4CB}</div>' +
-            '<p class="empty-state-title">No requests here</p>' +
-            '<p class="empty-state-description">A request states a need with its ' +
-            "constraints, so answers can be compared rather than argued about.</p></div>";
+          root.replaceChildren(el("div", { class: "empty-state" }, [
+            el("div", { class: "empty-state-icon" }, "📋"),
+            el("p", { class: "empty-state-title" }, "No requests here"),
+            el("p", { class: "empty-state-description" }, "A request states a need with its " +
+              "constraints, so answers can be compared rather than argued about.")
+          ]));
           return;
         }
-        root.innerHTML = sections(order(all));
+        root.replaceChildren.apply(root, sections(order(all)));
       })
       .catch(function () {
         root.removeAttribute("aria-busy");
-        root.innerHTML = '<div class="empty-state">' +
-          '<p class="empty-state-title">Requests could not be loaded.</p></div>';
+        root.replaceChildren(el("div", { class: "empty-state" },
+          el("p", { class: "empty-state-title" }, "Requests could not be loaded.")));
       });
   }
 
