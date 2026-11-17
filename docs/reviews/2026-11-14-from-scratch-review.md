@@ -16,6 +16,11 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   skeleton and error states are `el()` trees; the single Markdown sink moved into `ConcordMarkdown.renderInto` (D-15).
   `check_dom_documents.js` RED mutation and GREEN restore covered hostile fields, search and the large-document path.
   Census 49→41 (1 allowlisted).
+  ```
+  check_dom_documents: PASS — hostile fields are text, one allowlisted markdown sink
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS · sinks 41 · allowlisted 1
+  live 26be342: served assets PASS checker · walk 0 holes · CI 44025387898 success
+  ```
 
 - **2026-11-17 — step 2b eighteenth slice: `project-arena.js` has no string sink.** Pair form, vote log, verification
   verdict and all four note states are `el()` trees; `ConcordArena.controls()` stays a string (D-14, project.js
