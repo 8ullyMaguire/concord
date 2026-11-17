@@ -80,7 +80,11 @@ def routes() -> list[tuple[str, str, str]]:
     """[(method, path, handler)] parsed from router()'s `.route("…", handlers)` calls."""
     source = APP.read_text()
     start = source.index("pub fn router(")
-    end = source.index("async fn list_projects(", start)
+    # D-40: the old end marker moved into api/catalog.rs; find the first
+    # function after router() instead so any pure move stays scanner-neutral.
+    tail = re.search(r"\n(?:pub\(crate\) )?(?:async )?fn ", source[start:])
+    assert tail is not None, "no handler found after router()"
+    end = start + tail.start()
     body = source[start:end]
     # Step 3: module-owned routes live in crates/app/src/api/*.rs, not in router()'s body.
     for path in sorted((APP_SRC / "api").glob("*.rs")):

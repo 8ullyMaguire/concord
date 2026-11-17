@@ -306,8 +306,7 @@ pub fn router(state: AppState) -> Router {
             get(project_lists).post(create_list),
         )
         .route("/api/v1/projects/{project_id}/lists/", get(project_lists))
-        .route("/api/v1/projects", get(list_projects))
-        .route("/api/v1/projects/{slug}", get(get_project))
+        .merge(api::catalog::routes())
         .merge(api::board::routes())
         .route("/api/v1/auth/register", post(register))
         .route("/api/v1/projects", post(create_project))
@@ -546,26 +545,6 @@ pub fn router(state: AppState) -> Router {
         // database round trip, and a refusal must not depend on who is calling.
         .layer(axum::middleware::from_fn_with_state(state.clone(), rate::rate_gate))
         .with_state(state)
-}
-
-async fn list_projects(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
-    let projects = concord_db::projects::list_projects(&state.pool)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::to_value(projects).map_err(internal)?))
-}
-
-async fn get_project(
-    State(state): State<AppState>,
-    Path(slug): Path<String>,
-) -> Result<Json<Value>, ApiError> {
-    match concord_db::projects::project_by_slug(&state.pool, &slug)
-        .await
-        .map_err(internal)?
-    {
-        Some(project) => Ok(Json(serde_json::to_value(project).map_err(internal)?)),
-        None => Err(ApiError::not_found(format!("project {slug}"))),
-    }
 }
 
 /// Any other path: the envelope, with a 404. `/api/**` is never a shell and neither is anything else

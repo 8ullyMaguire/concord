@@ -23,3 +23,4 @@ pub mod taxonomy;
 pub mod ops_writes;
 pub mod forgejo_webhook;
 pub mod scout;
+pub mod catalog;

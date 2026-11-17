@@ -650,6 +650,15 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-40 (step 3, 2026-11-17): scanners must not use a handler name as a structural boundary.**
+  Moving `list_projects` into `api/catalog.rs` made route_policies.py fail with `ValueError: substring not found` at
+  `source.index("async fn list_projects(", start)` — the scanner had used the first handler as router()'s end marker.
+  Fixed by searching for the first function after `router()` instead. Proven positively: the scanner now parses all three
+  method routes on `/projects` (`POST create_project`, `GET list_projects`, `GET get_project`) and reports
+  `routes with a declared policy: 203`, `routes with no policy: 0`, `route_policies: PASS`.
+  `api/catalog.rs` owns the two catalogue reads (20 lines; `lib.rs` 6,170 -> 6,149); POST creation stays in `lib.rs` and axum
+  merges the methods (D-20). Policy `7 passed; 0 failed`, replay `0 disagreed of 16 checked, 5 skipped`.
+
 * **D-39 (step 3, 2026-11-17): a section that ends the file can move whole.**
   api/scout.rs owns scout_report, apply_coverage and ScoutQuery (149 lines); lib.rs 6319 -> 6170. Coverage application is
   not a separate resource here — it is a private helper called only by the report. Compiler-named imports (State, bearer_user)
