@@ -12,6 +12,11 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 2b nineteenth slice: `documents.js` has no string sink.** Rail, list, reader, TOC, lazy sections,
+  skeleton and error states are `el()` trees; the single Markdown sink moved into `ConcordMarkdown.renderInto` (D-15).
+  `check_dom_documents.js` RED mutation and GREEN restore covered hostile fields, search and the large-document path.
+  Census 49→41 (1 allowlisted).
+
 - **2026-11-17 — step 2b eighteenth slice: `project-arena.js` has no string sink.** Pair form, vote log, verification
   verdict and all four note states are `el()` trees; `ConcordArena.controls()` stays a string (D-14, project.js
   concatenation). `check_dom_arena.js` RED mutation and GREEN restore covered hostile fields, recompute and refusals.

@@ -158,6 +158,7 @@ if command -v node >/dev/null 2>&1; then
     tail -1 "$SCRATCH/dom-criteria.log" | sed 's/^/js: /'
     # Count write/call syntax, not the word in a comment: the census is a ratchet on sinks, not on prose.
     echo "js: string sinks remaining in assets: $(grep -rhoE '\.innerHTML[[:space:]]*=|\.insertAdjacentHTML[[:space:]]*\(' crates/web/assets/js/*.js | wc -l)"
+    echo "js: allowlisted markdown sink: $(grep -cE '\.innerHTML[[:space:]]*=' crates/web/assets/js/markdown.js)"
   else
     cat "$SCRATCH/dom-criteria.log"
     bad "the criteria page regained an HTML string sink"
@@ -251,6 +252,12 @@ if command -v node >/dev/null 2>&1; then
   else
     cat "$SCRATCH/dom-arena.log"
     bad "the arena page regained an HTML string sink"
+  fi
+  if node scripts/parity/check_dom_documents.js crates/web/assets/js >"$SCRATCH/dom-documents.log" 2>&1; then
+    tail -1 "$SCRATCH/dom-documents.log" | sed 's/^/js: /'
+  else
+    cat "$SCRATCH/dom-documents.log"
+    bad "the documents page regained an HTML string sink"
   fi
 fi
 

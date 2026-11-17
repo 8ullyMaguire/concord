@@ -402,8 +402,19 @@
     });
   }
 
+  // The one allowlisted HTML sink on the frontend. Only the sanitizer itself may
+  // parse its own output into the DOM: callers pass TEXT and this function owns
+  // both the escaping (render) and the assignment, so no page can interpolate an
+  // unescaped value into an HTML string (step 2b, D-15).
+  function renderInto(node, source, opts) {
+    node.innerHTML = render(source, opts);
+    node.removeAttribute('data-markdown');
+    return node;
+  }
+
   global.ConcordMarkdown = {
     render: render,
+    renderInto: renderInto,
     escapeHTML: escapeHTML,
     safeURL: safeURL,
     // Exposed for tests, not for pages.

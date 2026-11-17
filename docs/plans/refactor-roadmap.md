@@ -446,7 +446,12 @@ Unclaimed rows are fair game.
   Rejected: returning a node from `controls()` now, which would stringify to `[object Object]` in project.js.
   **Live (`c5df26f`):** `/version` equality True; the served `/assets/js/project-arena.js` passes `check_dom_arena.js`.
   `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS, CI `44023086042` success.
-  **2b left:** the remaining 49 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  **D-15 (2026-11-17):** Markdown is the one legitimate HTML string: `ConcordMarkdown.renderInto(node, source, opts)` now
+  owns both escaping and the single `innerHTML` assignment, so callers pass TEXT and cannot interpolate into markup.
+  `documents.js` has zero sinks; the census counts the one allowlisted sink in `markdown.js`.
+  Rejected: leaving `documents.js` as an exception with two ad-hoc `innerHTML` assignments, and hand-building a DOM
+  tree from Markdown tokens, which would duplicate the sanitizer.
+  **2b left:** the remaining 41 real string sinks (1 allowlisted in markdown.js). **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
