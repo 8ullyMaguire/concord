@@ -386,7 +386,11 @@ Unclaimed rows are fair game.
   (`mount.innerHTML = '<p>mutant</p>'`) reddened it, restore → PASS. Census 112→107.
   **Live (`8ea0934`):** `/version` equality True; the served `/assets/js/comments.js` passes `check_dom_comments.js`.
   `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS, CI `44004327396` success.
-  **2b left:** the remaining 107 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  **2b eighth slice landed 2026-11-17:** `feature.js` (661 lines) lost all four sinks — every HTML builder, including
+  rating bars, coverage claims, planning panels and evidence rows, is an `el()` tree. `check_dom_feature.js` executes the
+  shipped page with hostile values from all nine reads and a hostile load error; RED mutation
+  (`root.innerHTML = '<p>mutant</p>'`) reddened it, restore → PASS. Census 107→103.
+  **2b left:** the remaining 103 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
