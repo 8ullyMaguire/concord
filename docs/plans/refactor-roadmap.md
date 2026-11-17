@@ -380,7 +380,11 @@ Unclaimed rows are fair game.
   entity values and a hostile error; RED mutation (`root.innerHTML = '<p>mutant</p>'`) reddened it, restore → PASS.
   Census 115→112. **Live (`4f6607e`):** `/version` equality True; the served `/assets/js/audit.js` passes `check_dom_audit.js`.
   `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS, CI `44002973857` success.
-  **2b left:** the remaining 112 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  **2b seventh slice landed 2026-11-17:** `comments.js` lost all five sinks — thread rows and replies, form, count,
+  fail notice and load-error are `el()` trees. `check_dom_comments.js` executes the shipped thread with hostile comment
+  fields and a hostile server refusal, and exercises the reply and failure paths; RED mutation
+  (`mount.innerHTML = '<p>mutant</p>'`) reddened it, restore → PASS. Census 112→107.
+  **2b left:** the remaining 107 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
