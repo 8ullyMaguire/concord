@@ -65,6 +65,14 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   /roadmap both answered 404 despite gate PASS. Cause: api/milestones.rs routes() was never merged into lib.rs.
   The route_policies gate was strengthened to require every routes() module to be mounted: RED unmerged: 1 - milestones,
   FAIL exit 1; after adding `.merge(api::milestones::routes())`, unmerged: 0, PASS.
+- **2026-11-17 — step 3 thirtieth module live (62982b5).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: tags 200 (0) · completeness 200 dict · languages 200 (0) · anon writes 403
+  route_policies: PASS — 30 modules, 0 unmerged
+  anonymous_walk: 0 holes · headers PASS · CI 44199542168 success
+  ```
+
 - **2026-11-17 — step 3 thirtieth pure move: api/project_settings.rs (D-48).** Four settings writes and four routes moved
   (159 lines); lib.rs 4978 -> 4810. Readers stay root-owned, GET+PUT routes move with writes. Module merged in the same
   edit; route_policies: 30 modules, 0 unmerged. Policy 7 passed; 0 failed, replay 0 disagreed of 16 checked, 5 skipped.
