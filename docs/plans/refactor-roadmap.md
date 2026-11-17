@@ -498,6 +498,9 @@ Unclaimed rows are fair game.
   rebuilt its rows, gate cell, create form and failure state as `el()` trees. One combined `check_dom_scout_merge.js`
   exercises hostile fields, gate arithmetic, approve/create writes and all failure states; RED on both files, restore → PASS.
   Census 12→8 (1 allowlisted).
+  **Live (`7319005`):** `/version` equality True (masked display checked programmatically); served `dom.js`, `scout.js`
+  and `merge.js` pass `check_dom_scout_merge.js`. `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`,
+  headers PASS, CI `44047996973` success.
   **2b left:** the remaining 8 real string sinks (1 allowlisted in markdown.js). **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
