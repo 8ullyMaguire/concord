@@ -513,8 +513,8 @@ Unclaimed rows are fair game.
   `skeleton.js` and `project.js` pass `check_dom_project.js`. `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`,
   headers PASS, CI `44054471991` success.
 
-  **2b left:** the remaining 2 real string sinks (1 allowlisted in markdown.js) — the single non-allowlisted one is
-  none — the last non-allowlisted sink is gone.
+  **2b left after the twenty-eighth slice:** 2 real sinks (1 allowlisted in markdown.js); the single non-allowlisted
+  one was `project.js`'s `render()`. The twenty-ninth slice removed it — no non-allowlisted sink remains.
 
 **2b twenty-ninth slice landed 2026-11-17 (D-16 closed):** the whole project detail page renders with `el()` trees.
   New `project-render.js` owns panels, forms, arena controls, work items and `render()`; `project.js` keeps loading,
