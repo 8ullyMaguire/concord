@@ -6,9 +6,13 @@
  *
  * The one rule that matters here: an empty answer is said out loud. No "closest project" is manufactured out of nothing, because an
  * intent router that always has a suggestion teaches people to trust a wrong one.
+ *
+ * Rendering (step 2b): el() trees only; hostile hit titles and URLs are text
+ * nodes or setAttribute values.
  */
 (function () {
   'use strict';
+  var el = window.ConcordDom.el;
 
   var input = document.getElementById('intent');
   var results = document.getElementById('intent-results');
@@ -16,10 +20,6 @@
   var status = document.getElementById('create-status');
   var timer = null;
   var lastAsked = '';
-
-  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it. This file's copy replaced the same
-  // five characters in its own way; a single pass over a character class cannot disagree with another page about which are dangerous.
-  var esc = window.ConcordEscape.esc;
 
   // The row's own link, when the server sends one: `url` is the API's answer to "where does this live", and rebuilding it from the id was
   // how a project link can silently point at a numeric id the page does not route.
@@ -35,43 +35,53 @@
   function render(answer, intent) {
     if (!results) return;
     if (!answer || answer.available === false) {
-      results.innerHTML =
-        '<p class="muted">The similarity index is not available on this instance right now, so this page cannot tell you what already ' +
-        'exists. That is a gap in the instance, not an answer about your idea.</p>';
+      results.replaceChildren(el('p', { class: 'muted' },
+        'The similarity index is not available on this instance right now, so this page cannot tell you what already ' +
+        'exists. That is a gap in the instance, not an answer about your idea.'));
       return;
     }
     var hits = answer.similar || [];
     if (!hits.length) {
-      results.innerHTML =
-        '<p class="muted">Nothing in the ' + esc(answer.kind ? 'catalogue' : 'catalogue') + ' is described the way you put it' +
-        (intent ? ' (<code>' + esc(intent) + '</code>)' : '') + '. Starting fresh may well be right — but check the ' +
-        '<a href="/search">search</a> once before you decide, because a project with a different name would not match this way.</p>';
+      results.replaceChildren(el('p', { class: 'muted' }, [
+        'Nothing in the catalogue is described the way you put it',
+        intent ? [' (', el('code', {}, intent), ')'] : null,
+        '. Starting fresh may well be right — but check the ',
+        el('a', { href: '/search' }, 'search'),
+        ' once before you decide, because a project with a different name would not match this way.'
+      ]));
       return;
     }
     var top = hits[0];
-    var html = '<p><strong>' + hits.length + (hits.length === 1 ? ' project already matches' : ' projects already match') +
-      '</strong> — the closest is <a href="' + esc(href(top)) + '">' + esc(top.title || top.entity_id) + '</a>';
-    if (typeof top.score === 'number') html += ' <span class="muted">(' + top.score.toFixed(2) + ')</span>';
-    html += '.</p>';
+    var children = [
+      el('p', {}, [
+        el('strong', {}, hits.length + (hits.length === 1 ? ' project already matches' : ' projects already match')),
+        ' — the closest is ',
+        el('a', { href: href(top) }, top.title || top.entity_id),
+        typeof top.score === 'number' ? [' ', el('span', { class: 'muted' }, '(' + top.score.toFixed(2) + ')')] : null,
+        '.'
+      ])
+    ];
     if (hits.length > 1) {
-      html += '<ul class="project-list">';
-      for (var i = 1; i < hits.length; i++) {
-        html += '<li><a href="' + esc(href(hits[i])) + '">' + esc(hits[i].title || hits[i].entity_id) + '</a>' +
-          ' <span class="muted">' + (typeof hits[i].score === 'number' ? hits[i].score.toFixed(2) : '') + '</span></li>';
-      }
-      html += '</ul>';
+      children.push(el('ul', { class: 'project-list' }, hits.slice(1).map(function (hit) {
+        return el('li', {}, [
+          el('a', { href: href(hit) }, hit.title || hit.entity_id),
+          ' ',
+          el('span', { class: 'muted' }, typeof hit.score === 'number' ? hit.score.toFixed(2) : '')
+        ]);
+      })));
     }
     if (answer.has_duplicate) {
-      html += '<p class="muted">This looks like it may already exist. Contributing to it is usually worth more than a second copy.</p>';
+      children.push(el('p', { class: 'muted' },
+        'This looks like it may already exist. Contributing to it is usually worth more than a second copy.'));
     }
-    results.innerHTML = html;
+    results.replaceChildren.apply(results, children);
   }
 
   function check(intent) {
     if (!results) return;
     var trimmed = (intent || '').trim();
     if (trimmed.length < 3) {
-      results.innerHTML = '';
+      results.replaceChildren();
       lastAsked = '';
       return;
     }
@@ -86,7 +96,8 @@
       })
       .catch(function () {
         if (!results) return;
-        results.innerHTML = '<p class="muted">The intent check could not be reached. You can still create the project.</p>';
+        results.replaceChildren(el('p', { class: 'muted' },
+          'The intent check could not be reached. You can still create the project.'));
       });
   }
 
@@ -122,18 +133,18 @@
           window.location.href = '/projects/' + encodeURIComponent((body && body.slug) || payload.slug);
         })
         .catch(function (err) {
-          var status = err && err.status ? err.status : 0;
-          if (status === 401 || status === 403) {
+          var code = err && err.status ? err.status : 0;
+          if (code === 401 || code === 403) {
             say('Sign in first — a project needs an account, not a guest session.' +
                 (err && err.message ? ' (' + err.message + ')' : ''));
             return;
           }
-          if (status === 409) {
+          if (code === 409) {
             say('That slug is taken. Pick another, or open the project that has it.');
             return;
           }
-          if (status) {
-            say((err && err.message) || ('The project could not be created (' + status + ').'));
+          if (code) {
+            say((err && err.message) || ('The project could not be created (' + code + ').'));
             return;
           }
           say('The request could not be sent.');

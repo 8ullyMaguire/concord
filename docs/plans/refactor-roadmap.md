@@ -465,7 +465,10 @@ Unclaimed rows are fair game.
   **Live (`bf06d9a`):** `/version` equality True; the served `/assets/js/dom.js` and `/assets/js/search.js` pass
   `check_dom_search.js`. `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS,
   CI `44030180561` success.
-  **2b left:** the remaining 29 real string sinks (1 allowlisted in markdown.js). **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  **2b twenty-second slice landed 2026-11-17:** `new-project.js` lost all five sinks — intent answers, no-match `<code>`
+  hint, hit list, clear and failure states are `el()` trees. `check_dom_new_project.js` executes hostile hit titles/URLs
+  and all four create-form refusals; RED mutation reddened it, restore → PASS. Census 29→24 (1 allowlisted).
+  **2b left:** the remaining 24 real string sinks (1 allowlisted in markdown.js). **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
