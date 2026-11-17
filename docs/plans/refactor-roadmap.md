@@ -650,6 +650,13 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-25 (step 3, 2026-11-17): prior visibility promotions make later moves cheaper; no new promotion needed.**
+  `api/arena_votes.rs` owns the §5.1 solution-vote request struct, handler and refusal (125 lines; `lib.rs` 9,164 → 9,036).
+  `bearer_user`, `caller_feature`, `readable_project_segment` and `internal` were already `pub(crate)` from earlier moves,
+  so the first `cargo check` was green. Policy `7 passed; 0 failed`, `route_policies: PASS`, parity replay
+  `0 disagreed of 18 checked, 3 skipped`. Rejected: re-promoting or re-exporting helpers "for symmetry" — promote only
+  when the compiler reports an unresolved dependency (D-23).
+
 * **D-24 (step 3, 2026-11-17): move a resource's reads and write together, even when its sections are far apart.**
   `api/solutions.rs` owns `project_solutions`, `feature_solutions`, `one_solution` (extracted from ~4,070–4,200) plus
   `create_solution`/`solution_refusal` (from §6.3): 261 lines; `lib.rs` 9,436 → 9,164. All three route stanzas now come

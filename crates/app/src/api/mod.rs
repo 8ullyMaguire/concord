@@ -8,3 +8,4 @@ pub mod notifications;
 pub mod invites;
 pub mod badges;
 pub mod solutions;
+pub mod arena_votes;
