@@ -15,6 +15,11 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
 - **2026-11-17 — step 2b fifteenth slice: `stats.js` has no string sink.** Facet tables, latency cards, both
   leaderboards and four failure states are `el()` trees; `check_dom_stats.js` RED mutation and GREEN restore measured
   with hostile fields and failing fetches. Census 87→77.
+  ```
+  check_dom_stats: PASS — hostile facets and projects are text, hrefs verbatim, failure states kept
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS · sinks 77
+  live cf3ca57: served asset PASS checker · walk 0 holes · CI 44016490431 success
+  ```
 
 - **2026-11-17 — step 2b fourteenth slice: `taxonomy.js` has no string sink.** Tag chips/groups, proposal cards/lists,
   propose form and live region are `el()` trees; `check_dom_taxonomy.js` RED mutation and GREEN restore measured with
