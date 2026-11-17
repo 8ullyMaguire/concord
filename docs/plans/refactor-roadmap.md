@@ -357,7 +357,9 @@ Unclaimed rows are fair game.
   but not enforced · PASS`, headers PASS, CI `43993478687` success. **2b second slice landed 2026-11-17:** `list.js` migrated — all four string sinks (two `innerHTML`, two
   `insertAdjacentHTML`) replaced by `el()` nodes; `check_dom_list.js` executes the shipped page with hostile fields and a
   hostile API error, RED-mutation proven (`list.js wrote to an HTML string sink: ["<p>mutant</p>"]`) and restored GREEN.
-  Combined string sinks 139→137 (135 `innerHTML` + 2 `insertAdjacentHTML`). **2b left:** the remaining 137 string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  Combined string sinks 139→137 (135 `innerHTML` + 2 `insertAdjacentHTML`). **Live (`9961157`):** `/version` equality True (tool display masked the hash as `9****57`); the served `/assets/js/dom.js`
+  and `/assets/js/list.js` pass `check_dom_list.js`. `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers
+  PASS, CI `43996013466` success. **2b left:** the remaining 137 string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |

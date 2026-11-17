@@ -15,6 +15,11 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
 - **2026-11-17 — step 2b second slice: `list.js` has no string sink (D-12).** All four sinks went through `el()`;
   hostile title, URL, description, category and API error are text/attributes in the shipped file. The page checker was
   RED-mutation proven and restored GREEN. The census now counts `insertAdjacentHTML` as well as `innerHTML`: 139→137.
+  ```
+  check_dom_list: PASS — hostile fields and error are text, attributes verbatim, no string sink
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS · js: string sinks 137
+  live 9961157: served assets PASS checker · walk 0 holes · headers PASS · CI 43996013466 success
+  ```
 
 - **2026-11-17 — step 2b begins: text-only renderer, first page migrated (D-11).** `dom.js` exports `el()` with text
   nodes and `setAttribute` only. `notifications.js` lost all three `innerHTML` assignments; hostile prose is now literal
