@@ -5,3 +5,4 @@ pub mod board;
 pub mod meta;
 pub mod records;
 pub mod notifications;
+pub mod invites;

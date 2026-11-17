@@ -650,6 +650,14 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-22 (step 3, 2026-11-17): move a whole commented section, including its private helper.**
+  `// ── invites (§8.2)` through `invite_refusal` moved as one 175-line block into `api/invites.rs`; `lib.rs` 9,810 → 9,627.
+  `readable_project_segment` and `require_role` became `pub(crate)` so the module borrows the shared visibility rules.
+  The two-method `/invites` route stayed `get(list_invites).post(create_invite)` inside the module's `routes()` — splitting
+  it would let GET and POST drift into different modules. No RED this move: `cargo check` green, policy `7 passed; 0 failed`,
+  `route_policies: PASS`, parity replay `0 disagreed of 16 checked, 5 skipped`. Rejected: moving handlers but leaving
+  `invite_refusal` behind, which would leave one resource's refusal logic in two files.
+
 * **D-21 (step 3, 2026-11-17): the pinned-handler test must search `api/*.rs` too, and use the same route oracle.**
   Moving `list_notifications`/`mark_notification_read`/`mark_all_notifications_read` into `api/notifications.rs`
   (45 lines; `lib.rs` 9,810) reddened the test twice: first `mark_all_notifications_read exists` (the body lookup read only

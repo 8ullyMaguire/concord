@@ -12,6 +12,11 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 3 fifth pure move: `api/invites.rs` (D-22).** The whole `invites (§8.2)` section — four handlers,
+  two request structs and `invite_refusal` — moved verbatim (175 lines); `lib.rs` 9,810 → 9,627. Two helpers promoted
+  `pub(crate)`; the GET+POST `/invites` route stayed a single MethodRouter. No RED: `cargo check` green, policy
+  `7 passed; 0 failed`, `route_policies: PASS`, replay `0 disagreed of 16 checked, 5 skipped`.
+
 - **2026-11-17 — step 3 fourth pure move: `api/notifications.rs` (D-21).** All three notification handlers and their
   three route stanzas moved verbatim (45 lines); `lib.rs` 9,866 → 9,810. Two REDs: body lookup `mark_all_notifications_read exists`,
   then route oracle `pinned but no (method, path) row is enforced`. Fixed by searching `api/*.rs` for bodies and using
