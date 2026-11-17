@@ -781,8 +781,14 @@ mod tests {
             "the guest check stays: the gate proves identity, not an account"
         );
 
-        let gate_start = SOURCE.find("async fn auth_gate(").expect("the gate exists");
-        let gate = &SOURCE[gate_start..gate_start + 3000];
+        // D-31: the gate may live in api/identity.rs; search every source the
+        // pinned-handler test already knows about instead of only lib.rs.
+        let gate_source = sources
+            .iter()
+            .find(|text| text.contains("async fn auth_gate("))
+            .map(String::as_str)
+            .unwrap_or(SOURCE);
+        let gate = function(gate_source, "auth_gate");
         assert!(
             gate.contains("extensions_mut().insert(user)"),
             "the gate stopped supplying identity to enforced handlers"
