@@ -650,6 +650,13 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-26 (step 3, 2026-11-17): private helpers used only inside a section move with the section.**
+  `api/coverage.rs` owns the §6.3/§6.4 request structs, `claim_coverage`, `contest_coverage`, `solution_in_feature` and
+  `coverage_refusal` (114 lines; `lib.rs` 9,036 → 8,915). `solution_in_feature` is not promoted: no handler left in
+  `lib.rs` calls it. The three borrowed helpers were already `pub(crate)`, so the first check was green. Policy
+  `7 passed; 0 failed`, `route_policies: PASS`, replay `0 disagreed of 16 checked, 5 skipped`. Rejected: promoting a
+  private helper merely because it moved — only cross-module callers justify `pub(crate)` (D-23/D-25).
+
 * **D-25 (step 3, 2026-11-17): prior visibility promotions make later moves cheaper; no new promotion needed.**
   `api/arena_votes.rs` owns the §5.1 solution-vote request struct, handler and refusal (125 lines; `lib.rs` 9,164 → 9,036).
   `bearer_user`, `caller_feature`, `readable_project_segment` and `internal` were already `pub(crate)` from earlier moves,

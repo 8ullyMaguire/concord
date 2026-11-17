@@ -12,6 +12,11 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 3 ninth pure move: `api/coverage.rs` (D-26).** The whole §6.3/§6.4 section — two requests, two
+  handlers, `solution_in_feature` and `coverage_refusal` — moved verbatim (114 lines); `lib.rs` 9,036 → 8,915. No
+  promotion for the section-private helper; no RED. `cargo check` green, policy `7 passed; 0 failed`,
+  `route_policies: PASS`, replay `0 disagreed of 16 checked, 5 skipped`.
+
 - **2026-11-17 — step 3 eighth pure move: `api/arena_votes.rs` (D-25).** The §5.1 solution-vote section — request struct,
   `vote_solutions`, `vote_refusal` — moved verbatim (125 lines); `lib.rs` 9,164 → 9,036. All four borrowed helpers were
   already `pub(crate)`, so no RED: `cargo check` green, policy `7 passed; 0 failed`, `route_policies: PASS`, replay
