@@ -9,12 +9,14 @@
 // Three states share one state object: seed, question, results. They are not
 // three pages because the answers live in a process-local session that a page
 // navigation would abandon.
+//
+// Rendering (step 2b): domEl() nodes only. Categories, question text, option
+// labels, project names/slugs, unknown fields and filter names are text or
+// setAttribute values.
 (function () {
   'use strict';
 
-  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it, so this file cannot disagree with
-  // another page about which characters are dangerous.
-  var esc = window.ConcordEscape.esc;
+  var domEl = window.ConcordDom.el;
 
   var root = document.getElementById('finder-root');
   if (!root) return;
@@ -48,10 +50,12 @@
     state.lastError = err;
     var box = el('finder-error');
     box.hidden = false;
-    box.textContent = 'Finder could not continue: ' + (err && err.message ? err.message : err);
+    var children = ['Finder could not continue: ' + (err && err.message ? err.message : err)];
     if (err && err.status === 401) {
-      box.innerHTML += ' <a href="/login">Sign in</a>';
+      children.push(' ');
+      children.push(domEl('a', { href: '/login' }, 'Sign in'));
     }
+    box.replaceChildren.apply(box, children);
   }
 
   // ------------------------------------------------------------------ render
@@ -70,10 +74,21 @@
     // in use, which is what §3's picker is.
     var cats = ['productivity', 'developer-tools', 'media', 'self-hosted',
       'communication', 'data', 'security', 'infrastructure'];
-    box.innerHTML = cats.map(function (c) {
-      return '<button type="button" class="chip" data-category="' + esc(c) + '">' +
-        esc(c) + '</button>';
-    }).join('');
+    box.replaceChildren.apply(box, cats.map(function (c) {
+      return domEl('button', { type: 'button', class: 'chip', 'data-category': c }, c);
+    }));
+  }
+
+  // Two top-candidate render sites shared one HTML string, so they drifted:
+  // the stop prompt escaped the name while the results page did not. One tree
+  // builder now serves both.
+  function topCandidates(s) {
+    return (s.top_candidates || []).slice(0, 3).map(function (c) {
+      return domEl('li', {}, [
+        domEl('strong', {}, c.name || c.slug),
+        ' ' + Math.round((c.fit_score || 0) * 100) + '% fit'
+      ]);
+    });
   }
 
   function renderQuestion() {
@@ -103,7 +118,7 @@
       // Out of questions, not out of candidates. The stop prompt explains why,
       // which is §4.4's "the next question would only slightly change this".
       el('finder-question-text').textContent = 'Nothing left worth asking.';
-      el('finder-options').innerHTML = '';
+      el('finder-options').replaceChildren();
       el('finder-why').hidden = true;
       state.view = 'stop';
       el('finder-stop-prompt').hidden = false;
@@ -116,10 +131,7 @@
       // offer is to relax a filter, which the results page already provides.
       el('finder-stop-keep').hidden = !s.question;
       el('finder-stop-reason').textContent = stopReasonText(s.stop_reason);
-      el('finder-stop-top').innerHTML = (s.top_candidates || []).slice(0, 3).map(function (c) {
-        return '<li><strong>' + esc(c.name || c.slug) + '</strong> ' +
-          Math.round((c.fit_score || 0) * 100) + '% fit</li>';
-      }).join('');
+      el('finder-stop-top').replaceChildren.apply(el('finder-stop-top'), topCandidates(s));
       renderShortList(s);
       return;
     }
@@ -132,27 +144,31 @@
     // non-filtering mode, and it is rendered as a separate button so nobody
     // reads it as "a project where this doesn't matter".
     var options = (q.options || []).filter(function (o) { return o.id !== 'any'; });
-    el('finder-options').innerHTML = options.map(function (o, i) {
-      var sel = state.selected === o.id ? ' selected' : '';
-      return '<button type="button" class="finder-option' + sel + '" role="radio"' +
-        ' aria-checked="' + (state.selected === o.id ? 'true' : 'false') + '"' +
-        ' data-option="' + esc(o.id) + '">' +
-        '<span class="finder-option-key">' + (i + 1) + '</span> ' +
-        esc(o.label || o.id) +
-        '<span class="finder-option-impact"></span></button>';
-    }).join('') +
-      '<button type="button" class="finder-option finder-option-any" data-option="any">' +
-      "Doesn't matter</button>";
+    var buttons = options.map(function (o, i) {
+      var chosen = state.selected === o.id;
+      return domEl('button', {
+        type: 'button',
+        class: 'finder-option' + (chosen ? ' selected' : ''),
+        role: 'radio',
+        'aria-checked': chosen ? 'true' : 'false',
+        'data-option': o.id
+      }, [
+        domEl('span', { class: 'finder-option-key' }, i + 1),
+        ' ' + (o.label || o.id),
+        domEl('span', { class: 'finder-option-impact' }, '')
+      ]);
+    });
+    buttons.push(domEl('button', {
+      type: 'button', class: 'finder-option finder-option-any', 'data-option': 'any'
+    }, "Doesn't matter"));
+    el('finder-options').replaceChildren.apply(el('finder-options'), buttons);
 
     var stopping = state.view === 'stop' || s.should_suggest_stop;
     el('finder-stop-prompt').hidden = !stopping;
     if (stopping) {
       el('finder-stop-keep').hidden = !s.question;
       el('finder-stop-reason').textContent = stopReasonText(s.stop_reason);
-      el('finder-stop-top').innerHTML = (s.top_candidates || []).slice(0, 3).map(function (c) {
-        return '<li><strong>' + esc(c.name || c.slug) + '</strong> ' +
-          Math.round((c.fit_score || 0) * 100) + '% fit</li>';
-      }).join('');
+      el('finder-stop-top').replaceChildren.apply(el('finder-stop-top'), topCandidates(s));
     }
 
     renderShortList(s);
@@ -169,11 +185,15 @@
     // misreading as the "15% fit for a perfect match" bug: a number that is
     // arithmetically correct and completely misleading. The rank is still
     // meaningful because it falls back to the evidence terms.
-    if (!state.session || !(state.session.questions_asked > 0)) return '';
-    if (cov === null || cov >= 0.99) return pct + '% fit';
-    return pct + '% fit <span class="finder-thin" title="only ' +
-      Math.round(cov * 100) + '% of the scoring signals had evidence behind them">' +
-      '(' + Math.round(cov * 100) + '% evidence)</span>';
+    if (!state.session || !(state.session.questions_asked > 0)) return [];
+    if (cov === null || cov >= 0.99) return [pct + '% fit'];
+    return [
+      pct + '% fit ',
+      domEl('span', {
+        class: 'finder-thin',
+        title: 'only ' + Math.round(cov * 100) + '% of the scoring signals had evidence behind them'
+      }, '(' + Math.round(cov * 100) + '% evidence)')
+    ];
   }
 
   function stopReasonText(reason) {
@@ -187,28 +207,44 @@
     }
   }
 
+  function projectLink(c) {
+    return domEl('a', { href: '/projects/' + c.slug }, c.name || c.slug);
+  }
+
+  function answerItems(answers) {
+    return (answers || []).map(function (a) {
+      return domEl('li', {}, [
+        a.dimension_key + ': ',
+        domEl('strong', {}, a.option_id),
+        ' (',
+        domEl('span', { class: 'finder-mode' }, a.mode),
+        ')'
+      ]);
+    });
+  }
+
   function renderShortList(s) {
     var was = s.initial_candidate_count || 0;
     var now = s.candidate_count || 0;
     el('finder-shortlist-summary').textContent =
       now + (was > now ? ' matches (was ' + was + ')' : ' matches');
 
-    el('finder-shortlist-items').innerHTML = (s.top_candidates || []).map(function (c, i) {
-      var warn = (c.unknown && c.unknown.length)
-        ? '<span class="finder-warn" title="we have no data here">unknown: ' +
-          esc(c.unknown.join(', ')) + '</span>'
-        : '';
-      return '<li class="finder-shortlist-item">' +
-        '<span class="finder-rank">#' + (i + 1) + '</span>' +
-        '<a href="/projects/' + esc(c.slug) + '">' + esc(c.name || c.slug) + '</a>' +
-        '<span class="finder-fit">' + fitLabel(c) + '</span>' +
-        warn + '</li>';
-    }).join('');
-
-    el('finder-answers').innerHTML = (s.answers || []).map(function (a) {
-      return '<li>' + esc(a.dimension_key) + ': <strong>' + esc(a.option_id) +
-        '</strong> <span class="finder-mode">(' + esc(a.mode) + ')</span></li>';
-    }).join('');
+    var rows = (s.top_candidates || []).map(function (c, i) {
+      var children = [
+        domEl('span', { class: 'finder-rank' }, '#' + (i + 1)),
+        ' ', projectLink(c), ' ',
+        domEl('span', { class: 'finder-fit' }, fitLabel(c))
+      ];
+      if (c.unknown && c.unknown.length) {
+        children.push(' ');
+        children.push(domEl('span', {
+          class: 'finder-warn', title: 'we have no data here'
+        }, 'unknown: ' + c.unknown.join(', ')));
+      }
+      return domEl('li', { class: 'finder-shortlist-item' }, children);
+    });
+    el('finder-shortlist-items').replaceChildren.apply(el('finder-shortlist-items'), rows);
+    el('finder-answers').replaceChildren.apply(el('finder-answers'), answerItems(s.answers));
   }
 
   function renderResults() {
@@ -216,38 +252,44 @@
     if (!s) return;
     show('results');
 
-    el('finder-results-answers').innerHTML =
-      '<h3>Your answers</h3><ul>' + (s.answers || []).map(function (a) {
-        return '<li>' + esc(a.dimension_key) + ': <strong>' + esc(a.option_id) +
-          '</strong> (' + esc(a.mode) + ')</li>';
-      }).join('') + '</ul>';
+    el('finder-results-answers').replaceChildren(
+      domEl('h3', {}, 'Your answers'),
+      domEl('ul', {}, answerItems(s.answers))
+    );
 
     var ranked = s.candidates || s.top_candidates || [];
     el('finder-ranked-heading').textContent = 'Ranked matches (' + ranked.length + ')';
-    el('finder-ranked').innerHTML = ranked.map(function (c, i) {
-      return '<li class="finder-result">' +
-        '<span class="finder-rank">#' + (i + 1) + '</span> ' +
-        '<a href="/projects/' + esc(c.slug) + '">' + esc(c.name || c.slug) + '</a> ' +
-        '<span class="finder-fit">' + fitLabel(c) + '</span>' +
-        '<button type="button" class="btn btn-ghost" data-why="' + esc(c.slug) + '">' +
-        'Why this rank?</button>' +
-        '</li>';
-    }).join('');
+    el('finder-ranked').replaceChildren.apply(el('finder-ranked'), ranked.map(function (c, i) {
+      return domEl('li', { class: 'finder-result' }, [
+        domEl('span', { class: 'finder-rank' }, '#' + (i + 1)),
+        ' ', projectLink(c), ' ',
+        domEl('span', { class: 'finder-fit' }, fitLabel(c)),
+        ' ', domEl('button', {
+          type: 'button', class: 'btn btn-ghost', 'data-why': c.slug
+        }, 'Why this rank?')
+      ]);
+    }));
 
     var unknown = s.unknown_fit || [];
     el('finder-unknown').hidden = unknown.length === 0;
-    el('finder-unknown-items').innerHTML = unknown.map(function (c) {
-      return '<li><a href="/projects/' + esc(c.slug) + '">' + esc(c.name || c.slug) + '</a> — missing: ' +
-        esc((c.unknown || []).join(', ')) + '</li>';
-    }).join('');
+    el('finder-unknown-items').replaceChildren.apply(el('finder-unknown-items'), unknown.map(function (c) {
+      return domEl('li', {}, [
+        projectLink(c), ' — missing: ',
+        (c.unknown || []).join(', ')
+      ]);
+    }));
 
     var out = s.filtered_out || [];
     el('finder-filtered-out').hidden = out.length === 0;
-    el('finder-filtered-items').innerHTML = out.map(function (f) {
-      return '<li>filtered by: ' + esc((f.filters || []).join(', ')) +
-        ' <button type="button" class="btn btn-ghost" data-lift="' + esc((f.filters || [])[0] || '') +
-        '">Lift →</button></li>';
-    }).join('');
+    el('finder-filtered-items').replaceChildren.apply(el('finder-filtered-items'), out.map(function (f) {
+      var filters = f.filters || [];
+      return domEl('li', {}, [
+        'filtered by: ' + filters.join(', ') + ' ',
+        domEl('button', {
+          type: 'button', class: 'btn btn-ghost', 'data-lift': filters[0] || ''
+        }, 'Lift →')
+      ]);
+    }));
 
     var nothing = (s.candidate_count || 0) === 0;
     el('finder-nothing').hidden = !nothing;

@@ -428,7 +428,11 @@ Unclaimed rows are fair game.
   the shipped page with hostile facets, project names/slugs and four failing fetches; RED mutation reddened it,
   restore → PASS. Census 87→77. **Live (`cf3ca57`):** `/version` equality True; the served `/assets/js/stats.js` passes `check_dom_stats.js`.
   `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS, CI `44016490431` success.
-  **2b left:** the remaining 77 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  **2b sixteenth slice landed 2026-11-17:** `finder.js` lost all eleven sinks — the seed chips, question options, stop
+  prompt, shortlist, results and the 401 refusal are `el()` trees; the action/state half is unchanged. One shared
+  `topCandidates()` builder replaced two drifting copies. `check_dom_finder.js` walks seed → question → stop → results
+  with hostile fields; RED mutation reddened it, restore → PASS. Census 77→66.
+  **2b left:** the remaining 66 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
