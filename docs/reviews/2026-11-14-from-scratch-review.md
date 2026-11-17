@@ -17,6 +17,11 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   `E0432: no AppState in api`; switched to `crate::{…}`, and `project_for` became `pub(crate)` so the
   module borrows the shared visibility rule. `cargo check`: `Finished dev profile`; policy `7 passed; 0 failed`;
   `route_policies: PASS`; parity replay `0 disagreed of 18 checked, 3 skipped`.
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live d96eeb8: /version equality True · kinds 200 dict 1 · search 200 list 2
+  anonymous_walk: 0 holes · headers PASS · CI 44065751641 success
+  ```
 
 - **2026-11-17 — step 3 first pure move: `api/meta.rs` (D-18).** `healthz` and `version` plus their three routes moved
   out of `lib.rs` verbatim; `lib.rs` 10,043 → 10,020 lines. RED measurements: `routes() -> Router` gave 177 E0308

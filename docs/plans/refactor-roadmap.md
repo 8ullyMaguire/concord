@@ -534,7 +534,7 @@ Unclaimed rows are fair game.
 
   **D-16 closed:** no unblock remains for this row. The helper modules keep their string exports for their other callers;
   the project page composes only node trees. D-14 is superseded for this page: arena controls are nodes. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
-| 3 | split `lib.rs` by resource, zero behaviour change | **in progress**: two pure modules landed live (`ed1488c` meta, next records); `api/meta.rs` — `healthz`, `version`, 3 routes; `lib.rs` 10,043 → 10,020 lines. `git show --stat`: 41 added in `api/meta.rs`, 25 removed from `lib.rs`. Policy scanner follows `api/*.rs`. Gate `pages 132/132 · rate PASS`, live both health paths `200 {"status":"ok"}`, walk PASS, CI `44063176583`. |
+| 3 | split `lib.rs` by resource, zero behaviour change | **in progress**: two pure modules landed live (`ed1488c` meta, next records); `api/meta.rs` — `healthz`, `version`, 3 routes; `lib.rs` 10,043 → 10,020 lines. `git show --stat`: 41 added in `api/meta.rs`, 25 removed from `lib.rs`. Policy scanner follows `api/*.rs`. Gate `pages 132/132 · rate PASS`, live both health paths `200 {"status":"ok"}`, walk PASS, CI `44063176583`. Second module `api/records.rs` live (`d96eeb8`): 52 lines moved, `lib.rs` 9,967 lines, kinds `200 dict 1`, search `200 list 2`, CI `44065751641`. |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
 | 6 | one pagination convention, gate-enforced | open |
@@ -671,6 +671,9 @@ tell the difference between "not started" and "waiting".
   **Live (`ed1488c`):** `/version` equality True; `/healthz` and `/api/v1/healthz` both `200 {"status":"ok"}`;
   `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`; headers PASS; CI `44063176583` success.
   `git show --stat HEAD`: `api/meta.rs` 41 added, `lib.rs` 27 changed (25 removed); no route shape edited.
+  **Second module (`d96eeb8`):** `document_kinds`/`search_documents` + 2 routes moved; `git show --stat` 75 added in
+  `api/records.rs`, 57 changed in `lib.rs` (52 handler lines removed). Live `/documents/kinds` `200 dict 1`,
+  `/documents/search?q=test&limit=2` `200 list 2`; `/version` equality True; walk PASS; headers PASS; CI `44065751641`.
 
 * **D-17 (step 2b, 2026-11-17): the project page owns its node renderers; D-14/D-16 are closed.** `project-render.js`
   builds every panel, form, arena control and work item with `el()`. Rejected: parsing the old concatenated HTML strings
