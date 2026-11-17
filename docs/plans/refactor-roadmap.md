@@ -459,7 +459,10 @@ Unclaimed rows are fair game.
   columns/cards/milestones, a refused move and five other states; RED mutation reddened it, restore → PASS.
   Census 41→34 (1 allowlisted). **Live (`e91c55c`):** `/version` equality True; the served `/assets/js/board.js` passes `check_dom_board.js`.
   `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS, CI `44027725594` success.
-  **2b left:** the remaining 34 real string sinks (1 allowlisted in markdown.js). **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  **2b twenty-first slice landed 2026-11-17:** `search.js` lost all five sinks — result cards, health bars, tag chips,
+  skeleton and both empty/failure states are `el()` trees. `check_dom_search.js` executes hostile results and facets,
+  including the chip toggle behaviour; RED mutation reddened it, restore → PASS. Census 34→29 (1 allowlisted).
+  **2b left:** the remaining 29 real string sinks (1 allowlisted in markdown.js). **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
