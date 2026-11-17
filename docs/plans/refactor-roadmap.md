@@ -416,6 +416,8 @@ Unclaimed rows are fair game.
   region are `el()` trees; the 445-line wire half is unchanged. `check_dom_settings.js` executes the shipped page with
   hostile values from all nine reads and a hostile write refusal, and asserts every wire hook still exists; RED mutation
   (`root.innerHTML = '<p>mutant</p>'`) reddened it, restore → PASS. Census 92→90.
+  **Live (`cf30d00`):** `/version` equality True; the served `/assets/js/settings.js` passes `check_dom_settings.js`.
+  `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS, CI `44012704225` success.
   **2b left:** the remaining 90 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |

@@ -15,6 +15,11 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
 - **2026-11-17 — step 2b thirteenth slice: `settings.js` has no string sink.** All panel builders and the live region are
   `el()` trees on the 1024-line page; the wire half is unchanged. `check_dom_settings.js` RED mutation and GREEN restore
   measured with hostile values from nine reads, a hostile refusal and all wire hooks asserted. Census 92→90.
+  ```
+  check_dom_settings: PASS — hostile fields and refusal are text, all wire hooks kept, no string sink
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS · sinks 90
+  live cf30d00: served asset PASS checker · walk 0 holes · CI 44012704225 success
+  ```
 
 - **2026-11-17 — step 2b twelfth slice: `requests-index.js` has no string sink.** Cards, open/settled groups and both empty
   states are `el()` trees; `check_dom_requests_index.js` RED mutation and GREEN restore measured with hostile titles, a
