@@ -18,3 +18,4 @@ pub mod ops_reads;
 pub mod identity;
 pub mod contributions;
 pub mod field_reports;
+pub mod emergency_holds;

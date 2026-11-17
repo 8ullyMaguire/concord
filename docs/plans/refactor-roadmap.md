@@ -650,6 +650,13 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-35 (step 3, 2026-11-17): a deliberately mutation-sensitive route moves with its refusal mapper.**
+  `api/emergency_holds.rs` owns `release_emergency_hold` and `hold_refusal` (57 lines) plus the release route;
+  `lib.rs` 7,008 → 6,948. The `CONCORD_MUTANT=hold-any-role` branch and the hold-before-role ordering stayed byte-identical —
+  the mutation gate proves that ordering, so a "cleanup" here would silently break it. No RED: policy `7 passed; 0 failed`,
+  `route_policies: PASS`, replay `0 disagreed of 16 checked, 5 skipped`. Rejected: hoisting the role check above the hold
+  lookup while moving; the route's documented 404 regression is the reason the order exists.
+
 * **D-34 (step 3, 2026-11-17): a resource's read half may sit thousands of lines from its writes.**
   `api/field_reports.rs` owns `list_field_reports` (17 lines, formerly beside the capability panel) and
   `create_field_report`/`respond_to_field_report` (112 lines, formerly beside the emergency hold) plus their two route stanzas.
