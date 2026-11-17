@@ -3,22 +3,18 @@
 //
 // Three things this deliberately does not do:
 //
-// 1. Never write `detail` or an actor name into innerHTML unescaped. Both are
-//    free text from twenty-odd AddAudit call sites, and `detail` in particular
-//    is whatever string a handler decided to pass. esc() is the house idiom
-//    (ranking.js) and this file uses it on every interpolation.
-// 2. Never hide the total. "Showing 50 of 4,000" is what tells a reader their
-//    filter excluded 3,950 rows rather than matched them, and a viewer that
-//    omits it cannot be told apart from one whose filter is broken.
-// 3. Never clear aria-busy on only the happy path. It is cleared in the error
-//    branch too, because a skeleton that spins forever over an error message
-//    reads as "still loading".
+// 1. Never write `detail` or an actor name into HTML markup. Both are free text from twenty-odd
+//    AddAudit call sites; the renderer builds text nodes and attributes only.
+// 2. Never hide the total. "Showing 50 of 4,000" tells a reader their filter excluded 3,950 rows
+//    rather than matched them.
+// 3. Never clear aria-busy on only the happy path. It is cleared in the error branch too.
+//
+// Rendering (step 2b): every HTML builder in this file was replaced by an `el()` tree.
+
 (function () {
   'use strict';
 
-  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it, so this file cannot disagree with
-  // another page about which characters are dangerous.
-  var esc = window.ConcordEscape.esc;
+  var el = window.ConcordDom.el;
 
   function slugFromPath() {
     var parts = window.location.pathname.split('/').filter(Boolean);
@@ -28,13 +24,8 @@
   var root = document.getElementById('audit-root');
   var slug = slugFromPath();
 
-  // The filter state lives here rather than in the URL. It is deliberately not
-  // pushed into the query string: nothing on this site makes a filter shareable,
-  // and a filter in the URL is a second source of truth to keep in step with
-  // the controls.
-  // `kind` is a NAMED family of actions ("moderation"), resolved by the SERVER. The page never
-  // translates a kind into action names: that would be a second copy of the act vocabulary, and
-  // it would drift the first time an act is added to the spec.
+  // The filter state lives here rather than in the URL. `kind` is a NAMED family of actions
+  // ("moderation"), resolved by the SERVER; the page never translates it into action names.
   var state = { kind: '', action: '', q: '' };
 
   function whenUnix(seconds) {
@@ -42,18 +33,13 @@
     return new Date(seconds * 1000).toISOString().replace('T', ' ').slice(0, 19) + ' UTC';
   }
 
-  // The actor column renders a deleted account as a dash, never as a number the
-  // reader could go looking for. An id is not a person, and "user 41" on a
-  // deleted row invites a reader to complain about someone who cannot be
-  // complained about.
+  // A deleted account renders as a dash, never as a number the reader could go looking for.
   function actor(e) {
-    if (e.actor_display_name) return esc(e.actor_display_name);
-    if (e.actor_id == null) return '<span class="dim">system</span>';
-    return '<span class="dim">deleted account</span>';
+    if (e.actor_display_name) return e.actor_display_name;
+    return el('span', { class: 'dim' }, e.actor_id == null ? 'system' : 'deleted account');
   }
 
-  // An act's `detail` is JSON — `{"reason": "...", "prev": {...}}` — and a viewer that prints it
-  // raw shows a reader punctuation. The reason is the sentence a person wrote; the rest is the
+  // An act's `detail` is JSON. The reason is the sentence a person wrote; the rest is the
   // numbers the reversal needs and belongs in the log, not on the screen.
   function detailText(e) {
     var d = e.detail || '';
@@ -67,117 +53,128 @@
     return d;
   }
 
-  // Both directions of a reversal in one place: an act that was reversed, and the act that did
-  // it. A log showing only one of them makes the reader guess which removal is still in force.
+  // Both directions of a reversal in one place: an act that was reversed, and the act
+  // that did it.
   function marks(e) {
-    var out = '';
-    if (e.undone) out += '<span class="audit-mark">undone</span>';
-    if (e.undoes) out += '<span class="audit-mark">reversal of #' + esc(String(e.undoes)) + '</span>';
-    return out;
+    var nodes = [];
+    if (e.undone) nodes.push(el('span', { class: 'audit-mark' }, 'undone'));
+    if (e.undoes) nodes.push(el('span', { class: 'audit-mark' }, 'reversal of #' + e.undoes));
+    return nodes;
   }
 
   function undoControl(e) {
-    if (!e.can_undo) return '';
-    var id = esc(String(e.id));
-    return '<div class="audit-undo" data-undo="' + id + '">' +
-      '<button type="button" class="btn btn-secondary" data-undo-open="' + id + '">Undo</button>' +
-      '<div class="audit-undo-form" hidden>' +
-        '<input type="text" data-undo-reason="' + id + '" ' +
-          'placeholder="Why? The log records this." ' +
-          'aria-label="Reason for reversing this removal">' +
-        '<button type="button" class="btn btn-secondary" data-undo-confirm="' + id + '">Reverse it</button>' +
-        '<button type="button" class="btn btn-secondary" data-undo-cancel="' + id + '">Cancel</button>' +
-      '</div></div>';
+    if (!e.can_undo) return null;
+    var id = String(e.id);
+    return el('div', { class: 'audit-undo', 'data-undo': id }, [
+      el('button', { type: 'button', class: 'btn btn-secondary', 'data-undo-open': id }, 'Undo'),
+      el('div', { class: 'audit-undo-form', hidden: true }, [
+        el('input', {
+          type: 'text', 'data-undo-reason': id,
+          placeholder: 'Why? The log records this.',
+          'aria-label': 'Reason for reversing this removal'
+        }),
+        el('button', { type: 'button', class: 'btn btn-secondary', 'data-undo-confirm': id }, 'Reverse it'),
+        el('button', { type: 'button', class: 'btn btn-secondary', 'data-undo-cancel': id }, 'Cancel')
+      ])
+    ]);
   }
 
   function row(e) {
     var why = detailText(e);
-    return '<tr>' +
-      '<td class="cell-num"><span class="dim">' + esc(whenUnix(e.created_at)) + '</span></td>' +
-      '<td class="cell-title"><code>' + esc(e.action) + '</code>' + marks(e) +
-        (why ? '<p class="cell-note">' + esc(why) + '</p>' : '') + undoControl(e) + '</td>' +
-      '<td>' + actor(e) + '</td>' +
-      '<td class="cell-num"><span class="dim">' + esc(e.entity || '—') + '</span></td>' +
-      '</tr>';
+    return el('tr', {}, [
+      el('td', { class: 'cell-num' }, el('span', { class: 'dim' }, whenUnix(e.created_at))),
+      el('td', { class: 'cell-title' }, [
+        el('code', {}, e.action)
+      ].concat(marks(e), [
+        why ? el('p', { class: 'cell-note' }, why) : null,
+        undoControl(e)
+      ])),
+      el('td', {}, actor(e)),
+      el('td', { class: 'cell-num' }, el('span', { class: 'dim' }, e.entity || '—'))
+    ]);
   }
 
-  function controls(actions) {
-    // One option, because one family exists today. A kind the server does not know answers 400
-    // with the sentence naming the kinds, so this list is a convenience, not the contract.
-    var kinds = '<option value="">All entries</option>' +
-      '<option value="moderation"' + (state.kind === 'moderation' ? ' selected' : '') +
-      '>Moderation</option>';
-    var opts = '<option value="">All actions</option>';
-    (actions || []).forEach(function (a) {
-      opts += '<option value="' + esc(a) + '"' + (a === state.action ? ' selected' : '') + '>' +
-        esc(a) + '</option>';
-    });
-    return '<div class="audit-controls">' +
-      '<label for="audit-kind">Kind</label>' +
-      '<select id="audit-kind">' + kinds + '</select>' +
-      '<label for="audit-action">Action</label>' +
-      '<select id="audit-action">' + opts + '</select>' +
-      '<label for="audit-q">Search</label>' +
-      '<input id="audit-q" type="search" placeholder="detail or action" value="' + esc(state.q) + '">' +
-      '<button class="btn btn-primary" id="audit-apply">Apply</button>' +
-      '</div>';
+  function controlsNode(actions) {
+    // One option, because one family exists today. A kind the server does not know answers 400.
+    return el('div', { class: 'audit-controls' }, [
+      el('label', { for: 'audit-kind' }, 'Kind'),
+      el('select', { id: 'audit-kind' }, [
+        el('option', { value: '' }, 'All entries'),
+        el('option', { value: 'moderation', selected: state.kind === 'moderation' }, 'Moderation')
+      ]),
+      el('label', { for: 'audit-action' }, 'Action'),
+      el('select', { id: 'audit-action' }, [el('option', { value: '' }, 'All actions')]
+        .concat((actions || []).map(function (a) {
+          return el('option', { value: a, selected: a === state.action }, a);
+        }))),
+      el('label', { for: 'audit-q' }, 'Search'),
+      el('input', { id: 'audit-q', type: 'search', placeholder: 'detail or action', value: state.q }),
+      el('button', { class: 'btn btn-primary', id: 'audit-apply' }, 'Apply')
+    ]);
   }
 
-  // The count line has to compare the SHOWN rows against the UNFILTERED total,
-  // not against the filtered total the API returns.
-  //
-  // `page.total` is COUNT(*) over the FILTERED set (spec §4), so when a filter is
-  // applied it equals the number of rows on screen and the line reads
-  // "Showing all 5 entries" for a list of 1 -- telling the reader their filter
-  // excluded nothing when it excluded four. The unfiltered total is fetched
-  // alongside it, and only when a filter is active, so the common case costs one
-  // request and the misleading one is impossible.
-  function countLine(page, unfilteredTotal, filtered) {
+  // The count line compares SHOWN rows against the UNFILTERED total. page.total is
+  // COUNT(*) over the FILTERED set, so the unfiltered total is fetched only when a
+  // filter is active.
+  function countNodes(page, unfilteredTotal, filtered) {
     var shown = (page.entries || []).length;
     var of = filtered ? (unfilteredTotal != null ? unfilteredTotal : page.total) : page.total;
     var what = shown === 1 ? 'entry' : 'entries';
     if (of === shown) {
-      return 'Showing all <strong>' + of + '</strong> ' + what + '.';
+      return ['Showing all ', el('strong', {}, of), ' ', what + '.'];
     }
-    return 'Showing <strong>' + shown + '</strong> of <strong>' + of +
-      '</strong> ' + what + ' \\u2014 the filter excluded ' + (of - shown) + '.';
+    return [
+      'Showing ', el('strong', {}, shown), ' of ', el('strong', {}, of), ' ', what,
+      ' — the filter excluded ' + (of - shown) + '.'
+    ];
   }
 
-  function emptyState(page, actions, unfilteredTotal, filtered) {
+  function emptyNodes(page, actions, unfilteredTotal, filtered) {
     var found = page.total != null ? page.total : 0;
-    return controls(actions) +
-      '<div class="empty-state">' +
-      '<div class="empty-state-icon">' + (filtered ? '\u{1F50D}' : '\u{1F4CB}') + '</div>' +
-      '<p class="empty-state-title">' +
-        (filtered ? 'Nothing matches this filter' : 'No audit activity yet') + '</p>' +
-      '<p class="empty-state-description">' +
-        (filtered
-          ? 'The project has ' + (unfilteredTotal != null ? unfilteredTotal : found) +
-            ' entr' + ((unfilteredTotal != null ? unfilteredTotal : found) === 1 ? 'y' : 'ies') +
+    var total = unfilteredTotal != null ? unfilteredTotal : found;
+    return [
+      controlsNode(actions),
+      el('div', { class: 'empty-state' }, [
+        el('div', { class: 'empty-state-icon' }, filtered ? '🔍' : '📋'),
+        el('p', { class: 'empty-state-title' }, filtered ? 'Nothing matches this filter' : 'No audit activity yet'),
+        el('p', { class: 'empty-state-description' }, filtered
+          ? 'The project has ' + total + ' entr' + (total === 1 ? 'y' : 'ies') +
             ', and none of them match what you asked for.'
-          : 'Privileged actions are recorded here as they happen \\u2014 visibility changes, ' +
-            'strategy weight, invitations, merges. Nothing has happened yet.') +
-      '</p></div>';
+          : 'Privileged actions are recorded here as they happen — visibility changes, ' +
+            'strategy weight, invitations, merges. Nothing has happened yet.')
+      ])
+    ];
+  }
+
+  function flatten(nodes) {
+    return nodes.reduce(function (out, node) {
+      return out.concat(Array.isArray(node) ? flatten(node) : [node]);
+    }, []);
   }
 
   function render(page, actions, unfilteredTotal) {
     var filtered = state.kind !== '' || state.action !== '' || state.q !== '';
     if (!page || !page.entries || page.entries.length === 0) {
-      root.innerHTML = emptyState(page || { total: 0 }, actions, unfilteredTotal, filtered);
+      root.replaceChildren.apply(root, flatten(emptyNodes(page || { total: 0 }, actions, unfilteredTotal, filtered)));
       return;
     }
-    root.innerHTML = controls(actions) +
-      '<p class="note" data-audit-note role="status" aria-live="polite"></p>' +
-      '<p class="audit-count" data-audit-count>' + countLine(page, unfilteredTotal, filtered) + '</p>' +
-      '<div class="table-scroll" tabindex="0" role="region" aria-label="tabla"><table class="ranking-table">' +
-        '<thead><tr><th>When</th><th>Action</th><th>Who</th><th>Entity</th></tr></thead>' +
-        '<tbody>' + page.entries.map(row).join('') + '</tbody>' +
-      '</table></div>';
+    root.replaceChildren.apply(root, flatten([
+      controlsNode(actions),
+      el('p', { class: 'note', 'data-audit-note': '', role: 'status', 'aria-live': 'polite' }),
+      el('p', { class: 'audit-count', 'data-audit-count': '' }, countNodes(page, unfilteredTotal, filtered)),
+      el('div', { class: 'table-scroll', tabindex: '0', role: 'region', 'aria-label': 'tabla' },
+        el('table', { class: 'ranking-table' }, [
+          el('thead', {}, el('tr', {}, [
+            el('th', {}, 'When'), el('th', {}, 'Action'), el('th', {}, 'Who'), el('th', {}, 'Entity')
+          ])),
+          el('tbody', {}, page.entries.map(row))
+        ]))
+    ]));
   }
 
   function say(msg) {
-    var el = root.querySelector('[data-audit-note]');
-    if (el) el.textContent = msg || '';
+    var note = root.querySelector('[data-audit-note]');
+    if (note) note.textContent = msg || '';
   }
 
   // reverse posts the restore act for one audit id. It asks for a reason because the route
@@ -188,9 +185,7 @@
       return;
     }
     if (btn) btn.disabled = true;
-    say('Reversing\u2026');
-    // One client (review item 9b): the refusal is the server's sentence, and it arrives as the error's message
-    // instead of a second parse of the same JSON.
+    say('Reversing…');
     window.ConcordApi
       .post('/api/v1/projects/' + encodeURIComponent(slug) + '/moderation/arena/restore',
         { undoes: Number(id), reason: reason, confirm: true })
@@ -198,9 +193,6 @@
         load('Reversed. The restore act is in this log with that reason on it.');
       })
       .catch(function (error) {
-        // One error model: `ApiError.message` is the server's own sentence ("the reason is required", "only a
-        // moderator may reverse this"), and `status: 0` is the network. The page says which one it was instead of
-        // calling both "Could not reach the server".
         say(error && error.message ? error.message : 'Could not reach the server.');
         if (btn) btn.disabled = false;
       });
@@ -216,12 +208,13 @@
     return params.length ? '?' + params.join('&') : '';
   }
 
-  function errorState(message) {
-    return '<div class="empty-state error-state">' +
-      '<div class="empty-state-icon">⚠</div>' +
-      '<p class="empty-state-title">Could not load the audit log</p>' +
-      '<p class="empty-state-description">' + esc(message) + '</p>' +
-      '<button class="btn btn-primary" id="audit-retry">Try again</button></div>';
+  function errorNode(message) {
+    return el('div', { class: 'empty-state error-state' }, [
+      el('div', { class: 'empty-state-icon' }, '⚠'),
+      el('p', { class: 'empty-state-title' }, 'Could not load the audit log'),
+      el('p', { class: 'empty-state-description' }, message),
+      el('button', { class: 'btn btn-primary', id: 'audit-retry' }, 'Try again')
+    ]);
   }
 
   function load(note) {
@@ -235,34 +228,27 @@
     ];
     if (filtered) {
       // Only when a filter is active, and only to make the count line honest.
-      // Fetching this on every load would be a request whose result is never
-      // read, and a second failure would have to be handled for no benefit.
       fetches.push(window.ConcordApi.get(base + '/audit?limit=1')
         .then(function (page) { return page && page.total !== undefined ? page.total : null; })
         .catch(function () { return null; }));
     }
     Promise.all(fetches).then(function (res) {
       render(res[0], res[1], res[2]);
-      // The note is set AFTER the render, because render() replaces the node it lives in. A
-      // message written before the reload is a message the reload deletes -- which is how the
-      // "Reversed." confirmation came out as an empty line on the first try.
+      // The note is set AFTER the render, because render() replaces the node it lives in.
       if (note) say(note);
       if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);
     }).catch(function (err) {
-      root.innerHTML = errorState(err && err.message ? err.message : String(err));
+      root.replaceChildren(errorNode(err && err.message ? err.message : String(err)));
       // Cleared on the error path too. A skeleton left spinning over an error
-      // message reads as "still loading", which is a different bug report from
-      // the one that is true.
+      // message reads as "still loading".
       if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);
     });
   }
 
   if (root) {
-    // AFTER the document, not at parse time. base.html loads session.js at the end of <body>,
-    // so a read started here goes out without a token -- and an audit read that arrives
-    // anonymous cannot be told apart from one by a reader with no standing: `can_undo` comes
-    // back false, so a moderator sees a log with no Undo on it and no explanation. The same
-    // timing bug was found and fixed on the curation page; this file had it too.
+    // AFTER the document, not at parse time: a read started at parse time goes out
+    // without a token and an anonymous audit read cannot be told apart from one by a
+    // reader with no standing.
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', function () { load(); });
     } else {
@@ -282,8 +268,8 @@
         return;
       }
 
-      // The Undo control, delegated rather than bound per button: the table is re-rendered from
-      // HTML on every load, so a listener attached to a button dies with the row it was on.
+      // The Undo control is delegated: the table is re-rendered on every load, so a
+      // listener attached to a button dies with the row it was on.
       var open = e.target.getAttribute && e.target.getAttribute('data-undo-open');
       if (open) {
         var box2 = root.querySelector('[data-undo="' + open + '"] .audit-undo-form');
@@ -306,8 +292,8 @@
         reverse(confirm, field2 ? field2.value.trim() : '', e.target);
       }
     });
-    // Enter in the search box applies, because a reader who has typed a filter
-    // and pressed Enter did not mean to do nothing.
+    // Enter in the search box applies, because a reader who typed a filter and
+    // pressed Enter did not mean to do nothing.
     document.addEventListener('keydown', function (e) {
       if (e.key === 'Enter' && e.target && e.target.id === 'audit-q') {
         state.q = e.target.value.trim();
