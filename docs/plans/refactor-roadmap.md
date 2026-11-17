@@ -650,6 +650,13 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-44 (step 3, 2026-11-17): a write slice can carry its sibling mutation handlers and their routes.**
+  api/complaints.rs owns the public list, create_complaint, add_complaint_impact and validate_complaint plus four routes
+  (209 lines; lib.rs 5521 -> 5309). The compiler named 14 missing imports and two routes still bound in lib.rs; all were
+  fixed by moving those routes with the handlers, not by re-exporting handlers from lib.rs. Shared complaint helpers and
+  FeatureQuery stay root-owned (D-41/D-43). Reject/merge/other verdict handlers remain in lib.rs with their own routes.
+  Verified: cname clean, policy 7 passed, route_policies PASS (203 declared), replay 0 disagreed of 16 checked, 5 skipped.
+
 * **D-43 (step 3, 2026-11-17): cut at the next resource's doc comment, and leave shared types at the root.**
   api/features.rs owns the feature catalogue, FileFeatureRequest, file/edit/status handlers and three routes
   (257 lines; lib.rs 5789 -> 5521). The first cut swept `list_complaints`, `list_milestones` and `roadmap` into the module and
