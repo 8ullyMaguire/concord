@@ -650,6 +650,13 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-27 (step 3, 2026-11-17): the two arenas keep separate modules even though they share a vote shape.**
+  `api/feature_votes.rs` owns the §5.1 feature-vote request, `cast_feature_vote` and `feature_vote_refusal` (104 lines;
+  `lib.rs` 8,915 → 8,811). It is deliberately not merged with `api/arena_votes.rs`: the arenas rank different entities with
+  different competitor and weight rules, and the route paths stay distinct. No RED; policy `7 passed; 0 failed`,
+  `route_policies: PASS`, replay `0 disagreed of 18 checked, 3 skipped`. Rejected: a shared `votes.rs` that would put two
+  different refusal tables in one file.
+
 * **D-26 (step 3, 2026-11-17): private helpers used only inside a section move with the section.**
   `api/coverage.rs` owns the §6.3/§6.4 request structs, `claim_coverage`, `contest_coverage`, `solution_in_feature` and
   `coverage_refusal` (114 lines; `lib.rs` 9,036 → 8,915). `solution_in_feature` is not promoted: no handler left in
