@@ -12,6 +12,10 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 2b twenty-third slice: both milestone pages have no string sink.** Roadmap totals/timeline/form and
+  milestone subtitle/groups/candidates are `el()` trees; `check_dom_milestones.js` RED/GREEN covered hostile fields, create,
+  reorder and assign. Census 24→19 (1 allowlisted).
+
 - **2026-11-17 — step 2b twenty-second slice: `new-project.js` has no string sink.** Intent answers, no-match hint,
   hit list, clear and failure states are `el()` trees; `check_dom_new_project.js` RED/GREEN covered hostile hits and
   all four create-form refusals. Census 29→24 (1 allowlisted).

@@ -18,21 +18,17 @@
 // 3. Slip is printed only when it was measured. A zero-day slip is the best
 //    possible answer and the easiest thing to fake, so null renders as "not
 //    measured" (the same absence rule as UnknownReviewHours).
+//
+// Rendering (step 2b): el() trees only; hostile titles and error sentences are
+// text nodes or setAttribute values.
 (function () {
   'use strict';
-
-  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it, so this file cannot disagree with
-  // another page about which characters are dangerous.
-  var esc = window.ConcordEscape.esc;
+  var el = window.ConcordDom.el;
 
   function slugFromPath() {
     var parts = window.location.pathname.split('/').filter(Boolean);
     return parts.length >= 2 && parts[0] === 'projects' ? decodeURIComponent(parts[1]) : '';
   }
-
-  // The rule this comment used to cite — "a read that assembles its headers some other way 404s for the member whose
-  // project it is" — is now enforced by scripts/parity/route_readers.py plus the one client, not by a per-file helper
-  // whose absence a Go test grepped for. `api()` below delegates to that client, so there is nothing to keep in step.
 
   function api(path, opts) {
     var o = opts || {};
@@ -53,19 +49,19 @@
   }
 
   function dateText(ts) {
-    if (!ts) return '<span class="muted">no date</span>';
+    if (!ts) return el('span', { class: 'muted' }, 'no date');
     var d = new Date(ts * 1000);
     return d.toISOString().slice(0, 10);
   }
 
   function statusTag(m) {
-    var t = '<span class="ms-status ms-' + esc(m.status) + '">' + esc(m.status) + '</span>';
+    var nodes = [el('span', { class: 'ms-status ms-' + m.status }, m.status)];
     if (m.at_risk) {
       // A target date in the past with open features. The badge names the reason
       // rather than just colouring the row: "at risk" alone is an adjective.
-      t += ' <span class="ms-risk" title="target date passed with features still open">at risk</span>';
+      nodes.push(' ', el('span', { class: 'ms-risk', title: 'target date passed with features still open' }, 'at risk'));
     }
-    return t;
+    return nodes;
   }
 
   function progress(m) {
@@ -74,8 +70,12 @@
     var prov = '';
     if (m.seeded) prov += ' · ' + m.seeded + ' seeded';
     if (m.unshipped) prov += ' · ' + m.unshipped + ' unshipped';
-    return '<div class="ms-progress" title="' + pct + '% shipped"><span style="width:' + pct + '%"></span></div>' +
-      '<div class="ms-counts">' + shipped + '/' + total + ' shipped · ' + (m.open || 0) + ' open' + prov + '</div>';
+    return [
+      el('div', { class: 'ms-progress', title: pct + '% shipped' },
+        el('span', { style: 'width:' + pct + '%' })),
+      el('div', { class: 'ms-counts' },
+        shipped + '/' + total + ' shipped · ' + (m.open || 0) + ' open' + prov)
+    ];
   }
 
   function slipText(row) {
@@ -87,57 +87,77 @@
     return 'not measured';
   }
 
+  function errorState(title, message) {
+    return el('div', { class: 'empty-state' }, [
+      el('p', { class: 'empty-state-title' }, title),
+      el('p', {}, message)
+    ]);
+  }
+
   function renderRoadmap(box, slug) {
     api(slug + '/roadmap').then(function (data) {
       var ms = data.milestones || [];
       var slip = {};
       (data.slippage || []).forEach(function (s) { slip[s.milestone_id] = s; });
-      var html = '<div class="roadmap-totals">' +
-        '<span>' + (data.totals.total || 0) + ' features in milestones</span>' +
-        '<span>' + (data.totals.open || 0) + ' open</span>' +
-        '<span>' + (data.totals.shipped || 0) + ' shipped</span></div>';
+      var children = [el('div', { class: 'roadmap-totals' }, [
+        el('span', {}, (data.totals.total || 0) + ' features in milestones'),
+        el('span', {}, (data.totals.open || 0) + ' open'),
+        el('span', {}, (data.totals.shipped || 0) + ' shipped')
+      ])];
 
-      html += '<form class="ms-create" data-ms-create="">' +
-        '<input name="title" placeholder="Milestone title" aria-label="Milestone title" required>' +
-        '<input name="target_date" type="date" aria-label="Target date">' +
-        '<button type="submit" class="btn">Create milestone</button>' +
-        '<span class="ms-error" role="alert"></span></form>';
+      var titleInput = el('input', {
+        name: 'title', placeholder: 'Milestone title', 'aria-label': 'Milestone title', required: true
+      });
+      var dateInput = el('input', { name: 'target_date', type: 'date', 'aria-label': 'Target date' });
+      var err = el('span', { class: 'ms-error', role: 'alert' });
+      var form = el('form', { class: 'ms-create', 'data-ms-create': '' }, [
+        titleInput, dateInput,
+        el('button', { type: 'submit', class: 'btn' }, 'Create milestone'), err
+      ]);
+      children.push(form);
 
       if (!ms.length) {
-        html += '<div class="empty-state"><p class="empty-state-title">No milestones yet</p>' +
-          '<p>A milestone groups features towards a date. The features no milestone claims are the backlog.</p></div>';
+        children.push(el('div', { class: 'empty-state' }, [
+          el('p', { class: 'empty-state-title' }, 'No milestones yet'),
+          el('p', {}, 'A milestone groups features towards a date. The features no milestone claims are the backlog.')
+        ]));
       } else {
-        html += '<div class="roadmap-timeline" data-roadmap-column="">';
-        ms.forEach(function (m) {
+        var columns = el('div', { class: 'roadmap-timeline', 'data-roadmap-column': '' }, ms.map(function (m) {
           var row = slip[m.id] || {};
-          html += '<div class="roadmap-column">' +
-            '<div class="roadmap-head">' +
-            '<a class="roadmap-title" href="/projects/' + encodeURIComponent(slug) + '/milestones/' + m.id + '">' + esc(m.title) + '</a>' +
-            statusTag(m) + '</div>' +
-            '<div class="roadmap-date">' + dateText(m.target_date) + ' · ' + esc(slipText(row)) + '</div>' +
-            progress(m) +
-            '<button class="btn btn-quiet" data-ms-close="' + m.id + '"' + (m.status === 'done' || m.status === 'cancelled' ? ' disabled' : '') + '>Close</button>' +
-            '</div>';
-        });
-        html += '</div>';
+          var closed = m.status === 'done' || m.status === 'cancelled';
+          return el('div', { class: 'roadmap-column' }, [
+            el('div', { class: 'roadmap-head' }, [
+              el('a', {
+                class: 'roadmap-title',
+                href: '/projects/' + encodeURIComponent(slug) + '/milestones/' + m.id
+              }, m.title),
+              ' ', statusTag(m)
+            ]),
+            el('div', { class: 'roadmap-date' }, [
+              dateText(m.target_date), ' · ', slipText(row)
+            ]),
+            progress(m),
+            el('button', { class: 'btn btn-quiet', 'data-ms-close': m.id, disabled: closed ? true : null }, 'Close')
+          ]);
+        }));
+        children.push(columns);
       }
-      box.innerHTML = html;
+      box.replaceChildren.apply(box, children);
       box.setAttribute('aria-busy', 'false');
 
-      var form = box.querySelector('[data-ms-create]');
       form.addEventListener('submit', function (event) {
         // The inline `onsubmit="return false;"` this replaced was load-bearing: without it the browser navigates and the
         // milestone the fetch just created is shown by a full page load instead of by `renderRoadmap` below.
         event.preventDefault();
-        var title = form.querySelector('[name=title]').value.trim();
-        var date = form.querySelector('[name=target_date]').value;
+        var title = titleInput.value.trim();
+        var date = dateInput.value;
         if (!title) return;
         var body = { title: title };
         if (date) body.target_date = Date.parse(date + 'T00:00:00Z') / 1000;
         api(slug + '/milestones', {
           method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
         }).then(function () { renderRoadmap(box, slug); }).catch(function (e) {
-          form.querySelector('.ms-error').textContent = e.message;
+          err.textContent = e.message;
         });
       });
 
@@ -153,7 +173,7 @@
         });
       });
     }).catch(function (e) {
-      box.innerHTML = '<div class="empty-state"><p class="empty-state-title">Could not load the roadmap</p><p>' + esc(e.message) + '</p></div>';
+      box.replaceChildren(errorState('Could not load the roadmap', e.message));
       box.setAttribute('aria-busy', 'false');
     });
   }
@@ -174,8 +194,10 @@
       if (titleEl) titleEl.textContent = m.title;
       var sub = document.getElementById('ms-subtitle');
       if (sub) {
-        sub.innerHTML = statusTag(m) + ' · ' + dateText(m.target_date) +
-          (m.body ? ' · ' + esc(m.body) : '');
+        var subChildren = statusTag(m);
+        subChildren.push(' · ', dateText(m.target_date));
+        if (m.body) subChildren.push(' · ', m.body);
+        sub.replaceChildren.apply(sub, subChildren);
       }
       var groups = [
         ['open', features.filter(function (f) { return f.status !== 'shipped' && f.status !== 'rejected'; })],
@@ -189,55 +211,72 @@
         return !here[f.id] && f.status !== 'shipped' && f.status !== 'rejected';
       });
 
-      var html = progress(m);
+      var children = progress(m).slice();
       groups.forEach(function (g) {
         if (!g[1].length) return;
-        html += '<h2 class="ms-group">' + esc(g[0]) + ' <span class="muted">(' + g[1].length + ')</span></h2><ul class="ms-features">';
-        g[1].forEach(function (f, i) {
+        children.push(el('h2', { class: 'ms-group' }, [
+          g[0], ' ', el('span', { class: 'muted' }, '(' + g[1].length + ')')
+        ]));
+        var list = el('ul', { class: 'ms-features' }, g[1].map(function (f, i) {
           // Order inside the milestone (§6): up/down rather than drag, because a drag
           // has no keyboard path and the order is a list, not a canvas.
-          var pos = (g[0] === 'open')
-            ? '<button class="btn btn-quiet" data-ms-up="' + esc(f.id) + '"' + (i === 0 ? ' disabled' : '') + '>&uarr;</button>' +
-              '<button class="btn btn-quiet" data-ms-down="' + esc(f.id) + '"' +
-              (i === g[1].length - 1 ? ' disabled' : '') + '>&darr;</button>'
-            : '';
-          html += '<li data-ms-feature="' + esc(f.id) + '"><a href="/projects/' + encodeURIComponent(slug) + '/features/' + f.id + '">' + esc(f.title) + '</a>' +
-            ' <span class="muted">#' + f.id + ' · ' + esc(f.status) + '</span> ' + pos + '</li>';
-        });
-        html += '</ul>';
+          var pos = (g[0] === 'open') ? [
+            el('button', { class: 'btn btn-quiet', 'data-ms-up': f.id, disabled: i === 0 ? true : null }, '↑'),
+            el('button', {
+              class: 'btn btn-quiet', 'data-ms-down': f.id,
+              disabled: i === g[1].length - 1 ? true : null
+            }, '↓')
+          ] : [];
+          return el('li', { 'data-ms-feature': f.id }, [
+            el('a', { href: '/projects/' + encodeURIComponent(slug) + '/features/' + f.id }, f.title),
+            ' ', el('span', { class: 'muted' }, '#' + f.id + ' · ' + f.status), ' ', pos
+          ]);
+        }));
+        children.push(list);
       });
       // §6: a selection into the milestone. The candidate list is every feature the
       // project has that is not already in it -- a number input would require the
       // reader to know an id the page is already holding.
-      html += '<div class="ms-panel"><h2>Add features</h2>' +
-        '<p class="muted">Open features not in this milestone. Selecting several adds them in one act.</p>' +
-        '<div class="ms-row"><select data-ms-add multiple size="6" aria-label="Features to add">' +
-        (candidates.length ? candidates.map(function (f) {
-          return '<option value="' + esc(f.id) + '">#' + esc(f.id) + ' ' + esc(f.title) + ' (' + esc(f.status) + ')</option>';
-        }).join('') : '<option disabled>none available</option>') + '</select>' +
-        '<button class="btn" data-ms-assign' + (candidates.length ? '' : ' disabled') + '>Add selected</button></div>' +
-        '<p class="form-status" data-ms-assign-status hidden></p></div>';
+      var select = el('select', {
+        'data-ms-add': '', multiple: true, size: 6, 'aria-label': 'Features to add'
+      }, candidates.length ? candidates.map(function (f) {
+        return el('option', { value: f.id }, '#' + f.id + ' ' + f.title + ' (' + f.status + ')');
+      }) : [el('option', { disabled: true }, 'none available')]);
+      var assignStatus = el('p', { class: 'form-status', 'data-ms-assign-status': '', hidden: true });
+      children.push(el('div', { class: 'ms-panel' }, [
+        el('h2', {}, 'Add features'),
+        el('p', { class: 'muted' }, 'Open features not in this milestone. Selecting several adds them in one act.'),
+        el('div', { class: 'ms-row' }, [
+          select,
+          el('button', { class: 'btn', 'data-ms-assign': '', disabled: candidates.length ? null : true }, 'Add selected')
+        ]),
+        assignStatus
+      ]));
 
       // The close control names BOTH paths: a successor moves the unfinished work,
       // and cancel closes without moving it. One button that quietly did the wrong
       // one of those is how a milestone loses its features.
-      html += '<div class="ms-actions">' +
-        '<button class="btn" data-ms-close="' + m.id + '"' + (m.status === 'done' || m.status === 'cancelled' ? ' disabled' : '') + '>Close as cancelled</button>' +
-        '<span class="muted">Closing with a successor moves the open features; cancelling leaves them where they are.</span></div>';
-      box.innerHTML = html;
+      children.push(el('div', { class: 'ms-actions' }, [
+        el('button', {
+          class: 'btn', 'data-ms-close': m.id,
+          disabled: m.status === 'done' || m.status === 'cancelled' ? true : null
+        }, 'Close as cancelled'),
+        el('span', { class: 'muted' },
+          'Closing with a successor moves the open features; cancelling leaves them where they are.')
+      ]));
+      box.replaceChildren.apply(box, children);
       box.setAttribute('aria-busy', 'false');
       var assignBtn = box.querySelector('[data-ms-assign]');
       if (assignBtn) {
         assignBtn.addEventListener('click', function () {
           var sel = box.querySelector('[data-ms-add]');
-          var ids = Array.prototype.map.call(sel.selectedOptions || sel.querySelectorAll('option:checked'),
-            function (o) { return Number(o.value); });
+          var ids = (sel.selectedOptions || []).map(function (o) { return Number(o.value); });
           if (!ids.length) return;
           api(slug + '/milestones/' + id + '/features', {
             method: 'POST', headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ feature_ids: ids })
           }).then(function () { renderMilestone(box, slug, id); })
-            .catch(function (e) { assignBtn.parentNode.querySelector('.form-status').textContent = e.message; });
+            .catch(function (e) { assignStatus.textContent = e.message; });
         });
       }
 
@@ -251,8 +290,9 @@
             if (!sibling) return;
             if (dir === 'up') li.parentNode.insertBefore(li, sibling);
             else li.parentNode.insertBefore(sibling, li);
-            var order = Array.prototype.map.call(li.parentNode.querySelectorAll('[data-ms-feature]'),
-              function (el) { return Number(el.getAttribute('data-ms-feature')); });
+            var order = li.parentNode.querySelectorAll('[data-ms-feature]').map(function (e) {
+              return Number(e.getAttribute('data-ms-feature'));
+            });
             api(slug + '/milestones/' + id + '/order', {
               method: 'PUT', headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ feature_ids: order })
@@ -272,7 +312,7 @@
         });
       });
     }).catch(function (e) {
-      box.innerHTML = '<div class="empty-state"><p class="empty-state-title">Could not load this milestone</p><p>' + esc(e.message) + '</p></div>';
+      box.replaceChildren(errorState('Could not load this milestone', e.message));
       box.setAttribute('aria-busy', 'false');
     });
   }
