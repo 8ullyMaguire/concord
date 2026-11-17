@@ -6,6 +6,7 @@
 // call sites did not change.
 (function () {
   var esc = window.ConcordEscape.esc;
+  var el = window.ConcordDom.el;
 
 // ------------------------------------------------- §6.1 duplicate detection
 //
@@ -45,7 +46,7 @@ function wireDupPanel(form, kind, projectID) {
       // Below eight characters the vector is mostly noise, and the answer
       // would be "nothing similar" for a title that is not yet a title. Saying
       // nothing is more honest than saying that.
-      panel.innerHTML = '';
+      panel.replaceChildren();
       return;
     }
     timer = setTimeout(function () { dupLookup(kind, projectID, text, panel); }, 350);
@@ -54,7 +55,8 @@ function wireDupPanel(form, kind, projectID) {
 
 function dupLookup(kind, projectID, text, panel) {
   var mine = ++dupSeq;
-  panel.innerHTML = '<p class="dup-note dup-checking">Checking for existing ' + esc(kind) + 's…</p>';
+  panel.replaceChildren(el('p', { class: 'dup-note dup-checking' },
+    'Checking for existing ' + kind + 's…'));
   // NO trailing slash after the kind: Axum matches `/api/v1/similar/{kind}` exactly, so `/similar/complaint/` is a 404
   // and the panel says "The duplicate check could not run" for every filer. The Go service answered both; the port
   // answers one. `duplicates_e2e` found this the moment it was pointed at PostgreSQL (2026-11-15).
@@ -65,22 +67,22 @@ function dupLookup(kind, projectID, text, panel) {
   window.ConcordApi.get(url)
     .then(function (data) {
       if (mine !== dupSeq) return;
-      panel.innerHTML = dupMarkup(kind, data);
+      panel.replaceChildren.apply(panel, dupMarkup(kind, data));
     })
     .catch(function () {
       if (mine !== dupSeq) return;
       // Never an empty panel: "we could not ask" and "nothing similar exists"
       // are different statements, and the second one is a lie if the first is
       // what happened.
-      panel.innerHTML = '<p class="dup-note">The duplicate check could not run. ' +
-        'Filing still works.</p>';
+      panel.replaceChildren(el('p', { class: 'dup-note' },
+        'The duplicate check could not run. Filing still works.'));
     });
 }
 
 function dupMarkup(kind, data) {
   if (!data || data.available === false) {
-    return '<p class="dup-note">' + esc((data && data.note) ||
-      'Duplicate detection is not configured on this instance.') + '</p>';
+    return [el('p', { class: 'dup-note' },
+      (data && data.note) || 'Duplicate detection is not configured on this instance.')];
   }
   var matches = data.similar || [];
   // The coverage line is not decoration. §6.1's promise is "nothing similar
@@ -90,29 +92,32 @@ function dupMarkup(kind, data) {
   var cov = data.coverage || null;
   var covNote = '';
   if (cov && cov.coverage != null && cov.coverage < 1) {
-    covNote = ' Only ' + Math.round(cov.coverage * 100) + '% of ' + esc(kind) +
+    covNote = ' Only ' + Math.round(cov.coverage * 100) + '% of ' + kind +
       's are indexed, so this is not a complete answer.';
   }
   if (!matches.length) {
-    return '<p class="dup-note">No similar ' + esc(kind) + ' found.' + covNote + '</p>';
+    return [el('p', { class: 'dup-note' }, 'No similar ' + kind + ' found.' + covNote)];
   }
-  var head = data.has_duplicate === true
-    ? '<p class="dup-note dup-strong">This looks like an existing ' + esc(kind) +
-      '. Read it before filing — if it is the same problem, adding to it is worth ' +
-      'more than a second report.</p>'
-    : '<p class="dup-note">Similar ' + esc(kind) + 's already exist:</p>';
-  var rows = matches.slice(0, 5).map(function (m) {
-    var label = esc(m.title || (kind + ' #' + m.entity_id));
+  var nodes = [el('p', { class: data.has_duplicate === true ? 'dup-note dup-strong' : 'dup-note' },
+    data.has_duplicate === true
+      ? 'This looks like an existing ' + kind +
+        '. Read it before filing — if it is the same problem, adding to it is worth ' +
+        'more than a second report.'
+      : 'Similar ' + kind + 's already exist:')];
+  nodes.push(el('ul', { class: 'dup-list' }, matches.slice(0, 5).map(function (m) {
+    var label = m.title || (kind + ' #' + m.entity_id);
     // The href is the API's own `url`, not a path reassembled here. The
     // endpoint used to hand out `/api/v1/features/222`, which is a 404 -- and
     // it did so for every match, because nothing ever followed one. Using the
     // server's value means a wrong URL fails a test instead of being written
     // correctly a second time in this file.
-    var link = m.url ? '<a href="' + esc(m.url) + '">' + label + '</a>' : label;
-    return '<li>' + link + ' <span class="dup-score">' +
-      Math.round((m.score || 0) * 100) + '%</span></li>';
-  }).join('');
-  return head + '<ul class="dup-list">' + rows + '</ul>' + covNote;
+    return el('li', {}, [
+      m.url ? el('a', { href: m.url }, label) : label,
+      ' ', el('span', { class: 'dup-score' }, Math.round((m.score || 0) * 100) + '%')
+    ]);
+  })));
+  if (covNote) nodes.push(covNote);
+  return nodes;
 }
 
 // showCardRefusal puts a refusal beside the control that produced it, creating the

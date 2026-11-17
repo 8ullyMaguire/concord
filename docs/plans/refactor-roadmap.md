@@ -478,7 +478,14 @@ Unclaimed rows are fair game.
   **Live (`bbb1ff5`):** `/version` equality True; the served `/assets/js/dom.js` and `/assets/js/milestones.js` pass
   `check_dom_milestones.js`. `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS,
   CI `44034605439` success.
-  **2b left:** the remaining 19 real string sinks (1 allowlisted in markdown.js). **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  **D-16 (2026-11-17):** `project.js`'s six sinks cannot be removed alone: its render concatenates HTML strings returned by
+  `ConcordWrites.panel()`, `ConcordPanels.*`, `ConcordArena.controls()` and the skeleton helpers. Convert those public
+  contracts to nodes first, then rewrite `project.js` in one slice so no string fragment is ever interpolated. Rejected:
+  wrapping the returned strings in a hand-written parser — that recreates `innerHTML` under another name.
+  **2b twenty-fourth slice landed 2026-11-17:** `project-writes.js` lost its four duplicate-panel sinks; its `panel()`
+  string contract is unchanged so `project.js` keeps working, but panel fills are `el()` trees. `check_dom_project_writes.js`
+  RED/GREEN covered hostile matches, coverage, all refusals and both field-report writes. Census 19→15 (1 allowlisted).
+  **2b left:** the remaining 15 real string sinks (1 allowlisted in markdown.js). **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
