@@ -650,6 +650,15 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-33 (step 3, 2026-11-17): cut a source section at the next resource's doc comment, even mid-comment-block.**
+  `api/contributions.rs` owns the feed's four handlers, the two reads under it and three helpers (403 lines;
+  `lib.rs` 7,550 → 7,144). Field reports and the emergency hold live in the same source region but are separate resources,
+  so they stayed in `lib.rs`; their routes are untouched. Compiler-named imports (`HeaderMap`, `Deserialize`, `Value`,
+  `Path`, `Query`, `State`, `Extension`, `Json`, `Router`, `internal`, `readable_project_segment`) fixed the move; no policy
+  row changed. Verified: policy `7 passed; 0 failed`, `route_policies: PASS`, replay `0 disagreed of 18 checked, 3 skipped`.
+  Rejected: moving field reports with the feed, which would have dragged `list_field_reports` from a different section and
+  broken the one-method-router-per-path rule.
+
 * **D-32 (step 3, 2026-11-17): the identity section moves after its oracle, and its whole surface becomes `pub(crate)`.**
   `a26e5e5` first made `policy.rs`'s `auth_gate` lookup module-aware (brace-matching the whole function): `7 passed; 0 failed`.
   Then the 589-line section moved into `api/identity.rs`; `lib.rs` 8,141 → 7,550 (589 section lines removed, 5 import lines added). The router imports `auth_gate`,
