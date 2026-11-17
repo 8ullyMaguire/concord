@@ -423,7 +423,10 @@ Unclaimed rows are fair game.
   tag/proposal fields and a hostile refusal; RED mutation (`root.innerHTML = '<p>mutant</p>'`) reddened it, restore → PASS.
   Census 90→87. **Live (`cf4ea03`):** `/version` equality True; the served `/assets/js/taxonomy.js` passes `check_dom_taxonomy.js`.
   `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS, CI `44014472354` success.
-  **2b left:** the remaining 87 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  **2b fifteenth slice landed 2026-11-17:** `stats.js` lost all ten sinks — facet/provenance tables, latency cards,
+  responsiveness and rising leaderboards, and all four failure states are `el()` trees. `check_dom_stats.js` executes
+  the shipped page with hostile facets, project names/slugs and four failing fetches; RED mutation reddened it,
+  restore → PASS. Census 87→77. **2b left:** the remaining 77 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
