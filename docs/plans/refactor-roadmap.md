@@ -405,7 +405,9 @@ Unclaimed rows are fair game.
   **2b eleventh slice landed 2026-11-17:** `requests.js` lost both sinks — rating bars, answer cards, compare panel, forms
   and error state are `el()` trees. `check_dom_requests.js` executes the shipped page with hostile request/answer/tag/project
   fields and a hostile post refusal; RED mutation (`root.innerHTML = '<p>mutant</p>'`) reddened it, restore → PASS.
-  Census 97→95. **2b left:** the remaining 95 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  Census 97→95. **Live (`7ba4e48`):** `/version` equality True; the served `/assets/js/requests.js` passes `check_dom_requests.js`.
+  `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS, CI `44010036979` success.
+  **2b left:** the remaining 95 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
