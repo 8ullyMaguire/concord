@@ -506,7 +506,7 @@ Unclaimed rows are fair game.
   both failure paths; RED mutation reddened it, restore → PASS. Census 8→7 (1 allowlisted).
 **2b twenty-eighth slice landed 2026-11-17:** `project.js` outer states (empty slug, skeleton, 404, 401, load failure)
   are now `el()` trees; `skeleton.js` gained node twins `titleNode()`/`textNode()` used by the project page. The main
-  `render()` string and its `ConcordPanels`/`ConcordArena` contracts remain — D-16 is still open for that slice.
+  `render()` string then remained; it was replaced by the twenty-ninth slice below (D-16 now closed).
   Census 7→2 (1 allowlisted): `project.js` 1, `markdown.js` 1 allowlisted. `check_dom_project.js` RED/GREEN covered
   hostile slug text, three skeleton lines, auth link, HTTP status and no sink writes.
 **Live (`6267468`):** `/version` equality True (masked display checked programmatically); served `dom.js`,
@@ -514,13 +514,20 @@ Unclaimed rows are fair game.
   headers PASS, CI `44054471991` success.
 
   **2b left:** the remaining 2 real string sinks (1 allowlisted in markdown.js) — the single non-allowlisted one is
-  `project.js`'s `render()`, gated on D-16's remaining helper-contract conversion.
+  none — the last non-allowlisted sink is gone.
+
+**2b twenty-ninth slice landed 2026-11-17 (D-16 closed):** the whole project detail page renders with `el()` trees.
+  New `project-render.js` owns panels, forms, arena controls, work items and `render()`; `project.js` keeps loading,
+  failure and wire code and calls `window.ConcordProjectRender.render()`. `check_dom_project.js` was extended to the
+  populated page with hostile fields in every panel; an obfuscated `node['innerHTML']` write inside the rendered tree
+  reddened it behaviorally, restore → PASS. Census 2→1: only the allowlisted Markdown sink remains. No non-allowlisted
+  string sink remains in `crates/web/assets/js`.
 **Live (`d76a47e`):** `/version` equality True; the served `/assets/js/dom.js` and `/assets/js/curation.js` pass
   `check_dom_curation.js`. `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS,
   CI `44050456868` success.
 
-  **D-16 remaining unblock:** convert `ConcordPanels.*`, `ConcordArena.controls()` and the skeleton helpers to return
-  nodes, then rewrite `project.js` as one slice. No credential, owner or vendor is needed; this is a scoped code task. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  **D-16 closed:** no unblock remains for this row. The helper modules keep their string exports for their other callers;
+  the project page composes only node trees. D-14 is superseded for this page: arena controls are nodes. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
@@ -636,6 +643,13 @@ tell the difference between "not started" and "waiting".
   row of live surface links, rendered by the existing `home()` builder; the 50+ project list stays below. Rejected:
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
+
+* **D-17 (step 2b, 2026-11-17): the project page owns its node renderers; D-14/D-16 are closed.** `project-render.js`
+  builds every panel, form, arena control and work item with `el()`. Rejected: parsing the old concatenated HTML strings
+  with a whitelist tokenizer (that is `innerHTML` under another name), and waiting for `ConcordPanels.*`,
+  `ConcordArena.controls()` and `ConcordWrites.panel()` to return nodes — those modules also serve other callers, and the
+  project page no longer composes their markup. Their wire exports stay. The shell loads the renderer before the page
+  script. A behavioral mutant (`node['innerHTML'] = …` on a node inside the tree) reddened the checker.
 
 * **D-13 (step 2b, 2026-11-17): the sink census counts write syntax, not the word in a comment.** After `criteria.js`
   lost its two sink assignments, a textual count still reported 137 because the file's new header comment says the word

@@ -12,6 +12,12 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 2b twenty-ninth slice: the whole project page is a node tree (D-16 closed).** New
+  `project-render.js` owns panels, forms, arena controls, work items and `render()`; `project.js` keeps loading, failure
+  and wire. `check_dom_project.js` covers the populated page with hostile values; behavioral RED with an obfuscated
+  `node['innerHTML']` write, restore → PASS. Census 2→1 (only the allowlisted Markdown sink). D-14 superseded: arena
+  controls are nodes in this page.
+
 - **2026-11-17 — step 2b twenty-eighth slice: `project.js` outer states are nodes.** Empty-slug, skeleton, 404, 401 and
   load-failure states use `el()`; `skeleton.js` gained `titleNode()`/`textNode()`. `check_dom_project.js` RED/GREEN;
   census 7→2 (1 allowlisted). Main `render()` remains a string; D-16 still open for it.

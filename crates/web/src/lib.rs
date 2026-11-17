@@ -514,8 +514,9 @@ async fn project_overview(
 <script src="{}"></script>
 <script src="{}"></script>
 <script src="{}"></script>
+<script src="{}"></script>
 <script src="{}"></script>{}
-"#,
+""",
         header.finish(),
         shell::asset("/assets/js/skeleton.js"),
         // The three split files register themselves on `window` before the page script runs — `project.js` calls
@@ -524,6 +525,8 @@ async fn project_overview(
         shell::asset("/assets/js/project-arena.js"),
         shell::asset("/assets/js/project-panels.js"),
         shell::asset("/assets/js/project-writes.js"),
+        // The node-only renderer registers `window.ConcordProjectRender` before the page script calls it.
+        shell::asset("/assets/js/project-render.js"),
         shell::asset("/assets/js/project.js"),
         archive_script,
     );
