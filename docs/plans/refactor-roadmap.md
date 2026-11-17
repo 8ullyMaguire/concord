@@ -650,6 +650,14 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-37 (step 3, 2026-11-17): the arena replay move is guarded by the mutation contract.**
+  `api/ops_writes.rs` owns `recompute_arena` and its route (58 lines; `lib.rs` 6,766 → 6,705). The
+  `app_mutant("recompute-count-rows")` control branch and the membership-before-role check are byte-identical; both are mutation
+  probes. Verified: policy `7 passed; 0 failed`, `route_policies: PASS`, replay `0 disagreed of 16 checked, 5 skipped`.
+  Concurrency: a subagent lease (`sa-0-022cf733`) stayed active during this turn; each write checked HEAD and clean status, and
+  the commit carries only the files named above. If that session lands a conflicting edit, rebase this move on it rather than
+  overwriting it. Rejected: moving the webhook with the replay merely because they shared a section comment.
+
 * **D-36 (step 3, 2026-11-17): the taxonomy proposal rate-limit helper is part of the resource.**
   `api/taxonomy.rs` owns `list_tags`, `list_taxonomy_proposals`, `propose_taxonomy_change`, `contributor_somewhere` and
   `consent_taxonomy_proposal` plus three routes (174 lines; `lib.rs` 6,948 → 6,766). The first check reddened with 15 errors
