@@ -297,7 +297,7 @@
     say('Loading\u2026');
     window.ConcordApi.get('/api/v1/curation?' + params.toString())
       .then(function (page) {
-      if (!append) { listEl.innerHTML = ''; shown = 0; }
+      if (!append) { listEl.replaceChildren(); shown = 0; }
       (page.items || []).forEach(function (item) {
         listEl.appendChild(card(item));
         shown++;

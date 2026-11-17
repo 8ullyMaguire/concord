@@ -501,7 +501,13 @@ Unclaimed rows are fair game.
   **Live (`7319005`):** `/version` equality True (masked display checked programmatically); served `dom.js`, `scout.js`
   and `merge.js` pass `check_dom_scout_merge.js`. `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`,
   headers PASS, CI `44047996973` success.
-  **2b left:** the remaining 8 real string sinks (1 allowlisted in markdown.js). **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  **2b twenty-seventh slice landed 2026-11-17:** `curation.js`'s list refresh clear became `replaceChildren()` — all cards
+  were already DOM-built. `check_dom_curation.js` executes hostile rationales/targets, append, refresh, vote, undo and
+  both failure paths; RED mutation reddened it, restore → PASS. Census 8→7 (1 allowlisted).
+  **2b left:** the remaining 7 real string sinks (1 allowlisted in markdown.js) — all six non-allowlisted ones are in
+  `project.js`, gated on D-16's helper-contract conversion.
+  **D-16 remaining unblock:** convert `ConcordPanels.*`, `ConcordArena.controls()` and the skeleton helpers to return
+  nodes, then rewrite `project.js` as one slice. No credential, owner or vendor is needed; this is a scoped code task. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
