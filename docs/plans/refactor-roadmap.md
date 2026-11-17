@@ -444,6 +444,8 @@ Unclaimed rows are fair game.
   into a larger builder; its three panel renderers are `el()` trees and no longer use a string sink. Migrating that
   string requires converting `project.js`'s alternatives block in the same change, which is the next slice there.
   Rejected: returning a node from `controls()` now, which would stringify to `[object Object]` in project.js.
+  **Live (`c5df26f`):** `/version` equality True; the served `/assets/js/project-arena.js` passes `check_dom_arena.js`.
+  `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS, CI `44023086042` success.
   **2b left:** the remaining 49 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |

@@ -16,6 +16,11 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   verdict and all four note states are `el()` trees; `ConcordArena.controls()` stays a string (D-14, project.js
   concatenation). `check_dom_arena.js` RED mutation and GREEN restore covered hostile fields, recompute and refusals.
   Census 57→49.
+  ```
+  check_dom_arena: PASS — hostile pair/log/verdict and refusal are text, attrs verbatim
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS · sinks 49
+  live c5df26f: served asset PASS checker · walk 0 holes · CI 44023086042 success
+  ```
 
 - **2026-11-17 — step 2b seventeenth slice: `rank.js` has no string sink.** Cards, actions, keyboard hint, sign-in
   prompt and all refusal states are `el()` trees. `check_dom_rank.js` RED mutation and GREEN restore covered eight
