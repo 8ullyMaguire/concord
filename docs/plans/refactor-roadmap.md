@@ -650,6 +650,14 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-38 (step 3, 2026-11-17): a helper physical location is not its ownership.**
+  app_mutant was written inside the webhook section but imported by badges, ops_writes and others via crate::app_mutant.
+  Moving the webhook reddened with unresolved import crate::app_mutant; the fix hoists the helper to the crate root as the
+  single definition and imports it into the module. Webhook module: handler, HMAC/hex/constant-time helpers, RFC3339/date
+  parser and one route (397 lines); lib.rs 6705 -> 6308 plus the hoisted helper. Every refusal stays identical 401.
+  Verified: policy 7 passed; 0 failed, route_policies PASS, replay 0 disagreed of 18 checked, 3 skipped.
+  Rejected: duplicating app_mutant in the module — two copies of a mutation switch would let a probe control one caller not another.
+
 * **D-37 (step 3, 2026-11-17): the arena replay move is guarded by the mutation contract.**
   `api/ops_writes.rs` owns `recompute_arena` and its route (58 lines; `lib.rs` 6,766 → 6,705). The
   `app_mutant("recompute-count-rows")` control branch and the membership-before-role check are byte-identical; both are mutation
