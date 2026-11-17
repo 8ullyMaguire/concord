@@ -15,6 +15,11 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
 - **2026-11-17 — step 2b twenty-third slice: both milestone pages have no string sink.** Roadmap totals/timeline/form and
   milestone subtitle/groups/candidates are `el()` trees; `check_dom_milestones.js` RED/GREEN covered hostile fields, create,
   reorder and assign. Census 24→19 (1 allowlisted).
+  ```
+  check_dom_milestones: PASS — hostile titles/errors are text, dates and provenance kept
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS · sinks 19 · allowlisted 1
+  live bbb1ff5: served assets PASS checker · walk 0 holes · CI 44034605439 success
+  ```
 
 - **2026-11-17 — step 2b twenty-second slice: `new-project.js` has no string sink.** Intent answers, no-match hint,
   hit list, clear and failure states are `el()` trees; `check_dom_new_project.js` RED/GREEN covered hostile hits and

@@ -475,6 +475,9 @@ Unclaimed rows are fair game.
   create form, milestone subtitle, feature groups and candidate panel are `el()` trees. `check_dom_milestones.js` executes
   both pages with hostile titles/errors, the create refusal, up/down reorder and assign POST; RED mutation reddened it,
   restore → PASS. Census 24→19 (1 allowlisted).
+  **Live (`bbb1ff5`):** `/version` equality True; the served `/assets/js/dom.js` and `/assets/js/milestones.js` pass
+  `check_dom_milestones.js`. `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS,
+  CI `44034605439` success.
   **2b left:** the remaining 19 real string sinks (1 allowlisted in markdown.js). **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
