@@ -14,6 +14,11 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
 
 - **2026-11-17 — step 2b twenty-fifth slice: `lists.js` has no string sink.** Cards, empty state and both failure states
   are `el()` trees; `check_dom_lists.js` RED/GREEN covered hostile fields and failure paths. Census 15→12 (1 allowlisted).
+  ```
+  check_dom_lists: PASS — hostile fields are text, href verbatim, all failure states kept
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS · sinks 12 · allowlisted 1
+  live 7e207af: served assets PASS checker · walk 0 holes · CI 44045226573 success
+  ```
 
 - **2026-11-17 — step 2b twenty-fourth slice: `project-writes.js` has no string sink.** The duplicate panel is filled with
   `el()` trees; its `panel()` string contract stays for `project.js` (D-16). `check_dom_project_writes.js` RED/GREEN covered

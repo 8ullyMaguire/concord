@@ -491,6 +491,9 @@ Unclaimed rows are fair game.
   **2b twenty-fifth slice landed 2026-11-17:** `lists.js` lost its three sinks — list cards, empty state and both failure
   states are `el()` trees. `check_dom_lists.js` executes hostile list fields, all failure states and a non-array answer;
   RED mutation reddened it, restore → PASS. Census 15→12 (1 allowlisted).
+  **Live (`7e207af`):** `/version` equality True; the served `/assets/js/dom.js` and `/assets/js/lists.js` pass
+  `check_dom_lists.js`. `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS,
+  CI `44045226573` success.
   **2b left:** the remaining 12 real string sinks (1 allowlisted in markdown.js). **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
