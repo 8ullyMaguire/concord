@@ -368,7 +368,9 @@ Unclaimed rows are fair game.
   **2b fourth slice landed 2026-11-17:** `consensus.js` lost all four sinks — three list clears became `replaceChildren()`
   and the decision-record link became an `el()` tree. `check_dom_consensus.js` executes the shipped page on its index path;
   RED mutation (restoring `indexListEl.innerHTML = ''`) reddened it with `consensus.js wrote to an HTML string sink: [""]`,
-  restore → PASS. Sink census 123→119. **2b left:** the remaining 119 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  restore → PASS. Sink census 123→119. **Live (`d2affbd`):** `/version` equality True; the served `/assets/js/consensus.js` passes `check_dom_consensus.js`.
+  `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS, CI `43999913369` success.
+  **2b left:** the remaining 119 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |

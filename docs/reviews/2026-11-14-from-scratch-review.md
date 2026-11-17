@@ -15,6 +15,12 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
 - **2026-11-17 — step 2b fourth slice: `consensus.js` has no string sink.** Three list clears became `replaceChildren()`,
   the decision-record link became an `el()` tree. `check_dom_consensus.js` RED mutation (`wrote to an HTML string sink`)
   and GREEN restore measured. Census 123→119.
+  ```
+  check_dom_consensus: PASS — no string sink, clears and record link use the DOM
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS · sinks 119
+  live d2affbd: served asset PASS checker · walk 0 holes · CI 43999913369 success
+  ```
+
 
 - **2026-11-17 — step 2b third slice: `criteria.js` has no string sink (D-13).** All five HTML builders became `el()`
   trees; the checker feeds hostile names, titles, ids, descriptions, profiles and a hostile error through the shipped page.
