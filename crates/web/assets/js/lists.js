@@ -31,7 +31,7 @@
 
   // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it. This file's copy replaced the same
   // five characters in its own way; a single pass over a character class cannot disagree with another page about which are dangerous.
-  var esc = window.ConcordEscape.esc;
+  var el = window.ConcordDom.el;
 
   function ago(unix) {
     if (!unix) return "";
@@ -44,33 +44,33 @@
 
   function cards(lists) {
     if (!lists.length) {
-      return '<div class="empty-state"><div class="empty-state-icon">\u{1F4CB}</div>' +
-        '<p class="empty-state-title">No lists yet</p>' +
-        '<p class="empty-state-description">A list is a curated collection of entries ' +
-        "that the community ranks by comparing them. This project has not made one " +
-        "yet.</p></div>";
+      return el('div', { class: 'empty-state' }, [
+        el('div', { class: 'empty-state-icon' }, '\u{1F4CB}'),
+        el('p', { class: 'empty-state-title' }, 'No lists yet'),
+        el('p', { class: 'empty-state-description' },
+          'A list is a curated collection of entries that the community ranks by ' +
+          'comparing them. This project has not made one yet.')
+      ]);
     }
-    return '<div class="grid-responsive-2">' + lists.map(function (l) {
+    return el('div', { class: 'grid-responsive-2' }, lists.map(function (l) {
       // `p` is not in scope here; slug is, and it is the same value. Named explicitly
       // so the next reader does not reach for a `p` that is not here -- the
       // ReferenceError that blanked the project page once.
-      var href = "/projects/" + encodeURIComponent(slug) + "/lists/" +
+      var href = '/projects/' + encodeURIComponent(slug) + '/lists/' +
         encodeURIComponent(l.id);
-      return '<article class="card">' +
-        '<h3><a href="' + href + '">' + esc(l.name) + "</a></h3>" +
-        (l.description ? '<p class="card-text">' + esc(l.description) + "</p>" : "") +
-        '<p class="card-meta">' +
-        // project_id 0 = instance-wide. Labelled because this index is scoped to a
-        // project slug, so an unlabelled shared list reads as the project's own.
-        (l.project_id
-          ? ""
-          : '<span class="badge badge-instance">instance-wide</span>') +
-        '<span class="badge ' +
-        (l.status === "open" ? "badge-blue" : "badge-slate") + '">' +
-        esc(l.status) + "</span>" +
-        '<span>updated ' + ago(l.updated_at) + "</span>" +
-        "</p></article>";
-    }).join("") + "</div>";
+      return el('article', { class: 'card' }, [
+        el('h3', {}, el('a', { href: href }, l.name)),
+        l.description ? el('p', { class: 'card-text' }, l.description) : null,
+        el('p', { class: 'card-meta' }, [
+          // project_id 0 = instance-wide. Labelled because this index is scoped to a
+          // project slug, so an unlabelled shared list reads as the project's own.
+          l.project_id ? null : el('span', { class: 'badge badge-instance' }, 'instance-wide'),
+          ' ',
+          el('span', { class: 'badge ' + (l.status === 'open' ? 'badge-blue' : 'badge-slate') }, l.status),
+          ' ', el('span', {}, 'updated ' + ago(l.updated_at))
+        ])
+      ]);
+    }));
   }
 
   function load() {
@@ -81,18 +81,18 @@
       })
       .then(function (list) {
         root.removeAttribute("aria-busy");
-        root.innerHTML = '<div class="list-cards">' +
-          cards(Array.isArray(list) ? list : []) + "</div>";
+        root.replaceChildren(el('div', { class: 'list-cards' },
+          cards(Array.isArray(list) ? list : [])));
       })
       .catch(function (err) {
         root.removeAttribute("aria-busy");
         if (err && err.notFound) {
-          root.innerHTML = '<div class="empty-state">' +
-            '<p class="empty-state-title">There are no lists at this address.</p></div>';
+          root.replaceChildren(el('div', { class: 'empty-state' },
+            el('p', { class: 'empty-state-title' }, 'There are no lists at this address.')));
           return;
         }
-        root.innerHTML = '<div class="empty-state">' +
-          '<p class="empty-state-title">Lists could not be loaded.</p></div>';
+        root.replaceChildren(el('div', { class: 'empty-state' },
+          el('p', { class: 'empty-state-title' }, 'Lists could not be loaded.')));
       });
   }
 
