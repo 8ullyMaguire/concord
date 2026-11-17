@@ -440,7 +440,11 @@ Unclaimed rows are fair game.
   `check_dom_rank.js` executes a hostile pair plus 401/403/404/409/422/500 and vote-failure branches; RED mutation
   reddened it, restore → PASS. Census 66→57. **Live (`a6a9af3`):** `/version` equality True; the served `/assets/js/rank.js` passes `check_dom_rank.js`.
   `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS, CI `44020904994` success.
-  **2b left:** the remaining 57 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  **D-14 (2026-11-17):** `ConcordArena.controls()` stays an escaped HTML string because `project.js:369` concatenates it
+  into a larger builder; its three panel renderers are `el()` trees and no longer use a string sink. Migrating that
+  string requires converting `project.js`'s alternatives block in the same change, which is the next slice there.
+  Rejected: returning a node from `controls()` now, which would stringify to `[object Object]` in project.js.
+  **2b left:** the remaining 49 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |

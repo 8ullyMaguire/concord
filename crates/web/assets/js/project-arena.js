@@ -39,91 +39,108 @@ function arenaControls(a) {
     '<div class="arena-verify" data-arena-verify-out="' + id + '"></div>';
 }
 
-function arenaSideHTML(s) {
-  return '<div class="pair-side" data-pair-side="' + esc(s.entity_id) + '">' +
-    '<span class="pair-label">' + esc(s.label || ('entity ' + s.entity_id)) + '</span>' +
-    (s.is_baseline ? '<span class="pair-baseline">do nothing</span>' : '') +
-    '<span class="pair-rating">rating ' + esc(Math.round(s.r || 0)) + ' \u00b1 ' + esc(Math.round(s.rd || 0)) + '</span>' +
-    '<span class="pair-confidence">' + esc(Math.round(100 * (s.win_probability || 0))) + '% to win</span>' +
-    '</div>';
+// The three panels below are rendered with domEl(), never with an HTML string.
+// They are the ONLY renderers of their data: the old *HTML builders duplicated
+// this markup as a string, and the string and DOM versions drifted (the DOM one
+// lost the vote weight, then the string one lost the reason). A single tree
+// builder per panel is the fix.
+function note(msg) {
+  return window.ConcordDom.el('p', { class: 'arena-note' }, msg);
+}
+
+function arenaSide(s) {
+  var el = window.ConcordDom.el;
+  return el('div', { class: 'pair-side', 'data-pair-side': s.entity_id }, [
+    el('span', { class: 'pair-label' }, s.label || ('entity ' + s.entity_id)),
+    s.is_baseline ? el('span', { class: 'pair-baseline' }, 'do nothing') : null,
+    el('span', { class: 'pair-rating' },
+      'rating ' + Math.round(s.r || 0) + ' ± ' + Math.round(s.rd || 0)),
+    el('span', { class: 'pair-confidence' },
+      Math.round(100 * (s.win_probability || 0)) + '% to win')
+  ]);
 }
 
 // arenaPairForm is the pair AND the control that judges it. Rendering the pair
-// without the control would put a voter in front of a question they cannot answer,
-// which is how the panel would have looked if the store's NextArenaPair had been
-// routed without the vote path already being there.
+// without the control would put a voter in front of a question they cannot answer.
 function arenaPairForm(arenaID, pair) {
+  var el = window.ConcordDom.el;
   var options = [['a', 'A wins'], ['b', 'B wins'], ['both', 'A draw'],
                  ['neither', 'Neither is worth it'], ['skip', 'I cannot tell']];
   var radios = options.map(function (o, i) {
-    return '<label class="pair-choice"><input type="radio" name="outcome" value="' + o[0] + '"' +
-      (i === 0 ? ' checked' : '') + '> ' + esc(o[1]) + '</label>';
-  }).join('');
-  return '<form class="pair-form" data-vote-pair="' + esc(arenaID) + '" ' +
-      'data-side-a="' + esc(pair.a.entity_id) + '" data-side-b="' + esc(pair.b.entity_id) + '">' +
-    '<p class="pair-question">' + esc(pair.question || 'Which is better?') + '</p>' +
-    '<div class="pair-sides">' + arenaSideHTML(pair.a) + arenaSideHTML(pair.b) + '</div>' +
-    '<div class="pair-choices">' + radios + '</div>' +
-    '<label class="pair-reason">Why (optional)' +
-      '<input type="text" name="reason" maxlength="280" placeholder="one line, optional"></label>' +
-    '<button type="submit" class="btn btn-primary">Record vote</button>' +
-    '<p class="form-status" data-status hidden></p>' +
-    '</form>';
+    return el('label', { class: 'pair-choice' }, [
+      el('input', { type: 'radio', name: 'outcome', value: o[0], checked: i === 0 ? true : null }),
+      ' ' + o[1]
+    ]);
+  });
+  return el('form', {
+    class: 'pair-form', 'data-vote-pair': arenaID,
+    'data-side-a': pair.a.entity_id, 'data-side-b': pair.b.entity_id
+  }, [
+    el('p', { class: 'pair-question' }, pair.question || 'Which is better?'),
+    el('div', { class: 'pair-sides' }, [arenaSide(pair.a), arenaSide(pair.b)]),
+    el('div', { class: 'pair-choices' }, radios),
+    el('label', { class: 'pair-reason' }, [
+      'Why (optional)',
+      el('input', { type: 'text', name: 'reason', maxlength: '280',
+        placeholder: 'one line, optional' })
+    ]),
+    el('button', { type: 'submit', class: 'btn btn-primary' }, 'Record vote'),
+    el('p', { class: 'form-status', 'data-status': '', hidden: '' })
+  ]);
 }
 
-function arenaLogHTML(votes) {
+function arenaLog(votes) {
+  var el = window.ConcordDom.el;
   if (!votes.length) {
-    return '<p class="arena-note">No comparisons recorded yet. The ranking starts at the ' +
-      'prior until somebody judges a pair.</p>';
+    return note('No comparisons recorded yet. The ranking starts at the prior until somebody judges a pair.');
   }
-  return '<ul class="arena-log-list">' + votes.map(function (v) {
+  return el('ul', { class: 'arena-log-list' }, votes.map(function (v) {
     var winner = v.outcome === 'a' ? v.a.label : (v.outcome === 'b' ? v.b.label : v.outcome);
     // The WEIGHT is shown, because it is the number that decides how far the vote
     // moved the ranking and §5.2 makes this view the audit trail an appeal is argued
-    // from. §30 found the weight being computed, stored, and honoured by nothing;
-    // a reader who cannot see it cannot tell a full vote from a ramped-down one, and
-    // those two are the difference between a vote and a formality.
+    // from. §30 found the weight being computed, stored, and honoured by nothing.
     var w = (typeof v.weight === 'number') ? v.weight : Number(v.weight);
-    var shown = isFinite(w) ? (w >= 1 ? String(Math.round(w * 100) / 100)
-                                     : w.toFixed(4)) : '?';
-    return '<li class="arena-log-row">' +
-      '<span class="log-winner">' + esc(winner) + '</span>' +
-      '<span class="log-pair">' + esc(v.a.label) + ' vs ' + esc(v.b.label) + '</span>' +
-      '<span class="log-weight">weight ' + esc(shown) + '</span>' +
-      (v.reason ? '<span class="log-reason">' + esc(v.reason) + '</span>' : '') +
-      '</li>';
-  }).join('') + '</ul>';
+    var shown = isFinite(w) ? (w >= 1 ? String(Math.round(w * 100) / 100) : w.toFixed(4)) : '?';
+    var rows = [
+      el('span', { class: 'log-winner' }, winner),
+      el('span', { class: 'log-pair' }, v.a.label + ' vs ' + v.b.label),
+      el('span', { class: 'log-weight' }, 'weight ' + shown)
+    ];
+    if (v.reason) rows.push(el('span', { class: 'log-reason' }, v.reason));
+    return el('li', { class: 'arena-log-row' }, rows);
+  }));
 }
 
-function arenaVerifyHTML(verdict) {
-  // NO ENTRIES IS NOT AGREEMENT. A comparison set that is empty reproduces itself
-  // and says nothing about anything, and the live instances are full of arenas in
-  // exactly that state: the laptop's database has 55 arenas and no entries at all,
-  // and the public one has an arena with two votes and none. `agrees: true` over
-  // nothing is the same shape as the 200-of-327 page this pass started with, so the
-  // panel states which case it is rather than rendering the reassuring one.
+function arenaVerify(verdict) {
+  var el = window.ConcordDom.el;
+  // NO ENTRIES IS NOT AGREEMENT. An empty comparison set reproduces itself and
+  // says nothing; the panel states which case it is rather than rendering the
+  // reassuring one.
   var n = (verdict.entries || []).length;
   var head = n === 0
-    ? '<p class="arena-note arena-empty">This arena has no competitors to verify yet: the log is empty.</p>'
+    ? el('p', { class: 'arena-note arena-empty' },
+        'This arena has no competitors to verify yet: the log is empty.')
     : verdict.agrees
-    ? '<p class="arena-note arena-agrees">The vote log reproduces every rating in this arena.</p>'
-    : '<p class="arena-note arena-disagrees">' + esc(verdict.divergent) +
-      ' entr' + (verdict.divergent === 1 ? 'y is' : 'ies are') +
-      ' not what the vote log produces. The ranking is not derivable from the record.</p>';
+    ? el('p', { class: 'arena-note arena-agrees' },
+        'The vote log reproduces every rating in this arena.')
+    : el('p', { class: 'arena-note arena-disagrees' },
+        verdict.divergent + ' entr' + (verdict.divergent === 1 ? 'y is' : 'ies are') +
+        ' not what the vote log produces. The ranking is not derivable from the record.');
   var rows = (verdict.entries || []).filter(function (e) { return !e.agrees; })
     .map(function (e) {
-      return '<li class="arena-drift">' +
-        '<span>entity ' + esc(e.entity_id) + '</span>' +
-        '<span>stored ' + esc(Math.round(e.stored_r)) + '</span>' +
-        '<span>from the log ' + esc(Math.round(e.replayed_r)) + '</span>' +
-        '</li>';
-    }).join('');
-  return head + (rows ? '<ul class="arena-drift-list">' + rows + '</ul>' : '') +
-    '<button type="button" class="btn btn-quiet" data-arena-recompute="' + esc(verdict.arena_id) +
-    '">Recompute from the log</button>' +
-    '<p class="form-status" data-status hidden></p>';
+      return el('li', { class: 'arena-drift' }, [
+        el('span', {}, 'entity ' + e.entity_id),
+        el('span', {}, 'stored ' + Math.round(e.stored_r)),
+        el('span', {}, 'from the log ' + Math.round(e.replayed_r))
+      ]);
+    });
+  return [head,
+    rows.length ? el('ul', { class: 'arena-drift-list' }, rows) : null,
+    el('button', { type: 'button', class: 'btn btn-quiet', 'data-arena-recompute': verdict.arena_id },
+      'Recompute from the log'),
+    el('p', { class: 'form-status', 'data-status': '', hidden: '' })
+  ].filter(Boolean);
 }
-
 function wireArenaControls(box, slug, helpers) {
     var setStatus = helpers.setStatus;
     var postJSON = helpers.postJSON;
@@ -135,27 +152,27 @@ function wireArenaControls(box, slug, helpers) {
     // so in its message — which the one error model carries, so the refusal and the network failure are the same
     // three lines instead of a response-shaped branch and a separate catch.
     window.ConcordApi.get(base + '/arenas/' + encodeURIComponent(arenaID) + '/next-pair')
-      .then(function (pair) { out.innerHTML = arenaPairForm(arenaID, pair); })
+      .then(function (pair) { out.replaceChildren(arenaPairForm(arenaID, pair)); })
       .catch(function (err) {
-        out.innerHTML = '<p class="arena-note">' + esc(String(err && err.message ? err.message : err)) + '</p>';
+        out.replaceChildren(note(String(err && err.message ? err.message : err)));
       });
   }
 
   function loadLog(arenaID, out) {
     out.textContent = 'Loading the vote log\u2026';
     window.ConcordApi.get(base + '/arenas/' + encodeURIComponent(arenaID) + '/votes')
-      .then(function (log) { out.innerHTML = arenaLogHTML(log.votes || []); })
+      .then(function (log) { out.replaceChildren(arenaLog(log.votes || [])); })
       .catch(function (err) {
-        out.innerHTML = '<p class="arena-note">' + esc(err.message || String(err)) + '</p>';
+        out.replaceChildren(note(err.message || String(err)));
       });
   }
 
   function loadVerification(arenaID, out) {
     out.textContent = 'Replaying the vote log\u2026';
     window.ConcordApi.get(base + '/arenas/' + encodeURIComponent(arenaID) + '/verification')
-      .then(function (verdict) { out.innerHTML = arenaVerifyHTML(verdict); })
+      .then(function (verdict) { out.replaceChildren.apply(out, arenaVerify(verdict)); })
       .catch(function (err) {
-        out.innerHTML = '<p class="arena-note">' + esc(err.message || String(err)) + '</p>';
+        out.replaceChildren(note(err.message || String(err)));
       });
   }
 
@@ -195,14 +212,13 @@ function wireArenaControls(box, slug, helpers) {
       postJSON(base + '/arenas/' + encodeURIComponent(id) + '/recompute', {})
         .then(function (res) {
           if (!out) return;
-          out.innerHTML = '<p class="arena-note">' +
-            esc(res.changed === 0
-              ? 'The vote log already reproduced every rating: the recompute changed nothing.'
-              : res.changed + ' entr' + (res.changed === 1 ? 'y was' : 'ies were') +
-                ' repaired. Reload to see the corrected ranking.') + '</p>';
+          out.replaceChildren(note(res.changed === 0
+            ? 'The vote log already reproduced every rating: the recompute changed nothing.'
+            : res.changed + ' entr' + (res.changed === 1 ? 'y was' : 'ies were') +
+              ' repaired. Reload to see the corrected ranking.'));
         })
         .catch(function (err) {
-          if (out) out.innerHTML = '<p class="arena-note">' + esc(err.message || String(err)) + '</p>';
+          if (out) out.replaceChildren(note(err.message || String(err)));
         });
     }
   });
