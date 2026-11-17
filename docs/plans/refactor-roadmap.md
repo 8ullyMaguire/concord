@@ -650,6 +650,14 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-31 (step 3, 2026-11-17): identity is deferred until the middleware move can be proven as one slice.**
+  The `consent gate, guest identities, and login` section holds cross-cutting middleware (`auth_gate`, `interaction_gate`,
+  `security_headers`) used by every route, and `policy.rs`'s pinned-handler test anchors on `SOURCE.find("async fn auth_gate(")`.
+  Moving it needs a coordinated test-oracle change, not a pure move; taking the next smallest resource instead.
+  `api/ops_reads.rs` owns the three operator reads (47 lines; `lib.rs` 8,190 → 8,141), split before the emergency-hold
+  write per D-28. No RED: policy `7 passed; 0 failed`, `route_policies: PASS`, replay `0 disagreed of 18 checked, 3 skipped`.
+  Unblock for identity: make the policy test's `auth_gate` lookup module-aware first, then move the section in one commit.
+
 * **D-30 (step 3, 2026-11-17): two refusal maps in one section can belong to one resource.**
   `api/alternatives.rs` owns `list_alternatives`, `create_alternative`, `add_alternative_competitor`,
   `cast_alternatives_vote`, `alternative_arena_id`, `alternative_refusal` and `arena_vote_refusal` (256 lines;
