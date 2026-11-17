@@ -219,7 +219,7 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/projects/{slug}/features", Policy::Public, false),
     ("POST", "/api/v1/projects/{slug}/features", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/features/{feature}", Policy::Public, false),
-    ("PUT", "/api/v1/projects/{slug}/features/{feature}", Policy::Account, false),
+    ("PUT", "/api/v1/projects/{slug}/features/{feature}", Policy::Account, true),
     ("DELETE", "/api/v1/projects/{slug}/features/{feature}/claim", Policy::Session, true),
     ("POST", "/api/v1/projects/{slug}/features/{feature}/claim", Policy::Session, true),
     ("GET", "/api/v1/projects/{slug}/features/{feature}/complaints", Policy::Session, false),
@@ -314,7 +314,7 @@ mod tests {
 
     /// 5 on 2026-11-15 (four routes that already refused a stranger, plus the admin ledger that did not); 6 on
     /// 2026-11-16 when `POST /api/v1/projects` moved its refusal into the gate. It may grow, never shrink.
-    const ENFORCED: usize = 95;
+    const ENFORCED: usize = 96;
 
     /// The source with string literals and comments replaced by spaces, so a brace or a paren inside either
     /// cannot move the scan. Same length as the input, so an index means the same thing in both.
@@ -684,6 +684,7 @@ mod tests {
             "propose_strategic_weight",
             "arena_remove",
             "release_claim",
+            "edit_feature",
             "auth_me",
             "list_notifications",
             "list_invites",

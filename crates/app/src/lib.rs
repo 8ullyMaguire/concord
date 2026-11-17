@@ -1492,12 +1492,9 @@ struct EditFeatureRequest {
 async fn edit_feature(
     State(state): State<AppState>,
     Path((slug, feature)): Path<(String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<EditFeatureRequest>,
 ) -> Result<Json<Value>, ApiError> {
-    let user = bearer_user(&state, &headers)
-        .await?
-        .ok_or_else(|| ApiError::unauthenticated("sign in to edit a feature"))?;
     if concord_db::identity::is_guest(&state.pool, user.id).await.map_err(internal)? {
         return Err(ApiError::forbidden(
             "a guest cannot edit a feature: the record must name somebody",

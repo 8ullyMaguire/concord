@@ -12,6 +12,10 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-16 — last Account write enforced (D-9)** (step 1b, twentieth slice). `PUT /features/{feature}` refused an
+  anonymous caller; its Account row is enforced (95→96), the handler takes `Extension<User>`, and `is_guest` plus the
+  owner/maintainer check stay. 95 handlers pinned, `bearer_user` 41→40. D-9 records the Account-row decision.
+
 - **2026-11-16 — final large write batch enforced** (step 1b, nineteenth slice, ten routes). Notification read,
   alternative entry, complaint merge, objection resolve, call outcome, override position, solution call, strategic weight,
   arena remove and claim release all refused anonymous callers; three needed valid bodies first. Rows enforced (85→95),
