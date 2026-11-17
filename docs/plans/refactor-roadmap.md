@@ -650,6 +650,12 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-49 (step 3, 2026-11-17): the criteria section also owns the charter write and its helper.**
+  api/criteria.rs owns criteria_refusal, five criteria/charter writes, apply_charter_fields and seven routes (278 lines;
+  lib.rs 4810 -> 4517). The criteria readers, list_criteria_profiles and get_charter stay root-owned, with their GET
+  routes moved alongside the writes (D-20/D-48). Module merged in the same edit (D-47): route_policies reports 31
+  modules, 0 unmerged. Verified: policy 7 passed; 0 failed, route_policies PASS (203 declared), replay 0 disagreed of
+  18 checked, 3 skipped.
 * **D-48 (step 3, 2026-11-17): settings writes move with their GET+PUT routes; readers stay root-owned.**
   api/project_settings.rs owns apply_project_tags, tag_completeness, set_project_languages and set_intake_mode plus four
   routes (159 lines; lib.rs 4978 -> 4810). project_tags and project_languages handlers stay at the root (D-41/D-43) but
