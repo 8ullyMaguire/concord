@@ -191,7 +191,7 @@
   };
 
   function renderCapabilities(list) {
-    caps.innerHTML = '';
+    caps.replaceChildren();
     var inCatalog = 0, proposed = 0;
     list.forEach(function (c) {
       if (c.in_catalog) inCatalog++; else proposed++;
@@ -348,7 +348,7 @@
       : considered + (considered === 1 ? ' project considered' : ' projects considered') +
         (counts.length ? ' — ' + counts.join(', ') : '');
 
-    verdicts.innerHTML = '';
+    verdicts.replaceChildren();
     var list = data.verdicts || [];
     if (!list.length) {
       var empty = document.createElement('p');

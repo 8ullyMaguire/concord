@@ -12,6 +12,10 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 2b twenty-sixth slice: `scout.js` and `merge.js` have no string sinks.** Scout clears became
+  `replaceChildren()`; merge rows, gate cell, create form and failure state are `el()` trees. Combined checker RED/GREEN
+  on both files; census 12→8 (1 allowlisted).
+
 - **2026-11-17 — step 2b twenty-fifth slice: `lists.js` has no string sink.** Cards, empty state and both failure states
   are `el()` trees; `check_dom_lists.js` RED/GREEN covered hostile fields and failure paths. Census 15→12 (1 allowlisted).
   ```

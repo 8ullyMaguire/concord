@@ -18,12 +18,12 @@
 //    and a refusal that says "a reviewer approval is required" teaches the rule
 //    better than a missing button does. Signed-out visitors get no controls at all,
 //    because that is not a policy question.
+//
+// Rendering (step 2b): el() trees only; hostile titles and error sentences are
+// text nodes or setAttribute values.
 (function () {
   'use strict';
-
-  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it, so this file cannot disagree with
-  // another page about which characters are dangerous.
-  var esc = window.ConcordEscape.esc;
+  var el = window.ConcordDom.el;
 
   function slugFromPath() {
     var parts = window.location.pathname.split('/').filter(Boolean);
@@ -57,7 +57,7 @@
   // The gate, as the server reported it. Nothing here recomputes it: the wording
   // describes the state, it does not decide it.
   function gateCell(g) {
-    if (!g) return '<td class="merge-gate">—</td>';
+    if (!g) return el('td', { class: 'merge-gate' }, '—');
     var parts = [];
     if (g.requires_quorum) {
       parts.push((g.quorum_ok ? 'met' : 'short') + ': ' + g.approvals + ' of ' + g.needed +
@@ -67,68 +67,81 @@
         (g.needed === 0 ? '' : ' (needed ' + g.needed + ')'));
     }
     parts.push(g.reviewer_ok ? 'a reviewer has signed off' : 'a reviewer has not signed off');
-    return '<td class="merge-gate' + (g.passed ? ' is-met' : '') + '" title="measured against ' +
-      (g.eligible == null ? '?' : g.eligible) + ' eligible collaborator' +
-      (g.eligible === 1 ? '' : 's') + '">' + esc(parts.join(' · ')) + '</td>';
+    var eligible = g.eligible == null ? '?' : g.eligible;
+    return el('td', {
+      class: 'merge-gate' + (g.passed ? ' is-met' : ''),
+      title: 'measured against ' + eligible + ' eligible collaborator' + (g.eligible === 1 ? '' : 's')
+    }, parts.join(' · '));
   }
 
   function row(mr) {
-    var actions = '';
+    var actions;
     if (signedIn() && mr.status === 'open') {
-      actions =
-        '<button class="btn btn-sm" data-approve="' + esc(mr.id) + '">Confirm</button> ' +
-        '<button class="btn btn-sm btn-primary" data-execute="' + esc(mr.id) + '">Merge</button> ' +
-        '<button class="btn btn-sm" data-reject="' + esc(mr.id) + '">Reject</button>';
+      actions = [
+        el('button', { class: 'btn btn-sm', 'data-approve': mr.id }, 'Confirm'), ' ',
+        el('button', { class: 'btn btn-sm btn-primary', 'data-execute': mr.id }, 'Merge'), ' ',
+        el('button', { class: 'btn btn-sm', 'data-reject': mr.id }, 'Reject')
+      ];
     } else if (!signedIn()) {
-      actions = '<span class="muted">sign in to confirm or land this</span>';
+      actions = el('span', { class: 'muted' }, 'sign in to confirm or land this');
     } else {
-      actions = '<span class="muted">' + esc(mr.status) + '</span>';
+      actions = el('span', { class: 'muted' }, mr.status);
     }
-    return '<tr class="merge-row" data-mr="' + esc(mr.id) + '">' +
-      '<td class="merge-title">' + esc(mr.title) + '</td>' +
-      '<td class="merge-status" data-status="' + esc(mr.status) + '">' + esc(mr.status) + '</td>' +
-      gateCell(mr.gate) +
-      '<td class="merge-feature"><a href="/projects/' + encodeURIComponent(slug) +
-        '/features/' + esc(mr.feature_id) + '">#' + esc(mr.feature_id) + '</a></td>' +
-      '<td class="merge-opened">' + esc(when(mr.opened_at)) + '</td>' +
-      '<td class="merge-actions">' + actions + '</td>' +
-      '</tr>';
+    return el('tr', { class: 'merge-row', 'data-mr': mr.id }, [
+      el('td', { class: 'merge-title' }, mr.title),
+      el('td', { class: 'merge-status', 'data-status': mr.status }, mr.status),
+      gateCell(mr.gate),
+      el('td', { class: 'merge-feature' },
+        el('a', { href: '/projects/' + encodeURIComponent(slug) + '/features/' + mr.feature_id },
+          '#' + mr.feature_id)),
+      el('td', { class: 'merge-opened' }, when(mr.opened_at)),
+      el('td', { class: 'merge-actions' }, actions)
+    ]);
   }
 
   function createForm(features) {
-    var opts = features.map(function (f) {
-      return '<option value="' + esc(f.id) + '">' + esc(f.title) + '</option>';
-    }).join('');
-    return '<section class="panel" id="merge-create">' +
-      '<h2>Open a merge request</h2>' +
-      '<p class="panel-note">A merge request says a change is ready to land; §5.7 then ' +
-      'asks the project to confirm it. It must name the feature it lands.</p>' +
-      '<form id="merge-create-form" class="form-grid">' +
-      '<label class="form-label" for="merge-feature">Feature</label>' +
-      '<select id="merge-feature" name="feature_id" required>' + opts + '</select>' +
-      '<label class="form-label" for="merge-title">Title</label>' +
-      '<input id="merge-title" name="title" type="text" required maxlength="200" ' +
-      'placeholder="what lands, in one line">' +
-      '<div class="detail-actions"><button type="submit" class="btn btn-primary">' +
-      'Open merge request</button></div>' +
-      '</form></section>';
+    var select = el('select', { id: 'merge-feature', name: 'feature_id', required: true },
+      features.map(function (f) { return el('option', { value: f.id }, f.title); }));
+    var title = el('input', {
+      id: 'merge-title', name: 'title', type: 'text', required: true, maxlength: 200,
+      placeholder: 'what lands, in one line'
+    });
+    return el('section', { class: 'panel', id: 'merge-create' }, [
+      el('h2', {}, 'Open a merge request'),
+      el('p', { class: 'panel-note' },
+        'A merge request says a change is ready to land; §5.7 then asks the project ' +
+        'to confirm it. It must name the feature it lands.'),
+      el('form', { id: 'merge-create-form', class: 'form-grid' }, [
+        el('label', { class: 'form-label', for: 'merge-feature' }, 'Feature'), select,
+        el('label', { class: 'form-label', for: 'merge-title' }, 'Title'), title,
+        el('div', { class: 'detail-actions' },
+          el('button', { type: 'submit', class: 'btn btn-primary' }, 'Open merge request'))
+      ])
+    ]);
   }
 
   function render(mrs, features) {
-    var rows = mrs.map(row).join('');
-    root.innerHTML =
-      '<section class="panel"><h2>Merge requests</h2>' +
-      (mrs.length
-        ? '<table class="data-table" id="merge-table"><thead><tr><th>Change</th>' +
-          '<th>Status</th><th>Confirmations</th><th>Feature</th><th>Opened</th>' +
-          '<th></th></tr></thead><tbody>' + rows + '</tbody></table>'
-        : '<p class="empty-state-title" id="merge-empty">No merge request has been ' +
-          'opened here yet. A change has to pass consensus before this is the ' +
-          'question — but this is the last step, and nothing lands without it.</p>') +
-      '</section>' +
-      (features.length ? createForm(features) :
-        '<section class="panel"><h2>Open a merge request</h2>' +
-        '<p class="panel-note">This project has no features to land yet.</p></section>');
+    var children = [el('section', { class: 'panel' }, [
+      el('h2', {}, 'Merge requests'),
+      mrs.length
+        ? el('table', { class: 'data-table', id: 'merge-table' }, [
+            el('thead', {}, el('tr', {}, [
+              el('th', {}, 'Change'), el('th', {}, 'Status'),
+              el('th', {}, 'Confirmations'), el('th', {}, 'Feature'),
+              el('th', {}, 'Opened'), el('th', {})
+            ])),
+            el('tbody', {}, mrs.map(row))
+          ])
+        : el('p', { class: 'empty-state-title', id: 'merge-empty' },
+            'No merge request has been opened here yet. A change has to pass ' +
+            'consensus before this is the question — but this is the last step, ' +
+            'and nothing lands without it.')
+    ])];
+    children.push(features.length ? createForm(features) : el('section', { class: 'panel' }, [
+      el('h2', {}, 'Open a merge request'),
+      el('p', { class: 'panel-note' }, 'This project has no features to land yet.')
+    ]));
+    root.replaceChildren.apply(root, children);
     root.setAttribute('aria-busy', 'false');
   }
 
@@ -146,8 +159,10 @@
       var feats = out[1] || [];
       render(Array.isArray(mrs) ? mrs : [], Array.isArray(feats) ? feats : []);
     }).catch(function (err) {
-      root.innerHTML = '<div class="empty-state"><p class="empty-state-title">' +
-        'Could not load the merge requests.</p><p>' + esc(err.message) + '</p></div>';
+      root.replaceChildren(el('div', { class: 'empty-state' }, [
+        el('p', { class: 'empty-state-title' }, 'Could not load the merge requests.'),
+        el('p', {}, err.message)
+      ]));
     });
   }
 
