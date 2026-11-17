@@ -352,7 +352,9 @@ Unclaimed rows are fair game.
   `setAttribute` only — no HTML-parsing API. `notifications.js` now renders its three former sinks through `el()`, including
   hostile moderator prose as literal text; `scripts/parity/check_dom_builder.js` executes both shipped files in a fake
   browser and is wired into `make gate`. RED proof: mutating `el()` to write `innerHTML` failed with `el() did not create
-  exactly one text child`; restoring passed. `innerHTML` occurrences in assets: 137→136. **2b left:** the remaining 136 sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  exactly one text child`; restoring passed. `innerHTML` occurrences in assets: 137→136. **Live (`4c05881`):** `/version` equality True; the served `/assets/js/dom.js` + `/assets/js/notifications.js` pass
+  `check_dom_builder.js` in a fake browser, and the page shell serves the `dom.js` tag. `anonymous_walk: 0 holes · 0 declared
+  but not enforced · PASS`, headers PASS, CI `43993478687` success. **2b left:** the remaining 136 sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
