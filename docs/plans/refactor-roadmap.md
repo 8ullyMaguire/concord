@@ -412,7 +412,11 @@ Unclaimed rows are fair game.
   sources, a duplicate id, and an empty list; RED mutation (`root.innerHTML = '<p>mutant</p>'`) reddened it, restore → PASS.
   Census 95→92. **Live (`db6a087`):** `/version` equality True; the served `/assets/js/requests-index.js` passes
   `check_dom_requests_index.js`. `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS,
-  CI `44011216475` success. **2b left:** the remaining 92 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  CI `44011216475` success. **2b thirteenth slice landed 2026-11-17:** `settings.js` (1024 lines) lost both sinks — every panel builder and the live
+  region are `el()` trees; the 445-line wire half is unchanged. `check_dom_settings.js` executes the shipped page with
+  hostile values from all nine reads and a hostile write refusal, and asserts every wire hook still exists; RED mutation
+  (`root.innerHTML = '<p>mutant</p>'`) reddened it, restore → PASS. Census 92→90.
+  **2b left:** the remaining 90 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |

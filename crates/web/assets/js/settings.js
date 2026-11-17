@@ -39,14 +39,7 @@
 
   // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it. This file's copy replaced the same
   // five characters in its own way; a single pass over a character class cannot disagree with another page about which are dangerous.
-  var esc = window.ConcordEscape.esc;
-
-  function say(msg, bad) {
-    if (!live) return;
-    // The live region, not an inline banner: a save that is refused by the server must
-    // be announced, and it happens without a navigation.
-    live.innerHTML = '<p class="' + (bad ? "error-state" : "form-note") + '">' + esc(msg) + "</p>";
-  }
+  var el = window.ConcordDom.el;
 
   // EVERY READ CARRIES THE TOKEN, and it did not until the visibility panel made the
   // consequence visible. `get` sent only `Accept`, so the page was an ANONYMOUS reader
@@ -102,294 +95,329 @@
       keys: ["ThemeLifetimeDays"] }
   ];
 
+
+  function say(msg, bad) {
+    if (!live) return;
+    // The live region, not an inline banner: a save that is refused by the server must
+    // be announced, and it happens without a navigation.
+    live.replaceChildren(el("p", { class: bad ? "error-state" : "form-note" }, msg));
+  }
+
+  // EVERY READ CARRIES THE TOKEN via api.js; the old authHeaders read localStorage itself.
+  // cache: "no-store" is hygiene, not the fix -- the fix was re-reading the panels after
+  // a write rather than reloading the document, which was measured (mutation-tested).
+  function get(path) {
+    return window.ConcordApi.get(path, { cache: "no-store" });
+  }
+
+  // The charter is 22 scalars rendered from the FIELD LIST in the response: a field
+  // added to governance.Charter shows up without a line of JS being touched.
+  var GROUPS = [
+    { title: "Quorum", note: "How much of the room has to agree before anything counts.",
+      keys: ["QuorumRatio", "QuorumMin", "VoteWindowDays"] },
+    { title: "Consent", note: "Two different bars. Support is consent over everyone; consent is over those who took a side.",
+      keys: ["SupportRatioMin", "ConsentRatio", "OverrideRatio"] },
+    { title: "Merges", note: "What a merge must clear.",
+      keys: ["MergeRequiresQuorum", "MergeQuorumMin", "MergeQuorumRatio", "RequireReviewerApproval"] },
+    { title: "Board limits", note: "Enforced on every card move, not just displayed.",
+      keys: ["WIPInProgress", "WIPReview"] },
+    { title: "Ranking", note: "How priority and Glicko-2 ratings are computed.",
+      keys: ["Lam", "Mu", "PainHalflifeDays", "RepHalflifeDays", "GlickoTau", "VoteWeightCap"] },
+    { title: "Solution calls", note: "§6.5's three conditions for opening a call on the leading solution.",
+      keys: ["SolutionCallMinVoters", "SolutionCallConfidence", "SolutionStableHours"]},
+    { title: "Themes", note: "§6.2: a ratified theme expires after this many days unless it is renewed.",
+      keys: ["ThemeLifetimeDays"] }
+  ];
+
   function field(name, value) {
     var isBool = typeof value === "boolean";
     var shown = isBool ? (value ? "yes" : "no") : value;
-    return '<div class="field">' +
-      '<label class="form-label" for="charter-' + esc(name) + '">' + esc(name) + "</label>" +
-      '<input id="charter-' + esc(name) + '" name="' + esc(name) + '" ' +
-      'data-kind="' + (isBool ? "bool" : typeof value) + '" ' +
-      'value="' + esc(shown) + '">' +
-      "</div>";
+    var id = "charter-" + name;
+    return el("div", { class: "field" }, [
+      el("label", { class: "form-label", for: id }, name),
+      el("input", {
+        id: id, name: name, "data-kind": isBool ? "bool" : typeof value, value: shown
+      })
+    ]);
   }
 
   function charterForm(c) {
-    var groups = GROUPS.map(function (g) {
+    var groups = [];
+    GROUPS.forEach(function (g) {
       // Only render a group whose fields the response actually has, so a field removed
       // from governance.Charter leaves no orphan input behind.
       var present = g.keys.filter(function (k) { return k in c; });
-      if (!present.length) return "";
-      return '<fieldset><legend>' + esc(g.title) + "</legend>" +
-        '<p class="form-note">' + esc(g.note) + "</p>" +
-        '<div class="form-grid">' +
-        present.map(function (k) { return field(k, c[k]); }).join("") +
-        "</div></fieldset>";
-    }).join("");
-
-    // Anything the response has that the grouping above does not mention is still shown,
-    // in an "other" group. A charter field that is invisible on the settings page is the
-    // §3.1 defect again, one level up.
+      if (!present.length) return;
+      groups.push(el("fieldset", {}, [
+        el("legend", {}, g.title),
+        el("p", { class: "form-note" }, g.note),
+        el("div", { class: "form-grid" }, present.map(function (k) { return field(k, c[k]); }))
+      ]));
+    });
+    // An invisible charter field is the §3.1 defect again, one level up.
     var grouped = {};
     GROUPS.forEach(function (g) { g.keys.forEach(function (k) { grouped[k] = true; }); });
     var rest = Object.keys(c).filter(function (k) { return !grouped[k]; });
     if (rest.length) {
-      groups += '<fieldset><legend>Other</legend><div class="form-grid">' +
-        rest.map(function (k) { return field(k, c[k]); }).join("") + "</div></fieldset>";
+      groups.push(el("fieldset", {}, [
+        el("legend", {}, "Other"),
+        el("div", { class: "form-grid" }, rest.map(function (k) { return field(k, c[k]); }))
+      ]));
     }
-
-    return '<form id="charter-form">' + groups +
-      '<div class="detail-actions"><button type="submit" class="btn btn-primary">Save charter</button></div>' +
-      "</form>";
+    return el("form", { id: "charter-form" }, [
+      groups,
+      el("div", { class: "detail-actions" },
+        el("button", { type: "submit", class: "btn btn-primary" }, "Save charter"))
+    ]);
   }
 
   function memberTable(members) {
     if (!members || !members.length) {
-      return '<div class="empty-state"><p class="empty-state-title">No members yet</p></div>';
+      return el("div", { class: "empty-state" },
+        el("p", { class: "empty-state-title" }, "No members yet"));
     }
     var rank = { owner: 5, maintainer: 4, reviewer: 3, contributor: 2, user: 1, guest: 0 };
     var rows = members.slice().sort(function (a, b) {
       var d = (rank[b.role] || 0) - (rank[a.role] || 0);
       return d !== 0 ? d : String(a.username).localeCompare(String(b.username));
     }).map(function (m) {
-      return "<tr><td>" + esc(m.username) + "</td><td>" + esc(m.role) + "</td>" +
-        '<td>' + (m.is_moderator ? "yes" : "no") + "</td></tr>";
-    }).join("");
-    return '<table class="table"><thead><tr><th>Member</th><th>Role</th>' +
-      "<th>Moderator</th></tr></thead><tbody>" + rows + "</tbody></table>";
+      return el("tr", {}, [
+        el("td", {}, m.username), el("td", {}, m.role),
+        el("td", {}, m.is_moderator ? "yes" : "no")
+      ]);
+    });
+    return el("table", { class: "table" }, [
+      el("thead", {}, el("tr", {}, [
+        el("th", {}, "Member"), el("th", {}, "Role"), el("th", {}, "Moderator")
+      ])),
+      el("tbody", {}, rows)
+    ]);
   }
 
   function profileList(profiles) {
     if (!profiles || !profiles.length) {
-      return '<div class="empty-state"><p class="empty-state-title">' +
-        "No criteria profiles yet</p></div>";
+      return el("div", { class: "empty-state" },
+        el("p", { class: "empty-state-title" }, "No criteria profiles yet"));
     }
-    return '<div class="grid-responsive-2">' + profiles.map(function (p) {
+    return el("div", { class: "grid-responsive-2" }, profiles.map(function (p) {
       var name = p.name || p.label || p.slug || "(unnamed)";
-      return '<article class="card"><h3 class="card-title">' + esc(name) + "</h3></article>";
-    }).join("") + "</div>";
+      return el("article", { class: "card" }, el("h3", { class: "card-title" }, name));
+    }));
   }
 
-  // §4.3: "A completeness meter shows how well-tagged each project is."
-  //
-  // THE ENDPOINT HAD NO READER. GET /tags/completeness has answered this exact
-  // question since the taxonomy work, and nothing in assets/js referenced it, so the
-  // spec's meter did not exist. The handler's own comment names it as the §4.3 meter,
-  // which is the trap: a route comment describing the feature it serves reads like the
-  // feature being present.
-  //
-  // The score is six tenths "enough tags" and four tenths "enough namespaced tags",
-  // and the numbers behind it are on screen because a meter that shows 60% with no
-  // components is a number a reader cannot act on. The threshold is a judgement in the
-  // store (wantTags, wantNamespaced), so the page reports it rather than restating it.
+  function failed(v) {
+    return v && typeof v === "object" && v.__failed;
+  }
+  function failedNote(v, what) {
+    return el("div", { class: "empty-state" }, [
+      el("p", { class: "empty-state-title" }, "Could not load " + what),
+      el("p", {}, v.__failed)
+    ]);
+  }
+  function whenUnix(seconds) {
+    return new Date(seconds * 1000).toISOString().slice(0, 10);
+  }
+
+  function panel(title, body) {
+    return el("section", { class: "panel" }, [el("h2", {}, title), body]);
+  }
+
+  // §4.3: a completeness meter with its components on screen, because a number
+  // without its inputs is a number a reader cannot act on.
   function completenessPanel(c) {
-    if (failed(c)) {
-      return '<section class="panel"><h2>Tag completeness</h2>' + failedNote(c, "completeness") + "</section>";
-    }
+    if (failed(c)) return panel("Tag completeness", failedNote(c, "completeness"));
     var score = Number(c.score || 0);
     var pct = Math.round(score * 100);
     var tags = Number(c.tags || 0), want = Number(c.want_tags || 0);
     var ns = Number(c.namespaced || 0), wantNs = Number(c.want_namespaced || 0);
     var pending = Number(c.suggested_pending || 0);
-
     var move = [];
     if (tags < want) move.push((want - tags) + " more tag" + (want - tags === 1 ? "" : "s"));
     if (ns < wantNs) move.push((wantNs - ns) + " more namespaced tag" + (wantNs - ns === 1 ? "" : "s"));
     var advice = c.complete
       ? "This project is findable through both the category filters and the hierarchy queries."
       : "Add " + move.join(" and ") + " to reach the threshold.";
-
-    return '<section class="panel"><h2>Tag completeness</h2>' +
-      '<p class="form-note">A project with no tags is not merely untidy: it is invisible to ' +
-      "every taxonomy-filtered search, so tagging is a contribution rather than housekeeping.</p>" +
-      '<div class="meter" data-completeness-score="' + esc(score) + '" ' +
-        'data-completeness-complete="' + (c.complete ? "true" : "false") + '" ' +
-        'role="img" aria-label="tag completeness ' + pct + ' percent">' +
-        '<div class="meter-fill" style="width:' + pct + '%"></div></div>' +
-      "<p><strong data-completeness-pct>" + pct + "%</strong> complete &mdash; " +
-        esc(tags) + " of " + esc(want) + " tags, " + esc(ns) + " of " + esc(wantNs) +
-        " namespaced.</p>" +
-      '<p class="form-note">' + esc(advice) +
-        (pending > 0 ? " " + esc(pending) + " suggested tag" + (pending === 1 ? " is" : "s are") +
-          " still waiting to be applied." : "") +
-      "</p></section>";
+    return panel("Tag completeness", [
+      el("p", { class: "form-note" }, "A project with no tags is not merely untidy: it is invisible to " +
+        "every taxonomy-filtered search, so tagging is a contribution rather than housekeeping."),
+      el("div", {
+        class: "meter", "data-completeness-score": score,
+        "data-completeness-complete": c.complete ? "true" : "false",
+        role: "img", "aria-label": "tag completeness " + pct + " percent"
+      }, el("div", { class: "meter-fill", style: "width:" + pct + "%" })),
+      el("p", {}, [
+        el("strong", { "data-completeness-pct": "" }, pct + "%"),
+        " complete — " + tags + " of " + want + " tags, " + ns + " of " + wantNs + " namespaced."
+      ]),
+      el("p", { class: "form-note" }, advice +
+        (pending > 0 ? " " + pending + " suggested tag" + (pending === 1 ? " is" : "s are") +
+          " still waiting to be applied." : ""))
+    ]);
   }
 
-  // §6.2: strategic weights move only by consensus, and the page has to say so,
-  // because a proposal that looked applied would be the hand-steering the mechanism
-  // exists to prevent.
+  // §6.2: strategic weights move only by consensus. Every control below opens a
+  // proposal; none of them applies a value directly.
   function strategyPanel(s) {
-    if (failed(s)) {
-      return '<section class="panel"><h2>Strategic weights</h2>' + failedNote(s, "strategic weights") + "</section>";
-    }
+    if (failed(s)) return panel("Strategic weights", failedNote(s, "strategic weights"));
     var proposals = s.proposals || [];
     var themes = s.themes || [];
     var themeProposals = s.themeProposals || [];
-    // §6.2's propose form. The route has existed since the strategy panel was added
-    // and the panel could only CONSENT to proposals other people had made: there was
-    // no way to open one. Same class as the rest of this pass -- a write with a
-    // handler and no reader.
     var features = (s.features && s.features.features) || s.features || [];
     if (!Array.isArray(features)) features = [];
-    var featureOptions = features.map(function (f) {
-      return '<option value="' + esc(f.id) + '">#' + esc(f.id) + " " + esc(f.title || "untitled") +
-        " (weight " + esc(f.strategic_weight == null ? 1 : f.strategic_weight) + ")</option>";
-    }).join("");
-    var propose = '<form id="propose-weight-form" class="card">' +
-      '<h3 class="form-title">Propose a weight change</h3>' +
-      '<p class="form-note">The proposal opens a decision other contributors consent to; ' +
-      "the feature's weight does not move until that quorum is reached. The proposer's own " +
-      "consent does not count toward it.</p>" +
-      (features.length
-        ? '<div class="field"><label class="form-label" for="weight-feature">Feature</label>' +
-          '<select id="weight-feature" name="feature_id" required>' + featureOptions + "</select></div>"
-        : '<p class="form-note">This project has no features yet, so there is nothing to weigh.</p>') +
-      '<div class="field-row">' +
-      '<div class="field"><label class="form-label" for="weight-value">Proposed weight</label>' +
-      '<input id="weight-value" name="weight" type="number" step="0.1" min="0" value="1.5" required></div>' +
-      "</div>" +
-      '<div class="field"><label class="form-label" for="weight-rationale">Why</label>' +
-      '<input id="weight-rationale" name="rationale" required maxlength="300" ' +
-      'placeholder="what makes this one more important than it scores"></div>' +
-      '<div class="detail-actions"><button type="submit" class="btn btn-primary"' +
-      (features.length ? "" : " disabled") + ">Open the proposal</button></div>" +
-      '<p class="form-status" data-status hidden></p>' +
-      "</form>";
+
+    var propose = el("form", { id: "propose-weight-form", class: "card" }, [
+      el("h3", { class: "form-title" }, "Propose a weight change"),
+      el("p", { class: "form-note" }, "The proposal opens a decision other contributors consent to; " +
+        "the feature's weight does not move until that quorum is reached. The proposer's own " +
+        "consent does not count toward it."),
+      features.length
+        ? el("div", { class: "field" }, [
+            el("label", { class: "form-label", for: "weight-feature" }, "Feature"),
+            el("select", { id: "weight-feature", name: "feature_id", required: true },
+              features.map(function (f) {
+                return el("option", { value: f.id }, "#" + f.id + " " + (f.title || "untitled") +
+                  " (weight " + (f.strategic_weight == null ? 1 : f.strategic_weight) + ")");
+              }))
+          ])
+        : el("p", { class: "form-note" }, "This project has no features yet, so there is nothing to weigh."),
+      el("div", { class: "field-row" },
+        el("div", { class: "field" }, [
+          el("label", { class: "form-label", for: "weight-value" }, "Proposed weight"),
+          el("input", { id: "weight-value", name: "weight", type: "number", step: "0.1", min: "0", value: "1.5", required: true })
+        ])),
+      el("div", { class: "field" }, [
+        el("label", { class: "form-label", for: "weight-rationale" }, "Why"),
+        el("input", { id: "weight-rationale", name: "rationale", required: true, maxlength: "300",
+          placeholder: "what makes this one more important than it scores" })
+      ]),
+      el("div", { class: "detail-actions" },
+        el("button", { type: "submit", class: "btn btn-primary", disabled: features.length ? null : true },
+          "Open the proposal")),
+      el("p", { class: "form-status", "data-status": "", hidden: true })
+    ]);
 
     var pending = proposals.length
-      ? '<table class="table" data-strategy-proposals><thead><tr><th>Feature</th>' +
-        "<th>Weight</th><th>Rationale</th><th></th></tr></thead><tbody>" +
-        proposals.map(function (p) {
-          return '<tr data-proposal="' + esc(p.id) + '">' +
-            "<td>#" + esc(p.feature_id) + "</td>" +
-            "<td>" + esc(p.weight_before) + " &rarr; " + esc(p.weight_after) + "</td>" +
-            "<td>" + esc(p.rationale) + "</td>" +
-            '<td><button type="button" class="btn" data-consent="' + esc(p.id) + '">Consent</button>' +
-            '<button type="button" class="btn btn-quiet" data-withdraw-weight="' + esc(p.id) +
-            '">Withdraw</button></td>' +
-            "</tr>";
-        }).join("") + "</tbody></table>"
-      : '<div class="empty-state"><p class="empty-state-title">No weight proposals open</p>' +
-        "<p>Nobody can pin an item to the top by hand. Steering happens through pain, " +
-        "pairwise votes, and ratified themes.</p></div>";
+      ? el("table", { class: "table", "data-strategy-proposals": "" }, [
+          el("thead", {}, el("tr", {}, [
+            el("th", {}, "Feature"), el("th", {}, "Weight"), el("th", {}, "Rationale"), el("th", {})
+          ])),
+          el("tbody", {}, proposals.map(function (p) {
+            return el("tr", { "data-proposal": p.id }, [
+              el("td", {}, "#" + p.feature_id),
+              el("td", {}, p.weight_before + " → " + p.weight_after),
+              el("td", {}, p.rationale),
+              el("td", {}, [
+                el("button", { type: "button", class: "btn", "data-consent": p.id }, "Consent"),
+                el("button", { type: "button", class: "btn btn-quiet", "data-withdraw-weight": p.id }, "Withdraw")
+              ])
+            ]);
+          }))
+        ])
+      : el("div", { class: "empty-state" }, [
+          el("p", { class: "empty-state-title" }, "No weight proposals open"),
+          el("p", {}, "Nobody can pin an item to the top by hand. Steering happens through pain, " +
+            "pairwise votes, and ratified themes.")
+        ]);
 
     var liveThemes = themes.length
-      ? '<table class="table" data-strategy-themes><thead><tr><th>Theme</th><th>Weight</th>' +
-        "<th>Rationale</th><th>Expires</th><th></th></tr></thead><tbody>" +
-        themes.map(function (t) {
-          // §366: a theme "expires at the next release cycle unless renewed". A table
-          // showing the weight and not the expiry showed a permanent-looking dial -- the
-          // one thing that rule exists to prevent. Renewal is another proposal for the
-          // same tag, so that is what the button offers.
-          return '<tr data-theme="' + esc(t.tag) + '"><td>' +
-            esc(t.namespace ? t.namespace + "/" + t.tag : t.tag) + "</td>" +
-            "<td>" + esc(t.weight) + "</td><td>" + esc(t.rationale) + "</td>" +
-            "<td>" + esc(t.expires_at ? whenUnix(t.expires_at) : "") + "</td>" +
-            '<td><button type="button" class="btn btn-quiet" data-renew="' + esc(t.tag) +
-            '">Renew</button></td></tr>';
-        }).join("") + "</tbody></table>"
-      : '<div class="empty-state"><p class="empty-state-title">No ratified themes</p>' +
-        "<p>A theme is a weight on every feature carrying its tag, and it expires rather " +
-        "than being switched off by hand.</p></div>";
+      ? el("table", { class: "table", "data-strategy-themes": "" }, [
+          el("thead", {}, el("tr", {}, [
+            el("th", {}, "Theme"), el("th", {}, "Weight"), el("th", {}, "Rationale"),
+            el("th", {}, "Expires"), el("th", {})
+          ])),
+          el("tbody", {}, themes.map(function (t) {
+            // §366: a theme that shows its weight but not its expiry looks permanent.
+            return el("tr", { "data-theme": t.tag }, [
+              el("td", {}, t.namespace ? t.namespace + "/" + t.tag : t.tag),
+              el("td", {}, t.weight),
+              el("td", {}, t.rationale),
+              el("td", {}, t.expires_at ? whenUnix(t.expires_at) : ""),
+              el("td", {},
+                el("button", { type: "button", class: "btn btn-quiet", "data-renew": t.tag }, "Renew"))
+            ]);
+          }))
+        ])
+      : el("div", { class: "empty-state" }, [
+          el("p", { class: "empty-state-title" }, "No ratified themes"),
+          el("p", {}, "A theme is a weight on every feature carrying its tag, and it expires rather " +
+            "than being switched off by hand.")
+        ]);
 
-    // §6.2's propose form, the theme half. The panel could CONSENT to weight proposals and
-    // could do nothing at all with themes: the GET existed, the POST did not, and no route
-    // in any revision had ever created a theme.
     var lifetime = (s.charter && s.charter.ThemeLifetimeDays) || 90;
-    var themePropose = '<form id="propose-theme-form" class="card">' +
-      '<h3 class="form-title">Propose a theme</h3>' +
-      '<p class="form-note">A theme is a weight on a TAG, so "security-hardening: +2" moves ' +
-      "every feature carrying that tag. It is consensus-ratified like a weight, and it " +
-      "expires: a theme nobody renews stops counting " + esc(lifetime) + " days after it " +
-      "is ratified (the charter's theme lifetime). Nothing changes until the quorum " +
-      "consents.</p>" +
-      '<div class="field-row">' +
-      '<div class="field"><label class="form-label" for="theme-tag">Tag</label>' +
-      '<input id="theme-tag" name="theme_tag" required maxlength="60" ' +
-      'placeholder="an existing tag, e.g. security-hardening"></div>' +
-      '<div class="field"><label class="form-label" for="theme-weight">Weight</label>' +
-      '<input id="theme-weight" name="weight" type="number" step="0.1" min="-2" max="3" ' +
-      'value="1" required></div>' +
-      "</div>" +
-      '<div class="field"><label class="form-label" for="theme-rationale">Why</label>' +
-      '<input id="theme-rationale" name="rationale" required maxlength="300" ' +
-      'placeholder="why this tag should steer the roadmap"></div>' +
-      '<div class="detail-actions"><button type="submit" class="btn btn-primary">' +
-      "Open the proposal</button></div>" +
-      '<p class="form-status" data-status hidden></p>' +
-      "</form>";
+    var themePropose = el("form", { id: "propose-theme-form", class: "card" }, [
+      el("h3", { class: "form-title" }, "Propose a theme"),
+      el("p", { class: "form-note" }, "A theme is a weight on a TAG, so \"security-hardening: +2\" moves " +
+        "every feature carrying that tag. It is consensus-ratified like a weight, and it " +
+        "expires: a theme nobody renews stops counting " + lifetime + " days after it " +
+        "is ratified (the charter's theme lifetime). Nothing changes until the quorum " +
+        "consents."),
+      el("div", { class: "field-row" }, [
+        el("div", { class: "field" }, [
+          el("label", { class: "form-label", for: "theme-tag" }, "Tag"),
+          el("input", { id: "theme-tag", name: "theme_tag", required: true, maxlength: "60",
+            placeholder: "an existing tag, e.g. security-hardening" })
+        ]),
+        el("div", { class: "field" }, [
+          el("label", { class: "form-label", for: "theme-weight" }, "Weight"),
+          el("input", { id: "theme-weight", name: "weight", type: "number", step: "0.1", min: "-2", max: "3",
+            value: "1", required: true })
+        ])
+      ]),
+      el("div", { class: "field" }, [
+        el("label", { class: "form-label", for: "theme-rationale" }, "Why"),
+        el("input", { id: "theme-rationale", name: "rationale", required: true, maxlength: "300",
+          placeholder: "why this tag should steer the roadmap" })
+      ]),
+      el("div", { class: "detail-actions" },
+        el("button", { type: "submit", class: "btn btn-primary" }, "Open the proposal")),
+      el("p", { class: "form-status", "data-status": "", hidden: true })
+    ]);
 
     var themePending = themeProposals.length
-      ? '<table class="table" data-theme-proposals><thead><tr><th>Tag</th><th>Weight</th>' +
-        "<th>Rationale</th><th>Status</th><th></th></tr></thead><tbody>" +
-        themeProposals.map(function (p) {
-          var open = p.status === "pending";
-          return '<tr data-theme-proposal="' + esc(p.id) + '">' +
-            "<td>" + esc(p.theme_namespace ? p.theme_namespace + "/" + p.theme_tag : p.theme_tag) + "</td>" +
-            "<td>" + esc(p.weight_before == null ? "none" : p.weight_before) +
-            " &rarr; " + esc(p.weight_after) + "</td>" +
-            "<td>" + esc(p.rationale) + "</td>" +
-            "<td>" + esc(p.status) + "</td>" +
-            "<td>" + (open
-              ? '<button type="button" class="btn" data-consent-theme="' + esc(p.id) + '">Consent</button>' +
-                '<button type="button" class="btn btn-quiet" data-withdraw-theme="' + esc(p.id) +
-                '">Withdraw</button>'
-              : "") + "</td></tr>";
-        }).join("") + "</tbody></table>"
-      : '<div class="empty-state"><p class="empty-state-title">No theme proposals</p>' +
-        "<p>A proposal opens a decision: a tag's weight moves only once the project " +
-        "consents, and the proposer's own consent does not count.</p></div>";
+      ? el("table", { class: "table", "data-theme-proposals": "" }, [
+          el("thead", {}, el("tr", {}, [
+            el("th", {}, "Tag"), el("th", {}, "Weight"), el("th", {}, "Rationale"),
+            el("th", {}, "Status"), el("th", {})
+          ])),
+          el("tbody", {}, themeProposals.map(function (p) {
+            var open = p.status === "pending";
+            return el("tr", { "data-theme-proposal": p.id }, [
+              el("td", {}, p.theme_namespace ? p.theme_namespace + "/" + p.theme_tag : p.theme_tag),
+              el("td", {}, (p.weight_before == null ? "none" : p.weight_before) + " → " + p.weight_after),
+              el("td", {}, p.rationale),
+              el("td", {}, p.status),
+              el("td", {}, open ? [
+                el("button", { type: "button", class: "btn", "data-consent-theme": p.id }, "Consent"),
+                el("button", { type: "button", class: "btn btn-quiet", "data-withdraw-theme": p.id }, "Withdraw")
+              ] : null)
+            ]);
+          }))
+        ])
+      : el("div", { class: "empty-state" }, [
+          el("p", { class: "empty-state-title" }, "No theme proposals"),
+          el("p", {}, "A proposal opens a decision: a tag's weight moves only once the project " +
+            "consents, and the proposer's own consent does not count.")
+        ]);
 
-    return '<section class="panel"><h2>Strategic weights</h2>' +
-      '<p class="form-note">A weight proposal is ratified by consensus: contributors ' +
-      "consent to it, the proposer cannot consent to their own, and the feature's weight " +
-      "does not move until the quorum is reached.</p>" +
-      propose +
-      "<h3>Open proposals</h3>" + pending +
-      "<h3>Themes</h3>" +
-      '<p class="form-note">A theme applies to every feature carrying its tag and counts ' +
-      "toward that feature's priority beside its own weight. It lapses on the date shown " +
-      "unless it is renewed.</p>" +
-      themePropose + themePending + liveThemes + "</section>";
-  }
-
-  // A failed fetch must cost its own panel and nothing else. The page previously used
-  // Promise.all with one catch, which blanked all three panels when one fetch failed --
-  // the opposite of what its own comment claimed. Two more fetches made that a real
-  // risk rather than a hypothetical one.
-  function failed(v) {
-    return v && typeof v === "object" && v.__failed;
-  }
-  function failedNote(v, what) {
-    return '<div class="empty-state"><p class="empty-state-title">Could not load ' + esc(what) +
-      '</p><p>' + esc(v.__failed) + "</p></div>";
-  }
-  // Unix seconds to a date, as consensus.js renders a hold's expiry.
-  function whenUnix(seconds) {
-    return new Date(seconds * 1000).toISOString().slice(0, 10);
+    return panel("Strategic weights", [
+      el("p", { class: "form-note" }, "A weight proposal is ratified by consensus: contributors " +
+        "consent to it, the proposer cannot consent to their own, and the feature's weight " +
+        "does not move until the quorum is reached."),
+      propose,
+      el("h3", {}, "Open proposals"), pending,
+      el("h3", {}, "Themes"),
+      el("p", { class: "form-note" }, "A theme applies to every feature carrying its tag and counts " +
+        "toward that feature's priority beside its own weight. It lapses on the date shown " +
+        "unless it is renewed."),
+      themePropose, themePending, liveThemes
+    ]);
   }
 
   function getOrNull(path) {
     return get(path).catch(function (e) { return { __failed: e.message || String(e) }; });
   }
 
-  // ---------------------------------------------------------------------------
-  // The project's administration surface: visibility, tags, languages, invites.
-  //
-  // SIX ENDPOINTS THAT HAD NO UI AT ALL. PUT /visibility, GET+PUT /tags,
-  // PUT /languages, POST+GET /invites and POST /invites/{id}/revoke all had handlers,
-  // guards and store tests; the frontend inventory in docs/specs/frontend-spec.md
-  // listed them as "none", and they stayed that way. They are also the only way to
-  // change what a project looks like to the rest of the instance, so the gap was not
-  // cosmetic: a project could not be made private, tagged or invited to from the site.
-  //
-  // The completeness meter above makes the tags half of this concrete: it printed
-  // "Add 2 more tags and 1 more namespaced tag" with no control to add one anywhere.
-  // A meter that instructs and cannot be obeyed is worse than no meter.
-  // ---------------------------------------------------------------------------
-
-  // Only the four levels the store accepts (store.ValidVisibility). Rendered from a
-  // list so the labels and the reasons sit together -- a bare <select> of four opaque
-  // words is the kind of control this project's specs call out.
+  // Only the four levels the store accepts (store.ValidVisibility), each with its own reason.
   var VISIBILITIES = [
     { value: "public", label: "Public",
       note: "Listed in search and the project index. Anyone can read it." },
@@ -402,182 +430,206 @@
   ];
 
   function visibilityPanel(p) {
-    if (failed(p)) {
-      return '<section class="panel"><h2>Visibility</h2>' + failedNote(p, "visibility") + "</section>";
-    }
+    if (failed(p)) return panel("Visibility", failedNote(p, "visibility"));
     var current = String(p.visibility || "");
     var known = VISIBILITIES.some(function (v) { return v.value === current; });
-    var opts = VISIBILITIES.map(function (v) {
-      return '<option value="' + esc(v.value) + '"' + (v.value === current ? " selected" : "") + ">" +
-        esc(v.label) + "</option>";
-    }).join("");
     var note = (VISIBILITIES.filter(function (v) { return v.value === current; })[0] || {}).note || "";
-    return '<section class="panel"><h2>Visibility</h2>' +
-      '<p class="form-note">Who can see this project. A member of it is the only one who can change this: ' +
-      "anyone able to reach this control could hide a project they do not own.</p>" +
-      (known ? "" : '<p class="form-note error-state">The server reports a level this page does not know ' +
-        "(" + esc(current) + "), so the select below shows no current value rather than a wrong one.</p>") +
-      '<form id="visibility-form">' +
-      '<p>Currently <strong data-visibility-current>' + esc(current) + "</strong>" +
-      (note ? ' &mdash; <span data-visibility-note>' + esc(note) + "</span>" : "") + "</p>" +
-      '<div class="field"><label class="form-label" for="visibility-select">Set visibility</label>' +
-      '<select id="visibility-select" name="visibility">' + opts + "</select></div>" +
-      '<div class="detail-actions"><button type="submit" class="btn btn-primary">Save visibility</button></div>' +
-      "</form></section>";
+    return panel("Visibility", [
+      el("p", { class: "form-note" }, "Who can see this project. A member of it is the only one who can change this: " +
+        "anyone able to reach this control could hide a project they do not own."),
+      known ? null : el("p", { class: "form-note error-state" },
+        "The server reports a level this page does not know (" + current + "), so the select below " +
+        "shows no current value rather than a wrong one."),
+      el("form", { id: "visibility-form" }, [
+        el("p", {}, [
+          "Currently ", el("strong", { "data-visibility-current": "" }, current),
+          note ? " — " : null,
+          note ? el("span", { "data-visibility-note": "" }, note) : null
+        ]),
+        el("div", { class: "field" }, [
+          el("label", { class: "form-label", for: "visibility-select" }, "Set visibility"),
+          el("select", { id: "visibility-select", name: "visibility" },
+            VISIBILITIES.map(function (v) {
+              return el("option", { value: v.value, selected: v.value === current ? true : null }, v.label);
+            }))
+        ]),
+        el("div", { class: "detail-actions" },
+          el("button", { type: "submit", class: "btn btn-primary" }, "Save visibility"))
+      ])
+    ]);
   }
 
-  // GET /tags is the read half that PUT /tags needed to be verifiable; these are the
-  // names, and the form applies existing tags.
   function tagsPanel(t) {
-    if (failed(t)) {
-      return '<section class="panel"><h2>Tags</h2>' + failedNote(t, "tags") + "</section>";
-    }
+    if (failed(t)) return panel("Tags", failedNote(t, "tags"));
     var tags = (t && t.tags) || [];
     var list = tags.length
-      ? '<ul class="tag-list" data-project-tags>' + tags.map(function (name) {
-          return '<li class="tag">' + esc(name) + "</li>";
-        }).join("") + "</ul>"
-      : '<div class="empty-state" data-project-tags><p class="empty-state-title">No tags yet</p>' +
-        "<p>A project with no tags is invisible to every taxonomy-filtered search, so " +
-        "tagging it is the difference between being findable and not.</p></div>";
-    return '<section class="panel"><h2>Tags</h2>' +
-      '<p class="form-note">Tags are the shared vocabulary the taxonomy is built on. Applying one ' +
-      "requires contributor standing and an existing tag: this route attaches tags that exist " +
-      "rather than minting new ones, because a new tag is a proposal with a quorum (§4.3).</p>" +
-      list +
-      '<form id="tags-form">' +
-      '<div class="field"><label class="form-label" for="tags-input">Apply tags</label>' +
-      '<input id="tags-input" name="tags" placeholder="self-hosted, kanban, rust">' +
-      '<p class="form-note">Comma-separated. A tag this instance does not have yet is refused ' +
-      "with the server's reason, and the ones that applied before it stay applied.</p></div>" +
-      '<div class="detail-actions"><button type="submit" class="btn btn-primary">Apply tags</button></div>' +
-      "</form></section>";
+      ? el("ul", { class: "tag-list", "data-project-tags": "" }, tags.map(function (name) {
+          return el("li", { class: "tag" }, name);
+        }))
+      : el("div", { class: "empty-state", "data-project-tags": "" }, [
+          el("p", { class: "empty-state-title" }, "No tags yet"),
+          el("p", {}, "A project with no tags is invisible to every taxonomy-filtered search, so " +
+            "tagging it is the difference between being findable and not.")
+        ]);
+    return panel("Tags", [
+      el("p", { class: "form-note" }, "Tags are the shared vocabulary the taxonomy is built on. Applying one " +
+        "requires contributor standing and an existing tag: this route attaches tags that exist " +
+        "rather than minting new ones, because a new tag is a proposal with a quorum (§4.3)."),
+      list,
+      el("form", { id: "tags-form" }, [
+        el("div", { class: "field" }, [
+          el("label", { class: "form-label", for: "tags-input" }, "Apply tags"),
+          el("input", { id: "tags-input", name: "tags", placeholder: "self-hosted, kanban, rust" }),
+          el("p", { class: "form-note" }, "Comma-separated. A tag this instance does not have yet is refused " +
+            "with the server's reason, and the ones that applied before it stay applied.")
+        ]),
+        el("div", { class: "detail-actions" },
+          el("button", { type: "submit", class: "btn btn-primary" }, "Apply tags"))
+      ])
+    ]);
   }
 
-  // §15: "collaboratively correctable percentages". The page shows every row so a
-  // correction is a correction of a number somebody can see, and the sum rule (100) is
-  // enforced by the store rather than restated here.
+  // §15: collaboratively correctable percentages, every row visible so a correction
+  // is a correction of a number somebody can see.
   function languagesPanel(l) {
-    if (failed(l)) {
-      return '<section class="panel"><h2>Languages</h2>' + failedNote(l, "languages") + "</section>";
-    }
+    if (failed(l)) return panel("Languages", failedNote(l, "languages"));
     var langs = (l && l.languages) || [];
-    var rows = langs.map(function (x, i) {
-      return '<div class="field lang-row">' +
-        '<label class="form-label" for="lang-' + i + '">' + esc(x.language) + "</label>" +
-        '<input id="lang-' + i + '" name="language" data-language="' + esc(x.language) + '" ' +
-        'data-kind="number" value="' + esc(x.pct) + '">' +
-        "</div>";
-    }).join("");
     var body = langs.length
-      ? '<div data-project-languages>' + rows + "</div>"
-      : '<div class="empty-state" data-project-languages><p class="empty-state-title">' +
-        "No language breakdown yet</p><p>Discovery filters on language, so an unset project " +
-        "is missing from every language-filtered search.</p></div>";
-    return '<section class="panel"><h2>Languages</h2>' +
-      '<p class="form-note">The share of each language, as percentages. §15 makes these ' +
-      "collaboratively correctable: the forge's own count is a starting point, not a verdict.</p>" +
-      body +
-      '<div class="detail-actions"><button type="button" class="btn" id="languages-edit">' +
-      (langs.length ? "Edit percentages" : "Add languages") + "</button></div>" +
-      '<form id="languages-form" hidden>' +
-      '<div class="field"><label class="form-label" for="languages-input">Languages</label>' +
-      '<input id="languages-input" name="languages" placeholder="Rust 70, Go 30">' +
-      '<p class="form-note">Comma-separated <code>name pct</code> pairs. The server refuses a ' +
-      "total above 100, naming the total it computed.</p></div>" +
-      '<div class="detail-actions"><button type="submit" class="btn btn-primary">Save languages</button></div>' +
-      "</form></section>";
+      ? el("div", { "data-project-languages": "" }, langs.map(function (x, i) {
+          return el("div", { class: "field lang-row" }, [
+            el("label", { class: "form-label", for: "lang-" + i }, x.language),
+            el("input", { id: "lang-" + i, name: "language", "data-language": x.language,
+              "data-kind": "number", value: x.pct })
+          ]);
+        }))
+      : el("div", { class: "empty-state", "data-project-languages": "" }, [
+          el("p", { class: "empty-state-title" }, "No language breakdown yet"),
+          el("p", {}, "Discovery filters on language, so an unset project " +
+            "is missing from every language-filtered search.")
+        ]);
+    return panel("Languages", [
+      el("p", { class: "form-note" }, "The share of each language, as percentages. §15 makes these " +
+        "collaboratively correctable: the forge's own count is a starting point, not a verdict."),
+      body,
+      el("div", { class: "detail-actions" },
+        el("button", { type: "button", class: "btn", id: "languages-edit" },
+          langs.length ? "Edit percentages" : "Add languages")),
+      el("form", { id: "languages-form", hidden: true }, [
+        el("div", { class: "field" }, [
+          el("label", { class: "form-label", for: "languages-input" }, "Languages"),
+          el("input", { id: "languages-input", name: "languages", placeholder: "Rust 70, Go 30" }),
+          el("p", { class: "form-note" }, "Comma-separated name pct pairs. The server refuses a " +
+            "total above 100, naming the total it computed.")
+        ]),
+        el("div", { class: "detail-actions" },
+          el("button", { type: "submit", class: "btn btn-primary" }, "Save languages"))
+      ])
+    ]);
   }
 
-  // Intake mode (R16, spec §3.1): whether a feature filed HERE must trace to a
-  // complaint. It sits in Settings rather than on the filing form because it is a
-  // governance choice, and the form only ever REPORTS it.
-  //
-  // The three options are spelled out in the page, not only in the API's CHECK: a
-  // maintainer choosing "idea_first" is choosing that unbacked ideas are legitimate
-  // input, and a dropdown whose labels are column values hides that.
+  // R16 §3.1: the labels spell out the governance choice, not just the column value.
   function intakePanel(project) {
     var mode = (project && project.intake_mode) || "complaint_first";
     var labels = {
-      complaint_first: "Complaint-first &mdash; every feature traces to reported pain (the default)",
-      idea_first: "Idea-first &mdash; ideas may be filed before anybody is hurt",
-      both: "Both &mdash; either is accepted"
+      complaint_first: "Complaint-first — every feature traces to reported pain (the default)",
+      idea_first: "Idea-first — ideas may be filed before anybody is hurt",
+      both: "Both — either is accepted"
     };
-    var opts = Object.keys(labels).map(function (k) {
-      return '<option value="' + esc(k) + '"' + (k === mode ? " selected" : "") + ">" + labels[k] + "</option>";
-    }).join("");
-    return '<section class="panel"><h2>Intake</h2>' +
-      '<p class="form-note">The intake mode decides what counts as legitimate input on the ' +
-      "filing form. Whichever it is, a feature still needs evidence before it can reach " +
-      "ready &mdash; the difference is whether an idea may be FILED without a complaint.</p>" +
-      '<div class="field"><label class="form-label" for="intake-mode">Intake mode</label>' +
-      '<select id="intake-mode" data-intake-mode="' + esc(mode) + '">' + opts + "</select>" +
-      '<p class="form-note">Currently <code data-intake-current>' + esc(mode) + "</code>.</p></div>" +
-      '<div class="detail-actions"><button type="button" class="btn btn-primary" data-intake-save>' +
-      "Save intake mode</button></div>" +
-      '<p class="form-status" data-intake-status hidden></p></section>';
+    return panel("Intake", [
+      el("p", { class: "form-note" }, "The intake mode decides what counts as legitimate input on the " +
+        "filing form. Whichever it is, a feature still needs evidence before it can reach " +
+        "ready — the difference is whether an idea may be FILED without a complaint."),
+      el("div", { class: "field" }, [
+        el("label", { class: "form-label", for: "intake-mode" }, "Intake mode"),
+        el("select", { id: "intake-mode", "data-intake-mode": mode },
+          Object.keys(labels).map(function (k) {
+            return el("option", { value: k, selected: k === mode ? true : null }, labels[k]);
+          })),
+        el("p", { class: "form-note" }, ["Currently ",
+          el("code", { "data-intake-current": "" }, mode), "."])
+      ]),
+      el("div", { class: "detail-actions" },
+        el("button", { type: "button", class: "btn btn-primary", "data-intake-save": "" }, "Save intake mode")),
+      el("p", { class: "form-status", "data-intake-status": "", hidden: true })
+    ]);
   }
 
-  // Invites: the grant a protected project hands out. Member-only, so the panel says so
-  // rather than rendering an empty table for a visitor who cannot read it.
   function invitesPanel(inv) {
     if (failed(inv)) {
-      return '<section class="panel"><h2>Invites</h2>' +
-        '<div class="empty-state"><p class="empty-state-title">Not available</p>' +
-        '<p>Invites are visible to members of this project. ' +
-        esc(inv.__failed) + "</p></div></section>";
+      return panel("Invites", [
+        el("div", { class: "empty-state" }, [
+          el("p", { class: "empty-state-title" }, "Not available"),
+          el("p", {}, "Invites are visible to members of this project. " + inv.__failed)
+        ])
+      ]);
     }
     var invites = inv || [];
-    var rows = invites.map(function (v) {
-      var state = v.revoked_at ? "revoked" : (v.expires_at && v.expires_at * 1000 < Date.now() ? "expired" : "active");
-      return '<tr data-invite="' + esc(v.id) + '">' +
-        '<td><code data-invite-token>' + esc(v.token) + "</code></td>" +
-        "<td>" + esc(v.uses) + (v.max_uses ? " / " + esc(v.max_uses) : " / unlimited") + "</td>" +
-        "<td>" + esc(state) + "</td>" +
-        "<td>" + (state === "active"
-          ? '<button type="button" class="btn btn-danger" data-revoke="' + esc(v.id) + '">Revoke</button>'
-          : "") + "</td></tr>";
-    }).join("");
     var table = invites.length
-      ? '<table class="table" data-invites><thead><tr><th>Token</th><th>Uses</th><th>State</th>' +
-        "<th></th></tr></thead><tbody>" + rows + "</tbody></table>"
-      : '<div class="empty-state" data-invites><p class="empty-state-title">No invites</p>' +
-        "<p>A protected project is joined by redeeming an invite; without one, nobody new can get in.</p></div>";
-    return '<section class="panel"><h2>Invites</h2>' +
-      '<p class="form-note">An invite is the credential a protected project hands out. ' +
-      "Revoking keeps the record of it rather than deleting it, so the history of who was " +
-      "invited survives the revocation.</p>" + table +
-      '<form id="invite-form">' +
-      '<div class="field"><label class="form-label" for="invite-days">Expires in (days)</label>' +
-      '<input id="invite-days" name="days" value="7"><p class="form-note">0 means no expiry.</p></div>' +
-      '<div class="field"><label class="form-label" for="invite-uses">Maximum uses</label>' +
-      '<input id="invite-uses" name="uses" value="1"><p class="form-note">0 means unlimited.</p></div>' +
-      '<div class="detail-actions"><button type="submit" class="btn btn-primary">Mint an invite</button></div>' +
-      "</form>" +
-      '<p class="form-note">Redeeming needs a signed-in account: it is ' +
-      "<code>POST /api/v1/auth/redeem-invite</code> with the token. There is no redeem page " +
-      "yet, which is why the token is shown here rather than as a clickable link.</p>" +
-      "</section>";
+      ? el("table", { class: "table", "data-invites": "" }, [
+          el("thead", {}, el("tr", {}, [
+            el("th", {}, "Token"), el("th", {}, "Uses"), el("th", {}, "State"), el("th", {})
+          ])),
+          el("tbody", {}, invites.map(function (v) {
+            var state = v.revoked_at ? "revoked"
+              : (v.expires_at && v.expires_at * 1000 < Date.now() ? "expired" : "active");
+            return el("tr", { "data-invite": v.id }, [
+              el("td", {}, el("code", { "data-invite-token": "" }, v.token)),
+              el("td", {}, v.uses + (v.max_uses ? " / " + v.max_uses : " / unlimited")),
+              el("td", {}, state),
+              el("td", {}, state === "active"
+                ? el("button", { type: "button", class: "btn btn-danger", "data-revoke": v.id }, "Revoke")
+                : null)
+            ]);
+          }))
+        ])
+      : el("div", { class: "empty-state", "data-invites": "" }, [
+          el("p", { class: "empty-state-title" }, "No invites"),
+          el("p", {}, "A protected project is joined by redeeming an invite; without one, nobody new can get in.")
+        ]);
+    return panel("Invites", [
+      el("p", { class: "form-note" }, "An invite is the credential a protected project hands out. " +
+        "Revoking keeps the record of it rather than deleting it, so the history of who was " +
+        "invited survives the revocation."),
+      table,
+      el("form", { id: "invite-form" }, [
+        el("div", { class: "field" }, [
+          el("label", { class: "form-label", for: "invite-days" }, "Expires in (days)"),
+          el("input", { id: "invite-days", name: "days", value: "7" }),
+          el("p", { class: "form-note" }, "0 means no expiry.")
+        ]),
+        el("div", { class: "field" }, [
+          el("label", { class: "form-label", for: "invite-uses" }, "Maximum uses"),
+          el("input", { id: "invite-uses", name: "uses", value: "1" }),
+          el("p", { class: "form-note" }, "0 means unlimited.")
+        ]),
+        el("div", { class: "detail-actions" },
+          el("button", { type: "submit", class: "btn btn-primary" }, "Mint an invite"))
+      ]),
+      el("p", { class: "form-note" }, "Redeeming needs a signed-in account: it is " +
+        "POST /api/v1/auth/redeem-invite with the token. There is no redeem page " +
+        "yet, which is why the token is shown here rather than as a clickable link.")
+    ]);
   }
 
   function render(charter, members, profiles, completeness, strategy, project, tags, languages, invites) {
     // The charter reaches the strategy panel because §6.2's themes expire on the charter's
     // release cycle; a user deciding whether to renew needs the number in front of them.
     if (strategy && !strategy.__failed) strategy.charter = failed(charter) ? null : charter;
-    root.innerHTML =
-      (failed(charter) ? '<section class="panel"><h2>Charter</h2>' + failedNote(charter, "charter") + "</section>"
-                       : '<section class="panel"><h2>Charter</h2>' + charterForm(charter || {}) + "</section>") +
-      '<section class="panel"><h2>Members</h2>' + memberTable(members) + "</section>" +
-      '<section class="panel"><h2>Criteria profiles</h2>' + profileList(profiles) + "</section>" +
-      completenessPanel(completeness) +
-      strategyPanel(strategy) +
-      intakePanel(project) +
-      visibilityPanel(project) +
-      tagsPanel(tags) +
-      languagesPanel(languages) +
-      invitesPanel(invites);
+    root.replaceChildren(
+      panel("Charter", failed(charter) ? failedNote(charter, "charter") : charterForm(charter || {})),
+      panel("Members", memberTable(members)),
+      panel("Criteria profiles", profileList(profiles)),
+      completenessPanel(completeness),
+      strategyPanel(strategy),
+      intakePanel(project),
+      visibilityPanel(project),
+      tagsPanel(tags),
+      languagesPanel(languages),
+      invitesPanel(invites)
+    );
     root.removeAttribute("aria-busy");
   }
+
 
   // The strategy reads are keyed by slug, like every other project-scoped route --
   // `{project_id}` in the route pattern carries a SLUG (requireProjectID resolves it
