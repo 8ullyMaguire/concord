@@ -24,6 +24,7 @@
   // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it. This file's copy replaced the same
   // five characters in its own way; a single pass over a character class cannot disagree with another page about which are dangerous.
   var esc = window.ConcordEscape.esc;
+  var domEl = window.ConcordDom.el;
 
   // One session (review item 9b): `concord.token` is `session.js`'s key, and ten files reading `localStorage` themselves is
   // how a change to where the token lives turns into ten silent breakages. This reads the session's copy, so signing out in
@@ -593,7 +594,7 @@
     if (!fallbackEl) return;
     getJSON(solURL('/fallback')).then(function (data) {
       chain = data.fallback || [];
-      fallbackChainEl.innerHTML = '';
+      fallbackChainEl.replaceChildren();
       if (!chain.length) { show(fallbackEl, false); return; }
       for (var i = 0; i < chain.length; i++) {
         var s = chain[i];
@@ -620,7 +621,7 @@
   function renderFallbackOptions() {
     if (!outcomeFallbackSel) return;
     var keep = outcomeFallbackSel.value;
-    outcomeFallbackSel.innerHTML = '';
+    outcomeFallbackSel.replaceChildren();
     for (var i = 0; i < chain.length; i++) {
       if (chain[i].is_baseline) continue;
       var o = document.createElement('option');
@@ -684,9 +685,11 @@
       outcomeSubmit.disabled = false;
       // The record is named rather than described: a decision that says "saved" is a
       // decision nobody can find again.
-      outcomeDone.innerHTML = 'The decision record is written: ' +
-        '<a href="/projects/' + encodeURIComponent(slug) + '/documents">' +
-        esc('Decision ' + callID) + '</a>, kind adr, slug call-' + esc(callID) + '.';
+      outcomeDone.replaceChildren(
+        'The decision record is written: ',
+        domEl('a', { href: '/projects/' + encodeURIComponent(slug) + '/documents' }, 'Decision ' + callID),
+        ', kind adr, slug call-' + callID + '.'
+      );
       show(outcomeDone, true);
       load();
     }).catch(function (e) {
@@ -762,7 +765,7 @@
   function renderIndex(rows) {
     show(callEl, false);
     show(indexEl, true);
-    indexListEl.innerHTML = '';
+    indexListEl.replaceChildren();
     if (!rows || !rows.length) {
       show(indexEmptyEl, true);
       return;
