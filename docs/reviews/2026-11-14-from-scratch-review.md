@@ -17,6 +17,12 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   and wire. `check_dom_project.js` covers the populated page with hostile values; behavioral RED with an obfuscated
   `node['innerHTML']` write, restore → PASS. Census 2→1 (only the allowlisted Markdown sink). D-14 superseded: arena
   controls are nodes in this page.
+  ```
+  gate: FAIL on 300945e — error[E0748] crates/web/src/lib.rs:512 (unterminated raw string)
+  fix 4fce32c: restored "#. cargo check -p concord-web --locked -> Finished dev profile
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS · sinks 1 · allowlisted 1
+  live 4fce32c: served renderer PASS checker · page loads project-render.js · walk 0 holes · CI 44059916800 success
+  ```
 
 - **2026-11-17 — step 2b twenty-eighth slice: `project.js` outer states are nodes.** Empty-slug, skeleton, 404, 401 and
   load-failure states use `el()`; `skeleton.js` gained `titleNode()`/`textNode()`. `check_dom_project.js` RED/GREEN;

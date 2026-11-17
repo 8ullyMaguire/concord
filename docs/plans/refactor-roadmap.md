@@ -522,6 +522,12 @@ Unclaimed rows are fair game.
   populated page with hostile fields in every panel; an obfuscated `node['innerHTML']` write inside the rendered tree
   reddened it behaviorally, restore → PASS. Census 2→1: only the allowlisted Markdown sink remains. No non-allowlisted
   string sink remains in `crates/web/assets/js`.
+  **Gate failure and fix:** the first gate on `300945e` was `FAIL` at `crates/web/src/lib.rs:512` (`error[E0748]`,
+  unterminated raw string) because the added placeholder lost its `"#` terminator. `cargo check -p concord-web --locked`
+  went green after the fix in `4fce32c`, then the stamped gate passed. No deploy happened on the failed gate.
+  **Live (`4fce32c`):** `/version` equality True; served `dom.js`, `skeleton.js`, `project-render.js` and `project.js` pass
+  `check_dom_project.js`; live `/projects/lorebook` loads `project-render.js`. `anonymous_walk: 0 holes · 0 declared but
+  not enforced · PASS`, headers PASS, CI `44059916800` success.
 **Live (`d76a47e`):** `/version` equality True; the served `/assets/js/dom.js` and `/assets/js/curation.js` pass
   `check_dom_curation.js`. `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS,
   CI `44050456868` success.
