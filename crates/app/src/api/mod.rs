@@ -2,3 +2,4 @@
 //! Each module owns its handlers and its `routes()`; `crate::router` merges them.
 
 pub mod meta;
+pub mod records;

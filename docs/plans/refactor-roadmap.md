@@ -534,7 +534,7 @@ Unclaimed rows are fair game.
 
   **D-16 closed:** no unblock remains for this row. The helper modules keep their string exports for their other callers;
   the project page composes only node trees. D-14 is superseded for this page: arena controls are nodes. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
-| 3 | split `lib.rs` by resource, zero behaviour change | **in progress**: first pure module `api/meta.rs` landed live (`ed1488c`) — `healthz`, `version`, 3 routes; `lib.rs` 10,043 → 10,020 lines. `git show --stat`: 41 added in `api/meta.rs`, 25 removed from `lib.rs`. Policy scanner follows `api/*.rs`. Gate `pages 132/132 · rate PASS`, live both health paths `200 {"status":"ok"}`, walk PASS, CI `44063176583`. |
+| 3 | split `lib.rs` by resource, zero behaviour change | **in progress**: two pure modules landed live (`ed1488c` meta, next records); `api/meta.rs` — `healthz`, `version`, 3 routes; `lib.rs` 10,043 → 10,020 lines. `git show --stat`: 41 added in `api/meta.rs`, 25 removed from `lib.rs`. Policy scanner follows `api/*.rs`. Gate `pages 132/132 · rate PASS`, live both health paths `200 {"status":"ok"}`, walk PASS, CI `44063176583`. |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
 | 6 | one pagination convention, gate-enforced | open |
@@ -649,6 +649,15 @@ tell the difference between "not started" and "waiting".
   row of live surface links, rendered by the existing `home()` builder; the 50+ project list stays below. Rejected:
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
+
+* **D-19 (step 3, 2026-11-17): nested `api/*.rs` import from `crate::`, not `super::`.**
+  `api/records.rs` owns `document_kinds` and `search_documents` (52 lines moved; `lib.rs` 9,967 lines).
+  `super::{bearer_user, …}` resolved to `api`, not the crate root — RED `E0432: no AppState in api`;
+  `use crate::{bearer_user, internal, project_for, readable, AppState}` restored a green check.
+  `project_for` became `pub(crate)` so the module borrows the existing visibility rule instead of copying it.
+  D-18's scanner already covers `api/*.rs`: policy `7 passed; 0 failed`, `route_policies: PASS`, parity replay
+  `0 shape(s) disagreed of 18 checked, 3 skipped`. Rejected: duplicating the helpers inside the module,
+  which would let their visibility logic drift from the handlers left in `lib.rs`.
 
 * **D-18 (step 3, 2026-11-17): module routes are typed `Router<AppState>`, and the policy oracle follows `api/*.rs`.**
   The first pure move (`api/meta.rs`: `healthz`, `/healthz`, `/api/v1/healthz`, `/api/v1/version`) initially declared

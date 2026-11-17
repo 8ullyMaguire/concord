@@ -12,6 +12,12 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 3 second pure move: `api/records.rs` (D-19).** `document_kinds` and `search_documents`
+  moved verbatim with their two routes; `lib.rs` 10,020 → 9,967 lines. RED: `use super::{…}` gave
+  `E0432: no AppState in api`; switched to `crate::{…}`, and `project_for` became `pub(crate)` so the
+  module borrows the shared visibility rule. `cargo check`: `Finished dev profile`; policy `7 passed; 0 failed`;
+  `route_policies: PASS`; parity replay `0 disagreed of 18 checked, 3 skipped`.
+
 - **2026-11-17 — step 3 first pure move: `api/meta.rs` (D-18).** `healthz` and `version` plus their three routes moved
   out of `lib.rs` verbatim; `lib.rs` 10,043 → 10,020 lines. RED measurements: `routes() -> Router` gave 177 E0308
   errors (whole chain inferred `Router<()>`); after typing it `Router<AppState>`, `cargo check` passed but the policy
