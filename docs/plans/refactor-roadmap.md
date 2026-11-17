@@ -418,7 +418,10 @@ Unclaimed rows are fair game.
   (`root.innerHTML = '<p>mutant</p>'`) reddened it, restore → PASS. Census 92→90.
   **Live (`cf30d00`):** `/version` equality True; the served `/assets/js/settings.js` passes `check_dom_settings.js`.
   `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS, CI `44012704225` success.
-  **2b left:** the remaining 90 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  **2b fourteenth slice landed 2026-11-17:** `taxonomy.js` lost all three sinks — tag chips/groups, proposal cards/lists,
+  the propose form and the live region are `el()` trees. `check_dom_taxonomy.js` executes the shipped page with hostile
+  tag/proposal fields and a hostile refusal; RED mutation (`root.innerHTML = '<p>mutant</p>'`) reddened it, restore → PASS.
+  Census 90→87. **2b left:** the remaining 87 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
