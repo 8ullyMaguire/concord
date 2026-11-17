@@ -650,6 +650,13 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-29 (step 3, 2026-11-17): move the limit with the route that uses it, and drop the stale import.**
+  `api/documents.rs` owns `list_documents`, `get_document`, `put_document`, `delete_document`, `DocumentListQuery`,
+  `PutDocumentRequest`, `DOCUMENT_BODY_LIMIT` and `document_refusal` (155 lines; `lib.rs` 8,623 → 8,457). The reads were
+  near line 610 and the writes inside §5.7, but D-24 says keep a resource together. RED: `no DefaultBodyLimit in axum::routing`
+  — it is `axum::extract::DefaultBodyLimit`. After the move `lib.rs` kept an unused `DefaultBodyLimit` import; removed it
+  so a pure move leaves no warning. Policy `7 passed; 0 failed`, `route_policies: PASS`, replay `0 disagreed of 18 checked, 3 skipped`.
+
 * **D-28 (step 3, 2026-11-17): a source section can contain two resources; cut at the next resource's doc comment.**
   The `§5.7 merge requests` marker also contained document writes after `merge_refusal`. `api/merge_requests.rs` takes
   only the merge block (182 lines; `lib.rs` 8,811 → 8,623), stopping at `/// The document body limit`; document writes stay

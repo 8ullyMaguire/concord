@@ -12,6 +12,11 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 3 twelfth pure move: `api/documents.rs` (D-29).** Document reads (near line 610) and writes (§5.7)
+  moved together (155 lines); `lib.rs` 8,623 → 8,457. RED: `DefaultBodyLimit` is in `axum::extract`, not `axum::routing`;
+  fixed, and the now-unused import in `lib.rs` removed. `cargo check` green, policy `7 passed; 0 failed`,
+  `route_policies: PASS`, replay `0 disagreed of 18 checked, 3 skipped`.
+
 - **2026-11-17 — step 3 eleventh pure move: `api/merge_requests.rs` (D-28).** The merge half of the §5.7 source section
   — five handlers, `merge_id`, `merge_refusal` — moved verbatim (182 lines); `lib.rs` 8,811 → 8,623. Document writes that
   followed in the same section stayed for their own module. RED: `cannot find type StatusCode`; fixed by importing it.
