@@ -650,6 +650,13 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-28 (step 3, 2026-11-17): a source section can contain two resources; cut at the next resource's doc comment.**
+  The `§5.7 merge requests` marker also contained document writes after `merge_refusal`. `api/merge_requests.rs` takes
+  only the merge block (182 lines; `lib.rs` 8,811 → 8,623), stopping at `/// The document body limit`; document writes stay
+  for their own module. First check RED `cannot find type StatusCode`; fixed by importing `axum::http::StatusCode`.
+  Policy `7 passed; 0 failed`, `route_policies: PASS`, replay `0 disagreed of 18 checked, 3 skipped`. Rejected: moving the
+  document block with the merge block just because they shared a section marker — that would split one resource later.
+
 * **D-27 (step 3, 2026-11-17): the two arenas keep separate modules even though they share a vote shape.**
   `api/feature_votes.rs` owns the §5.1 feature-vote request, `cast_feature_vote` and `feature_vote_refusal` (104 lines;
   `lib.rs` 8,915 → 8,811). It is deliberately not merged with `api/arena_votes.rs`: the arenas rank different entities with
