@@ -12,6 +12,10 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 2b ninth slice: `projects.js` has no string sink.** Cards, health bars and empty/error states are
+  `el()` trees; `check_dom_projects.js` RED mutation and GREEN restore measured across hostile fields, empty and failed GET.
+  Census 103→100.
+
 - **2026-11-17 — step 2b eighth slice: `feature.js` has no string sink.** All HTML builders on the 661-line page became
   `el()` trees; `check_dom_feature.js` RED mutation and GREEN restore measured with hostile values from all nine reads.
   Census 107→103.
