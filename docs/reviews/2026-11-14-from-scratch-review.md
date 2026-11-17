@@ -77,6 +77,13 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44074509285 success
   ```
 
+- **2026-11-17 — step 3 seventh module live (`41303eb`).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: project solutions 200 dict 4 · feature solutions 200 · anon POST 403 consent_required
+  anonymous_walk: 0 holes · headers PASS · CI 44076613424 success
+  ```
+
 - **2026-11-17 — step 3 first pure move: `api/meta.rs` (D-18).** `healthz` and `version` plus their three routes moved
   out of `lib.rs` verbatim; `lib.rs` 10,043 → 10,020 lines. RED measurements: `routes() -> Router` gave 177 E0308
   errors (whole chain inferred `Router<()>`); after typing it `Router<AppState>`, `cargo check` passed but the policy
