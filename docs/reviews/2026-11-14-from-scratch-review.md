@@ -236,6 +236,13 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44118300295 success
   ```
 
+- **2026-11-17 — step 3 twenty-first module live (6daf820).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: anon webhook 503 (no secret configured — deliberate refusal)
+  anonymous_walk: 0 holes · headers PASS · CI 44127516322 success
+  ```
+
 - **2026-11-17 — step 3 twentieth module live (`96b433b`).**
   ```
   gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
