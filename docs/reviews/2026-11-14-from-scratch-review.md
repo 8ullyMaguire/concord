@@ -12,6 +12,13 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 3 twenty-second module live (7207cc1).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: scout ?idea=… 200 dict 7
+  anonymous_walk: 0 holes · headers PASS · CI 44133293671 success
+  ```
+
 - **2026-11-17 — step 3 twenty-second pure move: api/scout.rs (D-39).** Report, coverage helper and query struct moved
   whole (149 lines); lib.rs 6319 -> 6170. RED: missing State and bearer_user imports; fixed. Policy 7 passed; 0 failed,
   route_policies PASS, replay 0 disagreed of 18 checked, 3 skipped.
