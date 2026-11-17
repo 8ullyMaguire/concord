@@ -516,7 +516,7 @@ async fn project_overview(
 <script src="{}"></script>
 <script src="{}"></script>
 <script src="{}"></script>{}
-""",
+""#,
         header.finish(),
         shell::asset("/assets/js/skeleton.js"),
         // The three split files register themselves on `window` before the page script runs — `project.js` calls
