@@ -12,6 +12,11 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 3 nineteenth pure move: `api/taxonomy.rs` (D-36).** Five handlers and three routes moved verbatim
+  (174 lines); `lib.rs` 6,948 → 6,766. RED: 15 unresolved imports (`Deserialize`, `Query`, `HeaderMap`, `StatusCode`,
+  `bearer_user`, `role_rank`); fixed, `cargo check` green, policy `7 passed; 0 failed`, `route_policies: PASS`,
+  replay `0 disagreed of 18 checked, 3 skipped`.
+
 - **2026-11-17 — step 3 eighteenth pure move: `api/emergency_holds.rs` (D-35).** Release handler, refusal mapper and route
   moved verbatim (57 lines); `lib.rs` 7,008 → 6,948. No RED: policy `7 passed; 0 failed`, `route_policies: PASS`,
   replay `0 disagreed of 16 checked, 5 skipped`. Mutation-sensitive ordering and `CONCORD_MUTANT` branch untouched.

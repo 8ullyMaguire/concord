@@ -650,6 +650,14 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-36 (step 3, 2026-11-17): the taxonomy proposal rate-limit helper is part of the resource.**
+  `api/taxonomy.rs` owns `list_tags`, `list_taxonomy_proposals`, `propose_taxonomy_change`, `contributor_somewhere` and
+  `consent_taxonomy_proposal` plus three routes (174 lines; `lib.rs` 6,948 → 6,766). The first check reddened with 15 errors
+  naming `Deserialize`, `Query`, `HeaderMap`, `StatusCode`, `bearer_user` and `role_rank`; fix imports only, no logic.
+  Verified: policy `7 passed; 0 failed`, `route_policies: PASS`, replay `0 disagreed of 18 checked, 3 skipped`.
+  Rejected: leaving `contributor_somewhere` in `lib.rs` as "general" — its only caller is the proposal write, and the rate
+  limit belongs with the resource it protects.
+
 * **D-35 (step 3, 2026-11-17): a deliberately mutation-sensitive route moves with its refusal mapper.**
   `api/emergency_holds.rs` owns `release_emergency_hold` and `hold_refusal` (57 lines) plus the release route;
   `lib.rs` 7,008 → 6,948. The `CONCORD_MUTANT=hold-any-role` branch and the hold-before-role ordering stayed byte-identical —
