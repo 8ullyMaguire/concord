@@ -650,6 +650,15 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-30 (step 3, 2026-11-17): two refusal maps in one section can belong to one resource.**
+  `api/alternatives.rs` owns `list_alternatives`, `create_alternative`, `add_alternative_competitor`,
+  `cast_alternatives_vote`, `alternative_arena_id`, `alternative_refusal` and `arena_vote_refusal` (256 lines;
+  `lib.rs` 8,457 → 8,190). The second refusal table is the vote store's, but its only caller in this section is the
+  alternatives vote, so it moved too. First check reddened with 21 errors (missing `Deserialize`, `StatusCode`, `readable`,
+  `require_role`); imports fixed, then policy `7 passed; 0 failed`, `route_policies: PASS`, replay
+  `0 disagreed of 16 checked, 5 skipped`. Rejected: leaving `arena_vote_refusal` in `lib.rs` "for other arenas" — no other
+  caller exists, and a dead helper in the root would hide the resource boundary.
+
 * **D-29 (step 3, 2026-11-17): move the limit with the route that uses it, and drop the stale import.**
   `api/documents.rs` owns `list_documents`, `get_document`, `put_document`, `delete_document`, `DocumentListQuery`,
   `PutDocumentRequest`, `DOCUMENT_BODY_LIMIT` and `document_refusal` (155 lines; `lib.rs` 8,623 → 8,457). The reads were

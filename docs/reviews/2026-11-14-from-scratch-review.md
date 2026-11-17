@@ -12,6 +12,11 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 3 thirteenth pure move: `api/alternatives.rs` (D-30).** The S2 section — four handlers, arena
+  resolver and both refusal maps — moved verbatim (256 lines); `lib.rs` 8,457 → 8,190. RED: 21 unresolved imports
+  (`Deserialize`, `StatusCode`, `readable`, `require_role`); fixed, `cargo check` green, policy `7 passed; 0 failed`,
+  `route_policies: PASS`, replay `0 disagreed of 16 checked, 5 skipped`.
+
 - **2026-11-17 — step 3 twelfth pure move: `api/documents.rs` (D-29).** Document reads (near line 610) and writes (§5.7)
   moved together (155 lines); `lib.rs` 8,623 → 8,457. RED: `DefaultBodyLimit` is in `axum::extract`, not `axum::routing`;
   fixed, and the now-unused import in `lib.rs` removed. `cargo check` green, policy `7 passed; 0 failed`,

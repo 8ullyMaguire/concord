@@ -13,3 +13,4 @@ pub mod coverage;
 pub mod feature_votes;
 pub mod merge_requests;
 pub mod documents;
+pub mod alternatives;
