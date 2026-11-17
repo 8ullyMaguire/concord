@@ -9,12 +9,13 @@
 //    anything. Printing the bare number would present noise as a measurement,
 //    so every rating is shown with its uncertainty and a high-deviation
 //    feature is labelled as under-tested.
+//
+// Rendering (step 2b): `el()` nodes only. Titles, bodies, participation strings
+// and error messages are text nodes; hrefs are set verbatim as attributes.
 (function () {
   'use strict';
 
-  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it, so this file cannot disagree with
-  // another page about which characters are dangerous.
-  var esc = window.ConcordEscape.esc;
+  var el = window.ConcordDom.el;
 
   function slugFromPath() {
     var parts = window.location.pathname.split('/').filter(Boolean);
@@ -27,44 +28,37 @@
   }
 
   // A deviation above this means the rating is not yet worth much. The Glicko-2
-  // default initial RD is 350, so anything at or above it has barely been
-  // compared.
+  // default initial RD is 350, so anything at or above it has barely been compared.
   var UNTESTED_RD = 300;
 
   var root = document.getElementById('ranking-root');
   var slug = slugFromPath();
 
-  // Whether this reader may moderate, decided by the SERVER from the same permission pair the
-  // moderation routes enforce and handed over as an attribute on the root.
-  //
-  // It is deliberately not a probe. The panel on the feature page probes with a real act
-  // (`confirm:false`), which costs a request; a standings table that probed once per row would
-  // cost one request per feature, and one per page that is never used by the readers who cannot
-  // moderate anyway. An attribute is zero requests, and the panel remains the authority: this
-  // link decides where the reader LANDS, not what they may do there.
+  // Whether this reader may moderate, decided by the SERVER from the same permission
+  // pair the moderation routes enforce and handed over as an attribute on the root.
+  // An attribute is zero requests; the panel on the feature page remains the authority.
   var CAN_MODERATE = (root && root.getAttribute('data-can-moderate')) === 'true';
 
-  function errorState(message) {
-    return '<div class="empty-state error-state">' +
-      '<div class="empty-state-icon">\u26A0</div>' +
-      '<p class="empty-state-title">Could not load the ranking</p>' +
-      '<p class="empty-state-description">' + esc(message) + '</p>' +
-      '<button class="btn btn-primary" id="ranking-retry">Try again</button></div>';
+  function errorNode(message) {
+    return el('div', { class: 'empty-state error-state' }, [
+      el('div', { class: 'empty-state-icon' }, '⚠'),
+      el('p', { class: 'empty-state-title' }, 'Could not load the ranking'),
+      el('p', { class: 'empty-state-description' }, message),
+      el('button', { class: 'btn btn-primary', id: 'ranking-retry' }, 'Try again')
+    ]);
   }
 
   // The moderation cell: a link to the feature page's panel, never a second implementation.
-  //
-  // It is rendered from the server's standing decision, so a reader without it gets no cell at
-  // all -- not a disabled control, not a lock icon. A column of controls that all refuse teaches
-  // a reader to ignore the column.
+  // A reader without it gets no cell at all -- not a disabled control, not a lock icon.
   function modCell(p) {
-    if (!CAN_MODERATE) return '';
+    if (!CAN_MODERATE) return null;
     var href = '/projects/' + encodeURIComponent(slug) + '/features/' + p.id + '#moderation-panel';
-    return '<td class="cell-mod"><a class="rank-moderate" href="' + href + '">Moderate</a></td>';
+    return el('td', { class: 'cell-mod' },
+      el('a', { class: 'rank-moderate', href: href }, 'Moderate'));
   }
 
   function modHead() {
-    return CAN_MODERATE ? '<th><span class="dim">Moderate</span></th>' : '';
+    return CAN_MODERATE ? el('th', {}, el('span', { class: 'dim' }, 'Moderate')) : null;
   }
 
   function row(p, i, tally) {
@@ -73,31 +67,39 @@
     var participation = tally
       ? tally.votes_cast + (tally.skips ? ' (' + tally.skips + ' skipped)' : '')
       : '0';
-    return '<tr' + (untested ? ' class="row-untested"' : '') + '>' +
-      '<td class="cell-rank">' + (i + 1) + '</td>' +
-      '<td class="cell-title"><strong>' + esc(p.title) + '</strong>' +
-        (untested ? ' <span class="badge badge-slate">under-tested</span>' : '') +
-        '<p class="cell-note">' + esc(p.body || '') + '</p></td>' +
-      '<td class="cell-num">' + Math.round(p.elo_r) +
-        (untested ? '' : ' <span class="dim">±' + Math.round(rd) + '</span>') + '</td>' +
-      '<td class="cell-num">' + num(p.pain_score) + '</td>' +
-      '<td class="cell-num">' + num(p.strategic_weight) + '</td>' +
-      '<td class="cell-num">' + num(p.priority_score) + '</td>' +
-      '<td class="cell-num">' + esc(participation) + '</td>' +
-      modCell(p) +
-      '</tr>';
+    var rating = el('td', { class: 'cell-num' }, [
+      Math.round(p.elo_r),
+      untested ? null : el('span', { class: 'dim' }, '±' + Math.round(rd))
+    ]);
+    return el('tr', untested ? { class: 'row-untested' } : {}, [
+      el('td', { class: 'cell-rank' }, i + 1),
+      el('td', { class: 'cell-title' }, [
+        el('strong', {}, p.title),
+        untested ? ' ' : null,
+        untested ? el('span', { class: 'badge badge-slate' }, 'under-tested') : null,
+        el('p', { class: 'cell-note' }, p.body || '')
+      ]),
+      rating,
+      el('td', { class: 'cell-num' }, num(p.pain_score)),
+      el('td', { class: 'cell-num' }, num(p.strategic_weight)),
+      el('td', { class: 'cell-num' }, num(p.priority_score)),
+      el('td', { class: 'cell-num' }, participation),
+      modCell(p)
+    ]);
   }
 
   function render(priorities, tallies) {
     if (!priorities || priorities.length === 0) {
-      root.innerHTML = '<div class="empty-state">' +
-        '<div class="empty-state-icon">\u{1F4CB}</div>' +
-        '<p class="empty-state-title">Nothing to rank yet</p>' +
-        '<p class="empty-state-description">A feature needs at least one ' +
-        'validated complaint behind it before it is a candidate, and it ' +
-        'needs comparisons before it can be ordered.</p>' +
-        '<a class="btn btn-primary" href="/projects/' + encodeURIComponent(slug) + '/rank">Rank the first pair</a>' +
-        '</div>';
+      root.replaceChildren(el('div', { class: 'empty-state' }, [
+        el('div', { class: 'empty-state-icon' }, '📋'),
+        el('p', { class: 'empty-state-title' }, 'Nothing to rank yet'),
+        el('p', { class: 'empty-state-description' }, 'A feature needs at least one ' +
+          'validated complaint behind it before it is a candidate, and it ' +
+          'needs comparisons before it can be ordered.'),
+        el('a', {
+          class: 'btn btn-primary', href: '/projects/' + encodeURIComponent(slug) + '/rank'
+        }, 'Rank the first pair')
+      ]));
       return;
     }
     var byId = {};
@@ -107,27 +109,31 @@
       return p.elo_rd != null && p.elo_rd >= UNTESTED_RD;
     }).length;
 
-    root.innerHTML =
-      '<div class="ranking-meta">' +
-        '<p><strong>' + priorities.length + '</strong> feature' +
-          (priorities.length === 1 ? '' : 's') + ' in order. ' +
-          (underTested > 0
-            ? '<strong>' + underTested + '</strong> marked under-tested: the ' +
-              'uncertainty is still wider than the difference between them.'
-            : 'All ratings have narrowed enough to mean something.') + '</p>' +
-      '</div>' +
-      '<div class="table-scroll" tabindex="0" role="region" aria-label="tabla"><table class="ranking-table">' +
-        '<thead><tr>' +
-          '<th>#</th><th>Feature</th><th>Rating</th><th>Pain</th>' +
-          '<th>Weight</th><th>Priority</th><th>Votes</th>' + modHead() +
-        '</tr></thead>' +
-        '<tbody>' +
-        priorities.map(function (p, i) { return row(p, i, byId[p.id]); }).join('') +
-        '</tbody></table></div>' +
-      '<p class="rank-note">Order is the priority score the forge computed, ' +
-      'not the raw rating: pain and strategic weight are part of the score. ' +
-      'Pain is the sum over a feature\'s validated complaints, so a feature ' +
-      'proposed without a problem behind it is not competing for anything.</p>';
+    root.replaceChildren(
+      el('div', { class: 'ranking-meta' },
+        el('p', {}, [
+          el('strong', {}, priorities.length), ' feature' + (priorities.length === 1 ? '' : 's') +
+          ' in order. ',
+          underTested > 0
+            ? el('span', {}, [
+                el('strong', {}, underTested),
+                ' marked under-tested: the uncertainty is still wider than the difference between them.'
+              ])
+            : 'All ratings have narrowed enough to mean something.'
+        ])),
+      el('div', { class: 'table-scroll', tabindex: '0', role: 'region', 'aria-label': 'tabla' },
+        el('table', { class: 'ranking-table' }, [
+          el('thead', {}, el('tr', {}, [
+            el('th', {}, '#'), el('th', {}, 'Feature'), el('th', {}, 'Rating'), el('th', {}, 'Pain'),
+            el('th', {}, 'Weight'), el('th', {}, 'Priority'), el('th', {}, 'Votes'), modHead()
+          ])),
+          el('tbody', {}, priorities.map(function (p, i) { return row(p, i, byId[p.id]); }))
+        ])),
+      el('p', { class: 'rank-note' }, 'Order is the priority score the forge computed, ' +
+        'not the raw rating: pain and strategic weight are part of the score. ' +
+        'Pain is the sum over a feature\'s validated complaints, so a feature ' +
+        'proposed without a problem behind it is not competing for anything.')
+    );
   }
 
   function load() {
@@ -141,7 +147,7 @@
       render(res[0], res[1]);
       if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);
     }).catch(function (err) {
-      root.innerHTML = errorState(err && err.message ? err.message : String(err));
+      root.replaceChildren(errorNode(err && err.message ? err.message : String(err)));
       if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);
     });
   }

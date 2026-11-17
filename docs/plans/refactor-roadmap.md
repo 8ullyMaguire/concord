@@ -397,7 +397,10 @@ Unclaimed rows are fair game.
   GET; RED mutation (`grid.innerHTML = '<p>mutant</p>'`) reddened it, restore → PASS. Census 103→100.
   **Live (`ddccc04`):** `/version` equality True; the served `/assets/js/projects.js` passes `check_dom_projects.js`.
   `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS, CI `44006585416` success.
-  **2b left:** the remaining 100 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  **2b tenth slice landed 2026-11-17:** `ranking.js` lost all three sinks — table rows, moderation cell and error state are
+  `el()` trees. `check_dom_ranking.js` executes the shipped page with hostile feature fields and a hostile error, and
+  exercises the retry path; RED mutation (`root.innerHTML = '<p>mutant</p>'`) reddened it, restore → PASS. Census 100→97.
+  **2b left:** the remaining 97 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
