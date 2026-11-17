@@ -33,6 +33,11 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44142046977 success
   ```
 
+- **2026-11-17 — step 3 twenty-fifth pure move: api/project_lifecycle.rs (D-42).** Create/claim/archive/unarchive/AI
+  handlers plus helper and two request structs moved (274 lines); lib.rs 6070 -> 5789. RED: policy test searched only
+  lib.rs for create_project; fixed to use the module-aware source list. Mutation: breaking is_guest( gives E0425, restore
+  gives policy 7 passed; 0 failed. route_policies PASS, replay 0 disagreed of 16 checked, 5 skipped.
+
 - **2026-11-17 — step 3 twenty-fourth pure move: api/accounts.rs (D-41).** Registration handler, request struct and route
   moved (79 lines); lib.rs 6149 -> 6070. No RED; TOKEN_NOTE kept at the root for login. Policy 7 passed; 0 failed,
   route_policies PASS (203 declared), replay 0 disagreed of 18 checked, 3 skipped.

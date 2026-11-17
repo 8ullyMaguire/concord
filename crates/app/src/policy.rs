@@ -776,8 +776,14 @@ mod tests {
             }
             assert!(enforced_route, "{name} is pinned but no (method, path) row is enforced");
         }
+        // D-42: create_project may live in api/project_lifecycle.rs.
+        let create_source = sources
+            .iter()
+            .find(|text| text.contains("async fn create_project("))
+            .map(String::as_str)
+            .unwrap_or(SOURCE);
         assert!(
-            function(SOURCE, "create_project").contains("is_guest("),
+            function(create_source, "create_project").contains("is_guest("),
             "the guest check stays: the gate proves identity, not an account"
         );
 

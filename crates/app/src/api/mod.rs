@@ -25,3 +25,4 @@ pub mod forgejo_webhook;
 pub mod scout;
 pub mod catalog;
 pub mod accounts;
+pub mod project_lifecycle;

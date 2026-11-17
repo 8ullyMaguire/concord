@@ -650,6 +650,14 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-42 (step 3, 2026-11-17): policy test lookups must follow every moved handler.**
+  api/project_lifecycle.rs owns CreateProjectRequest, ArchiveRequest, project_maintainer and five lifecycle handlers plus
+  five routes (274 lines; lib.rs 6070 -> 5789). The policy test reddened at create_project exists because it still searched
+  only SOURCE (lib.rs); it now searches the same sources list used for auth_gate. Mutation proof: replacing the module
+  is_guest( with is_guest_disabled( makes the build fail with E0425, and restoring it returns 7 passed; 0 failed —
+  the check is load-bearing. route_policies: PASS (203 declared), replay 0 disagreed of 16 checked, 5 skipped.
+  Rejected: dropping the create_project guest-check assertion to make the test green.
+
 * **D-41 (step 3, 2026-11-17): a shared constant stays at the crate root; child modules can see it.**
   api/accounts.rs owns RegisterRequest, register and the registration route (79 lines; lib.rs 6149 -> 6070). TOKEN_NOTE
   remains a root-private const because api/identity.rs's login also uses it; Rust child modules can read a parent's private
