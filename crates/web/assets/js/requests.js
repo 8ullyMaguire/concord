@@ -20,11 +20,16 @@
 //   PUT /api/v1/requests/{id}/accept   -> the updated request object
 //
 // An answer carries project_id but NOT the project's slug, so the link needs a slug.
-// Resolving id->slug per answer would be an N+1 (frontend-spec.md forbids it), so the
-// answers are linked BY ID and the slug comes from the page, which already has it.
+// Resolving id->slug per answer would be an N+1, so the answers are linked BY ID and
+// the slug comes from the page, which already has it.
+//
+// Rendering (step 2b): `el()` nodes only. Titles, bodies, tags, project names and
+// server refusal messages are text or setAttribute values; no HTML string sink.
 
 (function () {
   "use strict";
+
+  var el = window.ConcordDom.el;
 
   var root = document.getElementById("request-root");
   if (!root) return;
@@ -32,10 +37,6 @@
   var slugEl = document.querySelector("[data-slug]");
   var slug = slugEl ? slugEl.textContent.trim() : "";
   var requestID = parseInt((location.pathname.match(/requests\/(\d+)/) || [])[1], 10);
-
-  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it. This file's copy replaced the same
-  // five characters in its own way; a single pass over a character class cannot disagree with another page about which are dangerous.
-  var esc = window.ConcordEscape.esc;
 
   function ago(unix) {
     if (!unix) return "";
@@ -47,51 +48,34 @@
   }
 
   // A Glicko rating is a POINT with a DEVIATION, and printing only the point is how
-  // a page makes a reader think an untouched answer lost.
-  //
-  // elo_rd is the width of the confidence band: 350 is the seed (nobody has compared
-  // it yet), and it narrows as comparisons land. A bare 1500 for an untouched answer
-  // is indistinguishable from a settled 1500, so both the number and the band are
-  // shown.
-  // A Glicko rating is a POINT with a DEVIATION, and printing only the point is how a
-  // page makes a reader think an untouched answer lost.
-  //
-  // Rendered the same way feature.js renders it: a proportional BAR plus the number,
-  // with the bar as the honest signal and the text as the precise one. 350 is the
-  // starting deviation, so it is the full-width case -- the same normalisation
-  // feature.js uses, so the two pages cannot disagree about what "uncertain" means.
+  // a page makes a reader think an untouched answer lost. The bar is the honest
+  // signal; 350 is the seed and therefore the full-width case, matching feature.js.
   function rating(a) {
     var r = typeof a.elo_r === "number" ? a.elo_r : 0;
     var rd = typeof a.elo_rd === "number" && isFinite(a.elo_rd) ? a.elo_rd : 0;
     var pct = Math.max(4, Math.min(100, Math.round((rd / 350) * 100)));
-    return '<div class="rating">' +
-      '<div class="rating-value">' + Math.round(r) + "</div>" +
-      '<div class="rating-bars" role="img" aria-label="rating ' + Math.round(r) +
-      " plus or minus " + Math.round(rd) + ", " + pct +
-      ' percent of the maximum uncertainty">' +
-      '<div class="rating-bar-track"><div class="rating-bar-fill" style="width:' +
-      pct + '%"></div></div></div>' +
-      '<p class="muted">&plusmn;' + Math.round(rd) +
-      " &mdash; a wider bar means less certainty, not a worse rank.</p>" +
-      "</div>";
+    var shown = Math.round(r);
+    var shownRd = Math.round(rd);
+    return el("div", { class: "rating" }, [
+      el("div", { class: "rating-value" }, shown),
+      el("div", {
+        class: "rating-bars", role: "img",
+        "aria-label": "rating " + shown + " plus or minus " + shownRd +
+          ", " + pct + " percent of the maximum uncertainty"
+      }, el("div", { class: "rating-bar-track" },
+        el("div", { class: "rating-bar-fill", style: "width:" + pct + "%" }))),
+      el("p", { class: "muted" }, "±" + shownRd +
+        " — a wider bar means less certainty, not a worse rank.")
+    ]);
   }
 
   function statusBadge(status) {
-    return '<span class="badge badge-' + esc(status) + '">' + esc(status) + "</span>";
+    return el("span", { class: "badge badge-" + status }, status);
   }
 
-  // An answer carries project_id and NOTHING ELSE -- no slug, no name. §17 says an
-  // answer IS a project reference, so the page has to say WHICH project, and
-  // "Project 3" is not a reference anybody can act on.
-  //
   // Resolved with ONE fetch of the project list and an id->project map, NOT one fetch
-  // per answer: frontend-spec.md forbids N+1 request patterns, and an answer list of
-  // twenty would otherwise make twenty-one requests.
-  //
-  // A project the caller cannot see is absent from that list (the list is filtered by
-  // visibility), so the card falls back to the bare id. That is the honest rendering:
-  // the answer exists, the reader is not allowed to know whose it is, and pretending
-  // otherwise would leak the existence of a private project.
+  // per answer. A project the caller cannot see is absent from that list, so the
+  // card falls back to the bare id rather than leaking its existence.
   var projectsById = {};
 
   function loadProjects() {
@@ -108,188 +92,161 @@
 
   function linkToProject(a) {
     var p = projectsById[a.project_id];
-    var label = p ? p.name || p.slug : "Project " + esc(a.project_id);
-    if (!p) return esc(label);
-    return '<a href="/projects/' + esc(p.slug) + '">' + esc(label) + "</a>";
+    if (!p) return el("span", {}, "Project " + a.project_id);
+    return el("a", { href: "/projects/" + p.slug }, p.name || p.slug);
   }
 
-  // One answer card. `request` is passed IN rather than read from a global or a bare
-  // identifier: the project page's `complaintCards(complaints, slug)` threw a
-  // ReferenceError because the parameter was named `p`, and that one line blanked
-  // the entire page. Every identifier used below is therefore a parameter or a local.
+  // One answer card. Every identifier used below is a parameter or a local, never a
+  // global: a misnamed parameter once blanked the whole project page.
   function answerCard(a, request) {
     var accepted =
       request && request.accepted_answer_id && request.accepted_answer_id === a.id;
 
-    // §17: "Answers about the proposer's own project carry an affiliation label.
-    // Weight is unchanged, the affiliation is visible." So the label is rendered and
-    // the rating is NOT touched -- there is deliberately no penalty term here.
-    //
-    // `affiliated` is computed by the caller, which knows who asked the question and
-    // which project each answer is for.
+    // §17: affiliation is shown and the rating is NOT touched -- no penalty term.
     var affiliation = a.affiliated
-      ? '<span class="badge badge-affiliated" ' +
-        'title="This answer proposes the same project that asked the question. ' +
-        "Its weight is unchanged (17) \u2014 the affiliation is shown, not penalised.\">" +
-        "affiliated</span>"
-      : "";
+      ? el("span", {
+          class: "badge badge-affiliated",
+          title: "This answer proposes the same project that asked the question. " +
+            "Its weight is unchanged (§17) — the affiliation is shown, not penalised."
+        }, "affiliated")
+      : null;
 
     var badge = accepted
-      ? '<span class="badge badge-accepted" title="Marked accepted by the request ' +
-        "author. Per 17 this is displayed but does not override the ranking.\">" +
-        "accepted</span>"
-      : "";
+      ? el("span", {
+          class: "badge badge-accepted",
+          title: "Marked accepted by the request author. Per §17 this is displayed but does not override the ranking."
+        }, "accepted")
+      : null;
 
-    return (
-      '<article class="card answer' + (accepted ? " answer-accepted" : "") + '" ' +
-      'data-answer-id="' + esc(a.id) + '">' +
-      '<div class="card-head">' +
-      "<h3>" + linkToProject(a) + "</h3>" +
-      rating(a) +
-      badge +
-      affiliation +
-      "</div>" +
-      '<p class="answer-body">' + esc(a.body) + "</p>" +
-      '<p class="card-meta">' +
-      '<span>' + esc(a.status) + "</span> · " +
-      "<span>proposed " + ago(a.created_at) + "</span>" +
-      (a.status === "removed"
-        ? ' · <span class="warn">removed by quorum</span>'
-        : "") +
-      "</p>" +
-      "</article>"
-    );
+    var meta = el("p", { class: "card-meta" }, [
+      el("span", {}, a.status), " · ",
+      el("span", {}, "proposed " + ago(a.created_at)),
+      a.status === "removed" ? " · " : null,
+      a.status === "removed" ? el("span", { class: "warn" }, "removed by quorum") : null
+    ]);
+
+    return el("article", {
+      class: "card answer" + (accepted ? " answer-accepted" : ""),
+      "data-answer-id": a.id
+    }, [
+      el("div", { class: "card-head" }, [
+        el("h3", {}, linkToProject(a)),
+        rating(a), badge, affiliation
+      ]),
+      el("p", { class: "answer-body" }, a.body),
+      meta
+    ]);
   }
 
   function renderError(message) {
-    root.innerHTML =
-      '<div class="empty-state"><p class="empty-state-title">' +
-      esc(message) +
-      "</p></div>";
+    root.replaceChildren(el("div", { class: "empty-state" },
+      el("p", { class: "empty-state-title" }, message)));
   }
 
-  // The pairwise comparison control, which is the whole point of the board: "which
-  // fits this request better?". It needs TWO answers, so it appears only once there
-  // are two, and it is absent for the asker on their own answers.
+  // The pairwise comparison control appears only once there are TWO active answers
+  // from projects other than the reader's.
   function comparePanel(answers, meID, myProjectIDs) {
     var votable = answers.filter(function (a) {
       return a.status === "active" && myProjectIDs.indexOf(a.project_id) === -1;
     });
     if (votable.length < 2) {
-      return (
-        '<p class="note">Pairwise comparison needs two active answers from other ' +
-        "projects. §17 ranks fits by asking which of two fits better \\u2014 there is " +
-        "nothing to compare yet.</p>"
-      );
+      return el("p", { class: "note" }, "Pairwise comparison needs two active answers from other " +
+        "projects. §17 ranks fits by asking which of two fits better — there is " +
+        "nothing to compare yet.");
     }
 
-    var opts = votable
-      .map(function (a) {
-        return '<option value="' + esc(a.id) + '">Project ' + esc(a.project_id) + "</option>";
-      })
-      .join("");
+    var opts = votable.map(function (a) {
+      return el("option", { value: a.id }, "Project " + a.project_id);
+    });
 
-    return (
-      '<form class="compare" data-compare-form>' +
-      '<h3>Which fits this request better?</h3>' +
-      '<div class="compare-row">' +
-      '<label class="visually-hidden" for="cmp-a">Answer A</label>' +
-      '<select id="cmp-a" name="answer_a">' + opts + "</select>" +
-      '<label class="visually-hidden" for="cmp-b">Answer B</label>' +
-      '<select id="cmp-b" name="answer_b">' + opts + "</select>" +
-      '<label class="visually-hidden" for="cmp-outcome">Outcome</label>' +
-      '<select id="cmp-outcome" name="outcome">' +
-      '<option value="a">A fits better</option>' +
-      '<option value="b">B fits better</option>' +
-      '<option value="both">Both fit equally</option>' +
-      '<option value="neither">Neither fits</option>' +
-      '<option value="skip">Skip</option>' +
-      "</select>" +
-      '<button type="submit" class="btn">Compare</button>' +
-      "</div>" +
-      '<p class="note">A pairwise comparison, not a score: it moves both ratings by ' +
-      "a Glicko-2 update weighted by each side's deviation (§17, §8.3).</p>" +
-      "</form>"
-    );
+    return el("form", { class: "compare", "data-compare-form": "" }, [
+      el("h3", {}, "Which fits this request better?"),
+      el("div", { class: "compare-row" }, [
+        el("label", { class: "visually-hidden", for: "cmp-a" }, "Answer A"),
+        el("select", { id: "cmp-a", name: "answer_a" }, opts),
+        el("label", { class: "visually-hidden", for: "cmp-b" }, "Answer B"),
+        el("select", { id: "cmp-b", name: "answer_b" }, opts),
+        el("label", { class: "visually-hidden", for: "cmp-outcome" }, "Outcome"),
+        el("select", { id: "cmp-outcome", name: "outcome" }, [
+          el("option", { value: "a" }, "A fits better"),
+          el("option", { value: "b" }, "B fits better"),
+          el("option", { value: "both" }, "Both fit equally"),
+          el("option", { value: "neither" }, "Neither fits"),
+          el("option", { value: "skip" }, "Skip")
+        ]),
+        el("button", { type: "submit", class: "btn" }, "Compare")
+      ]),
+      el("p", { class: "note" }, "A pairwise comparison, not a score: it moves both ratings by " +
+        "a Glicko-2 update weighted by each side's deviation (§17, §8.3).")
+    ]);
   }
 
   function answerForm(request, meID) {
     if (!meID) {
-      return (
-        '<p class="note">Sign in to answer this request with a project.</p>'
-      );
+      return el("p", { class: "note" }, "Sign in to answer this request with a project.");
     }
     if (request.project_id) {
-      return (
-        '<form class="answer-form" data-answer-form>' +
-        '<h3>Answer with a project</h3>' +
-        '<p class="note">An answer is a project reference and a fit rationale: why it ' +
-        "fits, where it falls short. One answer per project per request.</p>" +
-        '<label class="visually-hidden" for="ans-body">Fit rationale</label>' +
-        '<textarea id="ans-body" name="body" rows="4" ' +
-        'placeholder="Why does this project fit? Where does it fall short?"></textarea>' +
-        '<button type="submit" class="btn">Post answer</button>' +
-        "</form>"
-      );
+      return el("form", { class: "answer-form", "data-answer-form": "" }, [
+        el("h3", {}, "Answer with a project"),
+        el("p", { class: "note" }, "An answer is a project reference and a fit rationale: why it " +
+          "fits, where it falls short. One answer per project per request."),
+        el("label", { class: "visually-hidden", for: "ans-body" }, "Fit rationale"),
+        el("textarea", {
+          id: "ans-body", name: "body", rows: "4",
+          placeholder: "Why does this project fit? Where does it fall short?"
+        }),
+        el("button", { type: "submit", class: "btn" }, "Post answer")
+      ]);
     }
-    // An instance-wide request (project_id omitted) can be answered by ANY project,
-    // so there is nothing to pick from this page -- it names no project.
-    return (
-      '<p class="note">This is an instance-wide request: any project may answer it. ' +
-      "Open it from a project to post that project's answer.</p>"
-    );
+    // An instance-wide request (project_id omitted) can be answered by ANY project.
+    return el("p", { class: "note" }, "This is an instance-wide request: any project may answer it. " +
+      "Open it from a project to post that project's answer.");
   }
 
   function render(request, answers, tags, me) {
     // §17: the badge is set by the AUTHOR and does not override the ranking, so the
-    // accepted answer keeps its position in the sorted list rather than being moved to
-    // the top. Sorting by elo_r DESC and marking the row is the honest rendering.
+    // accepted answer keeps its position in the sorted list rather than moving to top.
     var sorted = answers.slice().sort(function (a, b) {
       return (b.elo_r || 0) - (a.elo_r || 0);
     });
 
     var myProjectIDs = me && me.project_ids ? me.project_ids : [];
-    // Affiliation = the answer names the SAME project that asked the question.
     var proposerProject = request.project_id || 0;
     sorted.forEach(function (a) {
       a.affiliated = proposerProject !== 0 && a.project_id === proposerProject;
     });
 
-    var tagChips = tags.length
-      ? tags
-          .map(function (t) {
-            return '<span class="chip">' + esc(t) + "</span>";
-          })
-          .join("")
-      : '<span class="note">No constraints recorded.</span>';
-
     root.removeAttribute("aria-busy");
-    root.innerHTML =
-      '<section class="request-detail">' +
-      '<div class="card request-body">' +
-      '<div class="card-head"><h2>' + esc(request.title) + "</h2>" +
-      statusBadge(request.status) +
-      "</div>" +
-      '<p class="body-text">' + esc(request.body) + "</p>" +
-      '<p class="card-meta"><span>asked ' + ago(request.created_at) + "</span>" +
-      (request.project_id
-        ? ""
-        : ' · <span class="badge badge-instance">instance-wide</span>') +
-      "</p>" +
-      "</div>" +
-      '<section class="constraints"><h2>Constraints</h2>' +
-      '<div class="chips">' + tagChips + "</div></section>" +
-      "</section>" +
-      '<section class="answers"><h2>Answers <span class="count">' +
-      answers.length +
-      "</span></h2>" +
-      (sorted.length
-        ? sorted.map(function (a) { return answerCard(a, request); }).join("")
-        : '<div class="empty-state"><p class="empty-state-title">No project has ' +
-          "answered this request yet.</p></div>") +
-      "</section>" +
-      comparePanel(sorted, me ? me.id : 0, myProjectIDs) +
-      answerForm(request, me ? me.id : 0);
+    root.replaceChildren(
+      el("section", { class: "request-detail" }, [
+        el("div", { class: "card request-body" }, [
+          el("div", { class: "card-head" }, [
+            el("h2", {}, request.title), statusBadge(request.status)
+          ]),
+          el("p", { class: "body-text" }, request.body),
+          el("p", { class: "card-meta" }, [
+            el("span", {}, "asked " + ago(request.created_at)),
+            request.project_id ? null : " · ",
+            request.project_id ? null : el("span", { class: "badge badge-instance" }, "instance-wide")
+          ])
+        ]),
+        el("section", { class: "constraints" }, [
+          el("h2", {}, "Constraints"),
+          el("div", { class: "chips" }, tags.length
+            ? tags.map(function (t) { return el("span", { class: "chip" }, t); })
+            : el("span", { class: "note" }, "No constraints recorded."))
+        ])
+      ]),
+      el("section", { class: "answers" }, [
+        el("h2", {}, ["Answers ", el("span", { class: "count" }, answers.length)]),
+        sorted.length
+          ? sorted.map(function (a) { return answerCard(a, request); })
+          : el("div", { class: "empty-state" },
+            el("p", { class: "empty-state-title" }, "No project has answered this request yet."))
+      ]),
+      comparePanel(sorted, me ? me.id : 0, myProjectIDs),
+      answerForm(request, me ? me.id : 0)
+    );
 
     wire(request, me);
   }
@@ -327,8 +284,6 @@
   }
 
   function postJSON(url, body, done) {
-    // The transport and the error model live in `api.js`; this file keeps the callback shape its callers already use and only decides what to
-    // show. The sentence for a refusal is the server's when there is one — "That did not work." is the fallback for a response with no body.
     window.ConcordApi.post(url, body).then(function () {
       done();
     }).catch(function (error) {
@@ -337,19 +292,12 @@
   }
 
   function getJSON(url) {
-    // One client (review item 9b): the token is `session.js`'s, and the refusal is the server's sentence instead of a
-    // bare number thrown as an Error message ("Error: 403" told the reader nothing about why).
     return window.ConcordApi.get(url);
   }
 
   function load() {
-    // Three reads, all independent, so they run in PARALLEL rather than in the
-    // chain: the request, its answers, its tags -- plus the project list that turns
-    // each answer's project_id into a name and a link.
-    //
-    // frontend-spec.md forbids N+1 request patterns and caps the project page at
-    // three; serialising these would be four sequential round trips on a page that
-    // has everything it needs to paint after the first.
+    // Three reads, all independent, so they run in PARALLEL rather than in a chain;
+    // the project list turns each answer's project_id into a name and a link.
     Promise.all([
       loadProjects(),
       getJSON("/api/v1/requests/" + requestID),
