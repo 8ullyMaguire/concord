@@ -47,8 +47,15 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44162505969 success
   ```
 
+- **2026-11-17 — step 3 twenty-seventh module live (b4be69b).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: complaints 200 (332) · anon POST/impact 403 consent_required
+  anonymous_walk: 0 holes · headers PASS · CI 44174995983 success
+  ```
+
 - **2026-11-17 — step 3 twenty-seventh pure move: api/complaints.rs (D-44).** Public list and three write handlers plus
-  four routes moved (209 lines); lib.rs 5521 -> 5309. RED: 14 missing imports and two routes still bound in lib.rs;
+  four routes moved (209 lines); lib.rs 5521 -> 5301 (corrected: the two moved routes also left lib.rs). RED: 14 missing imports and two routes still bound in lib.rs;
   moved the impact/validate routes into the module and imported compiler-named root helpers. Policy 7 passed; 0 failed,
   route_policies PASS, replay 0 disagreed of 16 checked, 5 skipped.
 
