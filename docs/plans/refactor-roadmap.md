@@ -354,7 +354,10 @@ Unclaimed rows are fair game.
   browser and is wired into `make gate`. RED proof: mutating `el()` to write `innerHTML` failed with `el() did not create
   exactly one text child`; restoring passed. `innerHTML` occurrences in assets: 137→136. **Live (`4c05881`):** `/version` equality True; the served `/assets/js/dom.js` + `/assets/js/notifications.js` pass
   `check_dom_builder.js` in a fake browser, and the page shell serves the `dom.js` tag. `anonymous_walk: 0 holes · 0 declared
-  but not enforced · PASS`, headers PASS, CI `43993478687` success. **2b left:** the remaining 136 sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  but not enforced · PASS`, headers PASS, CI `43993478687` success. **2b second slice landed 2026-11-17:** `list.js` migrated — all four string sinks (two `innerHTML`, two
+  `insertAdjacentHTML`) replaced by `el()` nodes; `check_dom_list.js` executes the shipped page with hostile fields and a
+  hostile API error, RED-mutation proven (`list.js wrote to an HTML string sink: ["<p>mutant</p>"]`) and restored GREEN.
+  Combined string sinks 139→137 (135 `innerHTML` + 2 `insertAdjacentHTML`). **2b left:** the remaining 137 string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
@@ -458,6 +461,11 @@ tell the difference between "not started" and "waiting".
   Rejected: a global `esc()` discipline with a lint rule — the review counted 137 sinks against 540 manual escapes, and one
   missed call is an account takeover. The first migrated page is `notifications.js` (three sinks); the sink census is a
   ratchet in the gate, 137→136. A checker executes the shipped files against XSS payloads rather than grepping for them.
+
+* **D-12 (step 2b, 2026-11-17): the sink census counts `insertAdjacentHTML` too.** `list.js` had two `innerHTML`
+  assignments and two `insertAdjacentHTML` calls; a census of `innerHTML` alone called it two sinks and would have declared
+  the page migrated while four string-parsing paths remained. The gate now prints one combined count (139→137), and a page
+  is only migrated when both spellings are gone. Rejected: separate ratchets for the two spellings — same defect, two names.
 
 ## Decisions proposed (not taken)
 

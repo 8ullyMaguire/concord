@@ -19,12 +19,13 @@
 //     proportional bar the feature and requests pages draw, so the three agree about
 //     what "uncertain" means.
 //
-//  3. THE COMPARISON COUNT IS SHOWN. §16's claim is that the order reflects COMMUNITY
-//     JUDGMENT. A rating with no count next to it asserts a consensus it cannot show,
-//     and 1610-from-9-comparisons is a different fact from 1610-from-1.
+//  3. THE COMPARISON COUNT IS SHOWN. §16's claim that the order reflects COMMUNITY
+//     JUDGMENT is checked by the count beside each rating: 1610-from-9-comparisons is a
+//     different fact from 1610-from-1.
 //
-// MEASURED SHAPE: GET .../lists/{id} -> object; GET .../lists/{id}/entries -> bare
-// ARRAY with elo_r, elo_rd, elo_vol, category (*string), status.
+// Rendering (step 2b): this file builds nodes with `el()` only. Titles, URLs, descriptions,
+// categories and API error messages become text nodes or setAttribute values, so no API field
+// can be parsed as markup. There is no innerHTML or insertAdjacentHTML sink left here.
 
 (function () {
   "use strict";
@@ -34,10 +35,7 @@
   var slugEl = document.querySelector("[data-slug]");
   var slug = slugEl ? slugEl.textContent.trim() : "";
   var listID = parseInt((location.pathname.match(/lists\/(\d+)/) || [])[1], 10);
-
-  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it. This file's copy replaced the same
-  // five characters in its own way; a single pass over a character class cannot disagree with another page about which are dangerous.
-  var esc = window.ConcordEscape.esc;
+  var el = window.ConcordDom.el;
 
   function ago(unix) {
     if (!unix) return "";
@@ -55,17 +53,19 @@
     var rd = typeof e.elo_rd === "number" && isFinite(e.elo_rd) ? e.elo_rd : 0;
     var pct = Math.max(4, Math.min(100, Math.round((rd / 350) * 100)));
     var n = comparisons || 0;
-    return '<div class="rating">' +
-      '<div class="rating-value">' + Math.round(r) + "</div>" +
-      '<div class="rating-bars" role="img" aria-label="rating ' + Math.round(r) +
-      " plus or minus " + Math.round(rd) + ", " + pct +
-      ' percent of the maximum uncertainty">' +
-      '<div class="rating-bar-track"><div class="rating-bar-fill" style="width:' +
-      pct + '%"></div></div></div>' +
-      '<p class="muted">&plusmn;' + Math.round(rd) + " &middot; " +
-      (n === 1 ? "1 comparison" : n + " comparisons") +
-      (n === 0 ? " &mdash; nobody has compared this yet" : "") +
-      "</p></div>";
+    return el("div", { class: "rating" }, [
+      el("div", { class: "rating-value" }, Math.round(r)),
+      el("div", {
+        class: "rating-bars",
+        role: "img",
+        "aria-label": "rating " + Math.round(r) + " plus or minus " + Math.round(rd) +
+          ", " + pct + " percent of the maximum uncertainty"
+      }, el("div", { class: "rating-bar-track" },
+        el("div", { class: "rating-bar-fill", style: "width:" + pct + "%" }))),
+      el("p", { class: "muted" }, "±" + Math.round(rd) + " · " +
+        (n === 1 ? "1 comparison" : n + " comparisons") +
+        (n === 0 ? " — nobody has compared this yet" : ""))
+    ]);
   }
 
   // category is a *string in Go, so it is null for an uncategorised entry. Reading it
@@ -76,11 +76,9 @@
   }
 
   // Grouped by category, and WITHIN each group the API's ranking order is preserved.
-  //
   // Array.prototype.sort is stable in every engine this ships to, so grouping without
-  // sorting keeps the ranked order inside each bucket. That is deliberate: re-sorting
-  // by rating here would be redundant with the SQL and one more place for the two to
-  // disagree.
+  // sorting keeps the ranked order inside each bucket. Re-sorting by rating here would
+  // be redundant with the SQL and one more place for the two to disagree.
   function groupByCategory(entries) {
     var order = [];
     var buckets = {};
@@ -101,98 +99,106 @@
     // The URL is the entry's SUBJECT and the title is its name, so the title links to
     // the URL and not to an internal page that does not exist.
     var url = e.url || "";
-    var safe = esc(url);
-    return '<li class="list-entry" data-entry-id="' + esc(e.id) + '">' +
-      '<div class="list-entry-head">' +
-      '<a class="list-entry-title" href="' + safe + '" rel="nofollow noopener">' +
-      esc(e.title) + "</a>" +
-      rating(e, comparisons) +
-      "</div>" +
-      '<p class="list-entry-url">' + safe + "</p>" +
-      (e.description
-        ? '<p class="list-entry-desc">' + esc(e.description) + "</p>"
-        : "") +
-      '<p class="card-meta"><span class="badge badge-slate">' +
-      esc(e.status) + "</span>" +
-      '<span>proposed ' + ago(e.created_at) + "</span></p>" +
-      "</li>";
+    return el("li", { class: "list-entry", "data-entry-id": e.id }, [
+      el("div", { class: "list-entry-head" }, [
+        el("a", { class: "list-entry-title", href: url, rel: "nofollow noopener" }, e.title),
+        rating(e, comparisons)
+      ]),
+      el("p", { class: "list-entry-url" }, url),
+      e.description ? el("p", { class: "list-entry-desc" }, e.description) : null,
+      el("p", { class: "card-meta" }, [
+        el("span", { class: "badge badge-slate" }, e.status),
+        el("span", {}, "proposed " + ago(e.created_at))
+      ])
+    ]);
   }
 
   function entriesMarkup(entries, counts) {
     if (!entries.length) {
-      return '<div class="empty-state"><div class="empty-state-icon">\u{1F4CB}</div>' +
-        '<p class="empty-state-title">No entries yet</p>' +
-        '<p class="empty-state-description">Anyone can propose one; the community ' +
-        "ranks them by comparing pairs.</p></div>";
+      return el("div", { class: "empty-state" }, [
+        el("div", { class: "empty-state-icon" }, "📋"),
+        el("p", { class: "empty-state-title" }, "No entries yet"),
+        el("p", { class: "empty-state-description" }, "Anyone can propose one; the community ranks them by comparing pairs.")
+      ]);
     }
-    var groups = groupByCategory(entries);
-    return groups.map(function (g) {
-      return '<section class="entry-group">' +
-        '<h3 class="entry-category">' + esc(g.category) +
-        ' <span class="count">' + g.entries.length + "</span></h3>" +
-        '<ul class="list-entries">' + g.entries.map(function (e) {
+    return groupByCategory(entries).map(function (g) {
+      return el("section", { class: "entry-group" }, [
+        el("h3", { class: "entry-category" }, [
+          g.category + " ",
+          el("span", { class: "count" }, g.entries.length)
+        ]),
+        el("ul", { class: "list-entries" }, g.entries.map(function (e) {
           return entryRow(e, counts[e.id]);
-        }).join("") + "</ul></section>";
-    }).join("");
+        }))
+      ]);
+    });
   }
 
   // The pairwise control, with the SCHEMA's five outcomes rather than a 1-5 score.
-  //
   // list_entry_votes.outcome is CHECKed to exactly
   // ('a','b','both','neither','skip'), so a numeric rating control posts a value the
   // database refuses -- and the page then renders as though nobody had ranked
   // anything, which is the silent-empty failure this file's whole shape is about.
   function comparePanel(entries) {
     if (entries.length < 2) {
-      return '<p class="note">Ranking needs two entries. One entry has nothing to be ' +
-        "better than.</p>";
+      return el("p", { class: "note" }, "Ranking needs two entries. One entry has nothing to be better than.");
     }
-    var opts = entries.map(function (e) {
-      return '<option value="' + esc(e.id) + '">' + esc(e.title) + "</option>";
-    }).join("");
-    return '<form class="compare" data-compare-form>' +
-      '<h3>Which belongs on this list more?</h3>' +
-      '<div class="compare-row">' +
-      '<label class="visually-hidden" for="cmp-a">Entry A</label>' +
-      '<select id="cmp-a" name="entry_a">' + opts + "</select>" +
-      '<label class="visually-hidden" for="cmp-b">Entry B</label>' +
-      '<select id="cmp-b" name="entry_b">' + opts + "</select>" +
-      '<label class="visually-hidden" for="cmp-outcome">Outcome</label>' +
-      '<select id="cmp-outcome" name="outcome">' +
-      '<option value="a">A fits better</option>' +
-      '<option value="b">B fits better</option>' +
-      '<option value="both">Both fit equally</option>' +
-      '<option value="neither">Neither fits</option>' +
-      '<option value="skip">Skip</option>' +
-      "</select>" +
-      '<button type="submit" class="btn">Compare</button>' +
-      "</div>" +
-      '<p class="note">A pairwise comparison, not a score: it moves both entries by a ' +
-      "Glicko-2 update weighted by each side's deviation (&sect;16).</p></form>";
+    function picker(id, name, label) {
+      return [
+        el("label", { class: "visually-hidden", for: id }, label),
+        el("select", { id: id, name: name }, entries.map(function (e) {
+          return el("option", { value: e.id }, e.title);
+        }))
+      ];
+    }
+    var parts = [].concat(
+      picker("cmp-a", "entry_a", "Entry A"),
+      picker("cmp-b", "entry_b", "Entry B")
+    );
+    return el("form", { class: "compare", "data-compare-form": "" }, [
+      el("h3", {}, "Which belongs on this list more?"),
+      el("div", { class: "compare-row" }, parts.concat([
+        el("label", { class: "visually-hidden", for: "cmp-outcome" }, "Outcome"),
+        el("select", { id: "cmp-outcome", name: "outcome" }, [
+          el("option", { value: "a" }, "A fits better"),
+          el("option", { value: "b" }, "B fits better"),
+          el("option", { value: "both" }, "Both fit equally"),
+          el("option", { value: "neither" }, "Neither fits"),
+          el("option", { value: "skip" }, "Skip")
+        ]),
+        el("button", { type: "submit", class: "btn" }, "Compare")
+      ])),
+      el("p", { class: "note" }, "A pairwise comparison, not a score: it moves both entries by a Glicko-2 update weighted by each side's deviation (§16).")
+    ]);
+  }
+
+  function flatten(nodes) {
+    return nodes.reduce(function (out, node) {
+      return out.concat(Array.isArray(node) ? flatten(node) : [node]);
+    }, []);
   }
 
   function render(list, entries, counts) {
     root.removeAttribute("aria-busy");
-    root.innerHTML =
-      '<section class="list-detail">' +
-      '<div class="card">' +
-      '<div class="card-head"><h2>' + esc(list.name) + "</h2>" +
-      // project_id 0 means instance-wide (16: "attachable to a project or
-      // instance-wide"). The page is mounted under a project slug, so without this a
-      // reader would assume the project owns a list every project shares.
-      (list.project_id
-        ? ""
-        : '<span class="badge badge-instance">instance-wide</span>') +
-      '<span class="badge ' + (list.status === "open" ? "badge-blue" : "badge-slate") +
-      '">' + esc(list.status) + "</span></div>" +
-      (list.description ? '<p class="body-text">' + esc(list.description) + "</p>" : "") +
-      '<p class="card-meta">' + entries.length +
-      (entries.length === 1 ? " entry" : " entries") +
-      " &middot; ranked by pairwise comparison</p>" +
-      "</div></section>" +
-      entriesMarkup(entries, counts || {}) +
-      comparePanel(entries);
-
+    root.replaceChildren.apply(root, flatten([
+      el("section", { class: "list-detail" },
+        el("div", { class: "card" }, [
+          el("div", { class: "card-head" }, [
+            el("h2", {}, list.name),
+            // project_id 0 means instance-wide (16: "attachable to a project or
+            // instance-wide"). The page is mounted under a project slug, so without this a
+            // reader would assume the project owns a list every project shares.
+            list.project_id ? null : el("span", { class: "badge badge-instance" }, "instance-wide"),
+            el("span", { class: "badge " + (list.status === "open" ? "badge-blue" : "badge-slate") }, list.status)
+          ]),
+          list.description ? el("p", { class: "body-text" }, list.description) : null,
+          el("p", { class: "card-meta" }, entries.length +
+            (entries.length === 1 ? " entry" : " entries") +
+            " · ranked by pairwise comparison")
+        ])),
+      entriesMarkup(entries, counts || {}),
+      comparePanel(entries)
+    ]));
     wire(entries);
   }
 
@@ -206,10 +212,8 @@
       if (a === b) return;
       var outcome = form.querySelector("#cmp-outcome").value;
 
-
       // "you have already compared these two entries" and "you cannot vote on an entry you proposed" are both refusals
-      // the reader can act on, so the store's message is surfaced rather than flattened to a generic failure — which is
-      // what `ApiError.message` is, and why this file no longer needs its own `{ok, body}` wrapper.
+      // the reader can act on, so the store's message is surfaced rather than flattened to a generic failure.
       window.ConcordApi.post("/api/v1/projects/" + encodeURIComponent(slug) + "/lists/" +
         encodeURIComponent(listID) + "/entries/vote",
         { entry_a: a, entry_b: b, outcome: outcome })
@@ -219,20 +223,13 @@
           load(body && body.entries);
         })
         .catch(function (error) {
-          if (error && error.status) {
-            root.insertAdjacentHTML("afterbegin",
-              '<p class="notice notice-error" role="alert">' + esc(error.message) + "</p>");
-            return;
-          }
-          root.insertAdjacentHTML("afterbegin",
-            '<p class="notice notice-error" role="alert">Could not reach the ' +
-            "server.</p>");
+          var message = error && error.status ? error.message : "Could not reach the server.";
+          root.prepend(el("p", { class: "notice notice-error", role: "alert" }, message));
         });
     });
   }
 
-  // One client (review item 9b): the token header this built by hand is `session.js`'s job, and it was building a
-  // second one — three lines that had to agree with `api.js` about the key and the scheme.
+  // The token header this built by hand is `session.js`'s job; `api.js` owns it now.
   function getJSON(url) {
     return window.ConcordApi.get(url);
   }
@@ -251,17 +248,14 @@
     ])
       .then(function (parts) {
         // NO comparison counts on load, and that is a real gap rather than an
-        // oversight: store.GetListEntryVotes exists and the vote response carries the
-        // entries, but there is no GET that returns counts, so a page loaded cold has
-        // none. It shows "0 comparisons" until the reader casts one, which is honest
-        // about the data available and is why the counts are threaded from the vote
-        // response below rather than invented here.
+        // oversight: the store and the vote response carry counts, but there is no GET
+        // that returns them, so a cold load honestly shows "0 comparisons".
         render(parts[0], Array.isArray(parts[1]) ? parts[1] : []);
       })
       .catch(function () {
         root.removeAttribute("aria-busy");
-        root.innerHTML = '<div class="empty-state">' +
-          '<p class="empty-state-title">There is no list at this address.</p></div>';
+        root.replaceChildren(el("div", { class: "empty-state" },
+          el("p", { class: "empty-state-title" }, "There is no list at this address.")));
       });
   }
 

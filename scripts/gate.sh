@@ -144,10 +144,16 @@ fi
 if command -v node >/dev/null 2>&1; then
   if node scripts/parity/check_dom_builder.js crates/web/assets/js/dom.js crates/web/assets/js/notifications.js >"$SCRATCH/dom-builder.log" 2>&1; then
     tail -1 "$SCRATCH/dom-builder.log" | sed 's/^/js: /'
-    echo "js: innerHTML occurrences remaining in assets: $(grep -rho 'innerHTML' crates/web/assets/js/*.js | wc -l)"
   else
     cat "$SCRATCH/dom-builder.log"
     bad "the DOM builder or notifications page regained an HTML string sink"
+  fi
+  if node scripts/parity/check_dom_list.js crates/web/assets/js/dom.js crates/web/assets/js/list.js >"$SCRATCH/dom-list.log" 2>&1; then
+    tail -1 "$SCRATCH/dom-list.log" | sed 's/^/js: /'
+    echo "js: string sinks remaining in assets: $(grep -rhoE 'innerHTML|insertAdjacentHTML' crates/web/assets/js/*.js | wc -l)"
+  else
+    cat "$SCRATCH/dom-list.log"
+    bad "the list page regained an HTML string sink"
   fi
 fi
 
