@@ -373,6 +373,8 @@ Unclaimed rows are fair game.
   **2b fifth slice landed 2026-11-17:** `complaint.js` lost all four sinks — impact meter, linked rows, empty/error states
   and not-found are `el()` trees. `check_dom_complaint.js` executes the shipped page with hostile complaint/feature fields
   and a hostile error; RED mutation (`root.innerHTML = '<p>mutant</p>'`) reddened it, restore → PASS. Census 119→115.
+  **Live (`2a9ae0b`):** `/version` equality True; the served `/assets/js/complaint.js` passes `check_dom_complaint.js`.
+  `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS, CI `44001726487` success.
   **2b left:** the remaining 115 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
