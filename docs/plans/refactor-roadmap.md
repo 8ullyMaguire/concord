@@ -650,6 +650,14 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-23 (step 3, 2026-11-17): moving code does not move its dependencies; let the compiler name them.**
+  `// ── §3.4's badges` moved whole into `api/badges.rs` (191 lines; `lib.rs` 9,627 → 9,436). The first check reddened with
+  9 errors — six `internal`, one `readable`, one `StatusCode`, plus `app_mutant` — because the handler's imports lived in
+  `lib.rs`. `app_mutant` was promoted `pub(crate)`; the module imports the other three from `axum`/`crate`. Then
+  `cargo check` green, policy `7 passed; 0 failed`, `route_policies: PASS`, parity replay `0 disagreed of 18 checked, 3 skipped`.
+  Rejected: copying `app_mutant` into the module — four other handlers in `lib.rs` still call it, so a copy could mutate a
+  different branch of behavior.
+
 * **D-22 (step 3, 2026-11-17): move a whole commented section, including its private helper.**
   `// ── invites (§8.2)` through `invite_refusal` moved as one 175-line block into `api/invites.rs`; `lib.rs` 9,810 → 9,627.
   `readable_project_segment` and `require_role` became `pub(crate)` so the module borrows the shared visibility rules.
