@@ -5,12 +5,12 @@
 // rating maths already distinguishes a skip from a loss, and folding them
 // together would make the site unable to say "nobody wanted this" as opposed to
 // "nobody had an opinion".
+//
+// Rendering (step 2b): domEl() nodes only. Feature titles/bodies, refusal
+// messages and all fallback states are text nodes or setAttribute values.
 (function () {
   'use strict';
-
-  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it, so this file cannot disagree with
-  // another page about which characters are dangerous.
-  var esc = window.ConcordEscape.esc;
+  var domEl = window.ConcordDom.el;
 
   // (No `token()` helper: the session is an HttpOnly cookie now, so a same-origin request authenticates without
   // JavaScript reading anything. The helper that used to sit here was never called.)
@@ -31,24 +31,28 @@
   var OUTCOMES = ['a', 'b', 'both', 'neither', 'skip'];
 
   function signInPrompt() {
-    return '<div class="empty-state">' +
-      '<div class="empty-state-icon">\u{1F511}</div>' +
-      '<p class="empty-state-title">Sign in to rank</p>' +
-      '<p class="empty-state-description">Votes are weighted by demonstrated ' +
-      'contribution, so an account is what gives yours weight. ' +
-      '<a href="/login?next=' + encodeURIComponent(window.location.pathname) + '">Sign in</a> ' +
-      'or <a href="/register">create one</a> — registration takes a moment.</p></div>';
+    return domEl('div', { class: 'empty-state' }, [
+      domEl('div', { class: 'empty-state-icon' }, '🔑'),
+      domEl('p', { class: 'empty-state-title' }, 'Sign in to rank'),
+      domEl('p', { class: 'empty-state-description' }, [
+        'Votes are weighted by demonstrated contribution, so an account is what gives yours weight. ',
+        domEl('a', { href: '/login?next=' + encodeURIComponent(window.location.pathname) }, 'Sign in'),
+        ' or ', domEl('a', { href: '/register' }, 'create one'),
+        ' — registration takes a moment.'
+      ])
+    ]);
   }
 
   // An empty state is not an error: it is the ordinary answer for a voter who
   // has nothing left to do, and it gets a forward link instead of a retry.
   function emptyState(icon, title, description) {
-    return '<div class="empty-state">' +
-      '<div class="empty-state-icon">' + icon + '</div>' +
-      '<p class="empty-state-title">' + esc(title) + '</p>' +
-      '<p class="empty-state-description">' + esc(description) + '</p>' +
-      '<a class="btn btn-primary" href="/projects/' + encodeURIComponent(slug) +
-      '/ranking">See the ranking anyway</a></div>';
+    return domEl('div', { class: 'empty-state' }, [
+      domEl('div', { class: 'empty-state-icon' }, icon),
+      domEl('p', { class: 'empty-state-title' }, title),
+      domEl('p', { class: 'empty-state-description' }, description),
+      domEl('a', { class: 'btn btn-primary', href: '/projects/' + encodeURIComponent(slug) + '/ranking' },
+        'See the ranking anyway')
+    ]);
   }
 
   function errorState(message, retriable) {
@@ -61,12 +65,12 @@
     // button. It is false for the states that retrying cannot fix -- a project
     // with fewer than two features, a voter with nothing left to compare --
     // because offering a button that fails identically is worse than no button.
-    return '<div class="empty-state error-state">' +
-      '<div class="empty-state-icon">\u26A0</div>' +
-      '<p class="empty-state-title">Could not load a comparison</p>' +
-      '<p class="empty-state-description">' + esc(message) + '</p>' +
-      (retriable === false ? '' :
-        '<button class="btn btn-primary" id="rank-retry">Try again</button>') + '</div>';
+    return domEl('div', { class: 'empty-state error-state' }, [
+      domEl('div', { class: 'empty-state-icon' }, '⚠'),
+      domEl('p', { class: 'empty-state-title' }, 'Could not load a comparison'),
+      domEl('p', { class: 'empty-state-description' }, message),
+      retriable === false ? null : domEl('button', { class: 'btn btn-primary', id: 'rank-retry' }, 'Try again')
+    ]);
   }
 
   // 409 is the store's "a valid request the current state refuses". For this
@@ -78,13 +82,13 @@
     var why = (body && (body.error || body.detail)) || '';
     var few = /at least 2 features/i.test(why);
     if (few) {
-      return emptyState('\u{1F4CB}',
+      return emptyState('📋',
         'Nothing to compare yet',
         'Ranking works by showing two features side by side. This project has ' +
         'fewer than two, so there is no pair to vote on. Propose a second ' +
         'feature and this page will have something to ask you.');
     }
-    return emptyState('\u{1F64F}',
+    return emptyState('🙇',
       'You have voted on every pair here',
       'Nothing left to compare for this project. New features will appear on ' +
       'this page as they are proposed.');
@@ -97,81 +101,79 @@
   // #rank-actions, and the href carries THIS card's id -- a shared or hardcoded href is how both
   // cards end up opening the same idea.
   function featureCard(f, side) {
-    return '<article class="rank-card" data-side="' + side + '" data-feature="' + f.id + '">' +
-      '<header class="rank-card-head">' +
-        '<span class="rank-label">Option ' + side + '</span>' +
-        '<a class="rank-open" href="/projects/' + encodeURIComponent(slug) +
-          '/features/' + f.id + '">Open the idea</a>' +
-      '</header>' +
-      '<h2 class="rank-title">' + esc(f.title) + '</h2>' +
-      '<p class="rank-body">' + esc(f.body || '') + '</p>' +
-      '<p class="rank-meta">rating ' + Math.round(f.elo_r) +
-        ' <span class="dim">(±' + Math.round(f.elo_rd) + ')</span></p>' +
-      '</article>';
+    return domEl('article', {
+      class: 'rank-card', 'data-side': side, 'data-feature': f.id
+    }, [
+      domEl('header', { class: 'rank-card-head' }, [
+        domEl('span', { class: 'rank-label' }, 'Option ' + side),
+        domEl('a', {
+          class: 'rank-open',
+          href: '/projects/' + encodeURIComponent(slug) + '/features/' + f.id
+        }, 'Open the idea')
+      ]),
+      domEl('h2', { class: 'rank-title' }, f.title),
+      domEl('p', { class: 'rank-body' }, f.body || ''),
+      domEl('p', { class: 'rank-meta' }, [
+        'rating ' + Math.round(f.elo_r) + ' ',
+        domEl('span', { class: 'dim' }, '(±' + Math.round(f.elo_rd) + ')')
+      ])
+    ]);
+  }
+
+  function keyHint() {
+    return domEl('p', { class: 'rank-keys' }, [
+      'Keyboard: ', domEl('kbd', {}, '←'), ' A, ', domEl('kbd', {}, '→'), ' B, ',
+      domEl('kbd', {}, '↑'), ' both, ', domEl('kbd', {}, '↓'), ' neither, ',
+      domEl('kbd', {}, 'S'), ' skip.'
+    ]);
   }
 
   function renderPair(pair) {
     if (!pair || !pair.feature_a || !pair.feature_b) {
-      root.innerHTML = '<div class="empty-state">' +
-        '<div class="empty-state-icon">\u{1F3C1}</div>' +
-        '<p class="empty-state-title">Nothing left to compare</p>' +
-        '<p class="empty-state-description">You have been shown every pair. ' +
-        'That is the whole sample, so the ranking reflects your answers and ' +
-        'nothing more.</p>' +
-        '<a class="btn btn-primary" href="/projects/' + encodeURIComponent(slug) + '/ranking">See the ranking</a>' +
-        '</div>';
+      root.replaceChildren(domEl('div', { class: 'empty-state' }, [
+        domEl('div', { class: 'empty-state-icon' }, '🏁'),
+        domEl('p', { class: 'empty-state-title' }, 'Nothing left to compare'),
+        domEl('p', { class: 'empty-state-description' },
+          'You have been shown every pair. That is the whole sample, so the ranking ' +
+          'reflects your answers and nothing more.'),
+        domEl('a', { class: 'btn btn-primary', href: '/projects/' + encodeURIComponent(slug) + '/ranking' },
+          'See the ranking')
+      ]));
       var rp = document.getElementById('rank-progress');
       if (rp) rp.hidden = true;
       return;
     }
     var a = pair.feature_a, b = pair.feature_b;
-    root.innerHTML =
-      '<div class="rank-pair">' +
-        featureCard(a, 'A') +
-        featureCard(b, 'B') +
-      '</div>' +
-      '<div class="rank-actions" id="rank-actions">' +
-        '<button class="btn btn-primary" data-outcome="a">A is better</button>' +
-        '<button class="btn btn-primary" data-outcome="b">B is better</button>' +
-        '<button class="btn" data-outcome="both">Both equally</button>' +
-        '<button class="btn" data-outcome="neither">Neither</button>' +
-        '<button class="btn btn-quiet" data-outcome="skip">No preference</button>' +
-      '</div>' +
-      keyHint() +
-      '<p class="rank-note">A rating of 1500 ± 350 has barely been compared ' +
-      'against anything. The ± is the uncertainty, and it is shown because ' +
-      'a bare number would present noise as a measurement.</p>';
+    var actions = domEl('div', { class: 'rank-actions', id: 'rank-actions' }, OUTCOMES.map(function (o) {
+      var labels = {
+        a: 'A is better', b: 'B is better', both: 'Both equally',
+        neither: 'Neither', skip: 'No preference'
+      };
+      var cls = o === 'skip' ? 'btn btn-quiet'
+        : (o === 'both' || o === 'neither' ? 'btn' : 'btn btn-primary');
+      return domEl('button', { class: cls, 'data-outcome': o }, labels[o]);
+    }));
+    root.replaceChildren(
+      domEl('div', { class: 'rank-pair' }, [featureCard(a, 'A'), featureCard(b, 'B')]),
+      actions,
+      keyHint(),
+      domEl('p', { class: 'rank-note' },
+        'A rating of 1500 ± 350 has barely been compared against anything. The ± is ' +
+        'the uncertainty, and it is shown because a bare number would present noise ' +
+        'as a measurement.')
+    );
 
-    var actions = document.getElementById('rank-actions');
-    Array.prototype.forEach.call(actions.querySelectorAll('button'), function (btn) {
+    var buttons = actions.querySelectorAll('button');
+    Array.prototype.forEach.call(buttons, function (btn) {
       btn.addEventListener('click', function () { submit(btn.getAttribute('data-outcome')); });
     });
   }
 
   // Keyboard shortcuts. Every key routes through submit(), the same function the
   // buttons call, so a key and a click cannot diverge in behaviour.
-  //
-  // The mapping is the one the frontend spec promises (7.2): arrows for the four
-  // real outcomes plus skip. ArrowLeft means A and ArrowRight means B, which
-  // reads left-to-right across the pair rather than encoding a preference
-  // direction -- so it does not invert if the pair is ever presented B first.
-  //
-  // Guards, each for a concrete failure:
-  //   - a pair must be on screen, so a stray arrow on the empty or signed-out
-  //     states does nothing;
-  //   - a key held down must not fire repeatedly, which would spend a voter's
-  //     whole queue on one keypress;
-  //   - keys are ignored while focus is in a text field or other editable
-  //     context, where an arrow means cursor movement;
-  //   - modified keystrokes are ignored, so a browser shortcut or an Alt+Left
-  //     back-navigation is not swallowed.
   var KEY_OUTCOMES = {
-    ArrowLeft: 'a',
-    ArrowRight: 'b',
-    ArrowUp: 'both',
-    ArrowDown: 'neither',
-    s: 'skip',
-    S: 'skip'
+    ArrowLeft: 'a', ArrowRight: 'b', ArrowUp: 'both', ArrowDown: 'neither',
+    s: 'skip', S: 'skip'
   };
 
   function isTypingContext(el) {
@@ -190,11 +192,6 @@
     if (!outcome) return;
     ev.preventDefault();
     submit(outcome);
-  }
-
-  function keyHint() {
-    return '<p class="rank-keys">Keyboard: <kbd>&larr;</kbd> A, <kbd>&rarr;</kbd> B, ' +
-      '<kbd>&uarr;</kbd> both, <kbd>&darr;</kbd> neither, <kbd>S</kbd> skip.</p>';
   }
 
   function submit(outcome) {
@@ -220,26 +217,27 @@
         if (status === 401) { renderAnonymous(); return; }
         if (status === 403) { renderRefused({ error: err.message }); return; }
         if (status) {
-          root.innerHTML = errorState('The vote was not recorded (HTTP ' + status + '). ' + err.message);
+          root.replaceChildren(errorState('The vote was not recorded (HTTP ' + status + '). ' + err.message));
           return;
         }
-        root.innerHTML = errorState(err && err.message ? err.message : String(err));
+        root.replaceChildren(errorState(err && err.message ? err.message : String(err)));
       });
   }
 
   function renderRefused(body) {
     var why = (body && (body.error || body.detail)) || 'That vote was refused.';
     var extra = (body && body.detail && body.detail !== body.error) ? body.detail : '';
-    root.innerHTML = '<div class="empty-state error-state">' +
-      '<div class="empty-state-icon">\u{1F6AB}</div>' +
-      '<p class="empty-state-title">' + esc(why) + '</p>' +
-      '<p class="empty-state-description">' + esc(extra) + '</p>' +
-      '<a class="btn btn-primary" href="/projects/' + encodeURIComponent(slug) + '/ranking">See the ranking anyway</a>' +
-      '</div>';
+    root.replaceChildren(domEl('div', { class: 'empty-state error-state' }, [
+      domEl('div', { class: 'empty-state-icon' }, '🚫'),
+      domEl('p', { class: 'empty-state-title' }, why),
+      domEl('p', { class: 'empty-state-description' }, extra),
+      domEl('a', { class: 'btn btn-primary', href: '/projects/' + encodeURIComponent(slug) + '/ranking' },
+        'See the ranking anyway')
+    ]));
   }
 
   function renderAnonymous() {
-    root.innerHTML = signInPrompt();
+    root.replaceChildren(signInPrompt());
   }
 
   function updateProgress() {
@@ -257,7 +255,7 @@
         var status = err && err.status ? err.status : 0;
         if (status === 401 || status === 403) { renderAnonymous(); return null; }
         if (status === 404) {
-          root.innerHTML = errorState('No project with that slug.');
+          root.replaceChildren(errorState('No project with that slug.'));
           return null;
         }
         if (status) {
@@ -266,26 +264,25 @@
           var body = null;
           try { body = JSON.parse(err.message); } catch (e) { body = { detail: err.message }; }
           var friendly = unretriable({ status: status }, body);
-          root.innerHTML = friendly || errorState('HTTP ' + status + ': ' + err.message);
+          root.replaceChildren(friendly || errorState('HTTP ' + status + ': ' + err.message));
           return null;
         }
         throw err;
       })
       .then(function (pair) {
-      // Every outcome above funnels through here: a pair, a 404, a 500, an
-      // anonymous prompt. Clearing aria-busy in one place rather than at each
-      // innerHTML assignment means the error and empty paths cannot be the two
-      // that were forgotten -- and an error left aria-busy is an error a screen
-      // reader never announces, because aria-busy suppresses live-region
-      // updates inside the region it marks.
-      if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);
-      if (pair === null) return;
-      window.__pair = pair && pair.feature_a ? pair : null;
-      renderPair(window.__pair);
-    }).catch(function (err) {
-      root.innerHTML = errorState(err && err.message ? err.message : String(err));
-      if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);
-    });
+        // Every outcome above funnels through here: a pair, a 404, a 500, an
+        // anonymous prompt. Clearing aria-busy in one place rather than at each
+        // render means the error and empty paths cannot be the two that were
+        // forgotten -- and an error left aria-busy is an error a screen reader
+        // never announces.
+        if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);
+        if (pair === null) return;
+        window.__pair = pair && pair.feature_a ? pair : null;
+        renderPair(window.__pair);
+      }).catch(function (err) {
+        root.replaceChildren(errorState(err && err.message ? err.message : String(err)));
+        if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);
+      });
   }
 
   if (root) {
