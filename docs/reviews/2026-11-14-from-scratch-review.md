@@ -16,6 +16,11 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   trees; the checker feeds hostile names, titles, ids, descriptions, profiles and a hostile error through the shipped page.
   RED mutation (`a string sink was used`) and GREEN restore measured. The census now counts sink syntax, 125→123; the
   earlier textual 139→137 count included comments and is superseded.
+  ```
+  check_dom_criteria: PASS — hostile fields and error are text, attributes verbatim, no string sink
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS · sinks: 123
+  live 2a6066c: served criteria asset PASS checker · walk 0 holes · CI 43998086155 success
+  ```
 
 - **2026-11-17 — step 2b second slice: `list.js` has no string sink (D-12).** All four sinks went through `el()`;
   hostile title, URL, description, category and API error are text/attributes in the shipped file. The page checker was

@@ -363,7 +363,9 @@ Unclaimed rows are fair game.
   `optionsHTML` became `el()` trees; its two sink assignments are gone. `check_dom_criteria.js` executes the shipped page
   with hostile criterion names, feature titles, ids, descriptions, profile names and a hostile load error; RED mutation
   (`root.innerHTML = '<p>mutant</p>'`) reddened it with `a string sink was used`, restore → PASS. Per D-13 the gate now
-  counts sink syntax: 125→123 real sinks. **2b left:** the remaining 123 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  counts sink syntax: 125→123 real sinks. **Live (`2a6066c`):** `/version` equality True; the served `/assets/js/criteria.js` passes `check_dom_criteria.js`.
+  `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS, CI `43998086155` success.
+  **2b left:** the remaining 123 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
