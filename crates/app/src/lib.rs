@@ -200,10 +200,6 @@ pub fn router(state: AppState) -> Router {
         // parameter's NAME, and the read side of this path is already registered as `{slug}`. The reference calls the
         // segment `project_id` while resolving it as a slug, so the shape is the same either way.
         .merge(api::complaints::routes())
-        .route(
-            "/api/v1/projects/{slug}/complaints/{id}/reject",
-            post(reject_complaint),
-        )
         .route("/api/v1/requests/{request_id}", get(one_request))
         .route(
             "/api/v1/requests/{request_id}/accept",
@@ -469,10 +465,6 @@ pub fn router(state: AppState) -> Router {
         // they share the rule that a missing measurement is not a zero and an empty set is not null.
         // The two destructive ops writes: an emergency power being lifted, and one complaint folded into another.
         .merge(api::emergency_holds::routes())
-        .route(
-            "/api/v1/projects/{slug}/complaints/{id}/merge/{target_id}",
-            post(merge_complaints),
-        )
         .merge(api::ops_reads::routes())
         // §4.3's global taxonomy: the vocabulary that may not grow by being mentioned. Four routes, one cluster — the list is what
         // the suggestion UI reads, and a proposal is the only way a tag becomes real.
@@ -3953,68 +3945,6 @@ fn complaint_refusal(refusal: concord_db::complaints::Refused) -> ApiError {
         concord_db::complaints::Refused::Invalid(reason) => ApiError::invalid_request(reason),
     }
 }
-
-/// `POST /projects/{slug}/complaints/{id}/reject` — the other verdict. §M1's Rejected state, which the reference could not
-/// reach at all: `RejectComplaint` existed since M1 with no caller, in production or in a test, so a spam complaint could
-/// only be ignored or validated. Same gate as validation, because it is the same act with the opposite verdict — and the
-/// same audit treatment, so the corpus can tell who decided what.
-async fn reject_complaint(
-    State(state): State<AppState>,
-    Path((slug, id)): Path<(String, String)>,
-    Extension(user): Extension<concord_db::auth::User>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let project = readable_project_segment(&state, &slug, &headers).await?;
-    let complaint = caller_complaint(&state, &project, &id).await?;
-    require_role(&state, &project, "contributor", &user).await?;
-    concord_db::complaints::reject(&state.pool, complaint.id, user.id)
-        .await
-        .map_err(internal)?
-        .map_err(complaint_refusal)?;
-    write_audit(
-        &state,
-        Some(project.id),
-        user.id,
-        "reject_complaint",
-        "complaint",
-        complaint.id,
-        "rejected as spam: the author's reputation takes the M1 penalty",
-    )
-    .await?;
-    Ok(Json(serde_json::json!({ "status": "rejected" })))
-}
-
-/// `POST /projects/{slug}/complaints/{id}/merge/{target_id}` — fold one complaint into another.
-///
-/// **The destructive one, and the reference had no actor check at all**: an anonymous caller could merge any two
-/// complaints on the instance, and a merge is not reversible from the API, so the distinction between two separately
-/// reported problems was destroyable by a stranger.
-///
-/// Both halves of the path are checked, and in this order: the caller must hold **maintainer**, the source must exist
-/// **and belong to this project** (a complaint id from another project must not be reachable through this project's
-/// path), and the store refuses a target in a different project. The reference's handler reaches for the source id from a
-/// parameter named `source_id` while the router binds `id`, so the source was **always 0** and every merge answered 404
-/// — an endpoint that could never have worked, with no auth check on it, and nothing noticed because nothing called it.
-/// The audit row is written by the store with the real actor.
-async fn merge_complaints(
-    State(state): State<AppState>,
-    Path((slug, id, target_id)): Path<(String, String, String)>,
-    Extension(user): Extension<concord_db::auth::User>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let project = readable_project_segment(&state, &slug, &headers).await?;
-    let source = caller_complaint(&state, &project, &id).await?;
-    require_role(&state, &project, "maintainer", &user).await?;
-    let Ok(target) = target_id.parse::<i64>() else {
-        return Err(ApiError::not_found("no such complaint"));
-    };
-    concord_db::complaints::merge(&state.pool, source.id, target, user.id)
-        .await
-        .map_err(internal)?
-        .map_err(complaint_refusal)?;
-    Ok(Json(serde_json::json!({ "status": "merged" })))
-}
-
 
 // ── milestone writes (§4.4, §6) ─────────────────────────────────────────────────────────────────────────────────────
 
