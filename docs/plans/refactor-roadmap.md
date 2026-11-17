@@ -650,6 +650,12 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-48 (step 3, 2026-11-17): settings writes move with their GET+PUT routes; readers stay root-owned.**
+  api/project_settings.rs owns apply_project_tags, tag_completeness, set_project_languages and set_intake_mode plus four
+  routes (159 lines; lib.rs 4978 -> 4810). project_tags and project_languages handlers stay at the root (D-41/D-43) but
+  their GET+PUT routes move with the writes (D-20). The D-47 merge was added in the same edit: route_policies reports
+  `api route modules: 30; unmerged: 0`. Verified: policy 7 passed; 0 failed, route_policies PASS (203 declared), replay
+  0 disagreed of 16 checked, 5 skipped.
 * **D-47 (step 3, 2026-11-17): a declared module must be mounted in router().**
   Live milestones answered 404 on fef1a22 although the stamped gate said PASS: api/milestones.rs had routes() but lib.rs
   never called `.merge(api::milestones::routes())`. route_policies pretended to check registration by scanning every

@@ -29,3 +29,4 @@ pub mod project_lifecycle;
 pub mod features;
 pub mod complaints;
 pub mod milestones;
+pub mod project_settings;
