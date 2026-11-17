@@ -17,6 +17,11 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   errors (whole chain inferred `Router<()>`); after typing it `Router<AppState>`, `cargo check` passed but the policy
   test failed with `2 stale row(s): GET /api/v1/healthz, GET /api/v1/version` (`6 passed; 1 failed`). Both route
   scanners now include `api/*.rs`; `7 passed; 0 failed`, `route_policies: PASS`. Corpus replay `0 disagreed`.
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live ed1488c: /version equality True · /healthz 200 · /api/v1/healthz 200
+  anonymous_walk: 0 holes · headers PASS · CI 44063176583 success
+  ```
 
 - **2026-11-17 — step 2b twenty-ninth slice: the whole project page is a node tree (D-16 closed).** New
   `project-render.js` owns panels, forms, arena controls, work items and `render()`; `project.js` keeps loading, failure
