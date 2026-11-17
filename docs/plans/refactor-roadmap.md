@@ -438,7 +438,9 @@ Unclaimed rows are fair game.
   **2b seventeenth slice landed 2026-11-17:** `rank.js` lost all nine sinks — cards, five-outcome actions, keyboard hint,
   sign-in prompt and every error/unretriable state are `el()` trees; vote and keyboard logic is unchanged.
   `check_dom_rank.js` executes a hostile pair plus 401/403/404/409/422/500 and vote-failure branches; RED mutation
-  reddened it, restore → PASS. Census 66→57. **2b left:** the remaining 57 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  reddened it, restore → PASS. Census 66→57. **Live (`a6a9af3`):** `/version` equality True; the served `/assets/js/rank.js` passes `check_dom_rank.js`.
+  `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS, CI `44020904994` success.
+  **2b left:** the remaining 57 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
