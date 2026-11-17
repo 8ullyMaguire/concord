@@ -70,6 +70,14 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   axum::routing calls and a duplicate roadmap route; fixed to `.method()` chaining. Policy 7 passed; 0 failed,
   route_policies PASS, replay 0 disagreed of 16 checked, 5 skipped.
 
+- **2026-11-17 — step 3 twenty-ninth move live (b635794).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: milestones 200 (0) · roadmap 200 · anon writes 403 consent_required
+  route_policies: PASS — api route modules: 29; unmerged: 0
+  anonymous_walk: 0 holes · headers PASS · CI 44194647904 success
+  ```
+
 - **2026-11-17 — step 3 twenty-eighth pure move: complaint verdicts into api/complaints.rs (D-45).** reject and
   merge_complaints (62 lines) plus two routes moved; lib.rs 5301 -> 5231. Byte-identical block proven by SHA-256 of the
   rstripped source slice. Policy 7 passed; 0 failed, route_policies PASS, replay 0 disagreed of 16 checked, 5 skipped.
