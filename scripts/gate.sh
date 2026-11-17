@@ -259,6 +259,12 @@ if command -v node >/dev/null 2>&1; then
     cat "$SCRATCH/dom-documents.log"
     bad "the documents page regained an HTML string sink"
   fi
+  if node scripts/parity/check_dom_board.js crates/web/assets/js/dom.js crates/web/assets/js/board.js >"$SCRATCH/dom-board.log" 2>&1; then
+    tail -1 "$SCRATCH/dom-board.log" | sed 's/^/js: /'
+  else
+    cat "$SCRATCH/dom-board.log"
+    bad "the kanban board regained an HTML string sink"
+  fi
 fi
 
 # Parsing is not the same as reaching a route. The port matches exactly, so a path with a trailing slash is a 404 -- and

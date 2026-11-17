@@ -1,15 +1,23 @@
 // Concord kanban board — resolves the slug, then hydrates columns + cards.
+// Rendering (step 2b): el() trees only; hostile titles and column names are text
+// or setAttribute values.
 (function () {
-  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it, so this file cannot disagree with
-  // another page about which characters are dangerous.
-  var esc = window.ConcordEscape.esc;
+  'use strict';
+  var el = window.ConcordDom.el;
 
   // The board filter: ONE board, narrowed. A board per milestone would multiply
-  // the WIP limits by the number of milestones, and a limit that applies to a fifth
-  // of the work is a limit five times too generous.
+  // the WIP limits by the number of milestones.
   function boardQuery() {
     var ms = new URLSearchParams(window.location.search).get('milestone');
     return ms ? '?milestone=' + encodeURIComponent(ms) : '';
+  }
+
+  function emptyState(icon, title, description) {
+    return el('div', { class: 'empty-state' }, [
+      icon ? el('div', { class: 'empty-state-icon' }, icon) : null,
+      el('p', { class: 'empty-state-title' }, title),
+      description ? el('p', { class: 'empty-state-description' }, description) : null
+    ]);
   }
 
   function paintFilter(box, milestones) {
@@ -17,17 +25,17 @@
     var page = box.parentNode;
     if (!page || page.querySelector('[data-board-filter]')) return;
     var cur = new URLSearchParams(window.location.search).get('milestone') || '';
-    var opts = '<option value="">Whole board</option>' + milestones.map(function (m) {
-      return '<option value="' + esc(m.id) + '"' + (String(m.id) === cur ? ' selected' : '') + '>' +
-        esc(m.title) + ' (' + (m.open || 0) + ' open)</option>';
-    }).join('');
-    var wrap = document.createElement('div');
-    wrap.className = 'board-filter';
-    wrap.setAttribute('data-board-filter', '');
-    wrap.innerHTML = '<label class="form-label" for="board-milestone">Milestone</label>' +
-      '<select id="board-milestone">' + opts + '</select>';
+    var opts = [el('option', { value: '' }, 'Whole board')].concat(milestones.map(function (m) {
+      return el('option', { value: m.id, selected: String(m.id) === cur ? true : null },
+        m.title + ' (' + (m.open || 0) + ' open)');
+    }));
+    var select = el('select', { id: 'board-milestone' }, opts);
+    var wrap = el('div', { class: 'board-filter', 'data-board-filter': '' }, [
+      el('label', { class: 'form-label', for: 'board-milestone' }, 'Milestone'),
+      select
+    ]);
     page.insertBefore(wrap, box);
-    wrap.querySelector('select').addEventListener('change', function (ev) {
+    select.addEventListener('change', function (ev) {
       var url = new URL(window.location.href);
       if (ev.target.value) url.searchParams.set('milestone', ev.target.value);
       else url.searchParams.delete('milestone');
@@ -45,40 +53,23 @@
     if (!box) return;
     var slug = slugFromPath();
     if (!slug) {
-      box.innerHTML = '<div class="empty-state"><p class="empty-state-title">No project specified</p></div>';
+      box.replaceChildren(emptyState(null, 'No project specified', null));
       return;
     }
     hydrate(slug, box);
   });
 
-  // hydrate fetches the project, its board and its features, then paints.
-  //
-  // A NAMED function rather than an inline chain, because a card move needs to re-read
-  // the board: the move response is {"status":"moved"} and says nothing about whether a
-  // phase GATE or a WIP limit refused it, so the server's own order is the only
-  // trustworthy one. Optimistically reordering a card would leave the board showing a
-  // card in a column it was refused for.
-  //
-  // silent is set when re-reading after a move: the skeleton would replace the board a
-  // reader is looking at, and the announce() live-region message would be wiped with it.
-  // RETURNS A PROMISE, because the caller announces after the repaint. A fire-and-
-  // forget re-read makes "announce then refresh" silently lose the message.
+  // hydrate fetches the project, its board and its features, then paints. A NAMED
+  // function rather than an inline chain, because a card move needs to re-read the
+  // board: the move response says nothing about a phase gate or WIP refusal.
+  // RETURNS A PROMISE so the caller can announce after the repaint.
   function hydrate(slug, box, silent) {
     box.setAttribute('aria-busy', 'true');
     if (!silent) {
-      box.innerHTML = (window.ConcordSkeleton ? window.ConcordSkeleton.board(4, 2)
-        : '<div class="loading-spinner" role="status" aria-label="Loading board"></div>');
+      box.replaceChildren(window.ConcordSkeleton ? loadingBoard()
+        : el('div', { class: 'loading-spinner', role: 'status', 'aria-label': 'Loading board' }));
     }
 
-    // The board API is keyed by numeric project id; resolve the slug first.
-    //
-    // RETURNED, so a caller can wait for the repaint. Without it the chain's result
-    // is discarded, `.then(announce)` fires on a promise that has already resolved to
-    // undefined, and the confirmation is wiped by the render it was supposed to follow.
-    // One client for the whole frontend (review item 9b). These four calls were four copies of the same
-    // fetch-plus-token-plus-parse dance, each with its own idea of what a failure meant, and a 404 here had to be
-    // told apart from a 500 by hand. `ConcordApi` throws one error with a `status`, so "not found" is a NUMBER
-    // rather than a shape each page invents.
     var api = window.ConcordApi;
     return api.get('/api/v1/projects/' + encodeURIComponent(slug))
       .catch(function (error) {
@@ -87,15 +78,10 @@
       })
       .then(function (p) {
         return Promise.all([
-          // By slug, not p.id: the project-scoped routes resolve a slug.
-          // Passing p.id 404s, and the fallbacks below turn that into an empty
-          // board that looks like a project with nothing on it.
           api.get('/api/v1/projects/' + encodeURIComponent(slug) + '/board' + boardQuery())
             .catch(function () { return { columns: [], cards: [] }; }),
           api.get('/api/v1/projects/' + encodeURIComponent(slug) + '/features')
             .catch(function () { return []; }),
-          // The filter's own options (spec §4.2 item 5). Tolerant: a project with no
-          // milestones, or a reader who cannot list them, still gets its board.
           api.get('/api/v1/projects/' + encodeURIComponent(slug) + '/milestones')
             .catch(function () { return []; })
         ]).then(function (res) { return { project: p, board: res[0], features: res[1], milestones: res[2] }; });
@@ -108,247 +94,198 @@
         (ctx.features || []).forEach(function (f) { titles[f.id] = f.title; });
 
         if (!columns.length) {
-          box.innerHTML = '<div class="empty-state"><div class="empty-state-icon">\u{1F4C5}</div>' +
-            '<p class="empty-state-title">No board yet</p>' +
-            '<p class="empty-state-description">This project has not set up its phase-gated kanban columns.</p></div>';
+          box.replaceChildren(emptyState('📅', 'No board yet',
+            'This project has not set up its phase-gated kanban columns.'));
           if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
           return;
         }
-
-        // No cards at all, but the project has columns: say why, rather than
-        // rendering nine zeroes that read as "broken" instead of "empty".
         if (!cards.length) {
           var hasWork = (ctx.features || []).length > 0;
-          box.innerHTML = '<div class="empty-state"><div class="empty-state-icon">\u{1F4C5}</div>' +
-            '<p class="empty-state-title">Nothing on the board yet</p>' +
-            '<p class="empty-state-description">' + (hasWork
-              ? 'None of this project\u2019s ' + ctx.features.length +
+          box.replaceChildren(emptyState('📅', 'Nothing on the board yet', [
+            hasWork
+              ? 'None of this project’s ' + ctx.features.length +
                 ' features have a workflow status that matches a column yet.'
-              : 'This project has no features yet, so there is nothing to place.') +
-            '</p><p class="empty-state-description">' +
-            'A card appears here once a feature carries a status like ' +
-            'draft, in_progress or shipped.</p></div>';
+              : 'This project has no features yet, so there is nothing to place.',
+            el('p', { class: 'empty-state-description' },
+              'A card appears here once a feature carries a status like draft, in_progress or shipped.')
+          ]));
           if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
           return;
         }
 
         var derivedCount = cards.filter(function (c) { return c.derived; }).length;
-        var html = '<div class="kanban-board">';
-        columns.forEach(function (col) {
+        var nodes = columns.map(function (col) {
           var inCol = cards.filter(function (c) { return c.column === col.name; });
-          // A derived card is sitting in its status column, not placed there by
-          // a person. Over-colouring them would imply the board had been curated;
-          // a caption below the board states the number instead.
+          // A derived card is sitting in its status column, not placed by a person.
           var atLimit = col.wip && inCol.length >= col.wip;
-          html += '<div class="kanban-column' + (atLimit ? ' is-at-wip' : '') + '" ' +
-            'data-column="' + esc(col.name) + '"><div class="kanban-column-header">' +
-            '<span class="kanban-column-title">' + esc(col.name) + '</span>' +
-            '<span class="kanban-column-count">' + inCol.length + (col.wip ? ' / WIP ' + col.wip : '') + '</span>' +
-            '</div>';
-          inCol.forEach(function (c) {
-            // The server sends the title for derived cards; the fetched feature
-            // list covers placed ones. Fall back rather than printing "Feature
-            // #0" for a card that somehow has no feature id.
-            var title = c.title || titles[c.feature_id] ||
-              (c.feature_id ? 'Feature #' + c.feature_id : 'Unknown item');
-            // A card is a BUTTON, not a div: a draggable div is unusable by
-            // keyboard and by screen reader, and a kanban board nobody can operate
-            // without a mouse is a broken board.
-            //
-            // draggable AND focusable, with the column move offered as a control
-            // below -- drag is the fast path, the select is the accessible one, and
-            // the two post the same request.
-            html += '<div class="kanban-card-wrap">' +
-              '<button type="button" class="kanban-card" draggable="true" ' +
-              // data-card-id is board_cards.id, which is what
-              // PUT .../cards/{card_id}/move moves by default. Sending the FEATURE
-              // id in that path made every move a no-op -- MoveCard's first branch
-              // rejects "both", and with no feature_id query param the default branch
-              // ran with a feature id where a card id was expected, so it 404'd and
-              // the board silently ignored the drag.
-              'data-card-id="' + esc(c.id) + '" ' +
-              'data-feature-id="' + esc(c.feature_id) + '" ' +
-              'data-column="' + esc(c.column) + '" ' +
-              'aria-label="' + esc(title) + ', currently in ' + esc(col.name) + '">' +
-              esc(title) + '</button>' +
-              '<label class="visually-hidden" for="mv-' + esc(c.id) + '-' +
-              esc(col.name) + '">Move ' + esc(title) + ' out of ' + esc(col.name) +
-              '</label>' +
-              '<select class="kanban-card-move" id="mv-' + esc(c.id) + '-' +
-              esc(col.name) + '" data-card-id="' + esc(c.id) + '" ' +
-              'aria-label="Move ' + esc(title) + '">' +
-              '<option value="">Move to…</option>' +
-              columns.filter(function (o) { return o.name !== col.name; })
-                .map(function (o) {
-                  return '<option value="' + esc(o.name) + '">' + esc(o.name) +
-                    (o.wip ? ' (' + o.wip + ')' : '') + '</option>';
-                }).join('') +
-              '</select></div>';
-          });
-          html += '</div>';
+          return el('div', {
+            class: 'kanban-column' + (atLimit ? ' is-at-wip' : ''), 'data-column': col.name
+          }, [
+            el('div', { class: 'kanban-column-header' }, [
+              el('span', { class: 'kanban-column-title' }, col.name),
+              el('span', { class: 'kanban-column-count' },
+                inCol.length + (col.wip ? ' / WIP ' + col.wip : ''))
+            ]),
+            inCol.map(function (c) {
+              // The server sends the title for derived cards; the fetched feature
+              // list covers placed ones.
+              var title = c.title || titles[c.feature_id] ||
+                (c.feature_id ? 'Feature #' + c.feature_id : 'Unknown item');
+              var moveID = 'mv-' + c.id + '-' + col.name;
+              // A card is a BUTTON, not a div: a draggable div is unusable by
+              // keyboard and by screen reader.
+              return el('div', { class: 'kanban-card-wrap' }, [
+                el('button', {
+                  type: 'button', class: 'kanban-card', draggable: 'true',
+                  'data-card-id': c.id, 'data-feature-id': c.feature_id,
+                  'data-column': c.column,
+                  'aria-label': title + ', currently in ' + col.name
+                }, title),
+                el('label', { class: 'visually-hidden', for: moveID },
+                  'Move ' + title + ' out of ' + col.name),
+                el('select', {
+                  class: 'kanban-card-move', id: moveID, 'data-card-id': c.id,
+                  'aria-label': 'Move ' + title
+                }, [
+                  el('option', { value: '' }, 'Move to…')
+                ].concat(columns.filter(function (o) { return o.name !== col.name; })
+                  .map(function (o) {
+                    return el('option', { value: o.name }, o.name + (o.wip ? ' (' + o.wip + ')' : ''));
+                  })))
+              ]);
+            })
+          ]);
         });
-        html += '</div>';
+        var children = [el('div', { class: 'kanban-board' }, nodes)];
         if (derivedCount) {
-          html += '<p class="kanban-note">' + derivedCount + ' of ' + cards.length +
-            ' cards sit here because of the feature\u2019s own status, not because ' +
-            'anyone placed them on the board.</p>';
+          children.push(el('p', { class: 'kanban-note' },
+            derivedCount + ' of ' + cards.length +
+            ' cards sit here because of the feature’s own status, not because ' +
+            'anyone placed them on the board.'));
         }
-        // aria-busy is cleared BEFORE the DOM swap: a region left busy suppresses its
+        // aria-busy is cleared BEFORE the DOM swap: a busy region suppresses its
         // own live-region updates, so announce() after a move would be silent.
         box.removeAttribute('aria-busy');
-        box.innerHTML = html;
+        box.replaceChildren.apply(box, children);
         if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
         wireMoves(slug, box, columns);
       })
       .catch(function (err) {
-        // Cleared here too: the error and empty paths are the ones that most
-        // often skip it, and a region left aria-busy suppresses its own live
-        // region updates, so the error message would be silent.
         if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
-        box.innerHTML = err && err.notFound
-          ? '<div class="empty-state"><div class="empty-state-icon">\u{1F50E}</div>' +
-            '<p class="empty-state-title">Project not found</p>' +
-            '<p class="empty-state-description">No project with slug &ldquo;' + esc(slug) + '&rdquo; exists.</p>' +
-            '<a class="btn btn-primary" href="/projects">Browse projects</a></div>'
-          : '<div class="empty-state"><div class="empty-state-icon">\u26A0\uFE0F</div>' +
-            '<p class="empty-state-title">Could not load board</p>' +
-            '<p class="empty-state-description">The API did not respond. Try again.</p></div>';
+        box.replaceChildren(err && err.notFound
+          ? emptyState('🔎', 'Project not found', [
+              'No project with slug “' + slug + '” exists.',
+              el('a', { class: 'btn btn-primary', href: '/projects' }, 'Browse projects')
+            ])
+          : emptyState('⚠️', 'Could not load board', 'The API did not respond. Try again.'));
       });
   }
-// Card moving on the kanban board.
-//
-// THE MISSING WRITE PATH. handleMoveCard, MoveCard, PUT .../board/cards/{id}/move and
-// the phase-gate and WIP-limit refusals all existed and were tested at the store layer.
-// The board rendered columns and cards and could not be moved at all: a kanban board
-// nobody can move a card on is a read-only list wearing a board's layout.
-//
-// THREE WAYS TO MOVE, because drag alone is not an interface:
-//
-//  1. DRAG, the fast path.
-//  2. A SELECT on every card, the accessible path.
-//  3. ARROW KEYS on a focused card, so the board is operable with no pointer at all.
-//
-// All three post the same request. (1) alone would be a board that requires a mouse,
-// which is the defect the draggable-button rule exists to prevent.
 
-// announce reports a move's outcome in a live region.
-//
-// NOT window.alert: a card move is an inline, non-blocking event, and a modal dialog
-// per failed drag trains people to dismiss dialogs without reading them. A live region
-// also means a screen reader announces a refusal without stealing focus, which is the
-// point of having made the card a button.
-function announce(box, msg, kind) {
-  var live = box.querySelector('[data-board-live]');
-  if (!live) {
-    live = document.createElement('p');
-    live.className = kind === 'error' ? 'notice notice-error' : 'visually-hidden';
-    live.setAttribute('role', kind === 'error' ? 'alert' : 'status');
-    live.setAttribute('aria-live', kind === 'error' ? 'assertive' : 'polite');
-    live.setAttribute('data-board-live', '');
-    box.insertBefore(live, box.firstChild);
+  // A local skeleton with the same classes as skeleton.js's board(), but built
+  // with el() so the loading state needs no HTML string.
+  function loadingBoard() {
+    return el('div', { class: 'grid-responsive-2' }, [0, 1, 2, 3].map(function () {
+      return el('div', { class: 'card' }, [
+        el('div', { class: 'skeleton skeleton-title', style: 'width:40%' }),
+        el('div', { class: 'skeleton skeleton-text' }),
+        el('div', { class: 'skeleton skeleton-text' })
+      ]);
+    }));
   }
-  live.textContent = msg;
-}
 
-function moveCard(slug, cardID, to) {
-
-  // The refusal is the useful part — "that phase has a gate", "WIP limit reached" — so the one error model's
-  // message is returned in the shape this caller already reads, rather than a second parser for the same JSON.
-  return window.ConcordApi
-    .put('/api/v1/projects/' + encodeURIComponent(slug) + '/board/cards/' +
-      encodeURIComponent(cardID) + '/move?to=' + encodeURIComponent(to), {})
-    .then(function (body) { return { ok: true, body: body || {} }; })
-    .catch(function (error) { return { ok: false, body: { error: error && error.message } }; });
-}
-
-function commit(slug, box, cardID, to, sourceCard) {
-  moveCard(slug, cardID, to).then(function (res) {
-    if (!res.ok) {
-      // "that phase has a gate" and "WIP limit reached" are refusals the reader can act
-      // on, so the store's message is shown rather than a generic failure.
-      announce(box, (res.body && res.body.error) ? res.body.error
-        : 'That move was refused.', 'error');
-      if (sourceCard) sourceCard.focus();
-      return;
+  // announce reports a move's outcome in a live region, never window.alert.
+  function announce(box, msg, kind) {
+    var live = box.querySelector('[data-board-live]');
+    if (!live) {
+      live = el('p', {
+        class: kind === 'error' ? 'notice notice-error' : 'visually-hidden',
+        role: kind === 'error' ? 'alert' : 'status',
+        'aria-live': kind === 'error' ? 'assertive' : 'polite',
+        'data-board-live': ''
+      });
+      box.insertBefore(live, box.firstChild);
     }
-    // The board is RE-READ, not reordered locally: the server decides whether a gate
-    // or a WIP limit refused the move, and a local reorder would show a card in a
-    // column it was refused for.
-    //
-    // announce comes AFTER hydrate, because hydrate replaces box.innerHTML and the
-    // live region lives inside box -- announcing first meant the confirmation was
-    // wiped by the very render that confirmed it. Announced first in the first
-    // version and the accessible path was silent on every successful move.
-    hydrate(slug, box, true).then(function () {
-      announce(box, 'Moved to ' + to + '.');
-    });
-  }).catch(function () {
-    announce(box, 'Could not reach the server.', 'error');
-  });
-}
+    live.textContent = msg;
+  }
 
-function wireMoves(slug, box, columns) {
-  // THE ACCESSIBLE PATH: a select on every card, same request as the drag.
-  box.querySelectorAll('.kanban-card-move').forEach(function (sel) {
-    sel.addEventListener('change', function () {
-      var to = sel.value;
-      if (!to) return;
-      sel.value = '';
-      commit(slug, box, sel.getAttribute('data-card-id'), to);
-    });
-  });
+  function moveCard(slug, cardID, to) {
+    return window.ConcordApi
+      .put('/api/v1/projects/' + encodeURIComponent(slug) + '/board/cards/' +
+        encodeURIComponent(cardID) + '/move?to=' + encodeURIComponent(to), {})
+      .then(function (body) { return { ok: true, body: body || {} }; })
+      .catch(function (error) { return { ok: false, body: { error: error && error.message } }; });
+  }
 
-  var dragging = null;
-  box.querySelectorAll('.kanban-card').forEach(function (card) {
-    card.addEventListener('dragstart', function (ev) {
-      dragging = card;
-      card.classList.add('is-dragging');
-      // setData is NOT optional: without it the drop handler's getData is empty and
-      // the drop silently does nothing.
-      ev.dataTransfer.setData('text/plain', card.getAttribute('data-card-id'));
-      ev.dataTransfer.effectAllowed = 'move';
+  function commit(slug, box, cardID, to, sourceCard) {
+    moveCard(slug, cardID, to).then(function (res) {
+      if (!res.ok) {
+        announce(box, (res.body && res.body.error) ? res.body.error
+          : 'That move was refused.', 'error');
+        if (sourceCard) sourceCard.focus();
+        return;
+      }
+      hydrate(slug, box, true).then(function () {
+        announce(box, 'Moved to ' + to + '.');
+      });
+    }).catch(function () {
+      announce(box, 'Could not reach the server.', 'error');
     });
-    card.addEventListener('dragend', function () {
-      card.classList.remove('is-dragging');
-      dragging = null;
+  }
+
+  function wireMoves(slug, box, columns) {
+    // THE ACCESSIBLE PATH: a select on every card, same request as the drag.
+    box.querySelectorAll('.kanban-card-move').forEach(function (sel) {
+      sel.addEventListener('change', function () {
+        var to = sel.value;
+        if (!to) return;
+        sel.value = '';
+        commit(slug, box, sel.getAttribute('data-card-id'), to);
+      });
     });
 
-    // THE NO-POINTER PATH: arrows move a focused card to the adjacent column. With
-    // drag as the only affordance, the board is unusable by keyboard, and a
-    // draggable <div> with a tabindex is still unusable by screen reader because the
-    // drop target is never announced.
-    card.addEventListener('keydown', function (ev) {
-      var names = columns.map(function (c) { return c.name; });
-      var i = names.indexOf(card.getAttribute('data-column'));
-      if (i < 0) return;
-      var j = null;
-      if (ev.key === 'ArrowRight' || ev.key === 'ArrowDown') j = i + 1;
-      if (ev.key === 'ArrowLeft' || ev.key === 'ArrowUp') j = i - 1;
-      if (j === null || j < 0 || j >= names.length) return;
-      ev.preventDefault();
-      commit(slug, box, card.getAttribute('data-card-id'), names[j], card);
+    var dragging = null;
+    box.querySelectorAll('.kanban-card').forEach(function (card) {
+      card.addEventListener('dragstart', function (ev) {
+        dragging = card;
+        card.classList.add('is-dragging');
+        ev.dataTransfer.setData('text/plain', card.getAttribute('data-card-id'));
+        ev.dataTransfer.effectAllowed = 'move';
+      });
+      card.addEventListener('dragend', function () {
+        card.classList.remove('is-dragging');
+        dragging = null;
+      });
+      card.addEventListener('keydown', function (ev) {
+        var names = columns.map(function (c) { return c.name; });
+        var i = names.indexOf(card.getAttribute('data-column'));
+        if (i < 0) return;
+        var j = null;
+        if (ev.key === 'ArrowRight' || ev.key === 'ArrowDown') j = i + 1;
+        if (ev.key === 'ArrowLeft' || ev.key === 'ArrowUp') j = i - 1;
+        if (j === null || j < 0 || j >= names.length) return;
+        ev.preventDefault();
+        commit(slug, box, card.getAttribute('data-card-id'), names[j], card);
+      });
     });
-  });
 
-  box.querySelectorAll('.kanban-column').forEach(function (col) {
-    // dragover MUST preventDefault or the drop never fires -- and it fails silently,
-    // presenting as "dragging does nothing".
-    col.addEventListener('dragover', function (ev) {
-      ev.preventDefault();
-      ev.dataTransfer.dropEffect = 'move';
-      col.classList.add('is-drop-target');
+    box.querySelectorAll('.kanban-column').forEach(function (col) {
+      // dragover MUST preventDefault or the drop never fires.
+      col.addEventListener('dragover', function (ev) {
+        ev.preventDefault();
+        ev.dataTransfer.dropEffect = 'move';
+        col.classList.add('is-drop-target');
+      });
+      col.addEventListener('dragleave', function () {
+        col.classList.remove('is-drop-target');
+      });
+      col.addEventListener('drop', function (ev) {
+        ev.preventDefault();
+        col.classList.remove('is-drop-target');
+        var id = ev.dataTransfer.getData('text/plain');
+        if (!id && dragging) id = dragging.getAttribute('data-card-id');
+        if (!id) return;
+        commit(slug, box, id, col.getAttribute('data-column'));
+      });
     });
-    col.addEventListener('dragleave', function () {
-      col.classList.remove('is-drop-target');
-    });
-    col.addEventListener('drop', function (ev) {
-      ev.preventDefault();
-      col.classList.remove('is-drop-target');
-      var id = ev.dataTransfer.getData('text/plain');
-      if (!id && dragging) id = dragging.getAttribute('data-card-id');
-      if (!id) return;
-      commit(slug, box, id, col.getAttribute('data-column'));
-    });
-  });
-}
+  }
 })();
