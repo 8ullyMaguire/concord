@@ -16,6 +16,13 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous caller; its Account row is enforced (95→96), the handler takes `Extension<User>`, and `is_guest` plus the
   owner/maintainer check stay. 95 handlers pinned, `bearer_user` 41→40. D-9 records the Account-row decision.
 
+  ```
+  cargo test -p concord-app --lib policy: 7 passed; 0 failed
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live 24ae93f: anon 401 gate text · guest 403 guest-cannot-edit
+                walk 0 holes · headers PASS · served JS PASS · CI 43984146300 success
+  ```
+
 - **2026-11-16 — final large write batch enforced** (step 1b, nineteenth slice, ten routes). Notification read,
   alternative entry, complaint merge, objection resolve, call outcome, override position, solution call, strategic weight,
   arena remove and claim release all refused anonymous callers; three needed valid bodies first. Rows enforced (85→95),
