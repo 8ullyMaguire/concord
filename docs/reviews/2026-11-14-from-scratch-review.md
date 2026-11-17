@@ -13,7 +13,12 @@ scratch server; the next run, `43925202819`, passed with the same tree shape. No
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
 - **2026-11-17 — step 2b tenth slice: `ranking.js` has no string sink.** Table rows, moderation cell and error state are
-  `el()` trees; `check_dom_ranking.js` RED mutation and GREEN restore measured, retry path exercised. Census 100→97.
+  `el()` trees; `check_dom_ranking.js` RED mutation and GREEN restore measured, retry path exercised.  Census 100→97.
+  ```
+  check_dom_ranking: PASS — hostile fields and error are text, mod href verbatim, no string sink
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS · sinks 97
+  live c8a4425: served asset PASS checker · walk 0 holes · CI 44008259225 success
+  ```
 
 - **2026-11-17 — step 2b ninth slice: `projects.js` has no string sink.** Cards, health bars and empty/error states are
   `el()` trees; `check_dom_projects.js` RED mutation and GREEN restore measured across hostile fields, empty and failed GET.
