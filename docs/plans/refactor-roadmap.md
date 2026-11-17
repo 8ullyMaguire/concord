@@ -650,6 +650,15 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-24 (step 3, 2026-11-17): move a resource's reads and write together, even when its sections are far apart.**
+  `api/solutions.rs` owns `project_solutions`, `feature_solutions`, `one_solution` (extracted from ~4,070–4,200) plus
+  `create_solution`/`solution_refusal` (from §6.3): 261 lines; `lib.rs` 9,436 → 9,164. All three route stanzas now come
+  from the module, so the GET+POST `/features/{id}/solutions` MethodRouter stays in one file. Three resolvers
+  (`project_by_id`, `readable_project`, `caller_feature`) and the `STANDINGS_PER_FEATURE` constant were borrowed, not copied;
+  one RED (`cannot find STANDINGS_PER_FEATURE`) fixed by importing it. Policy `7 passed; 0 failed`, `route_policies: PASS`,
+  replay `0 disagreed of 18 checked, 3 skipped`. Rejected: moving only the write and leaving its reads in `lib.rs`, which
+  D-20's rationale forbids.
+
 * **D-23 (step 3, 2026-11-17): moving code does not move its dependencies; let the compiler name them.**
   `// ── §3.4's badges` moved whole into `api/badges.rs` (191 lines; `lib.rs` 9,627 → 9,436). The first check reddened with
   9 errors — six `internal`, one `readable`, one `StatusCode`, plus `app_mutant` — because the handler's imports lived in

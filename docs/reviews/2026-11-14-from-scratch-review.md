@@ -12,6 +12,11 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 3 seventh pure move: `api/solutions.rs` (D-24).** The three solution reads (~4,070–4,200) and
+  the §6.3 write/refusal moved into one module (261 lines); `lib.rs` 9,436 → 9,164. All three route stanzas, including
+  GET+POST on one path, now come from the module. RED: `cannot find STANDINGS_PER_FEATURE`; fixed by importing it.
+  `cargo check` green, policy `7 passed; 0 failed`, `route_policies: PASS`, replay `0 disagreed of 18 checked, 3 skipped`.
+
 - **2026-11-17 — step 3 sixth pure move: `api/badges.rs` (D-23).** The whole §3.4 badge section — `badge_svg`,
   `badge_svg_text` and the XML escaper — moved verbatim (191 lines); `lib.rs` 9,627 → 9,436. RED: 9 unresolved imports
   (`internal` ×6, `readable`, `StatusCode`, `app_mutant`); fixed with `crate`/`axum` imports and a `pub(crate)` promotion.

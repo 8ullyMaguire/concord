@@ -7,3 +7,4 @@ pub mod records;
 pub mod notifications;
 pub mod invites;
 pub mod badges;
+pub mod solutions;
