@@ -15,6 +15,11 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
 - **2026-11-17 — step 2b ninth slice: `projects.js` has no string sink.** Cards, health bars and empty/error states are
   `el()` trees; `check_dom_projects.js` RED mutation and GREEN restore measured across hostile fields, empty and failed GET.
   Census 103→100.
+  ```
+  check_dom_projects: PASS — hostile fields are text, href verbatim, all three states sink-free
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS · sinks 100
+  live ddccc04: served asset PASS checker · walk 0 holes · CI 44006585416 success
+  ```
 
 - **2026-11-17 — step 2b eighth slice: `feature.js` has no string sink.** All HTML builders on the 661-line page became
   `el()` trees; `check_dom_feature.js` RED mutation and GREEN restore measured with hostile values from all nine reads.
