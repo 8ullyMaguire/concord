@@ -3,6 +3,7 @@
   // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it. This file's copy replaced the same
   // five characters in its own way; a single pass over a character class cannot disagree with another page about which are dangerous.
   var esc = window.ConcordEscape.esc;
+  var el = window.ConcordDom.el;
   // The panels live in their own file; one binding here keeps the composition below unchanged.
   var concordPanels = window.ConcordPanels;
   // The write helpers live in project-writes.js; binding them here keeps every call site below unchanged.
@@ -442,10 +443,42 @@
   }
 
   function notFound(slug) {
-    return '<div class="empty-state"><div class="empty-state-icon">\u{1F50E}</div>' +
-      '<p class="empty-state-title">Project not found</p>' +
-      '<p class="empty-state-description">No project with slug &ldquo;' + esc(slug) + '&rdquo; exists on this forge.</p>' +
-      '<a class="btn btn-primary" href="/projects">Browse projects</a></div>';
+    return el('div', { class: 'empty-state' }, [
+      el('div', { class: 'empty-state-icon' }, '\u{1F50E}'),
+      el('p', { class: 'empty-state-title' }, 'Project not found'),
+      el('p', { class: 'empty-state-description' },
+        'No project with slug \u201c' + slug + '\u201d exists on this forge.'),
+      el('a', { class: 'btn btn-primary', href: '/projects' }, 'Browse projects')
+    ]);
+  }
+
+  // The outer states are nodes too (D-16): a failure page is not allowed to
+  // parse HTML just because the main render() still returns a string.
+  function loading() {
+    if (window.ConcordSkeleton && window.ConcordSkeleton.titleNode) {
+      return [window.ConcordSkeleton.titleNode(), window.ConcordSkeleton.textNode(3)];
+    }
+    return el('div', { class: 'loading-spinner', role: 'status', 'aria-label': 'Loading project' });
+  }
+
+  function authFailure() {
+    return el('div', { class: 'empty-state' }, [
+      el('div', { class: 'empty-state-icon' }, '\u26A0\uFE0F'),
+      el('p', { class: 'empty-state-title' }, 'Sign in to see features'),
+      el('p', { class: 'empty-state-description' }, [
+        'Reading features requires an account. ',
+        el('a', { class: 'btn btn-primary', href: '/login' }, 'Sign in')
+      ])
+    ]);
+  }
+
+  function loadFailure(code) {
+    return el('div', { class: 'empty-state' }, [
+      el('div', { class: 'empty-state-icon' }, '\u26A0\uFE0F'),
+      el('p', { class: 'empty-state-title' }, 'Could not load project' + code),
+      el('p', { class: 'empty-state-description' },
+        'The API did not respond as expected. Try again.')
+    ]);
   }
 
   // forms renders the two ways to add to the project.
@@ -775,7 +808,7 @@
     var box = document.getElementById('project-detail');
     if (!box) return;
     var slug = slugFromPath();
-    if (!slug) { box.innerHTML = notFound(''); return; }
+    if (!slug) { box.replaceChildren(notFound('')); return; }
 
     // One client for the transport (review item 9b). The 404 is still told apart from the rest, because it is the one
     // refusal the page answers differently (it renders "no such project"); everything else is a status the caller
@@ -786,9 +819,7 @@
         throw { status: error && error.status };
       })
       .then(function (p) {
-        box.innerHTML = (window.ConcordSkeleton
-          ? window.ConcordSkeleton.title() + window.ConcordSkeleton.text(3)
-          : '<div class="loading-spinner" role="status" aria-label="Loading project"></div>');
+        box.replaceChildren.apply(box, loading());
         // By slug, not by p.id. The project-scoped routes take a slug: the
         // sibling route is /api/v1/projects/{slug} and the server resolves it
         // with GetProject, which matches on p.slug. Passing p.id here made every
@@ -882,20 +913,15 @@
         // failure happens to land in that last branch.
         if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
         if (err && err.notFound) {
-          box.innerHTML = notFound(slug);
+          box.replaceChildren(notFound(slug));
         } else if (err && err.auth) {
           // 401 on a project-scoped read is unexpected: reads are public. Say so
           // rather than rendering an empty page, because an empty page reads as
           // "this project has no features" and nobody investigates that.
-          box.innerHTML = '<div class="empty-state"><div class="empty-state-icon">\u26A0\uFE0F</div>' +
-            '<p class="empty-state-title">Sign in to see features</p>' +
-            '<p class="empty-state-description">Reading features requires an account. ' +
-            '<a class="btn btn-primary" href="/login">Sign in</a></p></div>';
+          box.replaceChildren(authFailure());
         } else {
           var code = err && err.status ? ' (HTTP ' + err.status + ')' : '';
-          box.innerHTML = '<div class="empty-state"><div class="empty-state-icon">\u26A0\uFE0F</div>' +
-            '<p class="empty-state-title">Could not load project' + code + '</p>' +
-            '<p class="empty-state-description">The API did not respond as expected. Try again.</p></div>';
+          box.replaceChildren(loadFailure(code));
         }
       });
   });

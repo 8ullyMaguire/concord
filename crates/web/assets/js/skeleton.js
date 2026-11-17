@@ -20,6 +20,22 @@
   // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it, so this file cannot disagree with
   // another page about which characters are dangerous.
   var esc = window.ConcordEscape.esc;
+  // D-16: node-returning twins for the two placeholders the project page uses.
+  // The string helpers stay for the other pages; these are the ones that let a
+  // page put a loading state into the DOM without an HTML-parsing sink.
+  var domEl = window.ConcordDom.el;
+
+  function titleNode() {
+    return domEl('div', { class: 'skeleton skeleton-title' });
+  }
+
+  function textNode(n) {
+    var children = [];
+    for (var i = 0; i < (n || 3); i++) {
+      children.push(domEl('span', { class: 'skeleton skeleton-text' }));
+    }
+    return domEl('div', { class: 'skeleton-lines' }, children);
+  }
 
   function lines(n, cls) {
     var out = '';
@@ -96,6 +112,7 @@
 
   global.ConcordSkeleton = {
     text: text, title: title, rows: rows,
+    titleNode: titleNode, textNode: textNode,
     article: article, board: board, sidebar: sidebar,
     done: done
   };

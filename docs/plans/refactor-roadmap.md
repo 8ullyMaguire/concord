@@ -504,8 +504,13 @@ Unclaimed rows are fair game.
   **2b twenty-seventh slice landed 2026-11-17:** `curation.js`'s list refresh clear became `replaceChildren()` — all cards
   were already DOM-built. `check_dom_curation.js` executes hostile rationales/targets, append, refresh, vote, undo and
   both failure paths; RED mutation reddened it, restore → PASS. Census 8→7 (1 allowlisted).
-  **2b left:** the remaining 7 real string sinks (1 allowlisted in markdown.js) — all six non-allowlisted ones are in
-  `project.js`, gated on D-16's helper-contract conversion.
+**2b twenty-eighth slice landed 2026-11-17:** `project.js` outer states (empty slug, skeleton, 404, 401, load failure)
+  are now `el()` trees; `skeleton.js` gained node twins `titleNode()`/`textNode()` used by the project page. The main
+  `render()` string and its `ConcordPanels`/`ConcordArena` contracts remain — D-16 is still open for that slice.
+  Census 7→4 (1 allowlisted): `project.js` 1, `markdown.js` 1 allowlisted. `check_dom_project.js` RED/GREEN covered
+  hostile slug text, three skeleton lines, auth link, HTTP status and no sink writes.
+  **2b left:** the remaining 4 real string sinks (1 allowlisted in markdown.js) — the single non-allowlisted one is
+  `project.js`'s `render()`, gated on D-16's remaining helper-contract conversion.
 **Live (`d76a47e`):** `/version` equality True; the served `/assets/js/dom.js` and `/assets/js/curation.js` pass
   `check_dom_curation.js`. `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS,
   CI `44050456868` success.

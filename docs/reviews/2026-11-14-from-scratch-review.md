@@ -12,6 +12,10 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 2b twenty-eighth slice: `project.js` outer states are nodes.** Empty-slug, skeleton, 404, 401 and
+  load-failure states use `el()`; `skeleton.js` gained `titleNode()`/`textNode()`. `check_dom_project.js` RED/GREEN;
+  census 7→4 (1 allowlisted). Main `render()` remains a string; D-16 still open for it.
+
 - **2026-11-17 — step 2b twenty-seventh slice: `curation.js` has no string sink.** The list refresh clear became
   `replaceChildren()`; `check_dom_curation.js` RED/GREEN covered hostile prose, append/refresh, vote, undo and both
   failure paths. Census 8→7 (1 allowlisted).
