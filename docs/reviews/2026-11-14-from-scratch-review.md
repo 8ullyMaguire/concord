@@ -26,6 +26,10 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44137911389 success
   ```
 
+- **2026-11-17 — step 3 twenty-fourth pure move: api/accounts.rs (D-41).** Registration handler, request struct and route
+  moved (79 lines); lib.rs 6149 -> 6070. No RED; TOKEN_NOTE kept at the root for login. Policy 7 passed; 0 failed,
+  route_policies PASS (203 declared), replay 0 disagreed of 18 checked, 3 skipped.
+
 - **2026-11-17 — step 3 twenty-third pure move: api/catalog.rs (D-40).** Two catalogue reads moved (20 lines);
   lib.rs 6170 -> 6149. RED: route_policies.py crashed because its router-end marker was the moved `list_projects` handler;
   scanner now finds the first function after router() and sees all three /projects method routes. Policy 7 passed; 0 failed,

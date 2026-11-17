@@ -650,6 +650,13 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-41 (step 3, 2026-11-17): a shared constant stays at the crate root; child modules can see it.**
+  api/accounts.rs owns RegisterRequest, register and the registration route (79 lines; lib.rs 6149 -> 6070). TOKEN_NOTE
+  remains a root-private const because api/identity.rs's login also uses it; Rust child modules can read a parent's private
+  items, so no visibility promotion was needed. The D-40 scanner fix held: route_policies parsed 203 declared routes with
+  0 orphans and 0 missing. Verified: policy 7 passed; 0 failed, replay 0 disagreed of 18 checked, 3 skipped.
+  Rejected: copying TOKEN_NOTE into the module — two copies of a user-facing token warning can drift.
+
 * **D-40 (step 3, 2026-11-17): scanners must not use a handler name as a structural boundary.**
   Moving `list_projects` into `api/catalog.rs` made route_policies.py fail with `ValueError: substring not found` at
   `source.index("async fn list_projects(", start)` — the scanner had used the first handler as router()'s end marker.
