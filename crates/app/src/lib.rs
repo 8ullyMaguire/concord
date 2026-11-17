@@ -2099,14 +2099,11 @@ async fn resolve_consensus_objection(
 async fn get_override_window(
     State(state): State<AppState>,
     Path((slug, call)): Path<(String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<Value>, ApiError> {
     let project = project_for(&state, &slug).await?;
     let call_id = parse_id(&call, "call id")?;
-    let viewer = bearer_user(&state, &headers)
-        .await?
-        .map(|user| user.id)
-        .unwrap_or(0);
+    let viewer = user.id;
     let window = concord_db::override_window::get(&state.pool, call_id, viewer)
         .await
         .map_err(write_error)?;
@@ -3449,13 +3446,12 @@ async fn auth_me(
 async fn project_tags(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let project = project_for(&state, &slug).await?;
     // Resolve and check the project FIRST: an empty list for a project the caller may not read is a 200 that
     // confirms the slug exists, which is the leak this rule exists to close.
-    let user = bearer_user(&state, &headers).await?;
-    if !readable(&state, &project, user.as_ref()).await? {
+    if !readable(&state, &project, Some(&user)).await? {
         return Err(ApiError::not_found("no such project"));
     }
     let tags = concord_db::taxonomy::project_tags(&state.pool, project.id)
@@ -3523,11 +3519,10 @@ async fn list_criteria_profiles(
 async fn project_languages(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let project = project_for(&state, &slug).await?;
-    let user = bearer_user(&state, &headers).await?;
-    if !readable(&state, &project, user.as_ref()).await? {
+    if !readable(&state, &project, Some(&user)).await? {
         return Err(ApiError::not_found("no such project"));
     }
     let rows = concord_db::criteria::languages(&state.pool, project.id)
@@ -3690,11 +3685,10 @@ async fn document_kinds(
 async fn feature_tags(
     State(state): State<AppState>,
     Path((slug, feature)): Path<(String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let project = project_for(&state, &slug).await?;
-    let user = bearer_user(&state, &headers).await?;
-    if !readable(&state, &project, user.as_ref()).await? {
+    if !readable(&state, &project, Some(&user)).await? {
         return Err(ApiError::not_found("no such project"));
     }
     let feature = feature_for(&state, project.id, &feature).await?;
@@ -3708,11 +3702,10 @@ async fn feature_tags(
 async fn feature_deps(
     State(state): State<AppState>,
     Path((slug, feature)): Path<(String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let project = project_for(&state, &slug).await?;
-    let user = bearer_user(&state, &headers).await?;
-    if !readable(&state, &project, user.as_ref()).await? {
+    if !readable(&state, &project, Some(&user)).await? {
         return Err(ApiError::not_found("no such project"));
     }
     let feature = feature_for(&state, project.id, &feature).await?;
@@ -3726,11 +3719,10 @@ async fn feature_deps(
 async fn feature_evidence(
     State(state): State<AppState>,
     Path((slug, feature)): Path<(String, String)>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let project = project_for(&state, &slug).await?;
-    let user = bearer_user(&state, &headers).await?;
-    if !readable(&state, &project, user.as_ref()).await? {
+    if !readable(&state, &project, Some(&user)).await? {
         return Err(ApiError::not_found("no such project"));
     }
     let feature = feature_for(&state, project.id, &feature).await?;
@@ -4373,11 +4365,10 @@ async fn feature_solutions(
     State(state): State<AppState>,
     Path((project_id, feature_id)): Path<(String, String)>,
     Query(params): Query<std::collections::HashMap<String, String>>,
-    headers: HeaderMap,
+    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let project = project_by_id(&state, &project_id).await?;
-    let user = bearer_user(&state, &headers).await?;
-    if !readable(&state, &project, user.as_ref()).await? {
+    if !readable(&state, &project, Some(&user)).await? {
         return Err(ApiError::not_found("no such project"));
     }
     let feature_id = match feature_id.parse::<i64>() {
@@ -7618,13 +7609,13 @@ fn document_refusal(refused: concord_db::document_writes::Refused) -> ApiError {
 async fn list_alternatives(
     State(state): State<AppState>,
     Path(project_segment): Path<String>,
+    Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     let arenas = concord_db::alternatives::list(&state.pool, project.id, concord_db::alternatives::KIND)
         .await
         .map_err(internal)?;
-    let user = bearer_user(&state, &headers).await?;
     let mut out = Vec::with_capacity(arenas.len());
     for arena in arenas {
         let rows = concord_db::arena::leaderboard(&state.pool, arena.id, 50)
@@ -7640,7 +7631,7 @@ async fn list_alternatives(
             else {
                 continue;
             };
-            if !readable(&state, &competitor, user.as_ref()).await? {
+            if !readable(&state, &competitor, Some(&user)).await? {
                 continue;
             }
             entries.push(concord_db::alternatives::AlternativeEntry {

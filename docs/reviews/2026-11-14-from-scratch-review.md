@@ -12,6 +12,12 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-16 — step 1 closes (D-10)**. Eight enforced read handlers that still opened a second identity lookup now
+  take `Extension<User>`: feature solutions, alternatives, override window, deps, evidence, tags, languages and tags.
+  103 handlers pinned, `bearer_user` 40→32. A balanced-paren audit of every route registration against the policy table
+  now finds **0** enforced routes whose handler calls `bearer_user`; the 31 remaining calls are six helpers and 25
+  anonymous-by-design reads. `one_solution` (404) and `scout_report` (400) were re-probed as anonymous-allowed.
+
 - **2026-11-16 — last Account write enforced (D-9)** (step 1b, twentieth slice). `PUT /features/{feature}` refused an
   anonymous caller; its Account row is enforced (95→96), the handler takes `Extension<User>`, and `is_guest` plus the
   owner/maintainer check stay. 95 handlers pinned, `bearer_user` 41→40. D-9 records the Account-row decision.
