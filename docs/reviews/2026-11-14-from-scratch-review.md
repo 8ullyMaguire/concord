@@ -12,6 +12,11 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 2b begins: text-only renderer, first page migrated (D-11).** `dom.js` exports `el()` with text
+  nodes and `setAttribute` only. `notifications.js` lost all three `innerHTML` assignments; hostile prose is now literal
+  text. `check_dom_builder.js` executes both shipped files with an XSS payload and is wired into the gate. Mutation RED:
+  `el() did not create exactly one text child`; restored GREEN. Sink census 137→136.
+
 - **2026-11-16 — D-10: a path is not a `(method, path)`. REGRESSION FOUND AND REVERTED.** Eight anonymous GET handlers were
   converted to `Extension<User>` after an audit matched same-path enforced POST rows. Live probes returned **500
   `Missing request extension`** on all eight; the conversions were reverted, 95 handlers pinned, `bearer_user` 40. The

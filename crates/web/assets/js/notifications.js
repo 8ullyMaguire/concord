@@ -2,8 +2,8 @@
 //
 // Four rules, and each of them is a way this page goes wrong:
 //
-// 1. Nothing free-text is interpolated unescaped. `title` and `reason` are what a moderator
-//    typed, and `actor` is a username: esc() on every one (the house idiom, ranking.js).
+// 1. Nothing free-text becomes markup. `title`, `reason` and `actor` are moderator prose or usernames, and this page builds
+//    them with `el()` (text nodes and setAttribute only), so there is no innerHTML sink and no esc() call to forget.
 // 2. Loading the page marks NOTHING read. A page you scrolled past must not look like a page
 //    you read, so "Mark read" is a control the reader presses.
 // 3. The unread count on the page comes from the response, not from counting rendered cards:
@@ -17,9 +17,8 @@
   var root = document.getElementById('notifications-root');
   if (!root) return;
 
-  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it, so this file cannot disagree with
-  // another page about which characters are dangerous.
-  var esc = window.ConcordEscape.esc;
+  // dom.js is loaded with the other globals before any page script. It has no HTML-parsing API.
+  var el = window.ConcordDom.el;
 
   function when(ts) {
     if (!ts) return '';
@@ -40,32 +39,42 @@
     // =="false" never sees an absent attribute. Measured: the browser suite hung on exactly this.
     root.setAttribute('aria-busy', 'false');
     if (!items.length) {
-      root.innerHTML = '<div class="empty-state">' +
-        '<p class="empty-state-title">Nothing has been removed from your contributions.</p>' +
-        '<p class="muted">When a moderator removes one of your ideas or rejects one of your ' +
-        'complaints, the decision appears here with the reason they gave.</p></div>';
+      root.replaceChildren(el('div', { class: 'empty-state' }, [
+        el('p', { class: 'empty-state-title' }, 'Nothing has been removed from your contributions.'),
+        el('p', { class: 'muted' }, 'When a moderator removes one of your ideas or rejects one of your ' +
+          'complaints, the decision appears here with the reason they gave.')
+      ]));
       return;
     }
-    var out = ['<div class="notif-toolbar">'];
+
+    var parts = [];
     if (data.unread > 0) {
-      out.push('<p class="muted" data-unread>' + esc(data.unread) +
-        ' unread</p><button type="button" class="btn" data-read-all>Mark all read</button>');
+      parts.push(el('div', { class: 'notif-toolbar' }, [
+        el('p', { class: 'muted', 'data-unread': '' }, String(data.unread) + ' unread'),
+        el('button', { type: 'button', class: 'btn', 'data-read-all': '' }, 'Mark all read')
+      ]));
     }
-    out.push('</div><ul class="notif-list">');
+
+    var list = el('ul', { class: 'notif-list' });
     items.forEach(function (n) {
-      out.push('<li class="notif-card' + (n.read ? '' : ' notif-unread') + '" data-id="' + esc(n.id) + '">');
-      out.push('<div class="notif-head"><span class="notif-kind">' + esc(kindLabel(n.kind)) + '</span>');
-      if (!n.read) out.push('<span class="notif-dot" aria-label="unread">●</span>');
-      out.push('<span class="notif-when">' + esc(when(n.created_at)) + '</span></div>');
-      out.push('<p class="notif-title">' + esc(n.title) + '</p>');
-      out.push('<p class="muted">' + esc(n.project_slug ? '/' + n.project_slug : 'project ' + n.project_id) +
-        ' · decided by ' + esc(n.actor || 'a moderator') + '</p>');
-      if (n.reason) out.push('<p class="notif-reason">“' + esc(n.reason) + '”</p>');
-      if (!n.read) out.push('<button type="button" class="btn btn-small" data-read="' + esc(n.id) + '">Mark read</button>');
-      out.push('</li>');
+      list.appendChild(el('li', {
+        class: 'notif-card' + (n.read ? '' : ' notif-unread'),
+        'data-id': n.id
+      }, [
+        el('div', { class: 'notif-head' }, [
+          el('span', { class: 'notif-kind' }, kindLabel(n.kind)),
+          n.read ? null : el('span', { class: 'notif-dot', 'aria-label': 'unread' }, '●'),
+          el('span', { class: 'notif-when' }, when(n.created_at))
+        ]),
+        el('p', { class: 'notif-title' }, n.title),
+        el('p', { class: 'muted' }, (n.project_slug ? '/' + n.project_slug : 'project ' + n.project_id) +
+          ' · decided by ' + (n.actor || 'a moderator')),
+        n.reason ? el('p', { class: 'notif-reason' }, '“' + n.reason + '”') : null,
+        n.read ? null : el('button', { type: 'button', class: 'btn btn-small', 'data-read': n.id }, 'Mark read')
+      ]));
     });
-    out.push('</ul>');
-    root.innerHTML = out.join('');
+    parts.push(list);
+    root.replaceChildren.apply(root, parts);
     wire();
   }
 
@@ -107,8 +116,9 @@
       .then(render)
       .catch(function (e) {
         root.setAttribute('aria-busy', 'false');
-        root.innerHTML = '<div class="empty-state"><p class="empty-state-title">' +
-          esc(e.message) + '</p></div>';
+        root.replaceChildren(el('div', { class: 'empty-state' }, [
+          el('p', { class: 'empty-state-title' }, e.message)
+        ]));
       });
   }
 

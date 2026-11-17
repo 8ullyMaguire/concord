@@ -138,6 +138,19 @@ if command -v node >/dev/null 2>&1; then
   fi
 fi
 
+# Step 2b: the renderer has no HTML-parsing API. This executes the shipped dom.js and the first migrated page
+# (notifications.js) against hostile prose; a text node or setAttribute regression reddens it. Mutating el() to write
+# innerHTML was measured RED (`el() did not create exactly one text child`) and the restore GREEN (2026-11-17).
+if command -v node >/dev/null 2>&1; then
+  if node scripts/parity/check_dom_builder.js crates/web/assets/js/dom.js crates/web/assets/js/notifications.js >"$SCRATCH/dom-builder.log" 2>&1; then
+    tail -1 "$SCRATCH/dom-builder.log" | sed 's/^/js: /'
+    echo "js: innerHTML occurrences remaining in assets: $(grep -rho 'innerHTML' crates/web/assets/js/*.js | wc -l)"
+  else
+    cat "$SCRATCH/dom-builder.log"
+    bad "the DOM builder or notifications page regained an HTML string sink"
+  fi
+fi
+
 # Parsing is not the same as reaching a route. The port matches exactly, so a path with a trailing slash is a 404 -- and
 # three call sites carried one for a day (`/similar/{kind}/`, `/documents/`, `/features/`), each wrapped in a `.catch` or a
 # `getOrNull`, so the page looked fine and the feature was dead. See scripts/parity/api_paths.py.

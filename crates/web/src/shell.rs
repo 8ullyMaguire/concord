@@ -137,6 +137,8 @@ pub fn document(
     // `</body>`, which put every page script ABOVE them, so `var esc = window.ConcordEscape.esc` in a page file read `undefined` and threw
     // before the page rendered anything. Thirteen of `feature_e2e`'s fifteen tests caught it; nothing else did.
     document.push_str(&format!("<script src=\"{}\"></script>\n", asset("/assets/js/escape.js")));
+    // The text-only DOM builder belongs with the globals: every page script may use it, and none may parse HTML.
+    document.push_str(&format!("<script src=\"{}\"></script>\n", asset("/assets/js/dom.js")));
     document.push_str(&format!("<script src=\"{}\"></script>\n", asset("/assets/js/session.js")));
     // After `session.js`, because `api.js` asks it for the token; before every page script, because they call it.
     document.push_str(&format!("<script src=\"{}\"></script>\n", asset("/assets/js/api.js")));
