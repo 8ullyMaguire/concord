@@ -432,6 +432,9 @@ Unclaimed rows are fair game.
   prompt, shortlist, results and the 401 refusal are `el()` trees; the action/state half is unchanged. One shared
   `topCandidates()` builder replaced two drifting copies. `check_dom_finder.js` walks seed → question → stop → results
   with hostile fields; RED mutation reddened it, restore → PASS. Census 77→66.
+  **Live (`2615564`):** `/version` equality True (display masked as `2****64`, checked against file); the served
+  `/assets/js/finder.js` passes `check_dom_finder.js`. `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`,
+  headers PASS, CI `44019018091` success.
   **2b left:** the remaining 66 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
