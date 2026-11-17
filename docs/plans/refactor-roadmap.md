@@ -359,7 +359,11 @@ Unclaimed rows are fair game.
   hostile API error, RED-mutation proven (`list.js wrote to an HTML string sink: ["<p>mutant</p>"]`) and restored GREEN.
   Combined string sinks 139→137 (135 `innerHTML` + 2 `insertAdjacentHTML`). **Live (`9961157`):** `/version` equality True (tool display masked the hash as `9****57`); the served `/assets/js/dom.js`
   and `/assets/js/list.js` pass `check_dom_list.js`. `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers
-  PASS, CI `43996013466` success. **2b left:** the remaining 137 string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
+  PASS, CI `43996013466` success. **2b third slice landed 2026-11-17:** `criteria.js` rebuilt — `cellHTML`, `tableHTML`, `controlsHTML`, `manageHTML` and
+  `optionsHTML` became `el()` trees; its two sink assignments are gone. `check_dom_criteria.js` executes the shipped page
+  with hostile criterion names, feature titles, ids, descriptions, profile names and a hostile load error; RED mutation
+  (`root.innerHTML = '<p>mutant</p>'`) reddened it with `a string sink was used`, restore → PASS. Per D-13 the gate now
+  counts sink syntax: 125→123 real sinks. **2b left:** the remaining 123 real string sinks. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
@@ -468,6 +472,11 @@ tell the difference between "not started" and "waiting".
   assignments and two `insertAdjacentHTML` calls; a census of `innerHTML` alone called it two sinks and would have declared
   the page migrated while four string-parsing paths remained. The gate now prints one combined count (139→137), and a page
   is only migrated when both spellings are gone. Rejected: separate ratchets for the two spellings — same defect, two names.
+
+* **D-13 (step 2b, 2026-11-17): the sink census counts write syntax, not the word in a comment.** After `criteria.js`
+  lost its two sink assignments, a textual count still reported 137 because the file's new header comment says the word
+  `innerHTML`. The gate now greps `.innerHTML =` and `.insertAdjacentHTML(`; measured from git: 125 real sinks before this
+  slice, 123 after (criteria 2→0). D-12 still counts both spellings; this only decides what counts as a sink.
 
 ## Decisions proposed (not taken)
 

@@ -1,5 +1,3 @@
-
-
 // Concord criteria page -- spec §6.4's comparison table.
 //
 // The whole table comes from ONE request, POST /rank/composite, whose results carry
@@ -15,12 +13,14 @@
 // 3. Fold `both`/`neither`/`skip` into the score. They are recorded (the audit
 //    trail keeps them) and move no rating, which is the difference between a vote
 //    that did nothing and a vote that was lost.
+//
+// Rendering (step 2b): `el()` builds nodes only. Criterion names, profile names,
+// descriptions, feature titles and server refusals become text nodes or attribute
+// values; this file has no innerHTML or insertAdjacentHTML sink.
 (function () {
   'use strict';
 
-  // One escaping rule for the whole frontend: `escape.js` (loaded before this file) owns it, so this file cannot disagree with
-  // another page about which characters are dangerous.
-  var esc = window.ConcordEscape.esc;
+  var el = window.ConcordDom.el;
 
   function slugFromPath() {
     var parts = window.location.pathname.split('/').filter(Boolean);
@@ -53,9 +53,7 @@
     criteria: [],
     profiles: [],
     features: [],
-    // Weights the user has typed, by criterion id. Empty until they press Rank:
-    // the server treats an empty body as "every criterion's default weight", and
-    // that is the honest initial state rather than freezing defaults into a vector.
+    // Weights the user has typed, by criterion id. Empty until they press Rank.
     weights: {},
     profile: '',
     includeInactive: false,
@@ -70,14 +68,10 @@
   }
 
   function get(path) {
-    // One client (review item 9b). The `{status, body}` shape stays because this page's callers read `err.body.error`
-    // out of it; what is gone is the second parser, and the plain-text branch is `ApiError.message` now.
     return window.ConcordApi.get(base + path).catch(toRefusal);
   }
 
-  // The page's refusals have always been `{status, body}` objects (seven call sites read `err.status` and
-  // `err.body.error`); this keeps that shape and stops each call site building it. An `ApiError` already holds both — the
-  // status and the server's sentence — so a plain-text refusal loses nothing.
+  // The page's refusals keep the `{status, body}` shape seven call sites read.
   function toRefusal(error) {
     throw {
       status: error && error.status ? error.status : 0,
@@ -89,8 +83,6 @@
     return window.ConcordApi.request(method, base + path, payload).catch(toRefusal);
   }
 
-  // refusal(): the server's own words, and for the two statuses whose meaning is
-  // not obvious a sentence saying what to do about them.
   function refusal(err) {
     var msg = (err && err.body && (err.body.error || err.body.message)) || 'the server refused it';
     if (err && err.status === 401) {
@@ -109,11 +101,6 @@
     return 'feature ' + featureID;
   }
 
-  // rank(msg): `msg` is what to say once the new order is on screen. The message
-  // belongs to this function rather than to the caller because the rank always
-  // re-renders, and the first version's caller-set message was wiped by the
-  // `say('')` on the success path -- "Added UX" appeared and disappeared inside one
-  // tick, which is a write that reports nothing.
   function rank(msg) {
     say('Ranking…');
     var payload = {};
@@ -128,13 +115,13 @@
     if (state.requireMinRD) payload.require_min_rd = true;
 
     return window.ConcordApi.post(base + '/rank/composite', payload).catch(toRefusal)
-    .then(function (body) {
-      state.composite = body;
-      say(msg || '');
-      render();
-    }).catch(function (err) {
-      say('The ranking could not be built: ' + refusal(err), true);
-    });
+      .then(function (body) {
+        state.composite = body;
+        say(msg || '');
+        render();
+      }).catch(function (err) {
+        say('The ranking could not be built: ' + refusal(err), true);
+      });
   }
 
   function loadCriteria() {
@@ -157,8 +144,8 @@
         if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);
       })
       .catch(function (err) {
-        root.innerHTML = '<div class="empty-state"><p class="empty-state-title">' +
-          esc('The criteria could not be loaded: ' + refusal(err)) + '</p></div>';
+        root.replaceChildren(el('div', { class: 'empty-state' },
+          el('p', { class: 'empty-state-title' }, 'The criteria could not be loaded: ' + refusal(err))));
         if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);
       });
   }
@@ -172,10 +159,8 @@
     return null;
   }
 
-  // The column set is taken from the criteria the composite actually used (the
-  // union of every result's contributions), in the criteria's own order, so a
-  // retired criterion is absent from the table for the same reason it is absent
-  // from the score -- rather than present and mysteriously empty.
+  // Columns come from the criteria the composite actually used (the union of every
+  // result's contributions), in the criteria's own order.
   function columns(results) {
     var seen = {};
     var order = [];
@@ -191,204 +176,243 @@
     });
   }
 
-  function cellHTML(res, criterionID) {
+  function cellNode(res, criterionID) {
     var found = null;
     (res.contributions || []).forEach(function (c) { if (c.criterion_id === criterionID) found = c; });
     if (!found) {
-      // The composite builds a contribution only from a criterion_ratings ROW, so
-      // an absent cell means no comparison has ever involved this feature under
-      // this criterion. That is the same fact as games == 0, and both are a state
-      // rather than a number: the midpoint of an empty distribution is not a
-      // measurement.
-      return '<td class="crit-cell crit-unrated" title="no comparison has involved ' +
-        'this feature under this criterion yet, so there is nothing to measure">unrated</td>';
+      // No contribution means no comparison ever involved this feature under this
+      // criterion. That is a state, not the midpoint of an empty distribution.
+      return el('td', {
+        class: 'crit-cell crit-unrated',
+        title: 'no comparison has involved this feature under this criterion yet, so there is nothing to measure'
+      }, 'unrated');
     }
     if (!found.games) {
-      return '<td class="crit-cell crit-unrated" title="no comparisons yet: rating ' +
-        esc(num(found.raw, 0)) + ' ± ' + esc(num(found.rd, 0)) + ', the starting value">unrated</td>';
+      return el('td', {
+        class: 'crit-cell crit-unrated',
+        title: 'no comparisons yet: rating ' + num(found.raw, 0) + ' ± ' + num(found.rd, 0) + ', the starting value'
+      }, 'unrated');
     }
     var dir = criterionByID(criterionID);
     var flip = dir && dir.direction === 'lower_is_better';
-    return '<td class="crit-cell"' +
-      (flip ? ' title="lower is better for this criterion: 1.00 is the best score here"' : '') +
-      '>' + esc(num(found.normalised, 2)) +
-      '<span class="muted crit-games"> · ' + found.games + '</span></td>';
+    return el('td', {
+      class: 'crit-cell',
+      title: flip ? 'lower is better for this criterion: 1.00 is the best score here' : undefined
+    }, [
+      num(found.normalised, 2),
+      el('span', { class: 'muted crit-games' }, ' · ' + found.games)
+    ]);
   }
 
-  function tableHTML() {
+  function tableNodes() {
     var body = state.composite || {};
     var results = body.results || [];
     if (!state.criteria.length) {
-      return '<div class="empty-state"><p class="empty-state-title">No criteria yet</p>' +
-        '<p class="muted">A project starts with no dimensions, and a criterion is what ' +
-        'one dimension is called. Add one below — "simplicity and maintenance cost" and ' +
-        '"risk" are the two the spec names — then vote on it, and the table here ' +
-        'shows what the votes concluded and why the order came out that way.</p></div>';
+      return el('div', { class: 'empty-state' }, [
+        el('p', { class: 'empty-state-title' }, 'No criteria yet'),
+        el('p', { class: 'muted' }, 'A project starts with no dimensions, and a criterion is what ' +
+          'one dimension is called. Add one below — "simplicity and maintenance cost" and ' +
+          '"risk" are the two the spec names — then vote on it, and the table here ' +
+          'shows what the votes concluded and why the order came out that way.')
+      ]);
     }
     if (!results.length) {
-      return '<div class="empty-state"><p class="empty-state-title">Nothing to rank</p>' +
-        '<p class="muted">The composite came back with no features. A criterion ranks the ' +
-        'features a project has, so with none proposed there is nothing to compare. ' +
-        (state.requireMinRD ? 'The "ignore criteria with no votes" box is also on, ' +
-          'which drops every criterion nobody has voted on.' : '') + '</p></div>';
+      return el('div', { class: 'empty-state' }, [
+        el('p', { class: 'empty-state-title' }, 'Nothing to rank'),
+        el('p', { class: 'muted' }, 'The composite came back with no features. A criterion ranks the ' +
+          'features a project has, so with none proposed there is nothing to compare. ' +
+          (state.requireMinRD ? 'The "ignore criteria with no votes" box is also on, ' +
+            'which drops every criterion nobody has voted on.' : ''))
+      ]);
     }
     var cols = columns(results);
-    var html = '<table class="crit-table"><thead><tr>' +
-      '<th class="crit-rank">#</th><th>Feature</th>' +
-      '<th>Composite</th>';
+    var head = el('tr', {}, [
+      el('th', { class: 'crit-rank' }, '#'),
+      el('th', {}, 'Feature'),
+      el('th', {}, 'Composite')
+    ]);
     cols.forEach(function (c) {
       var crit = criterionByID(c.id);
-      var w = state.profile ? '' :
-        ' <span class="muted">w ' + esc(num((crit && state.weights[c.id] != null)
-          ? state.weights[c.id] : (crit ? crit.default_weight : 0), 2)) + '</span>';
-      html += '<th>' + esc(c.name) + w +
-        (c.direction === 'lower_is_better'
-          ? ' <span class="muted crit-dir">lower is better</span>' : '') +
-        (!c.active || (crit && !crit.active)
-          ? ' <span class="muted crit-dir">retired</span>' : '') + '</th>';
+      head.appendChild(el('th', {}, [
+        c.name,
+        state.profile ? null : el('span', { class: 'muted' }, ' w ' + num((crit && state.weights[c.id] != null)
+          ? state.weights[c.id] : (crit ? crit.default_weight : 0), 2)),
+        c.direction === 'lower_is_better' ? el('span', { class: 'muted crit-dir' }, ' lower is better') : null,
+        (!c.active || (crit && !crit.active)) ? el('span', { class: 'muted crit-dir' }, ' retired') : null
+      ]));
     });
-    html += '</tr></thead><tbody>';
+    var tbody = el('tbody');
     results.forEach(function (res) {
-      html += '<tr><td class="crit-rank">' + esc(String(res.rank)) + '</td>' +
-        '<td class="crit-feature">' + esc(titleOf(res.feature_id)) + '</td>' +
-        '<td class="crit-composite">' + esc(num(res.score, 2)) +
-        '<span class="muted crit-conf"> ± ' + esc(num(res.confidence, 0)) + '</span></td>';
-      cols.forEach(function (c) { html += cellHTML(res, c.id); });
-      html += '</tr>';
+      var row = el('tr', {}, [
+        el('td', { class: 'crit-rank' }, String(res.rank)),
+        el('td', { class: 'crit-feature' }, titleOf(res.feature_id)),
+        el('td', { class: 'crit-composite' }, [
+          num(res.score, 2),
+          el('span', { class: 'muted crit-conf' }, ' ± ' + num(res.confidence, 0))
+        ])
+      ]);
+      cols.forEach(function (c) { row.appendChild(cellNode(res, c.id)); });
+      tbody.appendChild(row);
     });
-    html += '</tbody></table>';
-    html += '<p class="form-note">A feature nobody has compared under any criterion has no ' +
-      'composite score and is not listed: it has no place in an order built from ' +
-      'comparisons.</p>';
-    html += '<p class="form-note">Composite is the weighted blend of the columns to its right; ' +
-      'the number after ± is the mean rating deviation behind it, so a wide figure means ' +
-      'the order is provisional. A cell reads <em>unrated</em> when nobody has compared ' +
-      'anything under that criterion yet' +
-      (state.profile ? ', and the weights come from the saved profile <strong>' +
-        esc(state.profile) + '</strong>' : '') + '.</p>';
-    return html;
+    var profileNote = state.profile
+      ? [' , and the weights come from the saved profile ', el('strong', {}, state.profile)]
+      : ['.'];
+    return [
+      el('table', { class: 'crit-table' }, [el('thead', {}, head), tbody]),
+      el('p', { class: 'form-note' }, 'A feature nobody has compared under any criterion has no ' +
+        'composite score and is not listed: it has no place in an order built from comparisons.'),
+      el('p', { class: 'form-note' }, [
+        'Composite is the weighted blend of the columns to its right; the number after ± is the ' +
+        'mean rating deviation behind it, so a wide figure means the order is provisional. ' +
+        'A cell reads ',
+        el('em', {}, 'unrated'),
+        ' when nobody has compared anything under that criterion yet'
+      ].concat(profileNote))
+    ];
   }
 
-  function controlsHTML() {
-    var html = '<div class="crit-controls">';
-    html += '<h2>Ranking</h2>';
-    html += '<p class="form-note">A weight says how much this project cares about a ' +
-      'criterion. The numbers are relative — 3:1 and 0.75:0.25 mean the same thing — ' +
-      'and the default is the criterion\'s own default weight.</p>';
-    html += '<div class="crit-weights">';
-    state.criteria.forEach(function (c) {
-      var v = state.weights[c.id] != null ? state.weights[c.id] : c.default_weight;
-      html += '<label class="crit-weight">' + esc(c.name) +
-        ' <input type="number" min="0" step="0.25" data-weight="' + esc(String(c.id)) +
-        '" value="' + esc(num(v, 2)) + '"></label>';
-    });
-    html += '</div>';
-    html += '<label class="crit-check"><input type="checkbox" id="crit-include-inactive"' +
-      (state.includeInactive ? ' checked' : '') + '> Include retired criteria</label>';
-    html += '<p class="form-note">Retiring a criterion takes it out of the blend. Ticking ' +
-      'this ranks against it anyway, which is how you check whether retiring it changed ' +
-      'anything.</p>';
-    html += '<label class="crit-check"><input type="checkbox" id="crit-require-min-rd"' +
-      (state.requireMinRD ? ' checked' : '') + '> Ignore criteria with no votes</label>';
-    html += '<p class="form-note">A criterion nobody has compared anything under still ' +
-      'contributes its starting value to every feature equally. Ignoring it keeps an ' +
-      'empty dimension from shaping a result nobody has an opinion about.</p>';
-    html += '<div class="crit-actions">' +
-      '<button type="button" class="btn btn-primary" data-rank="1">Rank with these weights</button>' +
-      '</div>';
-
-    html += '<h3>Saved weightings</h3>';
+  function controlsNode() {
+    var parts = [
+      el('h2', {}, 'Ranking'),
+      el('p', { class: 'form-note' }, 'A weight says how much this project cares about a criterion. ' +
+        'The numbers are relative — 3:1 and 0.75:0.25 mean the same thing — and the default is ' +
+        'the criterion\'s own default weight.'),
+      el('div', { class: 'crit-weights' }, state.criteria.map(function (c) {
+        var v = state.weights[c.id] != null ? state.weights[c.id] : c.default_weight;
+        return el('label', { class: 'crit-weight' }, [
+          c.name + ' ',
+          el('input', {
+            type: 'number', min: '0', step: '0.25',
+            'data-weight': String(c.id), value: num(v, 2)
+          })
+        ]);
+      })),
+      el('label', { class: 'crit-check' }, [
+        el('input', { type: 'checkbox', id: 'crit-include-inactive', checked: state.includeInactive }),
+        ' Include retired criteria'
+      ]),
+      el('p', { class: 'form-note' }, 'Retiring a criterion takes it out of the blend. Ticking ' +
+        'this ranks against it anyway, which is how you check whether retiring it changed anything.'),
+      el('label', { class: 'crit-check' }, [
+        el('input', { type: 'checkbox', id: 'crit-require-min-rd', checked: state.requireMinRD }),
+        ' Ignore criteria with no votes'
+      ]),
+      el('p', { class: 'form-note' }, 'A criterion nobody has compared anything under still ' +
+        'contributes its starting value to every feature equally. Ignoring it keeps an ' +
+        'empty dimension from shaping a result nobody has an opinion about.'),
+      el('div', { class: 'crit-actions' },
+        el('button', { type: 'button', class: 'btn btn-primary', 'data-rank': '' }, 'Rank with these weights')),
+      el('h3', {}, 'Saved weightings')
+    ];
     if (!state.profiles.length) {
-      html += '<p class="form-note">None saved yet. A saved weighting is a nameable thing — ' +
-        '"edge deployment" — rather than numbers retyped at every query.</p>';
+      parts.push(el('p', { class: 'form-note' }, 'None saved yet. A saved weighting is a nameable thing — ' +
+        '"edge deployment" — rather than numbers retyped at every query.'));
     } else {
-      html += '<label>Load <select id="crit-profile">' +
-        '<option value="">— choose a saved weighting —</option>';
-      state.profiles.forEach(function (p) {
-        html += '<option value="' + esc(p.slug) + '"' +
-          (p.slug === state.profile ? ' selected' : '') + '>' + esc(p.name) + '</option>';
-      });
-      html += '</select></label>';
-      html += '<button type="button" class="btn" data-load-profile="1">Load it</button>';
+      parts.push(el('label', {}, [
+        'Load ',
+        el('select', { id: 'crit-profile' }, [el('option', { value: '' }, '— choose a saved weighting —')]
+          .concat(state.profiles.map(function (p) {
+            return el('option', { value: p.slug, selected: p.slug === state.profile }, p.name);
+          })))
+      ]));
+      parts.push(el('button', { type: 'button', class: 'btn', 'data-load-profile': '' }, 'Load it'));
       if (state.profile) {
-        html += '<button type="button" class="btn" data-clear-profile="1">Back to my own weights</button>';
+        parts.push(el('button', { type: 'button', class: 'btn', 'data-clear-profile': '' }, 'Back to my own weights'));
       }
     }
-    html += '<div class="crit-save">' +
-      '<label>Name <input id="crit-profile-name" type="text" placeholder="Edge deployment"></label>' +
-      '<label>Slug <input id="crit-profile-slug" type="text" placeholder="edge-deployment"></label>' +
-      '<button type="button" class="btn" data-save-profile="1">Save this weighting</button></div>';
-    html += '<p class="form-note">Saving stores the numbers currently in the boxes above. ' +
+    parts.push(el('div', { class: 'crit-save' }, [
+      el('label', {}, ['Name ', el('input', { id: 'crit-profile-name', type: 'text', placeholder: 'Edge deployment' })]),
+      el('label', {}, ['Slug ', el('input', { id: 'crit-profile-slug', type: 'text', placeholder: 'edge-deployment' })]),
+      el('button', { type: 'button', class: 'btn', 'data-save-profile': '' }, 'Save this weighting')
+    ]));
+    parts.push(el('p', { class: 'form-note' }, 'Saving stores the numbers currently in the boxes above. ' +
       'Loading one replaces them, and an explicit weight you type after that wins over ' +
       'the profile — so the selection clears when you edit a weight rather than sending ' +
-      'both and letting the server pick.</p>';
-    html += '</div>';
-    return html;
+      'both and letting the server pick.'));
+    return el('div', { class: 'crit-controls' }, parts);
   }
 
-  function manageHTML() {
-    var html = '<div class="crit-manage"><h2>Criteria</h2>';
+  function optionsNodes() {
+    return state.features.map(function (f) {
+      return el('option', { value: String(f.id) }, f.title);
+    });
+  }
+
+  function manageNode() {
+    var parts = [el('h2', {}, 'Criteria')];
     if (!state.criteria.length) {
-      html += '<p class="form-note">No criteria yet — add the first one below.</p>';
+      parts.push(el('p', { class: 'form-note' }, 'No criteria yet — add the first one below.'));
     }
     state.criteria.forEach(function (c) {
-      var mid = esc(String(c.id));
-      html += '<div class="crit-row" data-criterion="' + mid + '">';
-      html += '<div class="crit-row-head"><h3>' + esc(c.name) +
-        (c.active ? '' : ' <span class="muted">(retired)</span>') + '</h3>' +
-        '<span class="muted crit-slug">' + esc(c.slug) + ' · ' +
-        esc(c.direction === 'lower_is_better' ? 'lower is better' : 'higher is better') +
-        ' · default weight ' + esc(num(c.default_weight, 2)) + '</span></div>';
-      html += '<p class="crit-desc">' + esc(c.description || 'No description.') + '</p>';
-      html += '<button type="button" class="btn" data-toggle-active="' + mid + '">' +
-        (c.active ? 'Retire this criterion' : 'Bring it back') + '</button>';
-      html += '<p class="form-note">A retired criterion is left out of the blend; its ' +
-        'votes stay on the record. Bringing it back needs no re-voting.</p>';
-
-      html += '<div class="crit-vote"><h4>Compare two features on this criterion</h4>';
+      var mid = String(c.id);
+      var row = el('div', { class: 'crit-row', 'data-criterion': mid }, [
+        el('div', { class: 'crit-row-head' }, [
+          el('h3', {}, [c.name, c.active ? null : el('span', { class: 'muted' }, ' (retired)')]),
+          el('span', { class: 'muted crit-slug' }, c.slug + ' · ' +
+            (c.direction === 'lower_is_better' ? 'lower is better' : 'higher is better') +
+            ' · default weight ' + num(c.default_weight, 2))
+        ]),
+        el('p', { class: 'crit-desc' }, c.description || 'No description.'),
+        el('button', { type: 'button', class: 'btn', 'data-toggle-active': mid },
+          c.active ? 'Retire this criterion' : 'Bring it back'),
+        el('p', { class: 'form-note' }, 'A retired criterion is left out of the blend; its ' +
+          'votes stay on the record. Bringing it back needs no re-voting.'),
+        el('div', { class: 'crit-vote' }, [el('h4', {}, 'Compare two features on this criterion')])
+      ]);
+      var vote = row.children[row.children.length - 1];
       if (state.features.length < 2) {
-        html += '<p class="form-note">This project has fewer than two features, so there ' +
-          'is nothing to compare on this criterion.</p>';
+        vote.appendChild(el('p', { class: 'form-note' }, 'This project has fewer than two features, so there ' +
+          'is nothing to compare on this criterion.'));
       } else {
-        html += '<label>Left <select data-vote-a="' + mid + '">' + optionsHTML() + '</select></label>';
-        html += '<label>Right <select data-vote-b="' + mid + '">' + optionsHTML() + '</select></label>';
-        html += '<label>Outcome <select data-vote-outcome="' + mid + '">' +
-          OUTCOMES.map(function (o) {
-            return '<option value="' + esc(o.v) + '">' + esc(o.v + ' — ' + o.label) + '</option>';
-          }).join('') + '</select></label>';
-        html += '<button type="button" class="btn" data-vote="' + mid + '">Record it</button>';
-        html += '<p class="form-note">' + OUTCOMES.map(function (o) {
-          return '<strong>' + esc(o.v) + '</strong> ' + esc(o.note);
-        }).join(' · ') + '</p>';
+        vote.appendChild(el('label', {}, ['Left ', el('select', { 'data-vote-a': mid }, optionsNodes())]));
+        vote.appendChild(el('label', {}, ['Right ', el('select', { 'data-vote-b': mid }, optionsNodes())]));
+        vote.appendChild(el('label', {}, [
+          'Outcome ',
+          el('select', { 'data-vote-outcome': mid }, OUTCOMES.map(function (o) {
+            return el('option', { value: o.v }, o.v + ' — ' + o.label);
+          }))
+        ]));
+        vote.appendChild(el('button', { type: 'button', class: 'btn', 'data-vote': mid }, 'Record it'));
+        var notes = [];
+        OUTCOMES.forEach(function (o, index) {
+          notes.push(el('strong', {}, o.v), ' ' + o.note);
+          if (index < OUTCOMES.length - 1) notes.push(' · ');
+        });
+        vote.appendChild(el('p', { class: 'form-note' }, notes));
       }
-      html += '</div></div>';
+      parts.push(row);
     });
 
-    html += '<div class="crit-create"><h3>Add a criterion</h3>' +
-      '<label>Slug <input id="crit-slug" type="text" placeholder="risk"></label>' +
-      '<label>Name <input id="crit-name" type="text" placeholder="Risk"></label>' +
-      '<label>Description <input id="crit-desc" type="text" placeholder="How badly could this go wrong?"></label>' +
-      '<label>Direction <select id="crit-direction">' +
-      '<option value="higher_is_better">higher is better</option>' +
-      '<option value="lower_is_better">lower is better</option></select></label>' +
-      '<label>Default weight <input id="crit-default-weight" type="number" min="0" step="0.25" value="1.00"></label>' +
-      '<button type="button" class="btn btn-primary" data-create="1">Add it</button>' +
-      '<p class="form-note">A criterion is a question to compare features against. ' +
-      '"Lower is better" is for costs — maintenance effort, risk, migration pain — where ' +
-      'the best feature is the one with the smallest number. Adding one needs contributor ' +
-      'access to this project.</p></div>';
-    html += '</div>';
-    return html;
+    parts.push(el('div', { class: 'crit-create' }, [
+      el('h3', {}, 'Add a criterion'),
+      el('label', {}, ['Slug ', el('input', { id: 'crit-slug', type: 'text', placeholder: 'risk' })]),
+      el('label', {}, ['Name ', el('input', { id: 'crit-name', type: 'text', placeholder: 'Risk' })]),
+      el('label', {}, ['Description ', el('input', { id: 'crit-desc', type: 'text', placeholder: 'How badly could this go wrong?' })]),
+      el('label', {}, [
+        'Direction ',
+        el('select', { id: 'crit-direction' }, [
+          el('option', { value: 'higher_is_better' }, 'higher is better'),
+          el('option', { value: 'lower_is_better' }, 'lower is better')
+        ])
+      ]),
+      el('label', {}, ['Default weight ', el('input', { id: 'crit-default-weight', type: 'number', min: '0', step: '0.25', value: '1.00' })]),
+      el('button', { type: 'button', class: 'btn btn-primary', 'data-create': '' }, 'Add it'),
+      el('p', { class: 'form-note' }, 'A criterion is a question to compare features against. ' +
+        '"Lower is better" is for costs — maintenance effort, risk, migration pain — where ' +
+        'the best feature is the one with the smallest number. Adding one needs contributor ' +
+        'access to this project.')
+    ]));
+    return el('div', { class: 'crit-manage' }, parts);
   }
 
-  function optionsHTML() {
-    return state.features.map(function (f) {
-      return '<option value="' + esc(String(f.id)) + '">' + esc(f.title) + '</option>';
-    }).join('');
+  function flatten(nodes) {
+    return nodes.reduce(function (out, node) {
+      return out.concat(Array.isArray(node) ? flatten(node) : [node]);
+    }, []);
   }
 
   function render() {
-    root.innerHTML = tableHTML() + controlsHTML() + manageHTML();
+    root.replaceChildren.apply(root, flatten([tableNodes(), controlsNode(), manageNode()]));
     root.setAttribute('aria-busy', 'false');
   }
 
@@ -396,9 +420,9 @@
 
   function readWeights() {
     var out = {};
-    Array.prototype.forEach.call(root.querySelectorAll('[data-weight]'), function (el) {
-      var id = el.getAttribute('data-weight');
-      var v = parseFloat(el.value);
+    Array.prototype.forEach.call(root.querySelectorAll('[data-weight]'), function (node) {
+      var id = node.getAttribute('data-weight');
+      var v = parseFloat(node.value);
       if (!isNaN(v) && v >= 0) out[id] = v;
     });
     return out;
@@ -545,8 +569,6 @@
           return loadCriteria().then(function () { return rank(bits.join(' ')); });
         })
         .catch(function (err) {
-          // A re-vote on the same pair is refused as a double count, which is worth
-          // saying in those words rather than as a bare 400.
           say('Not recorded: ' + refusal(err), true);
         })
         .then(function () { t.disabled = false; });

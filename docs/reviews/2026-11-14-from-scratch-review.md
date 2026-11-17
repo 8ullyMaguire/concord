@@ -12,6 +12,11 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 2b third slice: `criteria.js` has no string sink (D-13).** All five HTML builders became `el()`
+  trees; the checker feeds hostile names, titles, ids, descriptions, profiles and a hostile error through the shipped page.
+  RED mutation (`a string sink was used`) and GREEN restore measured. The census now counts sink syntax, 125→123; the
+  earlier textual 139→137 count included comments and is superseded.
+
 - **2026-11-17 — step 2b second slice: `list.js` has no string sink (D-12).** All four sinks went through `el()`;
   hostile title, URL, description, category and API error are text/attributes in the shipped file. The page checker was
   RED-mutation proven and restored GREEN. The census now counts `insertAdjacentHTML` as well as `innerHTML`: 139→137.

@@ -150,10 +150,17 @@ if command -v node >/dev/null 2>&1; then
   fi
   if node scripts/parity/check_dom_list.js crates/web/assets/js/dom.js crates/web/assets/js/list.js >"$SCRATCH/dom-list.log" 2>&1; then
     tail -1 "$SCRATCH/dom-list.log" | sed 's/^/js: /'
-    echo "js: string sinks remaining in assets: $(grep -rhoE 'innerHTML|insertAdjacentHTML' crates/web/assets/js/*.js | wc -l)"
   else
     cat "$SCRATCH/dom-list.log"
     bad "the list page regained an HTML string sink"
+  fi
+  if node scripts/parity/check_dom_criteria.js crates/web/assets/js/dom.js crates/web/assets/js/criteria.js >"$SCRATCH/dom-criteria.log" 2>&1; then
+    tail -1 "$SCRATCH/dom-criteria.log" | sed 's/^/js: /'
+    # Count write/call syntax, not the word in a comment: the census is a ratchet on sinks, not on prose.
+    echo "js: string sinks remaining in assets: $(grep -rhoE '\.innerHTML[[:space:]]*=|\.insertAdjacentHTML[[:space:]]*\(' crates/web/assets/js/*.js | wc -l)"
+  else
+    cat "$SCRATCH/dom-criteria.log"
+    bad "the criteria page regained an HTML string sink"
   fi
 fi
 
