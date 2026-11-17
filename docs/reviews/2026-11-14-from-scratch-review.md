@@ -17,7 +17,13 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   `Missing request extension`** on all eight; the conversions were reverted, 95 handlers pinned, `bearer_user` 40. The
   repo's `anonymous_reads_are_not_declared_private` test already listed those paths as anonymous-by-design. The structural
   test now verifies each pinned handler has a registered enforced `(method, path)` row, and the corrected audit finds 0
-  enforced routes with a duplicate lookup. Live re-proof of the revert pending.
+  enforced routes with a duplicate lookup.
+  ```
+  cargo test -p concord-app --lib policy: 7 passed; 0 failed
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live 66ba49a: eight anon reads 200/404, no 500 · walk 0 holes · headers PASS · JS PASS · CI 43991394503 success
+  ```
+
   Mutation proof of the new cross-check: un-enforcing the `edit_feature` row reddened
   `the_enforced_gate_supplies_identity_to_its_handler` with `edit_feature is pinned but no (method, path) row is enforced`
   (and `the_enforced_set_is_a_ratchet`); restoring it returned `7 passed; 0 failed`.
