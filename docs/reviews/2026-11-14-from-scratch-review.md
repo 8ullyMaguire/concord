@@ -14,7 +14,12 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
 
 - **2026-11-17 — step 2b twenty-eighth slice: `project.js` outer states are nodes.** Empty-slug, skeleton, 404, 401 and
   load-failure states use `el()`; `skeleton.js` gained `titleNode()`/`textNode()`. `check_dom_project.js` RED/GREEN;
-  census 7→4 (1 allowlisted). Main `render()` remains a string; D-16 still open for it.
+  census 7→2 (1 allowlisted). Main `render()` remains a string; D-16 still open for it.
+  ```
+  check_dom_project outer states: PASS — slug is text, skeleton and refusals are nodes
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS · sinks 2 · allowlisted 1
+  live 6267468: served assets PASS checker · walk 0 holes · CI 44054471991 success
+  ```
 
 - **2026-11-17 — step 2b twenty-seventh slice: `curation.js` has no string sink.** The list refresh clear became
   `replaceChildren()`; `check_dom_curation.js` RED/GREEN covered hostile prose, append/refresh, vote, undo and both

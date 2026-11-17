@@ -507,9 +507,13 @@ Unclaimed rows are fair game.
 **2b twenty-eighth slice landed 2026-11-17:** `project.js` outer states (empty slug, skeleton, 404, 401, load failure)
   are now `el()` trees; `skeleton.js` gained node twins `titleNode()`/`textNode()` used by the project page. The main
   `render()` string and its `ConcordPanels`/`ConcordArena` contracts remain — D-16 is still open for that slice.
-  Census 7→4 (1 allowlisted): `project.js` 1, `markdown.js` 1 allowlisted. `check_dom_project.js` RED/GREEN covered
+  Census 7→2 (1 allowlisted): `project.js` 1, `markdown.js` 1 allowlisted. `check_dom_project.js` RED/GREEN covered
   hostile slug text, three skeleton lines, auth link, HTTP status and no sink writes.
-  **2b left:** the remaining 4 real string sinks (1 allowlisted in markdown.js) — the single non-allowlisted one is
+**Live (`6267468`):** `/version` equality True (masked display checked programmatically); served `dom.js`,
+  `skeleton.js` and `project.js` pass `check_dom_project.js`. `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`,
+  headers PASS, CI `44054471991` success.
+
+  **2b left:** the remaining 2 real string sinks (1 allowlisted in markdown.js) — the single non-allowlisted one is
   `project.js`'s `render()`, gated on D-16's remaining helper-contract conversion.
 **Live (`d76a47e`):** `/version` equality True; the served `/assets/js/dom.js` and `/assets/js/curation.js` pass
   `check_dom_curation.js`. `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS,
