@@ -15,6 +15,11 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
 - **2026-11-17 — step 2b twentieth slice: `board.js` has no string sink.** Columns/cards, move controls, milestone
   filter, skeleton and all empty/error states are `el()` trees; `check_dom_board.js` RED/GREEN covered hostile fields,
   a refused move and five other states. Census 41→34 (1 allowlisted).
+  ```
+  check_dom_board: PASS — hostile columns/cards and refusals are text, attrs verbatim
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS · sinks 34 · allowlisted 1
+  live e91c55c: served asset PASS checker · walk 0 holes · CI 44027725594 success
+  ```
 
 - **2026-11-17 — step 2b nineteenth slice: `documents.js` has no string sink.** Rail, list, reader, TOC, lazy sections,
   skeleton and error states are `el()` trees; the single Markdown sink moved into `ConcordMarkdown.renderInto` (D-15).
