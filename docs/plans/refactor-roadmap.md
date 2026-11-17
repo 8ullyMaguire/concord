@@ -650,6 +650,14 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-46 (step 3, 2026-11-17): a method chain takes `.post(...)` after a moved `get(...)`, not a second `axum::routing::`.**
+  api/milestones.rs owns the two milestone readers, roadmap, milestone_write_context/refusal/ids/fields, six writes and
+  seven routes (227 lines plus 27 route lines; lib.rs 5231 -> 4977). Rewriting the extracted route stanzas with a naive
+  string replacement produced `.get(...).axum::routing::patch(...)` and a duplicated roadmap route; cargo check named both.
+  D-20 still holds: get_milestone stays root-owned, but its GET+PATCH route lives with the milestone writes. Shared
+  write_error and FeatureQuery stay root-owned (D-41/D-43). Verified: policy 7 passed, route_policies PASS (203 declared),
+  replay 0 disagreed of 16 checked, 5 skipped.
+
 * **D-45 (step 3, 2026-11-17): destructive verdict code moves byte-for-byte, with its routes.**
   The reject and merge_complaints handlers (62 lines) moved into the existing api/complaints.rs together with their two
   routes; lib.rs 5301 -> 5231. SHA-256 of the rstripped verdict block in HEAD:lib.rs and in api/complaints.rs matches —

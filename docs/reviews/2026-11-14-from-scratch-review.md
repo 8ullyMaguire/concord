@@ -61,6 +61,11 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44182701701 success
   ```
 
+- **2026-11-17 — step 3 twenty-ninth pure move: api/milestones.rs (D-46).** Milestone reads, roadmap, helpers, six writes
+  and seven routes moved (227 lines plus 27 route lines); lib.rs 5231 -> 4977. RED: naive route rewrite produced nested
+  axum::routing calls and a duplicate roadmap route; fixed to `.method()` chaining. Policy 7 passed; 0 failed,
+  route_policies PASS, replay 0 disagreed of 16 checked, 5 skipped.
+
 - **2026-11-17 — step 3 twenty-eighth pure move: complaint verdicts into api/complaints.rs (D-45).** reject and
   merge_complaints (62 lines) plus two routes moved; lib.rs 5301 -> 5231. Byte-identical block proven by SHA-256 of the
   rstripped source slice. Policy 7 passed; 0 failed, route_policies PASS, replay 0 disagreed of 16 checked, 5 skipped.
