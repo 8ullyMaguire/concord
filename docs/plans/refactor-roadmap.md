@@ -485,6 +485,9 @@ Unclaimed rows are fair game.
   **2b twenty-fourth slice landed 2026-11-17:** `project-writes.js` lost its four duplicate-panel sinks; its `panel()`
   string contract is unchanged so `project.js` keeps working, but panel fills are `el()` trees. `check_dom_project_writes.js`
   RED/GREEN covered hostile matches, coverage, all refusals and both field-report writes. Census 19→15 (1 allowlisted).
+  **Live (`6800e66`):** `/version` equality True; the served `/assets/js/dom.js` and `/assets/js/project-writes.js` pass
+  `check_dom_project_writes.js`. `anonymous_walk: 0 holes · 0 declared but not enforced · PASS`, headers PASS,
+  CI `44043109307` success.
   **2b left:** the remaining 15 real string sinks (1 allowlisted in markdown.js). **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
 | 3 | split `lib.rs` by resource, zero behaviour change | open |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
