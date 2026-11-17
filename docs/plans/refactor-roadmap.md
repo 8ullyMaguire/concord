@@ -650,6 +650,14 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-43 (step 3, 2026-11-17): cut at the next resource's doc comment, and leave shared types at the root.**
+  api/features.rs owns the feature catalogue, FileFeatureRequest, file/edit/status handlers and three routes
+  (257 lines; lib.rs 5789 -> 5521). The first cut swept `list_complaints`, `list_milestones` and `roadmap` into the module and
+  cname reported E0425 for those handlers; the checkout was reverted and the cut redrawn at the complaints doc comment.
+  FeatureQuery and write_error stay root-private (D-41): complaints, milestones and roadmap share the query struct, and
+  complaint handlers share the error mapper. Verified: 7 passed, route_policies PASS (203 declared), replay 0 disagreed of
+  18 checked, 3 skipped. Rejected: moving the three shared handlers and their routes just to keep the first cut.
+
 * **D-42 (step 3, 2026-11-17): policy test lookups must follow every moved handler.**
   api/project_lifecycle.rs owns CreateProjectRequest, ArchiveRequest, project_maintainer and five lifecycle handlers plus
   five routes (274 lines; lib.rs 6070 -> 5789). The policy test reddened at create_project exists because it still searched

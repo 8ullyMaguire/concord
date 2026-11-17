@@ -26,3 +26,4 @@ pub mod scout;
 pub mod catalog;
 pub mod accounts;
 pub mod project_lifecycle;
+pub mod features;
