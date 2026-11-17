@@ -12,6 +12,9 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 2b fifth slice: `complaint.js` has no string sink.** Impact meter, linked rows, empty/error and
+  not-found are `el()` trees; `check_dom_complaint.js` RED mutation and GREEN restore measured. Census 119→115.
+
 - **2026-11-17 — step 2b fourth slice: `consensus.js` has no string sink.** Three list clears became `replaceChildren()`,
   the decision-record link became an `el()` tree. `check_dom_consensus.js` RED mutation (`wrote to an HTML string sink`)
   and GREEN restore measured. Census 123→119.
