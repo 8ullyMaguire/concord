@@ -15,6 +15,11 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
 - **2026-11-17 — step 2b twenty-first slice: `search.js` has no string sink.** Result cards, health bars, tag chips,
   skeleton and both empty/failure states are `el()` trees; `check_dom_search.js` RED/GREEN covered hostile fields and
   chip toggle semantics. Census 34→29 (1 allowlisted).
+  ```
+  check_dom_search: PASS — hostile results and tags are text, hrefs verbatim
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS · sinks 29 · allowlisted 1
+  live bf06d9a: served assets PASS checker · walk 0 holes · CI 44030180561 success
+  ```
 
 - **2026-11-17 — step 2b twentieth slice: `board.js` has no string sink.** Columns/cards, move controls, milestone
   filter, skeleton and all empty/error states are `el()` trees; `check_dom_board.js` RED/GREEN covered hostile fields,
