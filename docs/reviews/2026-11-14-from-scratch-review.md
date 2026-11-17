@@ -12,6 +12,12 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 3 third pure move: `api/board.rs` (D-20).** `get_board`, `move_card` and both query structs
+  moved verbatim (97 lines); `lib.rs` 9,967 → 9,866. Board PUT left its old `MethodRouter` chain and joined the
+  module's `routes()`; paths are distinct so dispatch order is unchanged. RED: `pub mod board;` before `//!` module
+  docs gave E0753; fixed by placing declarations after the docs. `cargo check`: `Finished dev profile`;
+  policy `7 passed; 0 failed`; `route_policies: PASS`; parity replay `0 disagreed of 18 checked, 3 skipped`.
+
 - **2026-11-17 — step 3 second pure move: `api/records.rs` (D-19).** `document_kinds` and `search_documents`
   moved verbatim with their two routes; `lib.rs` 10,020 → 9,967 lines. RED: `use super::{…}` gave
   `E0432: no AppState in api`; switched to `crate::{…}`, and `project_for` became `pub(crate)` so the

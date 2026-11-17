@@ -650,6 +650,14 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-20 (step 3, 2026-11-17): a module may own a route that was inside another `MethodRouter` chain.**
+  `api/board.rs` owns `get_board`, `move_card`, `BoardQuery` and `MoveQuery` (97 lines; `lib.rs` 9,866). The board PUT was
+  one stanza of a long chain; it was removed there and registered by `api::board::routes()` at the GET board position.
+  Paths are distinct, so route order does not change dispatch; policy `7 passed; 0 failed`, `route_policies: PASS`.
+  `api/mod.rs` declares `//!` module docs before any `pub mod` item — placing `pub mod board;` first gave E0753
+  (`//!` after an item). Rejected: qualifying a single handler in `lib.rs` while leaving its sibling in a module,
+  which would split one resource across two files.
+
 * **D-19 (step 3, 2026-11-17): nested `api/*.rs` import from `crate::`, not `super::`.**
   `api/records.rs` owns `document_kinds` and `search_documents` (52 lines moved; `lib.rs` 9,967 lines).
   `super::{bearer_user, …}` resolved to `api`, not the crate root — RED `E0432: no AppState in api`;
