@@ -534,7 +534,7 @@ Unclaimed rows are fair game.
 
   **D-16 closed:** no unblock remains for this row. The helper modules keep their string exports for their other callers;
   the project page composes only node trees. D-14 is superseded for this page: arena controls are nodes. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
-| 3 | split `lib.rs` by resource, zero behaviour change | **in progress**: two pure modules landed live (`ed1488c` meta, next records); `api/meta.rs` — `healthz`, `version`, 3 routes; `lib.rs` 10,043 → 10,020 lines. `git show --stat`: 41 added in `api/meta.rs`, 25 removed from `lib.rs`. Policy scanner follows `api/*.rs`. Gate `pages 132/132 · rate PASS`, live both health paths `200 {"status":"ok"}`, walk PASS, CI `44063176583`. Second module `api/records.rs` live (`d96eeb8`): 52 lines moved, `lib.rs` 9,967 lines, kinds `200 dict 1`, search `200 list 2`, CI `44065751641`. |
+| 3 | split `lib.rs` by resource, zero behaviour change | **in progress**: two pure modules landed live (`ed1488c` meta, next records); `api/meta.rs` — `healthz`, `version`, 3 routes; `lib.rs` 10,043 → 10,020 lines. `git show --stat`: 41 added in `api/meta.rs`, 25 removed from `lib.rs`. Policy scanner follows `api/*.rs`. Gate `pages 132/132 · rate PASS`, live both health paths `200 {"status":"ok"}`, walk PASS, CI `44063176583`. Second module `api/records.rs` live (`d96eeb8`): 52 lines moved, `lib.rs` 9,967 lines, kinds `200 dict 1`, search `200 list 2`, CI `44065751641`. Third module `api/board.rs` live (`4ea99f5`): 97 lines moved, `lib.rs` 9,866 lines, board `200 dict cards 329`, move anon `403 consent_required`, CI `44067946502`. |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
 | 6 | one pagination convention, gate-enforced | open |
@@ -682,6 +682,10 @@ tell the difference between "not started" and "waiting".
   **Second module (`d96eeb8`):** `document_kinds`/`search_documents` + 2 routes moved; `git show --stat` 75 added in
   `api/records.rs`, 57 changed in `lib.rs` (52 handler lines removed). Live `/documents/kinds` `200 dict 1`,
   `/documents/search?q=test&limit=2` `200 list 2`; `/version` equality True; walk PASS; headers PASS; CI `44065751641`.
+  **Third module (`4ea99f5`):** `get_board`/`move_card` + both query structs + 2 routes moved; `git show --stat` 123 added in
+  `api/board.rs`, 103 changed in `lib.rs` (97 handler lines removed). Live board `200 dict cards 329`;
+  anonymous `PUT …/move?to=done` `403 consent_required` (registered and gated, not 404); `/version` equality True;
+  walk PASS; headers PASS; CI `44067946502`.
 
 * **D-17 (step 2b, 2026-11-17): the project page owns its node renderers; D-14/D-16 are closed.** `project-render.js`
   builds every panel, form, arena control and work item with `el()`. Rejected: parsing the old concatenated HTML strings
