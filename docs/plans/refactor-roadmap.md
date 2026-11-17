@@ -650,6 +650,15 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-21 (step 3, 2026-11-17): the pinned-handler test must search `api/*.rs` too, and use the same route oracle.**
+  Moving `list_notifications`/`mark_notification_read`/`mark_all_notifications_read` into `api/notifications.rs`
+  (45 lines; `lib.rs` 9,810) reddened the test twice: first `mark_all_notifications_read exists` (the body lookup read only
+  `SOURCE`), then `mark_all_notifications_read is pinned but no (method, path) row is enforced` (the route scan did too).
+  The test now searches `SOURCE` plus `api/*.rs` sources for the body, and uses `router_body()`'s already-blanked
+  combined source for routes. No policy row was relaxed: `7 passed; 0 failed`, `route_policies: PASS`, parity replay
+  `0 disagreed of 18 checked, 3 skipped`. Rejected: exempting module-owned handlers from the pin — that would make the
+  gate's identity promise unverifiable for exactly the handlers being moved.
+
 * **D-20 (step 3, 2026-11-17): a module may own a route that was inside another `MethodRouter` chain.**
   `api/board.rs` owns `get_board`, `move_card`, `BoardQuery` and `MoveQuery` (97 lines; `lib.rs` 9,866). The board PUT was
   one stanza of a long chain; it was removed there and registered by `api::board::routes()` at the GET board position.

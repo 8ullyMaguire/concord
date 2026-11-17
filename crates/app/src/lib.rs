@@ -462,18 +462,7 @@ pub fn router(state: AppState) -> Router {
             "/api/v1/projects/{slug}/moderation/arena/restore",
             post(arena_restore),
         )
-        .route(
-            "/api/v1/notifications",
-            get(list_notifications),
-        )
-        .route(
-            "/api/v1/notifications/read-all",
-            post(mark_all_notifications_read),
-        )
-        .route(
-            "/api/v1/notifications/{id}/read",
-            post(mark_notification_read),
-        )
+        .merge(api::notifications::routes())
         .route(
             "/api/v1/projects/{slug}/features/{feature}/solution-call",
             get(solution_call_readiness).post(open_solution_call),
@@ -1772,7 +1761,7 @@ async fn project_by_id(
 }
 
 /// Parse a path id, naming the segment that was wrong.
-fn parse_id(raw: &str, what: &str) -> Result<i64, ApiError> {
+pub(crate) fn parse_id(raw: &str, what: &str) -> Result<i64, ApiError> {
     raw.parse::<i64>()
         .map_err(|_| ApiError::invalid_request(format!("{what} must be an integer")))
 }
@@ -2375,51 +2364,6 @@ async fn call_fallback(
         "call_id": call_id,
         "fallback": chain,
     })))
-}
-
-/// `GET /api/v1/notifications` — the reader's own inbox, newest first, with the badge.
-///
-/// `limit` outside `1..=200` becomes 50 rather than a 400: the header asks for this on every render, and a
-/// bad numeral must not take the page down with it.
-async fn list_notifications(
-    State(state): State<AppState>,
-    Query(query): Query<std::collections::HashMap<String, String>>,
-    Extension(user): Extension<concord_db::auth::User>,
-) -> Result<Json<Value>, ApiError> {
-    let limit = query
-        .get("limit")
-        .and_then(|value| value.parse::<i64>().ok())
-        .unwrap_or(50);
-    let inbox = concord_db::notifications::list(&state.pool, user.id, limit)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::to_value(inbox).map_err(internal)?))
-}
-
-/// `POST /api/v1/notifications/{id}/read` — idempotent, and only ever the reader's own row.
-async fn mark_notification_read(
-    State(state): State<AppState>,
-    Path(id): Path<String>,
-    Extension(user): Extension<concord_db::auth::User>,
-) -> Result<Json<Value>, ApiError> {
-    let id = parse_id(&id, "notification id")?;
-    match concord_db::notifications::mark_read(&state.pool, user.id, id).await {
-        Ok(()) => Ok(Json(serde_json::json!({ "id": id, "read": true }))),
-        // Not found and not yours are the same answer: a distinct one would confirm the id is real.
-        Err(sqlx::Error::RowNotFound) => Err(ApiError::not_found(format!("notification {id}"))),
-        Err(error) => Err(internal(error)),
-    }
-}
-
-/// `POST /api/v1/notifications/read-all` — clears the badge and says how many rows it took.
-async fn mark_all_notifications_read(
-    State(state): State<AppState>,
-    Extension(user): Extension<concord_db::auth::User>,
-) -> Result<Json<Value>, ApiError> {
-    let cleared = concord_db::notifications::mark_all_read(&state.pool, user.id)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::json!({ "read": cleared })))
 }
 
 /// `GET /api/v1/curation` — §4's queue: every proposal kind and every reviewed act, one page.

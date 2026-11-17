@@ -614,6 +614,22 @@ mod tests {
             source[start..=close].to_string()
         }
 
+        // Step 3 moved pinned handlers into `api/*.rs`. Search there too, or a pure
+        // move reads as a handler that stopped consuming the gate's identity.
+        let mut sources = vec![SOURCE.to_string()];
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/api");
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            let mut paths: Vec<_> = entries.filter_map(Result::ok).map(|e| e.path()).collect();
+            paths.sort();
+            for path in paths {
+                if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                    if let Ok(text) = std::fs::read_to_string(path) {
+                        sources.push(text);
+                    }
+                }
+            }
+        }
+
         for name in [
             "create_project",
             "declare_ai_involvement",
@@ -711,7 +727,12 @@ mod tests {
             "list_invites",
             "next_vote_pair",
         ] {
-            let body = function(SOURCE, name);
+            let source = sources
+                .iter()
+                .find(|text| text.contains(&format!("async fn {name}(")))
+                .map(String::as_str)
+                .unwrap_or(SOURCE);
+            let body = function(source, name);
             assert!(
                 body.contains("Extension(user): Extension<concord_db::auth::User>"),
                 "{name} no longer consumes the identity the gate supplies"
@@ -721,16 +742,18 @@ mod tests {
             // A pinned handler must actually sit on an enforced (method, path) row. Without this check a
             // same-path POST row can satisfy a GET handler, and the handler then asks for an extension the
             // gate never inserts — a 500 on every anonymous request that the handler-only assertions miss.
-            let blanked = blank_out(SOURCE);
+            // `router_body()` is the same oracle the stale-row test uses: lib.rs plus
+            // every api/*.rs source, already blanked. A module-owned route must count.
+            let (routes_raw, routes_blanked) = router_body();
             let mut cursor = 0usize;
             let mut enforced_route = false;
-            while let Some(at) = blanked[cursor..].find(".route(") {
+            while let Some(at) = routes_blanked[cursor..].find(".route(") {
                 let at = cursor + at;
                 let open = at + ".route".len();
-                let Some(close) = closing_paren(&blanked, open) else { break };
-                let expression = &blanked[open..close];
+                let Some(close) = closing_paren(&routes_blanked, open) else { break };
+                let expression = &routes_blanked[open..close];
                 if expression.contains(&format!("({name})")) {
-                    let raw = &SOURCE[open..close];
+                    let raw = &routes_raw[open..close];
                     if let Some(quote) = raw.find('"') {
                         let after = &raw[quote + 1..];
                         if let Some(end) = after.find('"') {
