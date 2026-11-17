@@ -19,6 +19,13 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44133293671 success
   ```
 
+- **2026-11-17 — step 3 twenty-third module live (213364c).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: projects 200 (73) · suki 200 dict · unknown slug 404 (existing envelope)
+  anonymous_walk: 0 holes · headers PASS · CI 44137911389 success
+  ```
+
 - **2026-11-17 — step 3 twenty-third pure move: api/catalog.rs (D-40).** Two catalogue reads moved (20 lines);
   lib.rs 6170 -> 6149. RED: route_policies.py crashed because its router-end marker was the moved `list_projects` handler;
   scanner now finds the first function after router() and sees all three /projects method routes. Policy 7 passed; 0 failed,
