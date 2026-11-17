@@ -61,6 +61,10 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44182701701 success
   ```
 
+- **2026-11-17 — live defect after fef1a22: milestones 404 (D-47).** Live anon GET /projects/suki/milestones and
+  /roadmap both answered 404 despite gate PASS. Cause: api/milestones.rs routes() was never merged into lib.rs.
+  The route_policies gate was strengthened to require every routes() module to be mounted: RED unmerged: 1 - milestones,
+  FAIL exit 1; after adding `.merge(api::milestones::routes())`, unmerged: 0, PASS.
 - **2026-11-17 — step 3 twenty-ninth pure move: api/milestones.rs (D-46).** Milestone reads, roadmap, helpers, six writes
   and seven routes moved (227 lines plus 27 route lines); lib.rs 5231 -> 4977. RED: naive route rewrite produced nested
   axum::routing calls and a duplicate roadmap route; fixed to `.method()` chaining. Policy 7 passed; 0 failed,

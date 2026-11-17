@@ -233,6 +233,24 @@ def main() -> int:
         print(f"// exceptions applied: {applied} of {len(EXCEPTIONS)}", file=sys.stderr)
         return 0
 
+    # D-47: a module can declare routes perfectly and still be absent from router().
+    # The policy table then agrees with an unmounted route set and every targeted
+    # gate stays green while the live site answers 404. Require every api module
+    # that declares routes() to be merged into lib.rs.
+    lib_text = APP.read_text()
+    unmerged = []
+    modules = sorted(APP_SRC.glob("api/*.rs"))
+    for module in modules:
+        text = module.read_text()
+        if "pub fn routes()" not in text:
+            continue
+        call = f"api::{module.stem}::routes()"
+        if call not in lib_text:
+            unmerged.append(module.stem)
+    print(f"api route modules: {len(modules)}; unmerged: {len(unmerged)}")
+    for name in unmerged:
+        print(f"  unmerged: {name} - routes() exists but lib.rs never mounts api::{name}::routes()")
+
     api = [(m, p, h) for m, p, h in found if p.startswith("/api/")]
     pages = [(m, p, h) for m, p, h in found if not p.startswith("/api/")]
     have = declared()
@@ -253,7 +271,7 @@ def main() -> int:
     for method, path in stale[:6]:
         print(f"  stale: {method:6} {path}")
 
-    if missing or stale:
+    if missing or stale or unmerged:
         print("route_policies: FAIL")
         return 1
     print("route_policies: PASS — every registered route declares who may call it")

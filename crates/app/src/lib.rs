@@ -437,6 +437,7 @@ pub fn router(state: AppState) -> Router {
         // Three reads an operator page stands on. Batched because each is one read over a table the port already owns, and because
         // they share the rule that a missing measurement is not a zero and an empty set is not null.
         // The two destructive ops writes: an emergency power being lifted, and one complaint folded into another.
+        .merge(api::milestones::routes())
         .merge(api::emergency_holds::routes())
         .merge(api::ops_reads::routes())
         // §4.3's global taxonomy: the vocabulary that may not grow by being mentioned. Four routes, one cluster — the list is what

@@ -650,6 +650,13 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-47 (step 3, 2026-11-17): a declared module must be mounted in router().**
+  Live milestones answered 404 on fef1a22 although the stamped gate said PASS: api/milestones.rs had routes() but lib.rs
+  never called `.merge(api::milestones::routes())`. route_policies pretended to check registration by scanning every
+  api/*.rs file, so an unmounted module still looked registered. The scanner now requires every module declaring routes()
+  to be merged into lib.rs. RED before the fix: unmerged: 1 - milestones, route_policies: FAIL (exit 1); GREEN after:
+  api route modules: 29; unmerged: 0, route_policies: PASS. The exact missing merge was added. Rejected: trusting the
+  132/132 page check as evidence for API routes it never probes.
 * **D-46 (step 3, 2026-11-17): a method chain takes `.post(...)` after a moved `get(...)`, not a second `axum::routing::`.**
   api/milestones.rs owns the two milestone readers, roadmap, milestone_write_context/refusal/ids/fields, six writes and
   seven routes (227 lines plus 27 route lines; lib.rs 5231 -> 4977). Rewriting the extracted route stanzas with a naive
