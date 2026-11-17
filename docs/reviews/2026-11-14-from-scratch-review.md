@@ -14,7 +14,7 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
 
 - **2026-11-17 — step 3 fifteenth pure move: `api/identity.rs` (D-32).** D-31 unblock landed first (`a26e5e5`): policy
   test now brace-matches `auth_gate` across all sources, `7 passed; 0 failed`. Then the whole consent/guest/login/middleware
-  section moved (589 lines); `lib.rs` 8,141 → 7,546. RED: missing imports (`policy`, `TOKEN_NOTE`, `Value`, `IntoResponse`)
+  section moved (589 lines); `lib.rs` 8,141 → 7,550. RED: missing imports (`policy`, `TOKEN_NOTE`, `Value`, `IntoResponse`)
   and lib.rs middleware names; fixed. `credential_tests` moved with it: `4 passed; 0 failed`; policy `7 passed; 0 failed`,
   `route_policies: PASS`, replay `0 disagreed of 16 checked, 5 skipped`.
 
@@ -172,6 +172,13 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
   live: admin-ledger anon 401 · rising 200 [] · lists 200 (2)
   anonymous_walk: 0 holes · headers PASS · CI 44098171339 success
+  ```
+
+- **2026-11-17 — step 3 fifteenth module live (`012fad1`).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: guest 200 (8) · consent anon 200 · login anon 422 · logout anon 204
+  anonymous_walk: 0 holes · headers PASS · CI 44102040582 success
   ```
 
 - **2026-11-17 — step 3 first pure move: `api/meta.rs` (D-18).** `healthz` and `version` plus their three routes moved
