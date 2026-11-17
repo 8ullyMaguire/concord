@@ -22,3 +22,4 @@ pub mod emergency_holds;
 pub mod taxonomy;
 pub mod ops_writes;
 pub mod forgejo_webhook;
+pub mod scout;

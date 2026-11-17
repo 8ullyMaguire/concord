@@ -650,6 +650,12 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-39 (step 3, 2026-11-17): a section that ends the file can move whole.**
+  api/scout.rs owns scout_report, apply_coverage and ScoutQuery (149 lines); lib.rs 6319 -> 6170. Coverage application is
+  not a separate resource here — it is a private helper called only by the report. Compiler-named imports (State, bearer_user)
+  fixed the first check. Verified: policy 7 passed; 0 failed, route_policies PASS, replay 0 disagreed of 18 checked, 3 skipped.
+  Rejected: leaving apply_coverage in lib.rs because it touches capability state; the report is its only caller.
+
 * **D-38 (step 3, 2026-11-17): a helper physical location is not its ownership.**
   app_mutant was written inside the webhook section but imported by badges, ops_writes and others via crate::app_mutant.
   Moving the webhook reddened with unresolved import crate::app_mutant; the fix hoists the helper to the crate root as the

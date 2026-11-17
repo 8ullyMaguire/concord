@@ -12,6 +12,10 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 3 twenty-second pure move: api/scout.rs (D-39).** Report, coverage helper and query struct moved
+  whole (149 lines); lib.rs 6319 -> 6170. RED: missing State and bearer_user imports; fixed. Policy 7 passed; 0 failed,
+  route_policies PASS, replay 0 disagreed of 18 checked, 3 skipped.
+
 - **2026-11-17 — step 3 twenty-first pure move: api/forgejo_webhook.rs (D-38).** Handler, HMAC helpers and date parser
   moved (397 lines); RED: unresolved import crate::app_mutant — the mutation helper lived inside this section but belongs to
   the crate, so it was hoisted to lib.rs as the only definition. No refusal text changed. Policy 7 passed; 0 failed,
