@@ -650,6 +650,15 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-34 (step 3, 2026-11-17): a resource's read half may sit thousands of lines from its writes.**
+  `api/field_reports.rs` owns `list_field_reports` (17 lines, formerly beside the capability panel) and
+  `create_field_report`/`respond_to_field_report` (112 lines, formerly beside the emergency hold) plus their two route stanzas.
+  `lib.rs` 7,144 → 7,008. No visibility promotion was needed: `project_by_id`, `readable_project`, `readable_project_segment`
+  and `write_audit` were already `pub(crate)` from earlier moves (D-25). GET+POST on `/field-reports` stay in one MethodRouter.
+  Verified: policy `7 passed; 0 failed`, `route_policies: PASS`, replay `0 disagreed of 18 checked, 3 skipped`.
+  Rejected: moving only the writes and leaving the read in `lib.rs` — one resource, two owners, and a future edit could split
+  the panel's shape from the write that populates it.
+
 * **D-33 (step 3, 2026-11-17): cut a source section at the next resource's doc comment, even mid-comment-block.**
   `api/contributions.rs` owns the feed's four handlers, the two reads under it and three helpers (403 lines;
   `lib.rs` 7,550 → 7,144). Field reports and the emergency hold live in the same source region but are separate resources,

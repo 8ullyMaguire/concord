@@ -12,6 +12,10 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 3 seventeenth pure move: `api/field_reports.rs` (D-34).** Read half (17 lines) and write half
+  (112 lines) reunited in one module; `lib.rs` 7,144 → 7,008. No RED — earlier visibility promotions supplied every dependency.
+  Policy `7 passed; 0 failed`, `route_policies: PASS`, replay `0 disagreed of 18 checked, 3 skipped`.
+
 - **2026-11-17 — step 3 sixteenth pure move: `api/contributions.rs` (D-33).** Feed + two reads + three helpers moved
   verbatim (403 lines); `lib.rs` 7,550 → 7,144. Cut before the field-report doc comment (D-28/D-33); no route behavior change.
   No RED: `cargo check` green, policy `7 passed; 0 failed`, `route_policies: PASS`, replay `0 disagreed of 18 checked, 3 skipped`.
