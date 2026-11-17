@@ -40,6 +40,13 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44150720321 success
   ```
 
+- **2026-11-17 — step 3 twenty-sixth module live (373dfc5).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: features 200 (329) · anon POST/PUT 403 consent_required
+  anonymous_walk: 0 holes · headers PASS · CI 44162505969 success
+  ```
+
 - **2026-11-17 — step 3 twenty-sixth pure move: api/features.rs (D-43).** Feature reads/writes and three routes moved
   (257 lines); lib.rs 5789 -> 5521. RED: over-wide cut included complaints/milestones/roadmap handlers (E0425 cname);
   reverted and recut at the next resource doc comment. Shared FeatureQuery/write_error stayed at root. Policy 7 passed;
