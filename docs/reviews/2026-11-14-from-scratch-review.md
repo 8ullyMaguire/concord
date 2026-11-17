@@ -12,11 +12,15 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
-- **2026-11-16 — step 1 closes (D-10)**. Eight enforced read handlers that still opened a second identity lookup now
-  take `Extension<User>`: feature solutions, alternatives, override window, deps, evidence, tags, languages and tags.
-  103 handlers pinned, `bearer_user` 40→32. A balanced-paren audit of every route registration against the policy table
-  now finds **0** enforced routes whose handler calls `bearer_user`; the 31 remaining calls are six helpers and 25
-  anonymous-by-design reads. `one_solution` (404) and `scout_report` (400) were re-probed as anonymous-allowed.
+- **2026-11-16 — D-10: a path is not a `(method, path)`. REGRESSION FOUND AND REVERTED.** Eight anonymous GET handlers were
+  converted to `Extension<User>` after an audit matched same-path enforced POST rows. Live probes returned **500
+  `Missing request extension`** on all eight; the conversions were reverted, 95 handlers pinned, `bearer_user` 40. The
+  repo's `anonymous_reads_are_not_declared_private` test already listed those paths as anonymous-by-design. The structural
+  test now verifies each pinned handler has a registered enforced `(method, path)` row, and the corrected audit finds 0
+  enforced routes with a duplicate lookup. Live re-proof of the revert pending.
+  Mutation proof of the new cross-check: un-enforcing the `edit_feature` row reddened
+  `the_enforced_gate_supplies_identity_to_its_handler` with `edit_feature is pinned but no (method, path) row is enforced`
+  (and `the_enforced_set_is_a_ratchet`); restoring it returned `7 passed; 0 failed`.
 
 - **2026-11-16 — last Account write enforced (D-9)** (step 1b, twentieth slice). `PUT /features/{feature}` refused an
   anonymous caller; its Account row is enforced (95→96), the handler takes `Extension<User>`, and `is_guest` plus the

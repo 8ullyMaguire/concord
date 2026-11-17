@@ -685,14 +685,6 @@ mod tests {
             "arena_remove",
             "release_claim",
             "edit_feature",
-            "feature_solutions",
-            "list_alternatives",
-            "get_override_window",
-            "feature_deps",
-            "feature_evidence",
-            "feature_tags",
-            "project_languages",
-            "project_tags",
             "auth_me",
             "list_notifications",
             "list_invites",
@@ -704,6 +696,41 @@ mod tests {
                 "{name} no longer consumes the identity the gate supplies"
             );
             assert!(!body.contains("bearer_user("), "{name} kept its duplicate in-handler refusal");
+
+            // A pinned handler must actually sit on an enforced (method, path) row. Without this check a
+            // same-path POST row can satisfy a GET handler, and the handler then asks for an extension the
+            // gate never inserts — a 500 on every anonymous request that the handler-only assertions miss.
+            let blanked = blank_out(SOURCE);
+            let mut cursor = 0usize;
+            let mut enforced_route = false;
+            while let Some(at) = blanked[cursor..].find(".route(") {
+                let at = cursor + at;
+                let open = at + ".route".len();
+                let Some(close) = closing_paren(&blanked, open) else { break };
+                let expression = &blanked[open..close];
+                if expression.contains(&format!("({name})")) {
+                    let raw = &SOURCE[open..close];
+                    if let Some(quote) = raw.find('"') {
+                        let after = &raw[quote + 1..];
+                        if let Some(end) = after.find('"') {
+                            let path = &after[..end];
+                            for (method, call) in [
+                                ("GET", "get("), ("POST", "post("), ("PUT", "put("),
+                                ("PATCH", "patch("), ("DELETE", "delete("),
+                            ] {
+                                if expression.contains(call)
+                                    && policy_for(method, path).map(|(_, enforced)| enforced)
+                                        == Some(true)
+                                {
+                                    enforced_route = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                cursor = close;
+            }
+            assert!(enforced_route, "{name} is pinned but no (method, path) row is enforced");
         }
         assert!(
             function(SOURCE, "create_project").contains("is_guest("),
