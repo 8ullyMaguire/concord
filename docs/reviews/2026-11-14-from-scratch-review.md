@@ -12,6 +12,12 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 3 first pure move: `api/meta.rs` (D-18).** `healthz` and `version` plus their three routes moved
+  out of `lib.rs` verbatim; `lib.rs` 10,043 → 10,020 lines. RED measurements: `routes() -> Router` gave 177 E0308
+  errors (whole chain inferred `Router<()>`); after typing it `Router<AppState>`, `cargo check` passed but the policy
+  test failed with `2 stale row(s): GET /api/v1/healthz, GET /api/v1/version` (`6 passed; 1 failed`). Both route
+  scanners now include `api/*.rs`; `7 passed; 0 failed`, `route_policies: PASS`. Corpus replay `0 disagreed`.
+
 - **2026-11-17 — step 2b twenty-ninth slice: the whole project page is a node tree (D-16 closed).** New
   `project-render.js` owns panels, forms, arena controls, work items and `render()`; `project.js` keeps loading, failure
   and wire. `check_dom_project.js` covers the populated page with hostile values; behavioral RED with an obfuscated

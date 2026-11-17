@@ -80,8 +80,11 @@ def routes() -> list[tuple[str, str, str]]:
     """[(method, path, handler)] parsed from router()'s `.route("…", handlers)` calls."""
     source = APP.read_text()
     start = source.index("pub fn router(")
-    end = source.index("/// `/healthz` answers", start)
+    end = source.index("async fn list_projects(", start)
     body = source[start:end]
+    # Step 3: module-owned routes live in crates/app/src/api/*.rs, not in router()'s body.
+    for path in sorted((APP_SRC / "api").glob("*.rs")):
+        body += "\n" + path.read_text()
     found: list[tuple[str, str, str]] = []
     cursor = 0
     while True:

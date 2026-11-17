@@ -394,7 +394,28 @@ mod tests {
                 _ => {}
             }
         }
-        (SOURCE[open..end].to_string(), blanked[open..end].to_string())
+        let mut raw = SOURCE[open..end].to_string();
+        let mut blanked_body = blanked[open..end].to_string();
+        // Step 3 moves routes into `api/*.rs`. The oracle must follow them or a pure
+        // move looks like a deleted route. Only `.route(` calls are considered below,
+        // and `blank_out` keeps comments and string literals from faking any.
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/api");
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            let mut paths: Vec<_> = entries.filter_map(Result::ok).map(|e| e.path()).collect();
+            paths.sort();
+            for path in paths {
+                if path.extension().and_then(|e| e.to_str()) != Some("rs") {
+                    continue;
+                }
+                if let Ok(text) = std::fs::read_to_string(&path) {
+                    raw.push('\n');
+                    raw.push_str(&text);
+                    blanked_body.push('\n');
+                    blanked_body.push_str(&blank_out(&text));
+                }
+            }
+        }
+        (raw, blanked_body)
     }
 
     /// The index of the `)` that closes the `(` at `open`.

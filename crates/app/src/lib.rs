@@ -16,6 +16,7 @@ use axum::{
     Json, Router,
 };
 use serde::Deserialize;
+pub mod api;
 pub mod feeds;
 pub mod finder;
 pub mod policy;
@@ -83,9 +84,7 @@ pub fn embedder_from_env() -> std::sync::Arc<dyn concord_embed::Embedder> {
 /// The router, complete for this slice.
 pub fn router(state: AppState) -> Router {
     Router::new()
-        .route("/healthz", get(healthz))
-        .route("/api/v1/healthz", get(healthz))
-        .route("/api/v1/version", get(version))
+        .merge(api::meta::routes())
         // Every page needs to know who it is looking at, and the Go's `/auth/me` is what tells it.
         .route("/api/v1/auth/me", get(auth_me))
         .route(
@@ -637,28 +636,6 @@ pub fn router(state: AppState) -> Router {
         // database round trip, and a refusal must not depend on who is calling.
         .layer(axum::middleware::from_fn_with_state(state.clone(), rate::rate_gate))
         .with_state(state)
-}
-
-/// `/healthz` answers `{"status":"ok"}` — the shape the deployed service answers, not a phrase.
-async fn healthz() -> Json<Value> {
-    Json(json!({"status": "ok"}))
-}
-
-/// The build string. During the port it names what answers, so a probe can tell the Rust service
-/// from the Go one without reading a process list.
-/// The build this process IS, in the one string the operator and the cutover gate both read.
-///
-/// `0.0.0` is what every crate in the workspace says, so it identifies nothing: after a cutover `{"version":"concord-rs 0.0.0"}` cannot
-/// tell the reader which commit is answering, which is the only question `/api/v1/version` exists to answer. `CONCORD_VERSION` is baked at
-/// compile time (see the release command in `docs/plans/port-to-profile.md`, part 77) and carries the git sha; the fallback is honest about
-/// being a build that was not stamped.
-const VERSION: &str = match option_env!("CONCORD_VERSION") {
-    Some(stamped) => stamped,
-    None => concat!("concord-rs ", env!("CARGO_PKG_VERSION"), " (unstamped build)"),
-};
-
-async fn version() -> Json<Value> {
-    Json(json!({"version": VERSION}))
 }
 
 async fn list_projects(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {

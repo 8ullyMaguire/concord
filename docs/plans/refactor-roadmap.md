@@ -534,7 +534,7 @@ Unclaimed rows are fair game.
 
   **D-16 closed:** no unblock remains for this row. The helper modules keep their string exports for their other callers;
   the project page composes only node trees. D-14 is superseded for this page: arena controls are nodes. **Live:** deployed `085cf01`, `/version` → `concord-rs 0.0.0+085cf01+vendor`, `anonymous_walk` `0 hole(s) · PASS`, `probe_security_headers` PASS, served `session.js` passes the checker. |
-| 3 | split `lib.rs` by resource, zero behaviour change | open |
+| 3 | split `lib.rs` by resource, zero behaviour change | **in progress**: first pure module `api/meta.rs` landed (`healthz`, `version`); `lib.rs` 10,043 → 10,020 lines. Policy scanner follows `api/*.rs`; gate pending. |
 | 4 | typed responses + OpenAPI + generated client (20 routes) | open |
 | 5 | events + audit projection (six write paths) | open |
 | 6 | one pagination convention, gate-enforced | open |
@@ -649,6 +649,16 @@ tell the difference between "not started" and "waiting".
   row of live surface links, rendered by the existing `home()` builder; the 50+ project list stays below. Rejected:
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
+
+* **D-18 (step 3, 2026-11-17): module routes are typed `Router<AppState>`, and the policy oracle follows `api/*.rs`.**
+  The first pure move (`api/meta.rs`: `healthz`, `/healthz`, `/api/v1/healthz`, `/api/v1/version`) initially declared
+  `routes() -> Router`, which forced the whole merged chain to `Router<()>` and produced 177 E0308 errors. Typing it
+  `Router<AppState>` restored `cargo check -p concord-app --locked` to green. The move then made the policy test red:
+  `2 stale row(s): ["GET /api/v1/healthz", "GET /api/v1/version"]` (`6 passed; 1 failed`). Both scanners —
+  `policy.rs::router_body()` and `scripts/parity/route_policies.py` — now read `crates/app/src/api/*.rs`; neither
+  policy row was relaxed. After the fix: `7 passed; 0 failed` and `route_policies: PASS`. Rejected: leaving these routes
+  in `lib.rs` to keep the test green, and deleting the policy rows — both make the oracle lie about the wire.
+  ADR 0014's corpus baseline was re-recorded first: 22 shapes, replay `0 shape(s) disagreed of 15 checked, 6 skipped`.
 
 * **D-17 (step 2b, 2026-11-17): the project page owns its node renderers; D-14/D-16 are closed.** `project-render.js`
   builds every panel, form, arena control and work item with `el()`. Rejected: parsing the old concatenated HTML strings
