@@ -12,6 +12,12 @@ Every claim below is a measurement, and the command that produced it is in the s
 scratch server; the next run, `43925202819`, passed with the same tree shape. No product code changed between them — the
 failure is a slow page read in CI, not a regression. Action if it recurs: raise `probe_pages`' socket timeout.
 
+- **2026-11-17 — step 3 fifteenth pure move: `api/identity.rs` (D-32).** D-31 unblock landed first (`a26e5e5`): policy
+  test now brace-matches `auth_gate` across all sources, `7 passed; 0 failed`. Then the whole consent/guest/login/middleware
+  section moved (589 lines); `lib.rs` 8,141 → 7,546. RED: missing imports (`policy`, `TOKEN_NOTE`, `Value`, `IntoResponse`)
+  and lib.rs middleware names; fixed. `credential_tests` moved with it: `4 passed; 0 failed`; policy `7 passed; 0 failed`,
+  `route_policies: PASS`, replay `0 disagreed of 16 checked, 5 skipped`.
+
 - **2026-11-17 — step 3 fourteenth pure move: `api/ops_reads.rs` (D-31).** Three operator reads moved verbatim (47 lines);
   `lib.rs` 8,190 → 8,141. The identity section was deferred because it carries cross-cutting middleware and a policy-test
   anchor; its unblock is recorded in D-31. No RED: `cargo check` green, policy `7 passed; 0 failed`, `route_policies: PASS`,

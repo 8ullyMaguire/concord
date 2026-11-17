@@ -650,6 +650,16 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-32 (step 3, 2026-11-17): the identity section moves after its oracle, and its whole surface becomes `pub(crate)`.**
+  `a26e5e5` first made `policy.rs`'s `auth_gate` lookup module-aware (brace-matching the whole function): `7 passed; 0 failed`.
+  Then the 589-line section moved into `api/identity.rs`; `lib.rs` 8,141 → 7,546. The router imports `auth_gate`,
+  `interaction_gate`, `flatten_error_bodies`, `security_headers`, `acting_user` and `presented_token`; other handlers and the
+  inline cookie tests live on the same surface, so every item in the section was promoted `pub(crate)` rather than one at a
+  time. Compiler-named imports (`policy`, `TOKEN_NOTE`, `Value`, `IntoResponse`) fixed the first check. Verified:
+  `cargo test -p concord-app --lib policy` `7 passed; 0 failed`, `credential_tests` `4 passed; 0 failed`,
+  `route_policies: PASS`, replay `0 disagreed of 16 checked, 5 skipped`. Rejected: moving the section before the oracle
+  change, which would have made the pin test report a missing gate.
+
 * **D-31 (step 3, 2026-11-17): identity is deferred until the middleware move can be proven as one slice.**
   The `consent gate, guest identities, and login` section holds cross-cutting middleware (`auth_gate`, `interaction_gate`,
   `security_headers`) used by every route, and `policy.rs`'s pinned-handler test anchors on `SOURCE.find("async fn auth_gate(")`.
