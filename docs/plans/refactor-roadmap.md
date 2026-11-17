@@ -621,6 +621,13 @@ tell the difference between "not started" and "waiting".
   the page migrated while four string-parsing paths remained. The gate now prints one combined count (139→137), and a page
   is only migrated when both spellings are gone. Rejected: separate ratchets for the two spellings — same defect, two names.
 
+* **D-17 (product/UX, 2026-11-17): `/` stays the catalogue and gains a compact overview above it.** No record shows a
+  decision to drop the old hero; the Rust port simply rendered the live list. The earlier three-sentence and premise-2
+  overviews were archived Go templates. Decision: one headline, one sentence, one paragraph on project surfaces and one
+  row of live surface links, rendered by the existing `home()` builder; the 50+ project list stays below. Rejected:
+  restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
+  explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
+
 * **D-13 (step 2b, 2026-11-17): the sink census counts write syntax, not the word in a comment.** After `criteria.js`
   lost its two sink assignments, a textual count still reported 137 because the file's new header comment says the word
   `innerHTML`. The gate now greps `.innerHTML =` and `.insertAdjacentHTML(`; measured from git: 125 real sinks before this
