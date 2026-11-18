@@ -130,6 +130,14 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44245668629 success
   ```
 
+- **2026-11-18 — step 3 thirty-eighth module live (416c07d).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: threads 200 list 0 · anon POST/DELETE/vote 403 consent_required
+  route_policies: PASS — 38 modules, 0 unmerged
+  anonymous_walk: 0 holes · headers PASS · CI 44248263346 success
+  ```
+
 - **2026-11-18 — step 3 thirty-eighth pure move: api/comments.rs (D-56).** Thread reads and comment writes plus three
   routes moved (95 lines); lib.rs 3013 -> 2904. Policy 7 passed; 0 failed, route_policies: 38 modules, 0 unmerged,
   replay 0 disagreed of 18 checked, 3 skipped.
