@@ -190,14 +190,6 @@ pub fn router(state: AppState) -> Router {
         .merge(api::audit::routes())
         .merge(api::priorities::routes())
         .merge(api::features::routes())
-        .route(
-            "/api/v1/projects/{slug}/features/{feature}/complaints",
-            post(link_complaint),
-        )
-        .route(
-            "/api/v1/projects/{slug}/features/{feature}/complaints/{complaint}",
-            axum::routing::delete(unlink_complaint),
-        )
         // A project's documents: written by a contributor, removed by a maintainer. The PUT is an upsert at
         // (kind, slug) that bumps `revision` rather than replacing the row, so links and comments keep resolving.
         // The contribution feed and the two reads under it. The feed ranks work ITEMS with the finder's own engine — it is
@@ -324,101 +316,6 @@ fn write_error(error: concord_db::feature_writes::WriteError) -> ApiError {
         WriteError::Forbidden(message) => ApiError::forbidden(message),
         WriteError::Database(error) => internal(error),
     }
-}
-
-#[derive(Debug, Deserialize)]
-struct LinkComplaintRequest {
-    complaint_id: i64,
-}
-
-/// `POST /api/v1/projects/{slug}/features/{id}/complaints` — attach a validated complaint.
-///
-/// Answers 200 with the feature's complaints rather than 201 with the link: the section renders its
-/// own count and must not re-read to learn what it just caused.
-async fn link_complaint(
-    State(state): State<AppState>,
-    Path((slug, feature)): Path<(String, String)>,
-    Extension(user): Extension<concord_db::auth::User>,
-    Json(body): Json<LinkComplaintRequest>,
-) -> Result<Json<Value>, ApiError> {
-    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
-        .await
-        .map_err(internal)?
-        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
-    let Ok(id) = feature.parse::<i64>() else {
-        return Err(ApiError::invalid_request("feature id must be an integer"));
-    };
-    let _ = concord_db::features::feature(&state.pool, id)
-        .await
-        .map_err(internal)?
-        .filter(|row| row.project_id == project.id)
-        .ok_or_else(|| ApiError::not_found(format!("feature {id}")))?;
-    concord_db::feature_writes::link_complaint(&state.pool, id, body.complaint_id)
-        .await
-        .map_err(write_error)?;
-    let _ = concord_db::feature_writes::add_audit(
-        &state.pool,
-        project.id,
-        user.id,
-        "link_complaint",
-        "feature",
-        id,
-        &format!("complaint {}", body.complaint_id),
-    )
-    .await;
-    let complaints = concord_db::feature_writes::feature_complaints(&state.pool, id)
-        .await
-        .map_err(write_error)?;
-    Ok(Json(json!({
-        "feature_id": id,
-        "complaints": serde_json::to_value(complaints).map_err(internal)?,
-    })))
-}
-
-/// `DELETE /api/v1/projects/{slug}/features/{id}/complaints/{complaint_id}` — the inverse.
-///
-/// The complaint id is a path segment and not a body field, because a DELETE with a body is not
-/// portable.
-async fn unlink_complaint(
-    State(state): State<AppState>,
-    Path((slug, feature, complaint)): Path<(String, String, String)>,
-    Extension(user): Extension<concord_db::auth::User>,
-) -> Result<Json<Value>, ApiError> {
-    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
-        .await
-        .map_err(internal)?
-        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
-    let Ok(id) = feature.parse::<i64>() else {
-        return Err(ApiError::invalid_request("feature id must be an integer"));
-    };
-    let Ok(complaint_id) = complaint.parse::<i64>() else {
-        return Err(ApiError::invalid_request("complaint id must be an integer"));
-    };
-    let _ = concord_db::features::feature(&state.pool, id)
-        .await
-        .map_err(internal)?
-        .filter(|row| row.project_id == project.id)
-        .ok_or_else(|| ApiError::not_found(format!("feature {id}")))?;
-    concord_db::feature_writes::unlink_complaint(&state.pool, id, complaint_id)
-        .await
-        .map_err(write_error)?;
-    let _ = concord_db::feature_writes::add_audit(
-        &state.pool,
-        project.id,
-        user.id,
-        "unlink_complaint",
-        "feature",
-        id,
-        &format!("complaint {complaint_id}"),
-    )
-    .await;
-    let complaints = concord_db::feature_writes::feature_complaints(&state.pool, id)
-        .await
-        .map_err(write_error)?;
-    Ok(Json(json!({
-        "feature_id": id,
-        "complaints": serde_json::to_value(complaints).map_err(internal)?,
-    })))
 }
 
 /// Resolve a project by slug, or the 404 envelope.

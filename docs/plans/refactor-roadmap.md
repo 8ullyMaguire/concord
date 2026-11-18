@@ -650,6 +650,12 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-70 (step 3, 2026-11-18): feature/complaint links belong to the complaint resource.**
+  LinkComplaintRequest, link_complaint, unlink_complaint and their POST/DELETE routes joined api/complaints.rs (94 lines;
+  lib.rs 1407 -> 1304). FeatureQuery and write_error stay at the crate root (D-43); the compiler named json!, which was
+  imported alongside write_error and Deserialize (D-23). Byte-identity:
+  complaint_link_block_bytes_identical True, sha256 3db1b24605a99afd. Verified: policy 7 passed; 0 failed,
+  route_policies PASS (46 modules, 0 unmerged, 203 declared), replay 0 disagreed of 16 checked, 5 skipped.
 * **D-69 (step 3, 2026-11-18): a public read of its own store table gets its own small module.**
   list_priorities reads concord_db::priorities, not features, so it moved into a new api/priorities.rs with its route
   (18 lines; lib.rs 1429 -> 1407). Declared in api/mod.rs and merged before features (D-47). Byte-identity:

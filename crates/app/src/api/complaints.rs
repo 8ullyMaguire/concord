@@ -8,11 +8,12 @@ use axum::{
     Extension, Json, Router,
 };
 use polaris_core::ApiError;
-use serde_json::Value;
+use serde::Deserialize;
+use serde_json::{json, Value};
 
 use crate::{
     bearer_user, caller_complaint, complaint_refusal, internal, readable_project_segment, require_role,
-    write_audit, AppState, FeatureQuery,
+    write_audit, write_error, AppState, FeatureQuery,
 };
 
 /// `GET /api/v1/projects/{slug}/complaints[?status=]` — the project's complaints, newest first.
@@ -225,6 +226,101 @@ async fn validate_complaint(
 }
 
 
+#[derive(Debug, Deserialize)]
+struct LinkComplaintRequest {
+    complaint_id: i64,
+}
+
+/// `POST /api/v1/projects/{slug}/features/{id}/complaints` — attach a validated complaint.
+///
+/// Answers 200 with the feature's complaints rather than 201 with the link: the section renders its
+/// own count and must not re-read to learn what it just caused.
+async fn link_complaint(
+    State(state): State<AppState>,
+    Path((slug, feature)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
+    Json(body): Json<LinkComplaintRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
+    let Ok(id) = feature.parse::<i64>() else {
+        return Err(ApiError::invalid_request("feature id must be an integer"));
+    };
+    let _ = concord_db::features::feature(&state.pool, id)
+        .await
+        .map_err(internal)?
+        .filter(|row| row.project_id == project.id)
+        .ok_or_else(|| ApiError::not_found(format!("feature {id}")))?;
+    concord_db::feature_writes::link_complaint(&state.pool, id, body.complaint_id)
+        .await
+        .map_err(write_error)?;
+    let _ = concord_db::feature_writes::add_audit(
+        &state.pool,
+        project.id,
+        user.id,
+        "link_complaint",
+        "feature",
+        id,
+        &format!("complaint {}", body.complaint_id),
+    )
+    .await;
+    let complaints = concord_db::feature_writes::feature_complaints(&state.pool, id)
+        .await
+        .map_err(write_error)?;
+    Ok(Json(json!({
+        "feature_id": id,
+        "complaints": serde_json::to_value(complaints).map_err(internal)?,
+    })))
+}
+
+/// `DELETE /api/v1/projects/{slug}/features/{id}/complaints/{complaint_id}` — the inverse.
+///
+/// The complaint id is a path segment and not a body field, because a DELETE with a body is not
+/// portable.
+async fn unlink_complaint(
+    State(state): State<AppState>,
+    Path((slug, feature, complaint)): Path<(String, String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
+) -> Result<Json<Value>, ApiError> {
+    let project = concord_db::projects::project_by_slug(&state.pool, &slug)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
+    let Ok(id) = feature.parse::<i64>() else {
+        return Err(ApiError::invalid_request("feature id must be an integer"));
+    };
+    let Ok(complaint_id) = complaint.parse::<i64>() else {
+        return Err(ApiError::invalid_request("complaint id must be an integer"));
+    };
+    let _ = concord_db::features::feature(&state.pool, id)
+        .await
+        .map_err(internal)?
+        .filter(|row| row.project_id == project.id)
+        .ok_or_else(|| ApiError::not_found(format!("feature {id}")))?;
+    concord_db::feature_writes::unlink_complaint(&state.pool, id, complaint_id)
+        .await
+        .map_err(write_error)?;
+    let _ = concord_db::feature_writes::add_audit(
+        &state.pool,
+        project.id,
+        user.id,
+        "unlink_complaint",
+        "feature",
+        id,
+        &format!("complaint {complaint_id}"),
+    )
+    .await;
+    let complaints = concord_db::feature_writes::feature_complaints(&state.pool, id)
+        .await
+        .map_err(write_error)?;
+    Ok(Json(json!({
+        "feature_id": id,
+        "complaints": serde_json::to_value(complaints).map_err(internal)?,
+    })))
+}
+
 /// Complaint read, write and verdict routes, typed on `AppState` (D-18).
 /// GET and POST stay in one MethodRouter (D-20).
 pub fn routes() -> Router<AppState> {
@@ -240,6 +336,14 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/projects/{slug}/complaints/{id}/validate",
             axum::routing::post(validate_complaint),
+        )
+        .route(
+            "/api/v1/projects/{slug}/features/{feature}/complaints",
+            axum::routing::post(link_complaint),
+        )
+        .route(
+            "/api/v1/projects/{slug}/features/{feature}/complaints/{complaint}",
+            axum::routing::delete(unlink_complaint),
         )
 
         .route(
