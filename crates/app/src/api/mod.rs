@@ -4,6 +4,7 @@
 pub mod audit;
 pub mod board;
 pub mod meta;
+pub mod priorities;
 pub mod records;
 pub mod notifications;
 pub mod invites;

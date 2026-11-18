@@ -650,6 +650,11 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-69 (step 3, 2026-11-18): a public read of its own store table gets its own small module.**
+  list_priorities reads concord_db::priorities, not features, so it moved into a new api/priorities.rs with its route
+  (18 lines; lib.rs 1429 -> 1407). Declared in api/mod.rs and merged before features (D-47). Byte-identity:
+  priorities_block_bytes_identical True, sha256 1924d043649ded40. Verified: policy 7 passed; 0 failed, route_policies
+  PASS (46 modules, 0 unmerged, 203 declared), replay 0 disagreed of 18 checked, 3 skipped.
 * **D-68 (step 3, 2026-11-18): audit reads get their own resource module.** No existing api/*.rs owned the audit
   log (write_audit is only a helper), so AuditQuery, list_audit, list_audit_actions and two routes moved into a new
   api/audit.rs (78 lines; lib.rs 1512 -> 1429), declared in api/mod.rs and merged in router(). Byte-identity:
