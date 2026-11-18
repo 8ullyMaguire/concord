@@ -642,6 +642,13 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-86 (step 3, 2026-11-18): D-48 readers complete the criteria module.** `list_criteria` and
+  `list_criteria_profiles` were the last root-owned criteria handlers; api/criteria.rs already mounted both GET routes
+  with the writes, so no route stanza changed (D-48/D-72). 33 handler lines moved; lib.rs 829 -> 795. `project_by_id`
+  and `readable_project` were imported from the crate root; `get_charter` stays there because another module imports
+  it. Byte-identity: criteria_readers_bytes_identical True, sha256 2b94019cb2229401. Verified: cargo check green,
+  policy 7 passed; 0 failed, route_policies PASS (49 modules, 0 unmerged), replay 0 disagreed of 16 checked, 5 skipped.
+
 * **D-85 (step 3, 2026-11-18): membership gets its own small module, not the accounts module.** api/accounts.rs owns
   registration, not project membership; no sibling owned the `/members` reader (D-68/D-69). api/members.rs was
   created, declared and mounted in the same edit (D-47). 20 handler lines moved; lib.rs 850 -> 829. `project_by_id`,

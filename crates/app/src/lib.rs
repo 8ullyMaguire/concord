@@ -513,40 +513,6 @@ async fn project_tags(
     Ok(Json(serde_json::json!(tags)))
 }
 
-/// `GET /api/v1/projects/{id}/criteria` — active first, then slug.
-async fn list_criteria(
-    State(state): State<AppState>,
-    Path(project): Path<String>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
-    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
-    // the top of the handler — the `project_id` the body uses is its id.
-    let project_id = project_by_id(&state, &project).await?.id;
-    let project = readable_project(&state, project_id, &headers).await?;
-    let rows = concord_db::criteria::list(&state.pool, project.id)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::json!(rows)))
-}
-
-/// `GET /api/v1/projects/{id}/criteria-profiles`
-async fn list_criteria_profiles(
-    State(state): State<AppState>,
-    Path(project): Path<String>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
-    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
-    // the top of the handler — the `project_id` the body uses is its id.
-    let project_id = project_by_id(&state, &project).await?.id;
-    let project = readable_project(&state, project_id, &headers).await?;
-    let rows = concord_db::criteria::profiles(&state.pool, project.id)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::json!(rows)))
-}
-
 /// `GET /api/v1/projects/{slug}/languages` — highest percentage first.
 async fn project_languages(
     State(state): State<AppState>,
