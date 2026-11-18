@@ -650,6 +650,12 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-64 (step 3, 2026-11-18): objection resolution belongs with the consensus resource.**
+  ResolveObjectionRequest and resolve_consensus_objection plus the PUT route joined api/consensus.rs (26 lines; lib.rs
+  1816 -> 1785). No new module declaration. The block is byte-identical to HEAD:
+  objection_block_bytes_identical True, sha256 fae744b90264dd54 (D-45). require_maintainer stays at the root (D-51).
+  Verified: policy 7 passed; 0 failed, route_policies PASS (44 modules, 0 unmerged), replay 0 disagreed of 18 checked,
+  3 skipped.
 * **D-63 (step 3, 2026-11-18): complete an existing module instead of creating a near-duplicate.**
   get_call_hold, HoldRequest and place_emergency_hold plus their GET+POST route moved into api/emergency_holds.rs
   (75 lines; lib.rs 1895 -> 1816). No new module declaration. The block is mutation-sensitive, so it was proven

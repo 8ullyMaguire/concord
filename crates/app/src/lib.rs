@@ -200,10 +200,6 @@ pub fn router(state: AppState) -> Router {
         // `/api/v1/projects/{id}/strategy/themes` (settings.js), so a port that only answered the curation queue
         // would leave the page blank with a 404 while every probe passed.
         .merge(api::notifications::routes())
-        .route(
-            "/api/v1/projects/{slug}/consensus/objections/{objection}/resolve",
-            put(resolve_consensus_objection),
-        )
         .route("/api/v1/projects/{slug}/audit", get(list_audit))
         .route(
             "/api/v1/projects/{slug}/audit/actions",
@@ -611,33 +607,6 @@ async fn require_maintainer(
         ));
     }
     Ok(())
-}
-
-#[derive(Debug, Deserialize)]
-struct ResolveObjectionRequest {
-    status: String,
-    resolution: String,
-}
-
-/// `PUT /api/v1/projects/{slug}/consensus/objections/{id}/resolve` — the objection's written answer.
-async fn resolve_consensus_objection(
-    State(state): State<AppState>,
-    Path((slug, objection)): Path<(String, String)>,
-    Extension(user): Extension<concord_db::auth::User>,
-    Json(body): Json<ResolveObjectionRequest>,
-) -> Result<Json<Value>, ApiError> {
-    let project = project_for(&state, &slug).await?;
-    require_maintainer(&state.pool, project.id, user.id).await?;
-    let objection_id = parse_id(&objection, "objection id")?;
-    concord_db::consensus_writes::resolve_objection(
-        &state.pool,
-        objection_id,
-        &body.status,
-        &body.resolution,
-    )
-    .await
-    .map_err(write_error)?;
-    Ok(Json(json!({"id": objection_id, "status": body.status})))
 }
 
 /// `GET /api/v1/projects/{slug}/charter` — the charter a project's decisions are made with.

@@ -241,6 +241,33 @@ async fn close_consensus(
 }
 
 
+#[derive(Debug, Deserialize)]
+struct ResolveObjectionRequest {
+    status: String,
+    resolution: String,
+}
+
+/// `PUT /api/v1/projects/{slug}/consensus/objections/{id}/resolve` — the objection's written answer.
+async fn resolve_consensus_objection(
+    State(state): State<AppState>,
+    Path((slug, objection)): Path<(String, String)>,
+    Extension(user): Extension<concord_db::auth::User>,
+    Json(body): Json<ResolveObjectionRequest>,
+) -> Result<Json<Value>, ApiError> {
+    let project = project_for(&state, &slug).await?;
+    require_maintainer(&state.pool, project.id, user.id).await?;
+    let objection_id = parse_id(&objection, "objection id")?;
+    concord_db::consensus_writes::resolve_objection(
+        &state.pool,
+        objection_id,
+        &body.status,
+        &body.resolution,
+    )
+    .await
+    .map_err(write_error)?;
+    Ok(Json(json!({"id": objection_id, "status": body.status})))
+}
+
 /// Consensus routes, typed on `AppState` (D-18). GET and POST on the
 /// same path stay in one module (D-20).
 pub fn routes() -> Router<AppState> {
@@ -264,5 +291,9 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/projects/{slug}/consensus/{call}/close",
             axum::routing::post(close_consensus),
+        )
+        .route(
+            "/api/v1/projects/{slug}/consensus/objections/{objection}/resolve",
+            axum::routing::put(resolve_consensus_objection),
         )
 }
