@@ -10,7 +10,10 @@ use axum::{
 };
 use polaris_core::ApiError;
 
-use crate::{bearer_user, caller_feature, internal, readable_project_segment, AppState};
+use crate::{
+    bearer_user, caller_feature, internal, project_by_id, readable, readable_project_segment,
+    STANDINGS_PER_FEATURE, AppState,
+};
 
 // ── §5.1: the solution arena's pairwise vote ──────────────────────────────────────────────────────────────────────
 
@@ -138,10 +141,183 @@ fn vote_refusal(refused: concord_db::arena_writes::Refused) -> ApiError {
 
 
 
+/// One competitor as a pair shows it: its label, its rating, and the chance it wins THIS comparison.
+#[derive(Debug, serde::Serialize)]
+struct PairSide {
+    entity_type: String,
+    entity_id: i64,
+    label: String,
+    #[serde(skip_serializing_if = "String::is_empty")]
+    slug: String,
+    r: f64,
+    rd: f64,
+    conservative: f64,
+    games: i64,
+    is_baseline: bool,
+    /// The win probability against the OTHER side, computed from the ratings BEFORE the vote — after it, the figure
+    /// would be the thing being tested.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    win_probability: Option<f64>,
+}
+
+/// `GET /projects/{id}/arenas/{arena}/next-pair` — "which comparison should I judge next?".
+///
+/// A signed-out reader has judged nothing, so the answer is the arena's most informative pair. A voter gets a pair they
+/// have not already judged, skips included, because a skip means "I don't understand this" and not a verdict.
+async fn arena_next_pair(
+    State(state): State<AppState>,
+    Path((project_id, arena_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = project_by_id(&state, &project_id).await?;
+    let user = bearer_user(&state, &headers).await?;
+    if !readable(&state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    let arena_id = match arena_id.parse::<i64>() {
+        Ok(id) if id > 0 => id,
+        _ => return Err(ApiError::invalid_request("invalid arena id")),
+    };
+    let arena = concord_db::arena::find(&state.pool, arena_id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found("no such arena"))?;
+    if arena.project_id != project.id {
+        return Err(ApiError::not_found("no such arena"));
+    }
+    let voter = user.as_ref().map(|who| who.id).unwrap_or(0);
+    let pair = concord_db::arena::next_pair(&state.pool, arena_id, voter)
+        .await
+        .map_err(internal)?;
+    let (a, b) = match pair {
+        Ok(pair) => pair,
+        // A data problem the project can fix is 400; a voter who has judged everything is 404, because the resource
+        // they asked for does not exist for them.
+        Err(concord_db::arena::NoPair::TooFewEntries) => {
+            return Err(ApiError::invalid_request(
+                "an arena needs at least two entries to compare",
+            ))
+        }
+        Err(concord_db::arena::NoPair::AllJudged) => {
+            return Err(ApiError::not_found("this voter has judged every pair"))
+        }
+    };
+    let a_win = concord_ranking::win_probability(a.r, a.rd, b.r, b.rd);
+    let b_win = concord_ranking::win_probability(b.r, b.rd, a.r, a.rd);
+    let mut sides = Vec::with_capacity(2);
+    for (entry, win) in [(&a, a_win), (&b, b_win)] {
+        let (label, slug, baseline) =
+            concord_db::arena::label_of(&state.pool, &arena.entity_type, entry.entity_id)
+                .await
+                .map_err(internal)?;
+        sides.push(PairSide {
+            entity_type: arena.entity_type.clone(),
+            entity_id: entry.entity_id,
+            label,
+            slug,
+            r: entry.r,
+            rd: entry.rd,
+            conservative: entry.conservative(),
+            games: entry.games,
+            is_baseline: entry.is_baseline || baseline,
+            win_probability: Some(win),
+        });
+    }
+    let b_side = sides.pop().unwrap_or(PairSide {
+        entity_type: arena.entity_type.clone(),
+        entity_id: 0,
+        label: String::new(),
+        slug: String::new(),
+        r: 0.0,
+        rd: 0.0,
+        conservative: 0.0,
+        games: 0,
+        is_baseline: false,
+        win_probability: None,
+    });
+    let a_side = sides.pop().unwrap_or(PairSide {
+        entity_type: arena.entity_type.clone(),
+        entity_id: 0,
+        label: String::new(),
+        slug: String::new(),
+        r: 0.0,
+        rd: 0.0,
+        conservative: 0.0,
+        games: 0,
+        is_baseline: false,
+        win_probability: None,
+    });
+    Ok(Json(serde_json::json!({
+        "arena_id": arena.id,
+        "type": arena.entity_type,
+        "question": arena.question,
+        "use_case": arena.use_case,
+        "a": a_side,
+        "b": b_side,
+    })))
+}
+
+/// `GET /projects/{id}/arenas/{arena}/verification` — replay the vote log and report whether the stored ratings are
+/// the ones the log produces.
+///
+/// **Writes nothing**, which is what makes it something any reader may run: §5.1 says "anyone can verify a ranking",
+/// and a verification only the server may perform is the promise this exists to keep. The recompute route is the
+/// repair; keeping them apart is the difference between publishing a check and publishing a button that silently
+/// rewrites a ranking.
+///
+/// Every entry is checked, not the leaderboard's first page: a verification that silently covers a subset is the
+/// failure it exists to catch.
+async fn arena_verification(
+    State(state): State<AppState>,
+    Path((project_id, arena_id)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = project_by_id(&state, &project_id).await?;
+    let user = bearer_user(&state, &headers).await?;
+    if !readable(&state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    let arena_id = match arena_id.parse::<i64>() {
+        Ok(id) if id > 0 => id,
+        _ => return Err(ApiError::invalid_request("invalid arena id")),
+    };
+    let arena = concord_db::arena::find(&state.pool, arena_id)
+        .await
+        .map_err(internal)?
+        .ok_or_else(|| ApiError::not_found("no such arena"))?;
+    if arena.project_id != project.id {
+        return Err(ApiError::not_found("no such arena"));
+    }
+    let entries = concord_db::arena::verify(&state.pool, arena_id)
+        .await
+        .map_err(internal)?;
+    let divergent = entries.iter().filter(|entry| !entry.agrees).count();
+    Ok(Json(serde_json::json!({
+        "arena_id": arena.id,
+        "agrees": divergent == 0,
+        "divergent": divergent,
+        "entries": entries,
+    })))
+}
+
+/// How many solutions ONE feature's standings render.
+///
+/// Per feature, not per project: truncating a project's whole list would hide some features entirely, and truncating
+/// within a feature hides that feature's runner-ups, which is the thing standings exist to show.
+
 /// The standalone solution-vote route, typed on `AppState` (D-18).
 pub fn routes() -> Router<AppState> {
-    Router::new().route(
-        "/api/v1/projects/{project_id}/features/{id}/solutions/vote",
-        axum::routing::post(vote_solutions),
-    )
+    Router::new()
+        .route(
+            "/api/v1/projects/{project_id}/features/{id}/solutions/vote",
+            axum::routing::post(vote_solutions),
+        )
+        .route(
+            "/api/v1/projects/{project_id}/arenas/{arena_id}/next-pair",
+            axum::routing::get(arena_next_pair),
+        )
+        .route(
+            "/api/v1/projects/{project_id}/arenas/{arena_id}/verification",
+            axum::routing::get(arena_verification),
+        )
 }

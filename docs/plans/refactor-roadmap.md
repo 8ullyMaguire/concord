@@ -650,6 +650,12 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-65 (step 3, 2026-11-18): a shared constant outranks the resource boundary.** PairSide, arena_next_pair and
+  arena_verification plus two routes joined api/arena_votes.rs (164 lines; lib.rs 1785 -> 1615). STANDINGS_PER_FEATURE
+  is imported by api/solutions.rs, so it was returned to the crate root (D-41/D-43); project_by_id and readable were
+  imported. Moved handlers remain byte-identical to HEAD: arena_read_block_bytes_identical True, sha256
+  7f44b836b3d984c3. Verified: policy 7 passed; 0 failed, route_policies PASS (44 modules, 0 unmerged), replay 0
+  disagreed of 16 checked, 5 skipped.
 * **D-64 (step 3, 2026-11-18): objection resolution belongs with the consensus resource.**
   ResolveObjectionRequest and resolve_consensus_objection plus the PUT route joined api/consensus.rs (26 lines; lib.rs
   1816 -> 1785). No new module declaration. The block is byte-identical to HEAD:
