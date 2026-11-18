@@ -650,6 +650,14 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-76 (frontend, 2026-11-18): act on the vision review's cheap, concrete findings.** After the first live pass a
+  vision review named the duplicated hero wordmark, the orphaned "code.", six text-only cards with no visual anchor, a
+  "Browse projects" label on the Features card, and a flip band with no action. Fix: remove the redundant hero brand,
+  `text-wrap: balance` on the headline, CSS `data-icon` tiles on the six cards, correct the Features link label, and
+  add one primary CTA to the flip band. Rejected: shipping an SVG icon system (the CSP and node-only renderer rules
+  make text + CSS the cheaper safe route) and rewriting consent copy (a separate decision with its own version).
+  Verified by a second browser pass and screenshots, not by assertion.
+
 * **D-74 (frontend, 2026-11-18): a mutation-test probe must never reach a shipped asset.** The browser showed
   `ReferenceError: mutant is not defined` at `project-render.js:37`, so every project overview rendered "Could not load
   project" while all fourteen API fetches returned 200. Removing the undefined token from `panelEmpty()` restores the

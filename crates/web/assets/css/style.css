@@ -2334,3 +2334,27 @@ a.curation-target:hover { text-decoration: underline; }
   box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
 }
 .project-list > li a { font-weight: 650; }
+
+/* Landing polish (D-76): a small colour-coded anchor above each text-only decision card,
+   and a balanced headline so a single word is not orphaned on desktop or mobile. */
+.grid-responsive-3 .card::before {
+  content: attr(data-icon);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin-bottom: .75rem;
+  border-radius: .6rem;
+  background: #eef2ff;
+  color: #4f46e5;
+  font-size: 1.05rem;
+  font-weight: 700;
+}
+.grid-responsive-3 .card:nth-child(2)::before { background: #fffbeb; color: #b45309; }
+.grid-responsive-3 .card:nth-child(3)::before { background: #ecfdf5; color: #047857; }
+.grid-responsive-3 .card:nth-child(4)::before { background: #f5f3ff; color: #6d28d9; }
+.grid-responsive-3 .card:nth-child(5)::before { background: #f0f9ff; color: #0369a1; }
+.grid-responsive-3 .card:nth-child(6)::before { background: #fff1f2; color: #be123c; }
+.hero-title { text-wrap: balance; }
+.flip-section .btn { margin-top: .5rem; }
