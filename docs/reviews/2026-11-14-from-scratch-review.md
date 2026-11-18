@@ -1986,3 +1986,12 @@ memory.
   route_policies: PASS — 47 modules, 0 unmerged · replay 0 disagreed of 16 checked, 5 skipped
   anonymous_walk: 0 holes · headers PASS · CI 44360045399 success
   ```
+
+- **2026-11-18 — step 3 sixty-first move live (0f26ed7).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: /version equality True · auth/me anonymous 401 · generated guest bearer 200 with caller fields
+  byte-identity: auth_me_bytes_identical True · sha256 5aab90c9722369c8
+  route_policies: PASS — 47 modules, 0 unmerged · replay 0 disagreed of 18 checked, 3 skipped
+  anonymous_walk: 0 holes · headers PASS · CI 44366351396 success
+  ```
