@@ -513,39 +513,6 @@ async fn project_tags(
     Ok(Json(serde_json::json!(tags)))
 }
 
-/// `GET /api/v1/projects/{slug}/languages` — highest percentage first.
-async fn project_languages(
-    State(state): State<AppState>,
-    Path(slug): Path<String>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let project = project_for(&state, &slug).await?;
-    let user = bearer_user(&state, &headers).await?;
-    if !readable(&state, &project, user.as_ref()).await? {
-        return Err(ApiError::not_found("no such project"));
-    }
-    let rows = concord_db::criteria::languages(&state.pool, project.id)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::json!(rows)))
-}
-
-/// `GET /api/v1/projects/{id}/lists` — the project's own lists first, then the instance-wide ones.
-async fn project_lists(
-    State(state): State<AppState>,
-    Path(project_segment): Path<String>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    // The segment is a SLUG first and an id second, because that is what the reference's `requireProjectID` does: it calls
-    // `GetProject(slug)` on a parameter it names `project_id`. This route took a numeric id, so a page linking to
-    // `/projects/suki/lists` — the form every other project route accepts — got a 400 from a path that names the right project.
-    let project = readable_project_segment(&state, &project_segment, &headers).await?;
-    let rows = concord_db::criteria::lists(&state.pool, project.id)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::json!(rows)))
-}
-
 /// A project by id, refused with a 404 the caller cannot use to enumerate private projects.
 ///
 /// 404 and not 403 on purpose: a 403 tells an anonymous caller that the id exists, which is the enumeration

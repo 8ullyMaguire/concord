@@ -1,5 +1,5 @@
 //! Project settings: tags, languages and intake mode (step 3, ADR 0014).
-//! The read handlers stay root-owned; their GET+PUT routes move with the writes (D-20).
+//! The language reader joined the module; its GET+PUT route already lives with the writes (D-20/D-48).
 
 use axum::{
     extract::{Path, State},
@@ -9,8 +9,26 @@ use axum::{
 use polaris_core::ApiError;
 
 use crate::{
-    internal, project_languages, project_tags, readable_project_segment, require_role, write_audit, AppState,
+    bearer_user, internal, project_for, project_tags, readable, readable_project_segment, require_role,
+    write_audit, AppState,
 };
+
+/// `GET /api/v1/projects/{slug}/languages` — highest percentage first.
+async fn project_languages(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = project_for(&state, &slug).await?;
+    let user = bearer_user(&state, &headers).await?;
+    if !readable(&state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    let rows = concord_db::criteria::languages(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
+}
 
 // ── project settings (§4.3, §6.2) ───────────────────────────────────────────────────────────────────────────────────
 

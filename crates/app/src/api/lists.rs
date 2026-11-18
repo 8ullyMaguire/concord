@@ -9,9 +9,25 @@ use axum::{
 use polaris_core::ApiError;
 
 use crate::{
-    bearer_user, internal, numeric_project, project_lists, readable, readable_project_segment,
+    bearer_user, internal, numeric_project, readable, readable_project_segment,
     require_role, write_audit, AppState,
 };
+
+/// `GET /api/v1/projects/{id}/lists` — the project's own lists first, then the instance-wide ones.
+async fn project_lists(
+    State(state): State<AppState>,
+    Path(project_segment): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    // The segment is a SLUG first and an id second, because that is what the reference's `requireProjectID` does: it calls
+    // `GetProject(slug)` on a parameter it names `project_id`. This route took a numeric id, so a page linking to
+    // `/projects/suki/lists` — the form every other project route accepts — got a 400 from a path that names the right project.
+    let project = readable_project_segment(&state, &project_segment, &headers).await?;
+    let rows = concord_db::criteria::lists(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
+}
 
 /// The visibility decision for a LIST, which is not the decision for its project.
 ///

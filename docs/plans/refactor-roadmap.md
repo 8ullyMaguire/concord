@@ -643,6 +643,14 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-87 (step 3, 2026-11-18): a reader with exactly one importer joins that module.** `project_languages` moved into
+  api/project_settings.rs and `project_lists` into api/lists.rs; each module already mounted the GET route with its
+  writes, so no route stanza changed (D-48/D-86). 31 handler lines moved; lib.rs 795 -> 762. `bearer_user`,
+  `project_for` and `readable` were imported from the crate root. Byte-identity:
+  project_languages_bytes_identical True sha256 b95672d64a765348, project_lists_bytes_identical True sha256
+  57b34541c7181217. Verified: cargo check green, policy 7 passed; 0 failed, route_policies PASS (49 modules,
+  0 unmerged), replay 0 disagreed of 18 checked, 3 skipped.
+
 * **D-86 (step 3, 2026-11-18): D-48 readers complete the criteria module.** `list_criteria` and
   `list_criteria_profiles` were the last root-owned criteria handlers; api/criteria.rs already mounted both GET routes
   with the writes, so no route stanza changed (D-48/D-72). 33 handler lines moved; lib.rs 829 -> 795. `project_by_id`
