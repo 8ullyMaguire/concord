@@ -18,7 +18,8 @@ use std::sync::{Mutex, OnceLock};
 use axum::{
     extract::{Path, State},
     http::{HeaderMap, StatusCode},
-    Json,
+    routing::{get, post},
+    Json, Router,
 };
 use polaris_core::ApiError;
 use serde_json::{json, Value};
@@ -642,4 +643,22 @@ pub(super) async fn finder_results(
         "gaps": concord_finder::gaps(&engine),
         "weights": concord_finder::weight_report(),
     })))
+}
+
+/// Finder routes, moved from `lib.rs` so the root router owns no resource routes.
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/api/v1/finder/questions", get(finder_questions))
+        .route("/api/v1/finder/sessions", post(start_finder_session))
+        .route("/api/v1/finder/sessions/{session}", get(get_finder_session))
+        .route(
+            "/api/v1/finder/sessions/{session}/answers",
+            post(answer_finder_question),
+        )
+        .route("/api/v1/finder/sessions/{session}/back", post(back_finder))
+        .route("/api/v1/finder/sessions/{session}/lift", post(lift_finder))
+        .route(
+            "/api/v1/finder/sessions/{session}/results",
+            get(finder_results),
+        )
 }

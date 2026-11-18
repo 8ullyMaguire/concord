@@ -1904,6 +1904,12 @@ Being critical is not the same as being dismissive. These are decisions I would 
 Everything else on this list can wait; those five are the difference between a system that is maintained and a system that is curated by
 memory.
 
+- **2026-11-18 — step 3 sixty-seventh structural slice: finder and feeds own their routes (D-89).** All 20 remaining
+  root route declarations moved into `routes()` in their existing modules; lib.rs 743 -> 719, `root_routes: 0`,
+  all 20 paths identical. Scanner and policy oracle extended to the two root modules; RED on a consumed `PathBuf`
+  fixed before the gate. Policy 7 passed; 0 failed, route_policies 49 modules 0 unmerged 203 declared, replay
+  0 disagreed of 16 checked, 5 skipped.
+
 - **2026-11-18 — step 3 sixty-sixth pure move: project_tags joined api/project_settings.rs (D-88).** 18 lines;
   lib.rs 762 -> 743. No route edit (D-48). Byte-identity sha256 304061ad59b8d984. Policy 7 passed; 0 failed,
   route_policies 49 modules 0 unmerged, replay 0 disagreed of 18 checked, 3 skipped.

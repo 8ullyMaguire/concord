@@ -123,24 +123,12 @@ pub fn router(state: AppState) -> Router {
         .merge(api::feature_votes::routes())
         // Invites: §8.2's trust mechanism — how a stranger becomes a member of a protected project.
         .merge(api::invites::routes())
+        .merge(finder::routes())
         // §4/§5: Finder. Sessions live in memory and say so (`persisted: false`) — the reference's own decision, kept.
-        .route("/api/v1/finder/questions", get(finder::finder_questions))
         // S2: alternatives arenas — the kind that ranks competing PROJECTS. The route names the owning project (a segment
         // that may be a slug or an id); the competitor in a body is a numeric id, and that asymmetry is the only confusing
         // thing about the shape.
         .merge(api::alternatives::routes())
-        .route("/api/v1/finder/sessions", post(finder::start_finder_session))
-        .route("/api/v1/finder/sessions/{session}", get(finder::get_finder_session))
-        .route(
-            "/api/v1/finder/sessions/{session}/answers",
-            post(finder::answer_finder_question),
-        )
-        .route("/api/v1/finder/sessions/{session}/back", post(finder::back_finder))
-        .route("/api/v1/finder/sessions/{session}/lift", post(finder::lift_finder))
-        .route(
-            "/api/v1/finder/sessions/{session}/results",
-            get(finder::finder_results),
-        )
         // §5.7's merge requests. `execute` is the destructive one: it ships the feature and closes its complaints, and its gate
         // lives in the store beside that change so no route can skip it.
         .merge(api::merge_requests::routes())
@@ -154,21 +142,9 @@ pub fn router(state: AppState) -> Router {
         .merge(api::board::routes())
         .merge(api::accounts::routes())
         .merge(api::project_lifecycle::routes())
+        .merge(feeds::routes())
         // §12: the thirteen `.xml` documents. `.xml` and `?format=` are both accepted because they are both
         // what people type: `/feed.xml` in a reader's UI, `?format=atom` in a link.
-        .route("/feed.xml", get(feeds::projects_feed))
-        .route("/rss.xml", get(feeds::projects_feed))
-        .route("/atom.xml", get(feeds::projects_feed))
-        .route("/projects/{slug}/feed.xml", get(feeds::project_feed))
-        .route("/projects/{slug}/rss.xml", get(feeds::project_feed))
-        .route("/projects/{slug}/atom.xml", get(feeds::project_feed))
-        .route("/projects/{slug}/board/feed.xml", get(feeds::board_feed))
-        .route("/projects/{slug}/board/atom.xml", get(feeds::board_feed))
-        .route("/projects/{slug}/milestones/feed.xml", get(feeds::milestones_feed))
-        .route("/projects/{slug}/consensus/feed.xml", get(feeds::consensus_feed))
-        .route("/projects/{slug}/consensus/atom.xml", get(feeds::consensus_feed))
-        .route("/projects/{slug}/documents/feed.xml", get(feeds::documents_feed))
-        .route("/projects/{slug}/documents/atom.xml", get(feeds::documents_feed))
         // §5.1/§6.2's strategy surface, at the GO's own paths: the frontend reads
         // `/api/v1/projects/{id}/strategy/themes` (settings.js), so a port that only answered the curation queue
         // would leave the page blank with a 404 while every probe passed.

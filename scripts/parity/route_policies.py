@@ -86,9 +86,13 @@ def routes() -> list[tuple[str, str, str]]:
     assert tail is not None, "no handler found after router()"
     end = start + tail.start()
     body = source[start:end]
-    # Step 3: module-owned routes live in crates/app/src/api/*.rs, not in router()'s body.
+    # Step 3: module-owned routes live in api/*.rs, not in router()'s body.
     for path in sorted((APP_SRC / "api").glob("*.rs")):
         body += "\n" + path.read_text()
+    # D-89: finder and feeds are root-owned modules that also declare route tables. A scanner that read only
+    # lib.rs reported their seven API routes as stale after the route move; read their sources too.
+    for name in ("finder.rs", "feeds.rs"):
+        body += "\n" + (APP_SRC / name).read_text()
     found: list[tuple[str, str, str]] = []
     cursor = 0
     while True:

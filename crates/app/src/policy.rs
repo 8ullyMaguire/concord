@@ -400,7 +400,8 @@ mod tests {
         // move looks like a deleted route. Only `.route(` calls are considered below,
         // and `blank_out` keeps comments and string literals from faking any.
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src/api");
-        if let Ok(entries) = std::fs::read_dir(dir) {
+        let src_dir = dir.parent().unwrap().to_path_buf();
+        if let Ok(entries) = std::fs::read_dir(&dir) {
             let mut paths: Vec<_> = entries.filter_map(Result::ok).map(|e| e.path()).collect();
             paths.sort();
             for path in paths {
@@ -413,6 +414,16 @@ mod tests {
                     blanked_body.push('\n');
                     blanked_body.push_str(&blank_out(&text));
                 }
+            }
+        }
+        // D-89: finder and feeds own route tables outside router(). Without them seven API routes look
+        // stale after a byte-identical route move. Only `.route(` calls are read below.
+        for name in ["finder.rs", "feeds.rs"] {
+            if let Ok(text) = std::fs::read_to_string(src_dir.join(name)) {
+                raw.push('\n');
+                raw.push_str(&text);
+                blanked_body.push('\n');
+                blanked_body.push_str(&blank_out(&text));
             }
         }
         (raw, blanked_body)

@@ -643,6 +643,15 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-89 (step 3, 2026-11-18): the root router owns no resource routes.** The last 20 `.route(` calls were finder's
+  seven API routes and feeds' thirteen XML routes; both handlers already lived in root-owned modules, so their route
+  tables moved into `routes()` functions in `finder.rs` and `feeds.rs`, merged from `lib.rs`. lib.rs 743 -> 719,
+  with `root_routes: 0` and all 20 route paths byte-identical. The route-policy scanner and the `policy.rs`
+  registered-route oracle both had to learn these two root modules (D-40/D-47): without them seven finder routes
+  appeared stale. One test build caught `read_dir(dir)` consuming `dir` before `dir.parent()`; the parent is now
+  captured first. Verified: cargo check green, policy 7 passed; 0 failed, route_policies PASS (49 modules,
+  0 unmerged, 203 declared), replay 0 disagreed of 16 checked, 5 skipped.
+
 * **D-88 (step 3, 2026-11-18): complete the settings module with its last reader.** `project_tags` joined
   api/project_settings.rs, which already mounted the GET route with the tag write (D-48/D-87). 18 handler lines moved;
   lib.rs 762 -> 743. Its guards (`project_for`, `bearer_user`, `readable`) were already imported for the writer.

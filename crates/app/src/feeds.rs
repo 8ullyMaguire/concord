@@ -25,6 +25,8 @@ use axum::{
     extract::{OriginalUri, Path, Query, State},
     http::{header, StatusCode},
     response::{IntoResponse, Response},
+    routing::get,
+    Router,
 };
 use polaris_core::ApiError;
 use serde::Deserialize;
@@ -722,4 +724,22 @@ pub async fn documents_feed(
         items,
     };
     write(feed, format)
+}
+
+/// Syndication routes, moved from `lib.rs` so the root router owns no resource routes.
+pub fn routes() -> Router<AppState> {
+    Router::new()
+        .route("/feed.xml", get(projects_feed))
+        .route("/rss.xml", get(projects_feed))
+        .route("/atom.xml", get(projects_feed))
+        .route("/projects/{slug}/feed.xml", get(project_feed))
+        .route("/projects/{slug}/rss.xml", get(project_feed))
+        .route("/projects/{slug}/atom.xml", get(project_feed))
+        .route("/projects/{slug}/board/feed.xml", get(board_feed))
+        .route("/projects/{slug}/board/atom.xml", get(board_feed))
+        .route("/projects/{slug}/milestones/feed.xml", get(milestones_feed))
+        .route("/projects/{slug}/consensus/feed.xml", get(consensus_feed))
+        .route("/projects/{slug}/consensus/atom.xml", get(consensus_feed))
+        .route("/projects/{slug}/documents/feed.xml", get(documents_feed))
+        .route("/projects/{slug}/documents/atom.xml", get(documents_feed))
 }
