@@ -42,3 +42,4 @@ pub mod moderation;
 pub mod stats;
 pub mod strategy;
 pub mod solution_calls;
+pub mod consensus_outcomes;

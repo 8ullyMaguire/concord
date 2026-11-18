@@ -650,6 +650,12 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-61 (step 3, 2026-11-18): leave a reader where a sibling module already imports it.**
+  api/consensus_outcomes.rs owns CallOutcomeRequest, AmendmentRequest, default_solution_type and
+  record_call_outcome plus one route (65 lines; lib.rs 2083 -> 2015). get_charter stays root-owned because
+  api/criteria.rs mounts it (D-51); the cut starts at CallOutcomeRequest. Compiler named State, project_for,
+  require_maintainer and parse_id (D-23). Module merged in the same edit (D-47). Verified: policy 7 passed; 0 failed,
+  route_policies PASS (43 modules, 0 unmerged), replay 0 disagreed of 18 checked, 3 skipped.
 * **D-60 (step 3, 2026-11-18): one handler pair can serve two spellings of the same route.**
   api/solution_calls.rs owns readiness, open and fallback plus three routes (128 lines; lib.rs 2223 -> 2083). The Go
   `/consensus` and port `/solution-call` paths share one MethodRouter (D-20); feature_for stays at the crate root.
