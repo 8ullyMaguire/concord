@@ -650,6 +650,11 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-57 (step 3, 2026-11-18): moderation acts and curation votes share one resource.**
+  api/moderation.rs owns ArenaActRequest, mod_trust_min, permit_moderation, arena remove/restore, CurationVoteRequest and
+  curation_vote plus three routes (246 lines; lib.rs 2904 -> 2649). The curation queue reader stays root-owned. Compiler
+  named write_error and taxonomy_refusal (D-23). Module merged in the same edit (D-47). Verified: policy 7 passed;
+  0 failed, route_policies PASS (39 modules, 0 unmerged), replay 0 disagreed of 16 checked, 5 skipped.
 * **D-56 (step 3, 2026-11-18): the labelled complaint section now holds only shared helpers.** Accept the
   resource where it lives: the thread-comment slice was the next coherent handler group. api/comments.rs owns
   thread_comments, post/delete/vote comment and three routes (95 lines; lib.rs 3013 -> 2904). The cut stops before

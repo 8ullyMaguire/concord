@@ -38,3 +38,4 @@ pub mod consensus;
 pub mod requests;
 pub mod answers;
 pub mod comments;
+pub mod moderation;
