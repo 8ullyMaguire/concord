@@ -611,6 +611,7 @@ Unclaimed rows are fair game.
   `derive helper attribute is used before it is introduced`. The document list's `?fields=meta` branch became an
   untagged `DocumentList` with a body-less `DocumentMeta`, so both shapes are typed without changing either wire body.
 
+| 5 | events + audit trail that cannot forget | **in progress — spec and plan committed, no code yet.** Measured baseline at `436f476`: `cargo test -p concord-db --test store -- events` → `running 0 tests`, `0 passed; 29 filtered out`; no `create table events` in `crates/db/sql/*.sql`; hand-written audit calls across 20+ modules are places where a record can be skipped. Slice 1 adds migration `0003_events.sql`, `concord_db::events::append`, and an event written in the same transaction as `move_card` (D-106..D-109). |
 ## Blocked
 
 Items nobody working in this repo can finish alone. Each names what would unblock it and on whom, so the next session can
