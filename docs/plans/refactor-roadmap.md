@@ -650,6 +650,13 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-77 (frontend, 2026-11-18): finish the CSS-only alignment items.** The second vision pass called the page
+  launch-quality but named three cheap leftovers: Explore link hints sat at different heights, the dark-band CTA was
+  underlined like a link, and long catalogue names could break the grid. Fixed with flex alignment on `.grid-4 .card`,
+  `text-decoration: none` on `.flip-section .btn`, and `overflow-wrap: anywhere` on catalogue links. Rejected:
+  restructuring the catalogue data to add missing stage badges — that changes API presentation and belongs to a data
+  decision, not a visual micro-pass.
+
 * **D-76 (frontend, 2026-11-18): act on the vision review's cheap, concrete findings.** After the first live pass a
   vision review named the duplicated hero wordmark, the orphaned "code.", six text-only cards with no visual anchor, a
   "Browse projects" label on the Features card, and a flip band with no action. Fix: remove the redundant hero brand,

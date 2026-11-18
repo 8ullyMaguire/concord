@@ -278,6 +278,11 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44315044140 success
   ```
 
+- **2026-11-18 — final CSS alignment (D-77).** Third vision review called the composition launch-quality. The three
+  remaining CSS-only items (Explore link alignment, dark-band CTA underline, long catalogue names) were fixed and
+  re-verified in the browser after deploy. Missing stage badges on some projects were recorded as a data decision,
+  not silently invented.
+
 - **2026-11-18 — second visual pass (D-76).** First live screenshots were reviewed by vision: the composition was
   coherent but the hero wordmark duplicated the nav, "code." orphaned, six cards lacked visual anchors, the Features
   card said "Browse projects", and the flip band had no CTA. All five fixed; second screenshots and DOM assertions

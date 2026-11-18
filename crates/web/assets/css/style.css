@@ -2358,3 +2358,11 @@ a.curation-target:hover { text-decoration: underline; }
 .grid-responsive-3 .card:nth-child(6)::before { background: #fff1f2; color: #be123c; }
 .hero-title { text-wrap: balance; }
 .flip-section .btn { margin-top: .5rem; }
+
+/* Final alignment fixes from the second vision pass (D-77): pin Explore link
+   hints to the card bottom, keep the dark-band CTA a real button, and let long
+   catalogue names wrap without breaking the card grid. */
+.grid-4 .card { display: flex; flex-direction: column; }
+.grid-4 .card-link-hint { margin-top: auto; padding-top: .75rem; }
+.flip-section .btn { text-decoration: none; }
+.project-list > li a { overflow-wrap: anywhere; }
