@@ -73,6 +73,14 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44199542168 success
   ```
 
+- **2026-11-17 — step 3 thirty-first module live (edcfda8).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: criteria 200 (0) · profiles 200 (0) · charter 200 dict 22 · anon writes 403
+  route_policies: PASS — 31 modules, 0 unmerged
+  anonymous_walk: 0 holes · headers PASS · CI 44203187335 success
+  ```
+
 - **2026-11-17 — step 3 thirty-first pure move: api/criteria.rs (D-49).** Criteria writes, charter update, helper and
   seven routes moved (278 lines); lib.rs 4810 -> 4517. Compiler named 10 missing root imports; fixed. Module merged;
   route_policies: 31 modules, 0 unmerged. Policy 7 passed; 0 failed, replay 0 disagreed of 18 checked, 3 skipped.
