@@ -2136,3 +2136,8 @@ memory.
   `StatsPayload` and `Census` with every nested schema registered: generated contract 20 schemas,
   `openapi_diff: PASS`, unit tests 18 passed; 0 failed. Gate `pages: 132/132 ok`, `gate: PASS`; CI `44415912498`
   success. Live both 200 with `census` / `features_by_status` keys; walk PASS, headers PASS.
+
+- **2026-11-18 — Step 4 slice 5 landed live at `b3545b6`.** `/projects` and `/projects/{slug}` return the typed
+  `Project` projection; 21 schemas, `openapi_diff: PASS`, unit tests 18 passed; 0 failed. Gate `pages: 132/132 ok`,
+  `gate: PASS`; CI `44417822817` success. Live `/projects` 200 list of projects, `/projects/suki` 200 detail;
+  walk PASS, headers PASS.
