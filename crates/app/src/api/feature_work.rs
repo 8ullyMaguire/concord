@@ -1,5 +1,5 @@
 //! Feature work items, dependencies and evidence (step 3, ADR 0014).
-//! Reader handlers stay root-owned; their routes move with the writes (D-48).
+//! Reader handlers joined the module; their routes stayed with the writes (D-48).
 
 use axum::{
     extract::{Path, Query, State},
@@ -9,9 +9,45 @@ use axum::{
 use polaris_core::ApiError;
 
 use crate::{
-    caller_feature, feature_deps, feature_evidence, internal, readable_project_segment,
+    bearer_user, caller_feature, feature_for, internal, project_for, readable, readable_project_segment,
     require_role, write_audit, AppState,
 };
+
+/// `GET /api/v1/projects/{slug}/features/{feature}/deps` — blocked_by, blocks, and what is still open.
+async fn feature_deps(
+    State(state): State<AppState>,
+    Path((slug, feature)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = project_for(&state, &slug).await?;
+    let user = bearer_user(&state, &headers).await?;
+    if !readable(&state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    let feature = feature_for(&state, project.id, &feature).await?;
+    let panel = concord_db::deps::panel(&state.pool, feature.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(panel)))
+}
+
+/// `GET /api/v1/projects/{slug}/features/{feature}/evidence` — what says this feature is worth building.
+async fn feature_evidence(
+    State(state): State<AppState>,
+    Path((slug, feature)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = project_for(&state, &slug).await?;
+    let user = bearer_user(&state, &headers).await?;
+    if !readable(&state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    let feature = feature_for(&state, project.id, &feature).await?;
+    let rows = concord_db::panels::evidence(&state.pool, feature.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
+}
 
 // ── work items, dependencies, evidence (§4.5.7, R18, §3.4) ─────────────────────────────────────────────────────────
 

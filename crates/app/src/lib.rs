@@ -782,42 +782,6 @@ async fn list_capabilities(
     Ok(Json(serde_json::json!(panel)))
 }
 
-/// `GET /api/v1/projects/{slug}/features/{feature}/deps` — blocked_by, blocks, and what is still open.
-async fn feature_deps(
-    State(state): State<AppState>,
-    Path((slug, feature)): Path<(String, String)>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let project = project_for(&state, &slug).await?;
-    let user = bearer_user(&state, &headers).await?;
-    if !readable(&state, &project, user.as_ref()).await? {
-        return Err(ApiError::not_found("no such project"));
-    }
-    let feature = feature_for(&state, project.id, &feature).await?;
-    let panel = concord_db::deps::panel(&state.pool, feature.id)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::json!(panel)))
-}
-
-/// `GET /api/v1/projects/{slug}/features/{feature}/evidence` — what says this feature is worth building.
-async fn feature_evidence(
-    State(state): State<AppState>,
-    Path((slug, feature)): Path<(String, String)>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let project = project_for(&state, &slug).await?;
-    let user = bearer_user(&state, &headers).await?;
-    if !readable(&state, &project, user.as_ref()).await? {
-        return Err(ApiError::not_found("no such project"));
-    }
-    let feature = feature_for(&state, project.id, &feature).await?;
-    let rows = concord_db::panels::evidence(&state.pool, feature.id)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::json!(rows)))
-}
-
 /// A project from a path segment that may be an **id or a slug**, readable by the caller, refused with a 404 the caller cannot use to
 /// enumerate.
 ///
