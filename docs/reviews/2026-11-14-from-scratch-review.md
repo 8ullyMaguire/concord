@@ -1904,6 +1904,10 @@ Being critical is not the same as being dismissive. These are decisions I would 
 Everything else on this list can wait; those five are the difference between a system that is maintained and a system that is curated by
 memory.
 
+- **2026-11-18 — step 3 fifty-sixth pure move: get_milestone into api/milestones.rs (D-78).** One reader, 25 lines;
+  lib.rs 1168 -> 1142. No route edit (D-48). Byte-identity sha256 5d1e82d84800e5bf. Policy 7 passed; 0 failed,
+  route_policies 46 modules 0 unmerged, replay 0 disagreed of 16 checked, 5 skipped.
+
 - **2026-11-18 — frontend visual pass, measured proof.** Reproduced: `/` had no `section.hero`; `/projects/suki` threw
   `ReferenceError: mutant is not defined` at `project-render.js:37` while all 14 API fetches returned 200. Fixed in
   `db1a122`, `83799ae`, `e2b29bf`. Browser after final deploy: hero 1, decision cards 6, stats 73/40/10,

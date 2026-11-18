@@ -1,6 +1,5 @@
-//! Project milestones: list, roadmap detail and the six milestone writes
-//! (step 3, ADR 0014). get_milestone and write_error stay at the crate root:
-//! other resources share them (D-41/D-43).
+//! Project milestones: the milestone reader, list, roadmap detail and the six writes
+//! (step 3, ADR 0014). write_error stays at the crate root: other resources share it (D-41/D-43).
 
 use axum::{
     extract::{Path, State},
@@ -11,8 +10,34 @@ use polaris_core::ApiError;
 use serde_json::{json, Value};
 
 use crate::{
-    get_milestone, internal, readable_project_segment, require_role, write_audit, AppState,
+    internal, numeric_project, readable_project_segment, require_role, write_audit, AppState,
 };
+
+/// `GET /api/v1/projects/{project_id}/milestones/{id}` — the milestone and the work planned into it.
+///
+/// Two keys in one body, because the two are always read together: the counts answer "how far along is it" and the
+/// feature list answers "what is left", and a page that had to fetch them separately could render one without the
+/// other and show a milestone whose remaining work contradicts its own progress bar.
+async fn get_milestone(
+    State(state): State<AppState>,
+    Path((project_id, milestone)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = numeric_project(&state, &project_id, &headers).await?;
+    let id = milestone
+        .parse::<i64>()
+        .map_err(|_| ApiError::invalid_request("milestone id must be an integer"))?;
+    let found = concord_db::milestones::milestone(&state.pool, project.id, id)
+        .await
+        .map_err(internal)?;
+    let Some(found) = found else {
+        return Err(ApiError::not_found(format!("milestone {milestone}")));
+    };
+    let features = concord_db::features::milestone_features(&state.pool, found.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!({ "milestone": found, "features": features })))
+}
 
 /// `GET /api/v1/projects/{slug}/milestones` — the milestones, with counts computed on read.
 async fn list_milestones(

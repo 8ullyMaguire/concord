@@ -650,6 +650,14 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-78 (step 3, 2026-11-18): a single-importer reader belongs in the module that mounts it.** `get_milestone` was
+  the last root-owned handler of api/milestones.rs; only that module imported it (D-51), so it moved in (25 lines;
+  lib.rs 1168 -> 1142). Its GET route was already in the module's shared MethodRouter with the writes (D-48), so no
+  route stanza changed. `numeric_project` was imported from the crate root; `write_error` stays shared (D-41/D-43).
+  Byte-identity: get_milestone_bytes_identical True, sha256 5d1e82d84800e5bf.
+  Verified: cargo check green, policy 7 passed; 0 failed, route_policies PASS (46 modules, 0 unmerged),
+  replay 0 disagreed of 16 checked, 5 skipped.
+
 * **D-77 (frontend, 2026-11-18): finish the CSS-only alignment items.** The second vision pass called the page
   launch-quality but named three cheap leftovers: Explore link hints sat at different heights, the dark-band CTA was
   underlined like a link, and long catalogue names could break the grid. Fixed with flex alignment on `.grid-4 .card`,

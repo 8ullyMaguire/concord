@@ -806,32 +806,6 @@ async fn numeric_project(
     Ok(project)
 }
 
-/// `GET /api/v1/projects/{project_id}/milestones/{id}` — the milestone and the work planned into it.
-///
-/// Two keys in one body, because the two are always read together: the counts answer "how far along is it" and the
-/// feature list answers "what is left", and a page that had to fetch them separately could render one without the
-/// other and show a milestone whose remaining work contradicts its own progress bar.
-async fn get_milestone(
-    State(state): State<AppState>,
-    Path((project_id, milestone)): Path<(String, String)>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let project = numeric_project(&state, &project_id, &headers).await?;
-    let id = milestone
-        .parse::<i64>()
-        .map_err(|_| ApiError::invalid_request("milestone id must be an integer"))?;
-    let found = concord_db::milestones::milestone(&state.pool, project.id, id)
-        .await
-        .map_err(internal)?;
-    let Some(found) = found else {
-        return Err(ApiError::not_found(format!("milestone {milestone}")));
-    };
-    let features = concord_db::features::milestone_features(&state.pool, found.id)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::json!({ "milestone": found, "features": features })))
-}
-
 /// The visibility decision for a LIST, which is not the decision for its project.
 ///
 /// A protected list inside a public project must not become readable because its parent is, and an instance-wide list
