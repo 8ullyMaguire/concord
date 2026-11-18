@@ -154,6 +154,14 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44254461696 success
   ```
 
+- **2026-11-18 — step 3 forty-first module live (1672c43).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: anon strategy reads 401 identity required · anon POST 403 consent_required
+  route_policies: PASS — 41 modules, 0 unmerged
+  anonymous_walk: 0 holes · headers PASS · CI 44257658683 success
+  ```
+
 - **2026-11-18 — step 3 forty-first pure move: api/strategy.rs (D-59).** Strategy caller, proposals, consents,
   withdrawals, theme refusal mapper and seven routes moved (256 lines); lib.rs 2507 -> 2223. Shared refusal mappers
   stayed at the root. Policy 7 passed; 0 failed, route_policies: 41 modules, 0 unmerged, replay 0 disagreed of 18
