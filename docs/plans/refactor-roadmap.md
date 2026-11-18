@@ -650,6 +650,12 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-52 (step 3, 2026-11-18): the last section can run to the end of the file.**
+  api/feature_work.rs owns feature_work_refusal, seven work/dependency/evidence handlers and five routes (231 lines;
+  lib.rs 4075 -> 3824). The cut ran from the section marker to EOF (D-39). Sibling grep found no other importers of
+  feature_work_refusal (D-51); caller_feature, feature_deps and feature_evidence remain root-owned, with their routes moved
+  into the module. Module merged in the same edit (D-47). Verified: cname clean, policy 7 passed; 0 failed,
+  route_policies PASS (34 modules, 0 unmerged), replay 0 disagreed of 16 checked, 5 skipped.
 * **D-51 (step 3, 2026-11-18): a shared helper found by the compiler goes back to the crate root.**
   api/feature_meta.rs owns four feature metadata writes and routes (173 lines; lib.rs 4242 -> 4075 after the helper
   return). `caller_feature` was inside the moved slice but five other api modules import it from the root; the compiler

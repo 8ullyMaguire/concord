@@ -97,6 +97,9 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44223857215 success
   ```
 
+- **2026-11-18 — step 3 thirty-fourth pure move: api/feature_work.rs (D-52).** Work-item, dependency and evidence writes
+  plus five routes moved to EOF (231 lines); lib.rs 4075 -> 3824. Shared helper check passed before the cut. Policy 7
+  passed; 0 failed, route_policies: 34 modules, 0 unmerged, replay 0 disagreed of 16 checked, 5 skipped.
 - **2026-11-18 — step 3 thirty-third pure move: api/feature_meta.rs (D-51).** Tag/milestone/strategic-weight writes and
   four routes moved (173 lines); lib.rs 4242 -> 4075. RED: five modules import caller_feature from the root; returned it
   to lib.rs. Policy 7 passed; 0 failed, route_policies: 33 modules, 0 unmerged, replay 0 disagreed of 16 checked,
