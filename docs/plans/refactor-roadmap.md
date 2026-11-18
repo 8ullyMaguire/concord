@@ -650,6 +650,12 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-63 (step 3, 2026-11-18): complete an existing module instead of creating a near-duplicate.**
+  get_call_hold, HoldRequest and place_emergency_hold plus their GET+POST route moved into api/emergency_holds.rs
+  (75 lines; lib.rs 1895 -> 1816). No new module declaration. The block is mutation-sensitive, so it was proven
+  byte-for-byte against HEAD: hold_block_bytes_identical True, sha256 8efd25edf2540f57 (D-35/D-45). Compiler named json!,
+  require_maintainer and write_error (D-23). Verified: policy 7 passed; 0 failed, route_policies PASS (44 modules,
+  0 unmerged), replay 0 disagreed of 18 checked, 3 skipped.
 * **D-62 (step 3, 2026-11-18): keep the emergency-hold resource separate from the override window.**
   api/overrides.rs owns get_override_window, open/cast/close and three routes (108 lines; lib.rs 2015 -> 1895). The cut
   stops before get_call_hold; release_emergency_hold remains in api/emergency_holds.rs. Compiler named write_error and
