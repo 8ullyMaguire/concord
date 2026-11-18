@@ -188,6 +188,15 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44267064538 success
   ```
 
+- **2026-11-18 — step 3 forty-fifth move live (f20d15b).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: anon hold POST and release 403 consent_required
+  byte-identity: hold_block_bytes_identical True · sha256 8efd25edf2540f57
+  route_policies: PASS — 44 modules, 0 unmerged
+  anonymous_walk: 0 holes · headers PASS · CI 44270030258 success
+  ```
+
 - **2026-11-18 — step 3 forty-fifth pure move: hold handlers into api/emergency_holds.rs (D-63).** get_call_hold,
   HoldRequest and place_emergency_hold plus one route moved (75 lines); lib.rs 1895 -> 1816. Byte-identical block proof
   passed. Policy 7 passed; 0 failed, route_policies: 44 modules, 0 unmerged, replay 0 disagreed of 18 checked, 3 skipped.
