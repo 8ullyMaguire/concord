@@ -2000,3 +2000,12 @@ memory.
   route_policies: PASS — 47 modules, 0 unmerged · replay 0 disagreed of 18 checked, 3 skipped
   anonymous_walk: 0 holes · headers PASS · CI 44366351396 success
   ```
+
+- **2026-11-18 — step 3 sixty-second move live (a365e7e).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: /version equality True · /projects/suki/capabilities 200 with capability rows
+  byte-identity: list_capabilities_bytes_identical True · sha256 ce470c3c7ab2d4f5
+  route_policies: PASS — 48 modules, 0 unmerged · replay 0 disagreed of 16 checked, 3 skipped
+  anonymous_walk: 0 holes · headers PASS · CI 44370914143 success
+  ```
