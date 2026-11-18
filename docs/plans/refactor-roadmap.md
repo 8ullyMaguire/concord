@@ -650,6 +650,11 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-68 (step 3, 2026-11-18): audit reads get their own resource module.** No existing api/*.rs owned the audit
+  log (write_audit is only a helper), so AuditQuery, list_audit, list_audit_actions and two routes moved into a new
+  api/audit.rs (78 lines; lib.rs 1512 -> 1429), declared in api/mod.rs and merged in router(). Byte-identity:
+  audit_block_bytes_identical True, sha256 0dd21d50596e83c8. Verified: policy 7 passed; 0 failed, route_policies PASS
+  (45 modules, 0 unmerged, 203 declared), replay 0 disagreed of 18 checked, 3 skipped.
 * **D-67 (step 3, 2026-11-18): the last root-owned handler of a module belongs in that module.** arena_votes and
   its GET `/projects/{project_id}/arenas/{arena_id}/votes` route joined api/arena_votes.rs (41 lines; lib.rs 1558 ->
   1512). No import changes were needed; STANDINGS_PER_FEATURE stays at root (D-65). Byte-identity:
