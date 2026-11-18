@@ -649,6 +649,15 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-79 (step 3, 2026-11-18): a resource owns its reader routes too, even when they live in the root router.**
+  `readable_list`, `get_list` and `get_list_entries` were the last root-owned handlers of api/lists.rs (65 lines;
+  lib.rs 1142 -> 1074). The two root GET stanzas for `/lists/{list}` and its trailing-slash twin moved with them; the
+  `/lists/{list}/entries` route was already in the module. `numeric_project` and `readable` were imported from the
+  crate root; they are shared and stay there (D-41/D-43). Byte-identity:
+  list_readers_bytes_identical True, sha256 fd38656b5025091d.
+  Verified: cargo check green, policy 7 passed; 0 failed, route_policies PASS (46 modules, 0 unmerged),
+  replay 0 disagreed of 18 checked, 3 skipped.
+
 * **D-78 (step 3, 2026-11-18): a single-importer reader belongs in the module that mounts it.** `get_milestone` was
   the last root-owned handler of api/milestones.rs; only that module imported it (D-51), so it moved in (25 lines;
   lib.rs 1168 -> 1142). Its GET route was already in the module's shared MethodRouter with the writes (D-48), so no

@@ -1,5 +1,5 @@
 //! Project lists, list entries and project metrics/visibility writes
-//! (step 3, ADR 0014). Readers stay root-owned (D-41/D-48).
+//! (step 3, ADR 0014). Shared root helpers stay at the crate root (D-41/D-43).
 
 use axum::{
     extract::{Path, State},
@@ -9,9 +9,75 @@ use axum::{
 use polaris_core::ApiError;
 
 use crate::{
-    bearer_user, get_list_entries, internal, project_lists, readable_project_segment, require_role,
-    write_audit, AppState,
+    bearer_user, internal, numeric_project, project_lists, readable, readable_project_segment,
+    require_role, write_audit, AppState,
 };
+
+/// The visibility decision for a LIST, which is not the decision for its project.
+///
+/// A protected list inside a public project must not become readable because its parent is, and an instance-wide list
+/// (no project at all) is readable from everywhere by §16. Both refusals are 404: a 403 would confirm the id exists.
+///
+/// The path's project is still checked, because the route names one and a client that pairs a list with the wrong
+/// project is asking a question the URL cannot answer — the Go keeps the same check for the same reason.
+async fn readable_list(
+    state: &AppState,
+    path_project: &concord_db::projects::Project,
+    list_segment: &str,
+    headers: &HeaderMap,
+) -> Result<concord_db::criteria::ProjectList, ApiError> {
+    let Ok(id) = list_segment.parse::<i64>() else {
+        return Err(ApiError::invalid_request("list id must be an integer"));
+    };
+    let Some(list) = concord_db::criteria::list_by_id(&state.pool, id)
+        .await
+        .map_err(internal)?
+    else {
+        return Err(ApiError::not_found(format!("list {list_segment}")));
+    };
+    match list.project_id {
+        // Instance-wide: no project to consult, and the content is public by definition.
+        None => Ok(list),
+        Some(owner) => {
+            let user = bearer_user(state, headers).await?;
+            let owner_project = concord_db::projects::project_by_id(&state.pool, owner)
+                .await
+                .map_err(internal)?
+                .ok_or_else(|| ApiError::not_found(format!("list {list_segment}")))?;
+            if !readable(state, &owner_project, user.as_ref()).await?
+                || !readable(state, path_project, user.as_ref()).await?
+            {
+                return Err(ApiError::not_found(format!("list {list_segment}")));
+            }
+            Ok(list)
+        }
+    }
+}
+
+/// `GET /api/v1/projects/{project_id}/lists/{id}`
+async fn get_list(
+    State(state): State<AppState>,
+    Path((project_id, list)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = numeric_project(&state, &project_id, &headers).await?;
+    let found = readable_list(&state, &project, &list, &headers).await?;
+    Ok(Json(serde_json::json!(found)))
+}
+
+/// `GET /api/v1/projects/{project_id}/lists/{id}/entries` — §16's ranked entries.
+async fn get_list_entries(
+    State(state): State<AppState>,
+    Path((project_id, list)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = numeric_project(&state, &project_id, &headers).await?;
+    let found = readable_list(&state, &project, &list, &headers).await?;
+    let rows = concord_db::criteria::entries(&state.pool, found.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
+}
 
 // ── lists (§16) and project settings (§4.1) ────────────────────────────────────────────────────────────────────────
 
@@ -286,6 +352,14 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/projects/{project_id}/lists/",
             axum::routing::get(project_lists),
+        )
+        .route(
+            "/api/v1/projects/{project_id}/lists/{list}",
+            axum::routing::get(get_list),
+        )
+        .route(
+            "/api/v1/projects/{project_id}/lists/{list}/",
+            axum::routing::get(get_list),
         )
         .route(
             "/api/v1/projects/{project_id}/lists/{list}/entries",
