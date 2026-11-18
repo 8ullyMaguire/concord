@@ -730,3 +730,9 @@ only on API writes.
 - 7 of 20 corpus routes typed; `docs/contracts/openapi.json` has 9 schemas and passes `openapi_diff.py`.
 - Live typed routes verified; `concord-rs` active, `concord` inactive.
 - Next: type `/curation`, `/notifications`, `/search`, `/stats`, `/stats/summary`, then the project detail list routes.
+
+## 2026-11-18 — roadmap row 4 slice 3
+
+- Code HEAD `905c082`; gate `PASS` (`132/132 ok`); CI `44413903989` success; unit tests 18 passed; 0 failed.
+- 9 of 20 corpus routes typed; 13 schemas in the generated contract; live curation 200, notifications 401.
+- Next: type `/search`, `/stats`, `/stats/summary`, then the project detail list routes.

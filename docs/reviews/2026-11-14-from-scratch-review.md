@@ -2126,3 +2126,8 @@ memory.
   consensus/milestones/history/responsiveness `200 []`, roadmap `200
   {"milestones":[],"slippage":[],"slug":"suki","totals":{"total":0,"open":0,"shipped":0}}`; anonymous walk PASS
   with 0 holes; security headers PASS.
+
+- **2026-11-18 — Step 4 slice 3 landed live at `905c082`.** `/curation` and `/notifications` now return their DB
+  page/inbox structs typed with `ToSchema`; generated contract has 13 schemas. `cargo test -p concord-app --lib`
+  18 passed; 0 failed. Gate `pages: 132/132 ok`, `gate: PASS`; CI `44413903989` success. Live `/curation` 200 with
+  `{"items":[{"kind":"act",...`; `/notifications` anonymous 401 as declared. Walk PASS, headers PASS.
