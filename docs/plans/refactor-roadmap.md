@@ -650,6 +650,12 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-51 (step 3, 2026-11-18): a shared helper found by the compiler goes back to the crate root.**
+  api/feature_meta.rs owns four feature metadata writes and routes (173 lines; lib.rs 4242 -> 4075 after the helper
+  return). `caller_feature` was inside the moved slice but five other api modules import it from the root; the compiler
+  named each one. It was moved back to lib.rs and imported by the new module, along with root-owned `strategy_refusal`
+  and StatusCode. The move script asserted all inputs before writing any file (D-50). Verified: cname clean, policy 7
+  passed; 0 failed, route_policies PASS (33 modules, 0 unmerged), replay 0 disagreed of 16 checked, 5 skipped.
 * **D-50 (step 3, 2026-11-18): finish an aborted move from HEAD, never from the half-edited working tree.**
   A guard assert in the move script fired after lib.rs and api/mod.rs were written but before api/lists.rs existed. The
   module file was rebuilt by slicing the original block from `git show HEAD:crates/app/src/lib.rs`, not by guessing at the
