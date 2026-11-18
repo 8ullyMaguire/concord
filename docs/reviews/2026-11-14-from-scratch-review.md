@@ -2013,3 +2013,12 @@ memory.
   route_policies: PASS — 48 modules, 0 unmerged · replay 0 disagreed of 16 checked, 3 skipped
   anonymous_walk: 0 holes · headers PASS · CI 44370914143 success
   ```
+
+- **2026-11-18 — step 3 sixty-third move live (bd6e92d).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: /version equality True · /projects/suki/members 200 with owner row
+  byte-identity: list_members_bytes_identical True · sha256 0c9ba0b414fcd9d5
+  route_policies: PASS — 49 modules, 0 unmerged · replay 0 disagreed of 18 checked, 3 skipped
+  anonymous_walk: 0 holes · headers PASS · CI 44374727897 success
+  ```
