@@ -650,6 +650,13 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-50 (step 3, 2026-11-18): finish an aborted move from HEAD, never from the half-edited working tree.**
+  A guard assert in the move script fired after lib.rs and api/mod.rs were written but before api/lists.rs existed. The
+  module file was rebuilt by slicing the original block from `git show HEAD:crates/app/src/lib.rs`, not by guessing at the
+  partial tree. api/lists.rs owns create_list, create_list_entry, vote_list_entry and the metrics/visibility writes plus
+  six routes (261 lines; lib.rs 4517 -> 4242). Readers stay root-owned; the module was merged in the same edit (D-47).
+  Verified: cname clean, policy 7 passed; 0 failed, route_policies PASS (32 modules, 0 unmerged), replay 0 disagreed of
+  16 checked, 5 skipped.
 * **D-49 (step 3, 2026-11-17): the criteria section also owns the charter write and its helper.**
   api/criteria.rs owns criteria_refusal, five criteria/charter writes, apply_charter_fields and seven routes (278 lines;
   lib.rs 4810 -> 4517). The criteria readers, list_criteria_profiles and get_charter stay root-owned, with their GET

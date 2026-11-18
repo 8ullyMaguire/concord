@@ -81,6 +81,10 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44203187335 success
   ```
 
+- **2026-11-18 — step 3 thirty-second pure move: api/lists.rs (D-50).** List and project-settings writes plus six routes
+  moved (261 lines); lib.rs 4517 -> 4242. A script assert aborted after two of three writes; the module was rebuilt from
+  the HEAD slice. Compiler named three missing imports. Policy 7 passed; 0 failed, route_policies: 32 modules, 0 unmerged,
+  replay 0 disagreed of 16 checked, 5 skipped.
 - **2026-11-17 — step 3 thirty-first pure move: api/criteria.rs (D-49).** Criteria writes, charter update, helper and
   seven routes moved (278 lines); lib.rs 4810 -> 4517. Compiler named 10 missing root imports; fixed. Module merged;
   route_policies: 31 modules, 0 unmerged. Policy 7 passed; 0 failed, replay 0 disagreed of 18 checked, 3 skipped.
