@@ -101,7 +101,6 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .merge(api::meta::routes())
         // Every page needs to know who it is looking at, and the Go's `/auth/me` is what tells it.
-        .route("/api/v1/projects/{project_id}/members", get(list_members))
         // The project page's panels: the Go nests these under `r.Route("/criteria", …)` and registers GET "/",
         // so both the bare path and the trailing-slash form answer — a client that appends a slash must not get
         // a 404.
@@ -173,6 +172,7 @@ pub fn router(state: AppState) -> Router {
         // §5.1/§6.2's strategy surface, at the GO's own paths: the frontend reads
         // `/api/v1/projects/{id}/strategy/themes` (settings.js), so a port that only answered the curation queue
         // would leave the page blank with a 404 while every probe passed.
+        .merge(api::members::routes())
         .merge(api::capabilities::routes())
         .merge(api::curation::routes())
         .merge(api::notifications::routes())
@@ -511,27 +511,6 @@ async fn project_tags(
         .await
         .map_err(internal)?;
     Ok(Json(serde_json::json!(tags)))
-}
-
-/// `GET /api/v1/projects/{id}/members` — most privileged first.
-async fn list_members(
-    State(state): State<AppState>,
-    Path(project): Path<String>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
-    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
-    // the top of the handler — the `project_id` the body uses is its id.
-    let project_id = project_by_id(&state, &project).await?.id;
-    let project = project_by_id(&state, &project_id.to_string()).await?;
-    let user = bearer_user(&state, &headers).await?;
-    if !readable(&state, &project, user.as_ref()).await? {
-        return Err(ApiError::not_found("no such project"));
-    }
-    let members = concord_db::members::list(&state.pool, project.id)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::json!(members)))
 }
 
 /// `GET /api/v1/projects/{id}/criteria` — active first, then slug.
