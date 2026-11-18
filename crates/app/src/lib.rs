@@ -108,7 +108,6 @@ pub fn router(state: AppState) -> Router {
         // Top-level `{project_id}`, NOT nested under the `{slug}` subtree: nested, axum binds the segment by its
         // own name and a handler reading a numeric id would get the slug — the Go comment records the same bug
         // chi had ("requireProjectID reads project_id, gets "", and every call 404s with project \"\"").
-        .route("/api/v1/projects/{project_id}/capabilities", get(list_capabilities))
         // §4.7's write half. The read half has been routed since the port began, which is why its panel's "No field reports yet"
         // was not a state the instance happened to be in — it was the state the code guaranteed.
         .merge(api::field_reports::routes())
@@ -174,6 +173,7 @@ pub fn router(state: AppState) -> Router {
         // §5.1/§6.2's strategy surface, at the GO's own paths: the frontend reads
         // `/api/v1/projects/{id}/strategy/themes` (settings.js), so a port that only answered the curation queue
         // would leave the page blank with a 404 while every probe passed.
+        .merge(api::capabilities::routes())
         .merge(api::curation::routes())
         .merge(api::notifications::routes())
         .merge(api::audit::routes())
@@ -679,23 +679,6 @@ async fn write_audit(
     .await
     .map_err(internal)?;
     Ok(())
-}
-
-/// `GET /api/v1/projects/{id}/capabilities` — the whole catalogue, each entry with this project's claim.
-async fn list_capabilities(
-    State(state): State<AppState>,
-    Path(project): Path<String>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
-    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
-    // the top of the handler — the `project_id` the body uses is its id.
-    let project_id = project_by_id(&state, &project).await?.id;
-    let project = readable_project(&state, project_id, &headers).await?;
-    let panel = concord_db::capabilities::panel(&state.pool, project.id)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::json!(panel)))
 }
 
 /// A project from a path segment that may be an **id or a slug**, readable by the caller, refused with a 404 the caller cannot use to
