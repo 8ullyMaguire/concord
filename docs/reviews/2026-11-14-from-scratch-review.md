@@ -1903,3 +1903,15 @@ Being critical is not the same as being dismissive. These are decisions I would 
 
 Everything else on this list can wait; those five are the difference between a system that is maintained and a system that is curated by
 memory.
+
+- **2026-11-18 — frontend visual pass, measured proof.** Reproduced: `/` had no `section.hero`; `/projects/suki` threw
+  `ReferenceError: mutant is not defined` at `project-render.js:37` while all 14 API fetches returned 200. Fixed in
+  `db1a122`, `83799ae`, `e2b29bf`. Browser after final deploy: hero 1, decision cards 6, stats 73/40/10,
+  `aria-busy=false`, Explore 4, project-list 1, no mobile overflow, project errors [], no failure state.
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: /version equality True · / 200 · /projects/suki 200
+  cargo test -p concord-web: 3 passed; 0 failed
+  policy: 7 passed; 0 failed · route_policies: 46 modules, 0 unmerged
+  CI 44330323408 success
+  ```

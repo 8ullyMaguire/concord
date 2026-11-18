@@ -1321,3 +1321,26 @@ lands.
 4. Responses are typed and `openapi.json` is a build artifact; a breaking change without a version bump fails CI.
 5. The session is a cookie; bearer tokens are for machines. Rejected alternative: keep `localStorage` and rely on CSP —
    rejected because a 137-sink codebase with 540 manual escapes is not a place to bet an account on discipline.
+
+## Frontend visual pass — measured proof (2026-11-18)
+
+Three guarded code commits, all live on `concord-rs.service` (`concord.service` inactive):
+
+- `db1a122` — Go landing composition ported above the catalogue; `project-render.js` mutant token removed (D-74/D-75). `git show --stat`: 7 files changed, 135 insertions(+), 5 deletions(-), `lib.rs` +54.
+- `83799ae` — vision-driven polish: duplicate hero brand removed, balanced headline, six `data-icon` tiles, corrected Features link, flip-band CTA. 4 files changed, 45 insertions(+), 8 deletions(-).
+- `e2b29bf` — final CSS alignment: Explore hints all at one offset, dark-band CTA undecorated, long catalogue names wrap. 3 files changed, 20 insertions(+).
+
+```
+cargo check -p concord-app --locked: Finished `dev` profile
+cargo test -p concord-web: 3 passed; 0 failed
+cargo test -p concord-app --lib policy: 7 passed; 0 failed
+route_policies: PASS — 46 modules, 0 unmerged, 203 declared
+gate e2b29bf: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+live e2b29bf: /version equality True · / 200 · /projects/suki 200
+browser 1280×900: hero 1 · decision cards 6 · stats 73/40/10 · aria-busy false · Explore cards 4 · project-list 1
+browser 390×844: scrollWidth 390 == clientWidth 390 (no horizontal overflow)
+browser project page: errors [] · "Could not load project" false · panels 664
+CSS alignment: Explore hint offsets [1725,1725,1725,1725] · flip CTA text-decoration none
+vision verdict: "coherent and launch-quality"; remaining badge inconsistency recorded as a data decision
+CI 44330323408 success (gate, port-rust)
+```
