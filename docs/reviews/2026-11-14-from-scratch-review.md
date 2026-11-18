@@ -180,6 +180,9 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44263456328 success
   ```
 
+- **2026-11-18 — step 3 forty-fourth pure move: api/overrides.rs (D-62).** Override window reader and three writes plus
+  three routes moved (108 lines); lib.rs 2015 -> 1895. Emergency holds stayed separate. Policy 7 passed; 0 failed,
+  route_policies: 44 modules, 0 unmerged, replay 0 disagreed of 16 checked, 5 skipped.
 - **2026-11-18 — step 3 forty-third pure move: api/consensus_outcomes.rs (D-61).** Outcome request/ammendment types
   and recorder plus one route moved (65 lines); lib.rs 2083 -> 2015. Charter reader stayed root-owned. Policy 7 passed;
   0 failed, route_policies: 43 modules, 0 unmerged, replay 0 disagreed of 18 checked, 3 skipped.

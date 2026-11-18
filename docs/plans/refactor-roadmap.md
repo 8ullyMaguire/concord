@@ -650,6 +650,11 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-62 (step 3, 2026-11-18): keep the emergency-hold resource separate from the override window.**
+  api/overrides.rs owns get_override_window, open/cast/close and three routes (108 lines; lib.rs 2015 -> 1895). The cut
+  stops before get_call_hold; release_emergency_hold remains in api/emergency_holds.rs. Compiler named write_error and
+  require_maintainer (D-23). Module merged in the same edit (D-47). Verified: policy 7 passed; 0 failed, route_policies
+  PASS (44 modules, 0 unmerged), replay 0 disagreed of 16 checked, 5 skipped.
 * **D-61 (step 3, 2026-11-18): leave a reader where a sibling module already imports it.**
   api/consensus_outcomes.rs owns CallOutcomeRequest, AmendmentRequest, default_solution_type and
   record_call_outcome plus one route (65 lines; lib.rs 2083 -> 2015). get_charter stays root-owned because
