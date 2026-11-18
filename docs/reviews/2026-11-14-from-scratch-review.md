@@ -2151,3 +2151,9 @@ memory.
   `openapi_diff: PASS`; app unit tests 18 passed; 0 failed. Gate `pages: 132/132 ok`, `gate: PASS`; CI
   `44421966895` success. Live `/search?q=suki` 200 with echoed filters; `/projects/suki/documents` 200 with body;
   `?fields=meta` 200 with `"body":` count 0 versus 1 in the full shape. Walk PASS, headers PASS.
+
+- **2026-11-18 — row 1b re-proof passed at `1de65dd`.** `cargo test -p concord-app --lib policy`: 7 passed; 0 failed;
+  `route_policies: PASS` with 203 registered / 203 declared / 0 missing. Live version stamped `1de65dd`,
+  `anonymous_walk: 0 unreachable · 0 hole(s) · 0 declared but not enforced · 0 wrongly refused · PASS`,
+  `probe_security_headers: PASS`. The method-aware policy table from D-10 survived every module move and the typed
+  contract work; row 1 is now done.

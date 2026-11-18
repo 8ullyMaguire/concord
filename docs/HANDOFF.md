@@ -760,3 +760,9 @@ only on API writes.
 - Code HEAD `1de65dd`; gate `PASS`; CI `44421966895` success; unit tests 18 passed; 0 failed.
 - All 20 corpus routes typed; 37 schemas generated and diff-checked; live search and both document shapes verified.
 - Steps 0–4 are done. Next: Step 5 (append-only events and an audit trail that cannot forget).
+
+## 2026-11-18 — roadmap rows 0–4 all done
+
+- Row 1 re-proof at `1de65dd`: policy tests 7 passed, scanner 203/203, live walk 0 holes, headers PASS.
+- Every status-table milestone (0, 1, 2, 3, 4, 10) is done. Steps 5–9 remain roadmap sections without status rows.
+- Next: Step 5 — append-only events and an audit trail that cannot forget.
