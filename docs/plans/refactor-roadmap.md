@@ -647,6 +647,14 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-81 (step 3, 2026-11-18): a ranking handler moves with its request struct, but not with a shared constant.**
+  `CompositeRequest` and `composite_rank` moved from lib.rs into api/solutions.rs (103 lines; lib.rs 1052 -> 947)
+  with the `POST /projects/{project_id}/rank/composite` route. `STANDINGS_PER_FEATURE` stayed at the crate root because
+  api/solutions.rs already imported it (D-65); the cut stops immediately before it. No new imports were needed — the
+  module already had State, Path, HeaderMap, Json and readable_project. Byte-identity:
+  composite_rank_bytes_identical True, sha256 ab6ce7ddc1ddf566. Verified: cargo check green, policy 7 passed; 0 failed,
+  route_policies PASS (46 modules, 0 unmerged), replay 0 disagreed of 18 checked, 3 skipped.
+
 * **D-80 (step 3, 2026-11-18): a panel's count reader belongs with the panel's arena module.** `feature_tallies` was
   root-owned only because its GET route was in the root router; the doc comment names it the arena panel's per-feature
   counts, so it moved into api/arena_votes.rs (20 lines; lib.rs 1074 -> 1052) with that route. The module was already

@@ -1904,6 +1904,11 @@ Being critical is not the same as being dismissive. These are decisions I would 
 Everything else on this list can wait; those five are the difference between a system that is maintained and a system that is curated by
 memory.
 
+- **2026-11-18 — step 3 fifty-ninth pure move: composite rank into api/solutions.rs (D-81).** Request struct plus
+  handler, 103 lines; lib.rs 1052 -> 947. Route moved with them; shared constant stayed at root (D-65). Byte-identity
+  sha256 ab6ce7ddc1ddf566. Policy 7 passed; 0 failed, route_policies 46 modules 0 unmerged, replay 0 disagreed of
+  18 checked, 3 skipped.
+
 - **2026-11-18 — step 3 fifty-eighth pure move: feature_tallies into api/arena_votes.rs (D-80).** One reader, 20
   lines; lib.rs 1074 -> 1052. Route moved with it; byte-identity sha256 0932cc3514cc7c11. Policy 7 passed; 0 failed,
   route_policies 46 modules 0 unmerged, replay 0 disagreed of 16 checked, 5 skipped.
