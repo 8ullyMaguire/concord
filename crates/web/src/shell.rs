@@ -88,6 +88,17 @@ pub fn consent_accepted(headers: &HeaderMap) -> bool {
         .unwrap_or(false)
 }
 
+/// Whether a top-nav href owns this request. `/projects` owns every project sub-page; the other destinations own
+/// themselves and their own children. Kept pure so a unit test can pin the rule without rendering a document.
+#[must_use]
+pub(crate) fn nav_is_active(path: &str, href: &str) -> bool {
+    if href == "/projects" {
+        path == "/projects" || path.starts_with("/projects/")
+    } else {
+        path == href || path.starts_with(&format!("{href}/"))
+    }
+}
+
 /// The whole document.
 ///
 /// `bootstrap` is the first paint's payload for the pages that render their content on the server. The pages that mount and fetch carry
@@ -327,5 +338,37 @@ fn text_after(source: &str) -> &str {
     match source.rfind("{{end}}") {
         Some(at) => &source[at + "{{end}}".len()..],
         None => "",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::nav_is_active;
+
+    #[test]
+    fn nav_active_follows_the_project_family() {
+        assert!(nav_is_active("/projects", "/projects"));
+        assert!(nav_is_active("/projects/suki", "/projects"));
+        assert!(nav_is_active("/projects/suki/board", "/projects"));
+        assert!(!nav_is_active("/projects", "/taxonomy"));
+    }
+
+    #[test]
+    fn nav_active_matches_exact_and_child_paths() {
+        assert!(nav_is_active("/taxonomy", "/taxonomy"));
+        assert!(nav_is_active("/taxonomy/child", "/taxonomy"));
+        assert!(!nav_is_active("/taxonomy-else", "/taxonomy"));
+    }
+
+    #[test]
+    fn nav_active_never_marks_the_session_link() {
+        assert!(!nav_is_active("/login", "/taxonomy"));
+        assert!(!nav_is_active("/stats", "/curation"));
+    }
+
+    #[test]
+    fn nav_active_does_not_leak_across_sibling_roots() {
+        assert!(!nav_is_active("/scout", "/search"));
+        assert!(!nav_is_active("/finder", "/search"));
     }
 }

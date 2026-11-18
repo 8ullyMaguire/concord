@@ -107,7 +107,13 @@ pub fn document(host: &str, page: &Page<'_>, body: &str) -> String {
         .close("a")
         .open("nav", &[("class", "site-nav")]);
     for (href, label) in NAV {
-        nav.open("a", &[("href", href)]).text(label).close("a");
+        if shell::nav_is_active(page.path, href) {
+            nav.open("a", &[("href", href), ("class", "active"), ("aria-current", "page")])
+                .text(label)
+                .close("a");
+        } else {
+            nav.open("a", &[("href", href)]).text(label).close("a");
+        }
     }
     nav.open("a", &[("href", "/login"), ("data-auth-link", "login")]).text("Sign in").close("a");
     nav.close("nav").close("div");
@@ -322,31 +328,29 @@ async fn project_index(State(pool): State<PgPool>, headers: HeaderMap) -> Respon
         Err(error) => return error_page(&headers, "the catalogue could not be read", &error.to_string()),
     };
     let mut body = Html::new();
-    body.open("h1", &[]).text("Projects").close("h1");
-    body.open("p", &[("class", "muted")])
-        .text(&format!("{} project(s) in the catalogue", projects.len()))
-        .close("p");
-    // The create page was reachable only by typing its URL, which is a page that does not exist. The link belongs above the
-    // list: written after the <ul> was opened it became a <p> among the <li>s, and axe's list rule fired on this page
-    // (one node, .project-list). A <ul> holds list items.
-    body.open("p", &[("class", "muted")])
-        .open("a", &[("href", "/projects/new")])
-        .text("Start a project")
-        .close("a")
-        .text(" — after this page has shown you what already exists.")
-        .close("p");
-    body.open("ul", &[("class", "project-list")]);
+    body.open("div", &[("class", "page-head")])
+        .open("div", &[("class", "page-head-main")])
+        .open("span", &[("class", "page-eyebrow")]).text("Catalogue").close("span")
+        .open("h1", &[("class", "page-title-lg")]).text("Projects").close("h1")
+        .open("p", &[("class", "page-lede")])
+        .text(&format!("{} project(s) in the catalogue", projects.len())).close("p")
+        .close("div")
+        .open("a", &[("class", "btn btn-primary"), ("href", "/projects/new")])
+        .text("Start a project").close("a")
+        .close("div");
+    body.open("ul", &[("class", "project-list project-grid")]);
     for project in &projects {
         body.open("li", &[])
-            .open("a", &[("href", &format!("/projects/{}", project.slug))])
+            .open("a", &[("class", "project-card-title"), ("href", &format!("/projects/{}", project.slug))])
             .text(&project.name)
             .close("a")
-            .open("span", &[("class", "muted")])
-            .text(&format!(" — {}", project.description))
-            .close("span");
+            .open("p", &[("class", "project-card-desc")])
+            .text(&project.description)
+            .close("p")
+            .open("div", &[("class", "project-card-badges")]);
         stage_badge(&mut body, project);
         ai_badge(&mut body, project);
-        body.close("li");
+        body.close("div").close("li");
     }
     body.close("ul");
     let bootstrap = serde_json::json!({
@@ -494,8 +498,9 @@ async fn project_overview(
     let mut header = Html::new();
     header.open("header", &[("class", "detail-header")]);
     header.open("div", &[]);
+    header.open("span", &[("class", "page-eyebrow")]).text("Project").close("span");
     header.open("h1", &[("class", "page-title")]).text(&project.name);
-    header.open("span", &[("class", "badge badge-slate"), ("style", "vertical-align:middle;")])
+    header.open("span", &[("class", "badge badge-slate")])
         .text(&format!(" {}", project.slug))
         .close("span");
     stage_badge(&mut header, &project);

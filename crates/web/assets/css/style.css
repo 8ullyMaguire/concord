@@ -2366,3 +2366,79 @@ a.curation-target:hover { text-decoration: underline; }
 .grid-4 .card-link-hint { margin-top: auto; padding-top: .75rem; }
 .flip-section .btn { text-decoration: none; }
 .project-list > li a { overflow-wrap: anywhere; }
+
+/* Browse and detail polish (2026-11-18) -------------------------------------
+   Additive classes only: `.project-list` and `.tags` are shared with utility
+   pages, which this pass deliberately does not restyle. */
+.page-head {
+  display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between;
+  gap: 1rem; margin: 0 0 1.5rem; padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--slate-200);
+}
+.page-head-main { min-width: 0; max-width: 68ch; }
+.page-eyebrow {
+  display: block; margin: 0 0 .35rem; font-size: .75rem; font-weight: 700;
+  letter-spacing: .12em; text-transform: uppercase; color: var(--indigo-text);
+}
+.page-title-lg { margin: 0; font-size: clamp(2rem, 4vw, 2.75rem); line-height: 1.1; letter-spacing: -.02em; }
+.page-lede { margin: .5rem 0 0; color: var(--slate-600); font-size: 1rem; line-height: 1.6; }
+
+.project-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 1rem; margin: 0; padding: 0; list-style: none;
+}
+.project-grid > li {
+  display: flex; flex-direction: column; gap: .5rem; min-width: 0;
+  padding: 1rem; border: 1px solid var(--slate-200); border-radius: 12px;
+  background: #fff; box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+  transition: border-color .15s, box-shadow .15s, transform .15s;
+}
+.project-grid > li:hover {
+  border-color: var(--indigo-border); transform: translateY(-1px);
+  box-shadow: 0 6px 18px rgb(15 23 42 / 8%);
+}
+.project-card-title { font-size: 1.05rem; font-weight: 650; color: var(--ink); }
+.project-card-desc {
+  margin: 0; color: var(--slate-600); font-size: .875rem; line-height: 1.55;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+}
+.project-card-badges { display: flex; flex-wrap: wrap; gap: .35rem; margin-top: auto; }
+
+.search-form {
+  display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 12rem) auto;
+  gap: .75rem; align-items: end; margin: 0 0 1.25rem; padding: 1rem;
+  border: 1px solid var(--slate-200); border-radius: 12px; background: #fff;
+}
+.search-form label { grid-column: 1 / -1; font-size: .875rem; font-weight: 650; color: var(--ink); }
+.search-form input {
+  min-width: 0; width: 100%; padding: .6rem .75rem; font: inherit;
+  border: 1px solid var(--slate-300); border-radius: 8px; background: #fff; color: var(--ink);
+}
+.search-form input:focus-visible, .search-form button:focus-visible {
+  outline: 2px solid var(--indigo-text); outline-offset: 2px;
+}
+.search-form button { padding: .6rem 1rem; font: inherit; font-weight: 650; }
+
+.tag-cloud {
+  display: flex; flex-wrap: wrap; gap: .5rem; list-style: none;
+  margin: 0 0 2rem; padding: 0;
+}
+.tag-cloud a {
+  display: inline-flex; align-items: center; min-height: 32px; padding: .35rem .7rem;
+  border: 1px solid var(--indigo-border); border-radius: 999px;
+  background: #eef2ff; color: #3730a3; font-size: .875rem; font-weight: 600; text-decoration: none;
+}
+.tag-cloud a:hover { background: var(--indigo-light); }
+
+.detail-header .page-eyebrow { margin-bottom: .5rem; }
+.detail-header .page-title { font-size: clamp(1.8rem, 3vw, 2.4rem); line-height: 1.15; }
+.detail-header .badge { vertical-align: middle; }
+.detail-tabs { gap: .25rem; overflow-x: auto; border-bottom: 1px solid var(--slate-200); padding-bottom: .25rem; }
+.detail-tab { white-space: nowrap; }
+
+@media (max-width: 640px) {
+  .search-form { grid-template-columns: minmax(0, 1fr); }
+  .search-form label { grid-column: 1; }
+  .project-grid { grid-template-columns: minmax(0, 1fr); }
+  .page-head { align-items: flex-start; }
+}

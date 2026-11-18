@@ -56,6 +56,14 @@ pub async fn search(
     };
 
     let mut body = Html::new();
+    body.open("div", &[("class", "page-head")])
+        .open("div", &[("class", "page-head-main")])
+        .open("span", &[("class", "page-eyebrow")]).text("Discover").close("span")
+        .open("h1", &[("class", "page-title-lg")]).text("Search").close("h1")
+        .open("p", &[("class", "page-lede")])
+        .text("Find a project by name, description, tag or language.").close("p")
+        .close("div")
+        .close("div");
     // The form is a GET so the state lives in the URL: a result a reader cannot bookmark is a result they have to re-enter.
     body.open("form", &[("method", "get"), ("action", "/search"), ("class", "search-form"), ("role", "search")])
         .open("label", &[("for", "q")]).text("Search projects").close("label")
@@ -85,18 +93,18 @@ pub async fn search(
     }
 
     if !result.results.is_empty() {
-        body.open("ul", &[("class", "project-list")]);
+        body.open("ul", &[("class", "project-list project-grid")]);
         for hit in &result.results {
             body.open("li", &[])
-                .open("a", &[("href", &format!("/projects/{}", hit.project.slug))])
+                .open("a", &[("class", "project-card-title"), ("href", &format!("/projects/{}", hit.project.slug))])
                 .text(&hit.project.name)
                 .close("a");
             // Health only when measured: `min_health` filters on a score, so a hit with no score is a hit whose position the
             // reader cannot check — saying so is more useful than printing 0.00.
             match hit.project.health_score {
-                Some(score) => body.open("span", &[("class", "muted")])
-                    .text(&format!(" · health {score:.2}")).close("span"),
-                None => body.open("span", &[("class", "muted")]).text(" · health unmeasured").close("span"),
+                Some(score) => body.open("p", &[("class", "project-card-desc")])
+                    .text(&format!("health {score:.2}")).close("p"),
+                None => body.open("p", &[("class", "project-card-desc")]).text("health unmeasured").close("p"),
             };
             body.close("li");
         }
@@ -206,10 +214,15 @@ pub async fn taxonomy(State(pool): State<PgPool>, headers: HeaderMap) -> Respons
         Err(error) => return crate::error_page(&headers, "the taxonomy could not be read", &error.to_string()),
     };
     let mut body = Html::new();
-    body.open("h1", &[]).text("Taxonomy").close("h1")
-        .open("p", &[("class", "muted")])
-        .text(&format!("{} ratified tag(s), grouped by namespace.", tags.len()))
-        .close("p");
+    body.open("div", &[("class", "page-head")])
+        .open("div", &[("class", "page-head-main")])
+        .open("span", &[("class", "page-eyebrow")]).text("Vocabulary").close("span")
+        .open("h1", &[("class", "page-title-lg")]).text("Taxonomy").close("h1")
+        .open("p", &[("class", "page-lede")])
+        .text(&format!("{} ratified tag(s), grouped by namespace. Repeating names are shown once.", tags.len()))
+        .close("p")
+        .close("div")
+        .close("div");
     if tags.is_empty() {
         body.open("p", &[("class", "empty")]).text("No tags have been ratified yet.").close("p");
     }
@@ -222,8 +235,10 @@ pub async fn taxonomy(State(pool): State<PgPool>, headers: HeaderMap) -> Respons
         let in_namespace: Vec<&concord_db::taxonomy::Tag> =
             tags.iter().filter(|tag| &tag.namespace == namespace).collect();
         let heading = if namespace.is_empty() { "(no namespace)" } else { namespace.as_str() };
-        body.open("h2", &[]).text(heading).close("h2").open("ul", &[("class", "tags")]);
+        body.open("h2", &[]).text(heading).close("h2").open("ul", &[("class", "tag-cloud")]);
+        let mut seen = std::collections::HashSet::new();
         for tag in in_namespace {
+            if !seen.insert(tag.name.as_str()) { continue; }
             body.open("li", &[])
                 .open("a", &[("href", &format!("/search?tag={}", urlencode(&tag.name)))])
                 .text(&tag.name)
