@@ -120,10 +120,6 @@ pub fn router(state: AppState) -> Router {
         .route("/api/v1/projects/{project_id}/tallies", get(feature_tallies))
         .merge(api::records::routes())
         .route("/api/v1/projects/{project_id}/rank/composite", post(composite_rank))
-        .route(
-            "/api/v1/projects/{project_id}/arenas/{arena_id}/votes",
-            get(arena_votes),
-        )
         .merge(api::solutions::routes())
         // The complaint writes bind `{slug}` like every sibling route: axum refuses two routes that differ only in a
         // parameter's NAME, and the read side of this path is already registered as `{slug}`. The reference calls the
@@ -1369,48 +1365,6 @@ async fn composite_rank(
         .collect();
     let count = out.len();
     Ok(Json(serde_json::json!({ "results": out, "count": count })))
-}
-
-/// `GET /api/v1/projects/{id}/arenas/{arena}/votes` — the arena's vote log, newest first, skips excluded.
-///
-/// No authentication and no role: an audit view that only insiders can read is not an audit view, and this is a read
-/// of the data the leaderboard is computed from.
-///
-/// Arena ids are GLOBAL, so an arena belonging to another project answers exactly what a missing arena answers (404):
-/// a distinct refusal would confirm the id is real.
-async fn arena_votes(
-    State(state): State<AppState>,
-    Path((project_id, arena_id)): Path<(String, String)>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    // A non-numeric or unknown project segment is 404, never 400: the Go maps a parse failure to ErrNotFound, and a
-    // distinct refusal would confirm which ids exist.
-    let project = project_by_id(&state, &project_id).await?;
-    let user = bearer_user(&state, &headers).await?;
-    if !readable(&state, &project, user.as_ref()).await? {
-        return Err(ApiError::not_found("no such project"));
-    }
-    let arena_id = match arena_id.parse::<i64>() {
-        Ok(id) if id > 0 => id,
-        // "invalid arena id" is the Go's 400, and it is a different answer from "no such arena".
-        _ => return Err(ApiError::invalid_request("invalid arena id")),
-    };
-    let arena = concord_db::arena::find(&state.pool, arena_id)
-        .await
-        .map_err(internal)?
-        .ok_or_else(|| ApiError::not_found("no such arena"))?;
-    if arena.project_id != project.id {
-        return Err(ApiError::not_found("no such arena"));
-    }
-    let votes = concord_db::arena::list_votes(&state.pool, arena_id, 50)
-        .await
-        .map_err(internal)?;
-    let count = votes.len();
-    Ok(Json(serde_json::json!({
-        "arena_id": arena_id,
-        "votes": votes,
-        "count": count,
-    })))
 }
 
 const STANDINGS_PER_FEATURE: i64 = 5;
