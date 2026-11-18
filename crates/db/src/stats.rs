@@ -16,7 +16,7 @@ use utoipa::ToSchema;
 use sqlx::{PgPool, Row};
 
 /// One value of a three-way provenance facet.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ProvenanceCount {
     /// The facet's value (`draft`, `M`, …).
     pub value: String,
@@ -31,7 +31,7 @@ pub struct ProvenanceCount {
 }
 
 /// One value of a plain facet: a table that cannot be filled by an import.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct FacetCount {
     /// The facet's value.
     pub value: String,
@@ -40,7 +40,7 @@ pub struct FacetCount {
 }
 
 /// The composition of the instance: what exists, not what happened.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Census {
     /// Features, by status, with the provenance split.
     pub features_by_status: Vec<ProvenanceCount>,
@@ -67,7 +67,7 @@ pub struct Census {
 }
 
 /// How much of the instance is instrumented, as opposed to how much exists.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Measured {
     /// Every project.
     pub projects: i64,
@@ -78,7 +78,7 @@ pub struct Measured {
 }
 
 /// One latency measure.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Latency {
     /// Median hours, and zero when `n` is zero — never a median of nothing.
     pub median_hours: f64,
@@ -93,7 +93,7 @@ pub struct Latency {
 }
 
 /// The three latencies, each carrying its own `n`.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct LatencySection {
     /// Complaint created → first `validate_complaint`.
     pub triage: Latency,
@@ -104,7 +104,7 @@ pub struct LatencySection {
 }
 
 /// `GET /api/v1/stats` — the one payload the statistics page renders from.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct StatsPayload {
     /// The census.
     pub census: Census,

@@ -18,7 +18,14 @@ use crate::api::milestones::{RoadmapResponse, RoadmapTotals};
     concord_db::notifications::Notification,
     concord_db::milestones::Milestone,
     concord_db::milestones::MilestoneSlippage,
+    concord_db::stats::Census,
+    concord_db::stats::FacetCount,
+    concord_db::stats::Latency,
+    concord_db::stats::LatencySection,
+    concord_db::stats::Measured,
+    concord_db::stats::ProvenanceCount,
     concord_db::stats::Snapshot,
+    concord_db::stats::StatsPayload,
     concord_db::stats::ResponsivenessRow,
 )))]
 pub struct ApiDoc;
