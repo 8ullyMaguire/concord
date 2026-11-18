@@ -39,3 +39,4 @@ pub mod requests;
 pub mod answers;
 pub mod comments;
 pub mod moderation;
+pub mod stats;
