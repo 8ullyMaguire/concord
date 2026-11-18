@@ -650,6 +650,12 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-55 (step 3, 2026-11-18): the answer resource includes its accept badge helpers.**
+  api/answers.rs owns refusal_error, accept/unaccept, answer_request, vote_answer and three routes (217 lines; lib.rs
+  3240 -> 3013). The slice begins at the accept refusal mapper and ends at the complaint section. Reader request_answers
+  stays root-owned with its GET+POST route moved (D-48). Compiler named State and readable_project (D-23). Module merged
+  in the same edit (D-47). Verified: policy 7 passed; 0 failed, route_policies PASS (37 modules, 0 unmerged), replay 0
+  disagreed of 16 checked, 5 skipped.
 * **D-54 (step 3, 2026-11-18): cut a combined section at the next resource's doc comment.**
   The filing section held requests and answers; api/requests.rs took the request half — duplicate gate, project/instance
   filing, similar search, tags and four routes (323 lines; lib.rs 3576 -> 3240). The cut stops at the

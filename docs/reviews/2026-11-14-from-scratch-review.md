@@ -122,6 +122,9 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44242070130 success
   ```
 
+- **2026-11-18 — step 3 thirty-seventh pure move: api/answers.rs (D-55).** Accept badge, answers and vote writes plus
+  three routes moved (217 lines); lib.rs 3240 -> 3013. Policy 7 passed; 0 failed, route_policies: 37 modules,
+  0 unmerged, replay 0 disagreed of 16 checked, 5 skipped.
 - **2026-11-18 — step 3 thirty-sixth pure move: api/requests.rs (D-54).** Request filing, duplicate gate, similar search
   and tags plus four routes moved (323 lines); lib.rs 3576 -> 3240. Answers left for the next slice. Policy 7 passed;
   0 failed, route_policies: 36 modules, 0 unmerged, replay 0 disagreed of 16 checked, 5 skipped.
