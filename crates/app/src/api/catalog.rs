@@ -12,22 +12,22 @@ use serde_json::Value;
 
 use crate::{internal, AppState};
 
-async fn list_projects(State(state): State<AppState>) -> Result<Json<Value>, ApiError> {
+async fn list_projects(State(state): State<AppState>) -> Result<Json<Vec<concord_db::projects::Project>>, ApiError> {
     let projects = concord_db::projects::list_projects(&state.pool)
         .await
         .map_err(internal)?;
-    Ok(Json(serde_json::to_value(projects).map_err(internal)?))
+    Ok(Json(projects))
 }
 
 async fn get_project(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<concord_db::projects::Project>, ApiError> {
     match concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
     {
-        Some(project) => Ok(Json(serde_json::to_value(project).map_err(internal)?)),
+        Some(project) => Ok(Json(project)),
         None => Err(ApiError::not_found(format!("project {slug}"))),
     }
 }

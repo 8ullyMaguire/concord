@@ -5,11 +5,12 @@
 //! `description` as `""` rather than `null`, `visibility` as `public`, `newcomer_sample` as `0`.
 
 use serde::Serialize;
+use utoipa::ToSchema;
 use serde_json::Number;
 use sqlx::PgPool;
 
 /// A row of `projects` joined to its metrics, in the shape `/api/v1/projects/{slug}` serves.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Project {
     pub id: i64,
     pub slug: String,

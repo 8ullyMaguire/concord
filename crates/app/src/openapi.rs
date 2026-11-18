@@ -16,6 +16,7 @@ use crate::api::milestones::{RoadmapResponse, RoadmapTotals};
     concord_db::curation::Page,
     concord_db::notifications::Inbox,
     concord_db::notifications::Notification,
+    concord_db::projects::Project,
     concord_db::milestones::Milestone,
     concord_db::milestones::MilestoneSlippage,
     concord_db::stats::Census,
