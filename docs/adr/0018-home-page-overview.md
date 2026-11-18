@@ -70,3 +70,8 @@ public and already walked by `anonymous_walk.py`.
   to one paragraph so that review is cheap.
 - `probe_pages`, `anonymous_walk.py` and `probe_security_headers.py` remain the gates — this change introduces no new
   route, no new script and no inline JavaScript.
+
+## Superseded in scope (2026-11-18)
+
+D-75 in `docs/plans/refactor-roadmap.md` supersedes the "compact overview" scope: the owner asked to emulate the Go
+frontend as closely as possible. The catalogue still stays below the overview; only the size of the composition changed.

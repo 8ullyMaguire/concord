@@ -2317,3 +2317,20 @@ a.curation-target:hover { text-decoration: underline; }
 .notif-when { margin-left: auto; opacity: .6; font-variant-numeric: tabular-nums; }
 .notif-title { margin: .35rem 0 .2rem; font-weight: 600; }
 .notif-reason { margin: .4rem 0 0; font-style: italic; opacity: .85; }
+
+/* The landing catalogue inherits no list styling; present the projects as cards. */
+.project-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
+  list-style: none;
+  padding: 0;
+}
+.project-list > li {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  padding: 1rem 1.1rem;
+  box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+}
+.project-list > li a { font-weight: 650; }

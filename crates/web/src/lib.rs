@@ -181,6 +181,48 @@ pub fn host_of(headers: &HeaderMap) -> String {
     "concord.polarisocial.xyz".to_string()
 }
 
+/// The Go landing page, ported from `internal/httpapi/templates/index.html` (D-75).
+/// Every byte is a compile-time literal; no reader value reaches `Html::raw`.
+const GO_LANDING: &str = r#"
+<section class="hero"><div class="hero-inner">
+  <div class="hero-brand"><span class="brand-tile">C</span><span class="name">Concord</span></div>
+  <h1 class="hero-title">The forge for <span class="gradient">decisions</span>, not just code.</h1>
+  <p class="hero-sub">Every software project answers the same questions — what hurts, what to build, what to merge. Concord turns the messy, political, exhausting job of deciding into something structured, visible and fair.</p>
+  <div class="hero-actions">
+    <a href="/search" class="btn btn-primary btn-hero">Start searching</a>
+    <a href="/projects" class="btn btn-outline">Explore projects</a>
+  </div>
+</div></section>
+<section class="section"><div class="section-head">
+  <h2 class="section-title">What Concord does</h2>
+  <p class="section-sub">Code hosting is the substrate. Decisions are the product.</p>
+</div><div class="grid-responsive-3 grid-2">
+  <div class="card fade-in"><h3 class="card-title">Complaints, not feature requests</h3><p class="card-text">Work starts as a structured problem report: who is hurt, how often, what the workaround costs. A feature must trace back to validated complaints.</p></div>
+  <div class="card fade-in stagger-1"><h3 class="card-title">Solutions compete</h3><p class="card-text">Proposed features are ranked by pairwise comparison (Glicko-2): &ldquo;which should we build first, A or B?&rdquo; Priority is computed, never hand-assigned.</p></div>
+  <div class="card fade-in stagger-2"><h3 class="card-title">Consensus, not command</h3><p class="card-text">Features pass a formal consent round — consent, stand aside, abstain, or block with a stated principle and remedy — with quorum. Nobody steers alone.</p></div>
+  <div class="card fade-in stagger-3"><h3 class="card-title">Kanban with teeth</h3><p class="card-text">Work moves through phases, and each advance is gated: nothing reaches Ready without consensus; nothing lands without a reviewer&rsquo;s technical approval and quorum.</p></div>
+  <div class="card fade-in stagger-4"><h3 class="card-title">Discovery is the point</h3><p class="card-text">Search is a query language, not a box. Filter by tag, language, license, governance, and a transparent maintenance-health score. API-first, facets on every result.</p></div>
+  <div class="card fade-in stagger-5"><h3 class="card-title">Lists are objects, not files</h3><p class="card-text">Awesome lists become collaborative databases: anyone proposes entries, quorum admits them, pairwise ranking orders them, search finds entries across every list.</p></div>
+</div></section>
+<section class="section"><div class="stats-strip"><div class="stats-grid" id="stats-grid" aria-busy="true">
+  <div><p class="stat-value" id="stat-projects">–</p><p class="stat-label">Projects</p></div>
+  <div><p class="stat-value" id="stat-tags">–</p><p class="stat-label">Tags in use</p></div>
+  <div><p class="stat-value" id="stat-languages">–</p><p class="stat-label">Languages in use</p></div>
+</div></div></section>
+<section class="section"><div class="section-head"><h2 class="section-title" style="font-size:1.25rem;">Explore</h2></div>
+<div class="grid-4">
+  <a href="/search" class="card fade-in"><div class="explore-title">Search</div><p class="card-text">Query across projects, features, complaints, and awesome lists.</p><div class="card-link-hint">Go to search &rarr;</div></a>
+  <a href="/projects" class="card fade-in stagger-1"><div class="explore-title">Projects</div><p class="card-text">Browse every project on the forge with health scores and tags.</p><div class="card-link-hint">Browse projects &rarr;</div></a>
+  <a href="/lists" class="card fade-in stagger-2"><div class="explore-title">Awesome Lists</div><p class="card-text">Collaborative databases of tools, libraries, and resources — inside each project.</p><div class="card-link-hint">Browse lists &rarr;</div></a>
+  <a href="/projects" class="card fade-in stagger-3"><div class="explore-title">Features</div><p class="card-text">Proposed features ranked by the community, consented forward.</p><div class="card-link-hint">Browse projects &rarr;</div></a>
+</div></section>
+<section class="flip-section">
+  <h2>The flip</h2>
+  <p>It is not a GitHub clone with extra buttons, and it does not replace git. It starts as <em>a decision layer</em> over an existing Forgejo or Gitea instance — OAuth login, webhooks, bot-mediated merges, and a record of why every decision was made.</p>
+  <p class="small">It is not raw vote-based democracy either: it is consent-based, blocks require remedies, and silence never decides anything.</p>
+</section>
+"#;
+
 /// The home page: the catalogue, as the API lists it.
 async fn home(State(pool): State<PgPool>, headers: HeaderMap) -> Response {
     let projects = match concord_db::projects::list_projects(&pool).await {
@@ -188,9 +230,9 @@ async fn home(State(pool): State<PgPool>, headers: HeaderMap) -> Response {
         Err(error) => return error_page(&headers, "the catalogue could not be read", &error.to_string()),
     };
     let mut body = Html::new();
-    body.open("h1", &[]).text("Concord").close("h1")
-        .open("p", &[]).text(DESCRIPTION).close("p")
-        .open("h2", &[]).text("Projects").close("h2")
+    body.raw(GO_LANDING)
+        .open("section", &[("class", "section")])
+        .open("h2", &[("class", "section-title")]).text("Projects").close("h2")
         .open("ul", &[("class", "project-list")]);
     for project in &projects {
         body.open("li", &[])
@@ -204,7 +246,11 @@ async fn home(State(pool): State<PgPool>, headers: HeaderMap) -> Response {
         ai_badge(&mut body, project);
         body.close("li");
     }
-    body.close("ul");
+    body.close("ul").close("section");
+    for name in ["/assets/js/skeleton.js", "/assets/js/index.js"] {
+        let src = crate::shell::asset(name);
+        body.open("script", &[("src", src.as_str()), ("defer", "")]).close("script");
+    }
     let bootstrap = serde_json::json!({
         "route": "/",
         "projects": projects.iter().map(|project| {

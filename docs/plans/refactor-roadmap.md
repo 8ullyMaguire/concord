@@ -650,6 +650,21 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-74 (frontend, 2026-11-18): a mutation-test probe must never reach a shipped asset.** The browser showed
+  `ReferenceError: mutant is not defined` at `project-render.js:37`, so every project overview rendered "Could not load
+  project" while all fourteen API fetches returned 200. Removing the undefined token from `panelEmpty()` restores the
+  page. Rejected: adding a `var mutant` shim — that would keep an instrumentation hook in production code and hide the
+  next real break.
+
+* **D-75 (frontend, 2026-11-18): re-emulate the Go landing composition; this supersedes D-17's "compact" scope.** The
+  owner explicitly asked for the frontend to look as good as possible and to emulate the Go implementation. The Rust
+  home had only a bare `<ul>`; the Go page had a hero, six decision cards, a live stats strip, four Explore cards and a
+  flip band, and all its CSS and `index.js` were already ported. Decision: port that composition as the static
+  `GO_LANDING` literal above the existing catalogue (the catalogue probe still counts exactly one `project-list`), and
+  load `skeleton.js` + `index.js`. Rejected: the D-17 minimal headline/paragraph (measured visually too sparse), a
+  full CSS rewrite (the design system is already present), and a client-rendered hero (node-only renderer rule).
+  ADR 0018 remains the record of the original narrower decision; this row records why it changed.
+
 * **D-73 (step 3, 2026-11-18): D-48 root-owned readers finish the module in a second slice.** feature_deps and
   feature_evidence were the last root-owned handlers of api/feature_work.rs; their GET routes already lived with the
   writes. The two handlers moved in (35 lines; lib.rs 1204 -> 1168) with no route edit. Compiler named bearer_user,

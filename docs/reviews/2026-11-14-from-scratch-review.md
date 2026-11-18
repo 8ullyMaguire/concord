@@ -278,6 +278,12 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44315044140 success
   ```
 
+- **2026-11-18 — frontend visual pass (D-74/D-75).** Reproduced two live defects with browser tools: `/` had no
+  `section.hero` (bare `<ul class="project-list">`) and `/projects/suki` threw `ReferenceError: mutant is not defined`
+  at `project-render.js:37` while all 14 API fetches returned 200. Fixed by removing the undefined mutation token and
+  porting the Go landing composition as a static literal above the catalogue; `skeleton.js` + `index.js` now load on `/`.
+  Proving lines are appended after the gate and live browser pass.
+
 - **2026-11-18 — step 3 fifty-fifth move live (9e91f6d).**
   ```
   gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS

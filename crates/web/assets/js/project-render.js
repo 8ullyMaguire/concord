@@ -34,7 +34,7 @@
   }
 
   function panelEmpty(title, description) {
-    return el('div', { class: 'empty-state' }, [mutant,
+    return el('div', { class: 'empty-state' }, [
       el('p', { class: 'empty-state-title' }, title),
       el('p', { class: 'empty-state-description' }, description)
     ]);
