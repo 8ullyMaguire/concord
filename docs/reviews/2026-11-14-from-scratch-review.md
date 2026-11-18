@@ -2068,3 +2068,12 @@ memory.
   route_policies: PASS — 49 modules, 0 unmerged · replay 0 disagreed of 18 checked, 3 skipped
   anonymous_walk: 0 holes · headers PASS · CI 44386811337 success
   ```
+
+- **2026-11-18 — step 3 complete (d444f48).** Finder/feeds route tables moved; lib.rs 743 -> 719, root_routes 0.
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: /version equality True · /finder/questions 200 · three feed documents 200
+  route_paths_identical: True (20 paths) · route_policies: 49 modules, 0 unmerged, 203 declared
+  policy: 7 passed; 0 failed · replay 0 disagreed of 16 checked, 5 skipped
+  anonymous_walk: 0 holes · headers PASS · CI 44392405151 success
+  ```
