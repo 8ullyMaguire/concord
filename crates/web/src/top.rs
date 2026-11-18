@@ -70,7 +70,7 @@ pub async fn search(
         .void("input", &[("type", "search"), ("id", "q"), ("name", "q"), ("value", &request.q),
                          ("placeholder", "name, description, tag or language")])
         .void("input", &[("type", "text"), ("name", "tag"), ("value", &request.tag), ("placeholder", "tag")])
-        .open("button", &[("type", "submit")]).text("Search").close("button")
+        .open("button", &[("type", "submit"), ("class", "btn btn-primary")]).text("Search").close("button")
         .close("form");
 
     body.open("p", &[("class", "muted"), ("data-total", &result.total.to_string())])
@@ -103,8 +103,11 @@ pub async fn search(
             // reader cannot check — saying so is more useful than printing 0.00.
             match hit.project.health_score {
                 Some(score) => body.open("p", &[("class", "project-card-desc")])
-                    .text(&format!("health {score:.2}")).close("p"),
-                None => body.open("p", &[("class", "project-card-desc")]).text("health unmeasured").close("p"),
+                    .open("span", &[("class", "health-pill")])
+                    .text(&format!("health {score:.2}")).close("span").close("p"),
+                None => body.open("p", &[("class", "project-card-desc")])
+                    .open("span", &[("class", "health-pill health-unmeasured")])
+                    .text("health unmeasured").close("span").close("p"),
             };
             body.close("li");
         }

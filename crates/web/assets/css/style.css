@@ -2443,3 +2443,26 @@ a.curation-target:hover { text-decoration: underline; }
   .project-list[data-grid="browse"] { grid-template-columns: minmax(0, 1fr); }
   .page-head { align-items: flex-start; }
 }
+
+/* Second vision pass (2026-11-18): uniform cards, stable rows and no toolbar sliver. */
+.project-list[data-grid="browse"] > li { min-height: 190px; }
+.project-card-title,
+.project-list[data-grid="browse"] > li > a:first-child {
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+  overflow: hidden; min-height: 2.5em; text-decoration: none;
+}
+.project-card-title:hover,
+.project-list[data-grid="browse"] > li > a:first-child:hover { text-decoration: underline; }
+.project-list[data-grid="browse"] .project-card-desc {
+  min-height: 4.65em; overflow-wrap: break-word; word-break: keep-all;
+}
+.search-form input, .search-form button { min-height: 42px; }
+.health-pill {
+  display: inline-block; padding: .15rem .5rem; border-radius: 999px;
+  background: var(--indigo-light); color: var(--indigo-text);
+  font-size: .8rem; font-weight: 650;
+}
+.health-unmeasured { background: var(--slate-100); color: var(--slate-600); }
+.detail-tabs { scrollbar-width: none; }
+.detail-tabs::-webkit-scrollbar { display: none; }
+.detail-header h1.page-title { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }

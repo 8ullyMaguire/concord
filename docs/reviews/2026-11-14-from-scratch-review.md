@@ -2093,3 +2093,7 @@ memory.
 - **2026-11-18 — nav active state repaired in the live shell (D-93).** First live matrix: `active: 0` on all four
   pages; the edited builder was not the code path `render()` uses. Live shell nav now derives from one table, with
   `data-notifications-link` preserved, and two document-level tests pin it. Unit total 9 passed; 0 failed.
+
+- **2026-11-18 — second vision pass fixes (D-94).** Browser matrix found and fixed a literal `null` in the detail DOM,
+  an unthemed Search button, card-baseline drift and a tab scrollbar. Wire hooks required by `probe_pages` preserved;
+  unit tests 9 passed; 0 failed; `node --check crates/web/assets/js/project-render.js` green.

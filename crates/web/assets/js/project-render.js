@@ -655,7 +655,7 @@
       solutionsPanel(panels.solutions),
       alternativesPanel(panels.alternatives),
       forms(p)
-    ];
+    ].filter(function (child) { return child != null; });
   }
 
   window.ConcordProjectRender = { render: render };

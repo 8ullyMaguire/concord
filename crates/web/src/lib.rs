@@ -327,7 +327,7 @@ async fn project_index(State(pool): State<PgPool>, headers: HeaderMap) -> Respon
         .open("span", &[("class", "page-eyebrow")]).text("Catalogue").close("span")
         .open("h1", &[("class", "page-title-lg")]).text("Projects").close("h1")
         .open("p", &[("class", "page-lede")])
-        .text(&format!("{} project(s) in the catalogue", projects.len())).close("p")
+        .text(&format!("{} projects in the catalogue", projects.len())).close("p")
         .close("div")
         .open("a", &[("class", "btn btn-primary"), ("href", "/projects/new")])
         .text("Start a project").close("a")
