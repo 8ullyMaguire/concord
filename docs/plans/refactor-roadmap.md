@@ -645,6 +645,13 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-83 (step 3, 2026-11-18): complete the identity module with the caller lookup.** `auth_me` was the last
+  root-owned identity handler; api/identity.rs already mounted guest, consent, login and logout (D-63/D-71). The
+  handler and its `GET /api/v1/auth/me` route moved in (14 lines; lib.rs 883 -> 867). `Extension` was added to that
+  module's axum imports; the route was appended after logout. Byte-identity:
+  auth_me_bytes_identical True, sha256 5aab90c9722369c8. Verified: cargo check green, policy 7 passed; 0 failed,
+  route_policies PASS (47 modules, 0 unmerged), replay 0 disagreed of 18 checked, 3 skipped.
+
 * **D-82 (step 3, 2026-11-18): create a new module when no sibling owns the resource.** `list_curation` was
   root-owned with two GET stanzas and no curation module existed (D-68/D-69), so api/curation.rs was created and
   mounted in `router()` in the same edit (D-47). 60 handler lines moved; lib.rs 947 -> 883. `bearer_user` and

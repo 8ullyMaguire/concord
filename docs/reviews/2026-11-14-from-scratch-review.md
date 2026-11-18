@@ -1904,6 +1904,10 @@ Being critical is not the same as being dismissive. These are decisions I would 
 Everything else on this list can wait; those five are the difference between a system that is maintained and a system that is curated by
 memory.
 
+- **2026-11-18 — step 3 sixty-first pure move: auth_me into api/identity.rs (D-83).** One handler, 14 lines;
+  lib.rs 883 -> 867. Route moved with it; byte-identity sha256 5aab90c9722369c8. Policy 7 passed; 0 failed,
+  route_policies 47 modules 0 unmerged, replay 0 disagreed of 18 checked, 3 skipped.
+
 - **2026-11-18 — step 3 sixtieth pure move: new api/curation.rs (D-82).** `list_curation`, 60 lines, plus both
   GET spellings; lib.rs 947 -> 883. Module declared and mounted in the same edit; byte-identity sha256
   41ea505c011f7690. Policy 7 passed; 0 failed, route_policies 47 modules 0 unmerged, replay 0 disagreed of

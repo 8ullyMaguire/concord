@@ -6,7 +6,7 @@
 //! token helpers in place (D-32).
 
 use axum::{
-    extract::State,
+    extract::{Extension, State},
     http::{header::HeaderMap, StatusCode},
     routing::Router,
     Json,
@@ -608,6 +608,21 @@ pub(crate) fn nav_cookie(payload: &str, headers: &HeaderMap) -> String {
 
 
 
+/// `GET /api/v1/auth/me` — the caller, by id: the token carries only an id, so the name is looked up here.
+async fn auth_me(
+    Extension(user): Extension<concord_db::auth::User>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    // The Go answers `role: "member"` for every caller — it is not this project's role, it is "you are signed
+    // in". Kept identical rather than improved: a client that switches on it exists.
+    Ok(Json(serde_json::json!({
+        "id": user.id,
+        "username": user.username,
+        "display_name": user.display_name,
+        "created_at": user.created_at,
+        "role": "member",
+    })))
+}
+
 /// The identity routes, typed on `AppState` (D-18).
 pub fn routes() -> Router<AppState> {
     Router::new()
@@ -615,4 +630,5 @@ pub fn routes() -> Router<AppState> {
         .route("/api/v1/consent", axum::routing::post(accept_consent))
         .route("/api/v1/auth/login", axum::routing::post(login))
         .route("/api/v1/auth/logout", axum::routing::post(logout))
+        .route("/api/v1/auth/me", axum::routing::get(auth_me))
 }

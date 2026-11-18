@@ -101,7 +101,6 @@ pub fn router(state: AppState) -> Router {
     Router::new()
         .merge(api::meta::routes())
         // Every page needs to know who it is looking at, and the Go's `/auth/me` is what tells it.
-        .route("/api/v1/auth/me", get(auth_me))
         .route("/api/v1/projects/{project_id}/members", get(list_members))
         // The project page's panels: the Go nests these under `r.Route("/criteria", …)` and registers GET "/",
         // so both the bare path and the trailing-slash form answer — a client that appends a slash must not get
@@ -493,21 +492,6 @@ pub(crate) async fn readable(
     concord_db::projects::readable_for(&state.pool, project, user.map(|user| user.id))
         .await
         .map_err(internal)
-}
-
-/// `GET /api/v1/auth/me` — the caller, by id: the token carries only an id, so the name is looked up here.
-async fn auth_me(
-    Extension(user): Extension<concord_db::auth::User>,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    // The Go answers `role: "member"` for every caller — it is not this project's role, it is "you are signed
-    // in". Kept identical rather than improved: a client that switches on it exists.
-    Ok(Json(serde_json::json!({
-        "id": user.id,
-        "username": user.username,
-        "display_name": user.display_name,
-        "created_at": user.created_at,
-        "role": "member",
-    })))
 }
 
 /// `GET /api/v1/projects/{slug}/tags` — the project's tag names.
