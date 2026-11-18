@@ -1,0 +1,31 @@
+//! The checked-in API contract. Types live with their handlers; this module only assembles them.
+
+use utoipa::OpenApi;
+
+use crate::api::meta::{HealthResponse, VersionResponse};
+
+#[derive(OpenApi)]
+#[openapi(components(schemas(HealthResponse, VersionResponse)))]
+pub struct ApiDoc;
+
+#[cfg(test)]
+mod tests {
+    use super::ApiDoc;
+    use utoipa::OpenApi;
+
+    #[test]
+    fn emits_a_parseable_document() {
+        let json = ApiDoc::openapi().to_json().expect("OpenAPI document serialises");
+        let doc: serde_json::Value = serde_json::from_str(&json).expect("OpenAPI document is JSON");
+        assert!(doc["components"]["schemas"]["HealthResponse"].is_object());
+        assert!(doc["components"]["schemas"]["VersionResponse"].is_object());
+        if let Ok(path) = std::env::var("CONCORD_OPENAPI_OUT") {
+            // Cargo runs unit tests with the crate directory as cwd, so a repo-relative output path needs its parent
+            // created here rather than by the Makefile.
+            if let Some(parent) = std::path::Path::new(&path).parent() {
+                std::fs::create_dir_all(parent).expect("create the contract directory");
+            }
+            std::fs::write(path, json).expect("write the generated contract");
+        }
+    }
+}

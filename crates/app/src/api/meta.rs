@@ -7,11 +7,22 @@ use axum::routing::get;
 use axum::{Json, Router};
 
 use crate::AppState;
-use serde_json::{json, Value};
+use serde::Serialize;
+use utoipa::ToSchema;
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct HealthResponse {
+    pub status: String,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct VersionResponse {
+    pub version: String,
+}
 
 /// `/healthz` answers `{"status":"ok"}` — the shape the deployed service answers, not a phrase.
-async fn healthz() -> Json<Value> {
-    Json(json!({"status": "ok"}))
+async fn healthz() -> Json<HealthResponse> {
+    Json(HealthResponse { status: "ok".to_owned() })
 }
 
 /// The build string. During the port it names what answers, so a probe can tell the Rust service
@@ -27,8 +38,8 @@ const VERSION: &str = match option_env!("CONCORD_VERSION") {
     None => concat!("concord-rs ", env!("CARGO_PKG_VERSION"), " (unstamped build)"),
 };
 
-async fn version() -> Json<Value> {
-    Json(json!({"version": VERSION}))
+async fn version() -> Json<VersionResponse> {
+    Json(VersionResponse { version: VERSION.to_owned() })
 }
 
 

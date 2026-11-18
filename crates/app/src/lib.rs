@@ -34,6 +34,7 @@ use api::identity::{
 };
 pub mod feeds;
 pub mod finder;
+pub mod openapi;
 pub mod policy;
 pub mod rate;
 

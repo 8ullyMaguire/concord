@@ -2,7 +2,7 @@
 #
 # `make gate` runs unit tests and a smoke test against a scratch database. `make gate-live` adds the probes against the live instance.
 # Both call `scripts/gate.sh`, which is the same thing CI runs — one gate, three places to invoke it, no second definition to drift.
-.PHONY: gate gate-live gate-unit build deploy release smoke help
+.PHONY: gate gate-live gate-unit build deploy release smoke openapi help
 
 help:
 	@echo "gate        unit tests + smoke against a scratch database (what CI runs)"
@@ -20,6 +20,10 @@ gate-live:
 
 gate-unit:
 	@SKIP_SMOKE=1 scripts/gate.sh
+
+openapi:
+	@mkdir -p docs/contracts
+	@CONCORD_OPENAPI_OUT=$(CURDIR)/docs/contracts/openapi.json cargo test -p concord-app --lib openapi
 
 # `git push` to this repository does not create a workflow run; `workflow_dispatch` does. Three candidate causes were measured and
 # ruled out on 2026-11-15 (branch glob, default branch, Actions enabled) — see the header of the script. So the push path asks.

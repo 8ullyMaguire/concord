@@ -574,6 +574,13 @@ Unclaimed rows are fair game.
   `route_policies: PASS`, `cargo check -p concord-web --locked` green.
 
 | 4 | typed API contracts for the 20 UI routes | **in progress — spec and plan committed, no code yet.** Measured baseline at `25dc520`: 81 `Json<Value>` across `api/*.rs` + 1 in `lib.rs`, 152 `json!` sites; `scripts/parity/openapi_diff.py` is absent; `utoipa` is absent from `Cargo.lock`. The inventory is the 20 routes in `crates/parity/corpus.json`. Slice 1 types `/api/v1/healthz` and `/api/v1/version`, adds `utoipa` and checks in `docs/contracts/openapi.json` (D-95..D-98). |
+* **D-99 (step 4, 2026-11-18): rehearsal caught two gate defects before commit.** `make openapi` first RED with
+  `write the generated contract: Os { code: 2, kind: NotFound }` because Cargo runs tests with `crates/app` as cwd;
+  the test now creates its parent and the Makefile passes `$(CURDIR)` into the output path. The mutation proof first
+  PASSed because the mutant was passed as `--base`; with the mutant as `--current` it correctly prints
+  `openapi_diff: FAIL — HealthResponse.status removed` and exits 1. Both corrections are in the generated gate, not
+  in a prose footnote.
+
 ## Blocked
 
 Items nobody working in this repo can finish alone. Each names what would unblock it and on whom, so the next session can
