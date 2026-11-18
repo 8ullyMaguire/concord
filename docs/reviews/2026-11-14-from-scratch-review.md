@@ -206,6 +206,15 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44273128808 success
   ```
 
+- **2026-11-18 — step 3 forty-seventh move live (08cb2f8).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: arena next-pair 400 invalid_request · verification 200 agrees=true
+  byte-identity: arena_read_block_bytes_identical True · sha256 7f44b836b3d984c3
+  route_policies: PASS — 44 modules, 0 unmerged
+  anonymous_walk: 0 holes · headers PASS · CI 44276693296 success
+  ```
+
 - **2026-11-18 — step 3 forty-seventh pure move: arena reads into api/arena_votes.rs (D-65).** PairSide, next-pair
   and verification plus two routes moved (164 lines); lib.rs 1785 -> 1615. Shared constant returned to root; byte-identity
   proof passed. Policy 7 passed; 0 failed, route_policies: 44 modules, 0 unmerged, replay 0 disagreed of 16 checked,
