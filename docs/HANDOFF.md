@@ -703,3 +703,14 @@ only on API writes.
   /mnt/disk-important/personal/documents/code/projects/concord && make
   deploy'` — run it after every merged milestone.
 - DB: `~/.local/share/concord/concord.db` (local disk, policy OK).
+
+## 2026-11-18 — roadmap row 10 done (browse/detail visual polish)
+
+- Code HEAD `7080fab`; branch `port-rust`; `concord-rs.service` active, `concord.service` inactive.
+- Live `/api/v1/version`: `concord-rs 0.0.0+7080fab+vendor`; CSS stamp equality True.
+- Proving lines: `gate: PASS` (`132/132 ok`), `anonymous_walk: PASS`, `probe_security_headers: PASS`,
+  `cargo test -p concord-web --lib`: 9 passed; 0 failed, CI `44406382358` success.
+- Four pages restyled: `/projects`, `/search`, `/taxonomy`, `/projects/{slug}`; active nav on all four.
+- Owner-visible data issues deliberately NOT changed because `probe_pages` requires every API row: raw numeric
+  suffixes in taxonomy names, duplicate tag labels, and duplicate tag chips in the consent copy.
+- Next: roadmap Step 4 — typed contracts for the 20 routes the UI calls.

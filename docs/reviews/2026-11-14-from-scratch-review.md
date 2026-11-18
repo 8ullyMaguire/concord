@@ -2097,3 +2097,12 @@ memory.
 - **2026-11-18 — second vision pass fixes (D-94).** Browser matrix found and fixed a literal `null` in the detail DOM,
   an unthemed Search button, card-baseline drift and a tab scrollbar. Wire hooks required by `probe_pages` preserved;
   unit tests 9 passed; 0 failed; `node --check crates/web/assets/js/project-render.js` green.
+
+- **2026-11-18 — browse/detail visual polish LANDED at `7080fab`.** Final gate line:
+  `gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS · routes: all 13 answered`.
+  Live `/api/v1/version` → `concord-rs 0.0.0+7080fab+vendor`; every checked page stamps that version in its CSS URL.
+  `anonymous_walk: 0 unreachable · 0 hole(s) · 0 declared but not enforced · 0 wrongly refused · PASS`.
+  `probe_security_headers: PASS`. Browser matrix at 1280 and 390: active nav on all four pages with
+  `aria-current="page"`; project/search grids and taxonomy chips measured; no horizontal overflow; detail `null`
+  text nodes 0. Code commits `1a4b5b3`, `b9ec0fd`, `d97c94f`, `4cf6328`, `7080fab`; CI `44406382358` success.
+  Four RED gates were reproduced and fixed before GREEN (D-91, D-92, D-93, D-94).
