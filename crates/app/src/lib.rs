@@ -782,24 +782,6 @@ async fn list_capabilities(
     Ok(Json(serde_json::json!(panel)))
 }
 
-/// `GET /api/v1/projects/{slug}/features/{feature}/tags` — the feature's tags, alphabetical.
-async fn feature_tags(
-    State(state): State<AppState>,
-    Path((slug, feature)): Path<(String, String)>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let project = project_for(&state, &slug).await?;
-    let user = bearer_user(&state, &headers).await?;
-    if !readable(&state, &project, user.as_ref()).await? {
-        return Err(ApiError::not_found("no such project"));
-    }
-    let feature = feature_for(&state, project.id, &feature).await?;
-    let tags = concord_db::panels::feature_tags(&state.pool, feature.id)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::json!({ "feature_id": feature.id, "tags": tags })))
-}
-
 /// `GET /api/v1/projects/{slug}/features/{feature}/deps` — blocked_by, blocks, and what is still open.
 async fn feature_deps(
     State(state): State<AppState>,

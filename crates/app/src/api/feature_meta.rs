@@ -1,5 +1,5 @@
 //! Feature tags, milestone assignment and strategic weight (step 3, ADR 0014).
-//! The tag reader stays root-owned; its GET route moves with the write (D-48).
+//! The tag reader joined the module; its GET route stayed with the writes (D-48).
 
 use axum::{
     extract::{Path, State},
@@ -9,9 +9,27 @@ use axum::{
 use polaris_core::ApiError;
 
 use crate::{
-    caller_feature, feature_tags, internal, readable_project_segment, require_role,
-    strategy_refusal, write_audit, AppState,
+    bearer_user, caller_feature, feature_for, internal, project_for, readable, readable_project_segment,
+    require_role, strategy_refusal, write_audit, AppState,
 };
+
+/// `GET /api/v1/projects/{slug}/features/{feature}/tags` — the feature's tags, alphabetical.
+async fn feature_tags(
+    State(state): State<AppState>,
+    Path((slug, feature)): Path<(String, String)>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = project_for(&state, &slug).await?;
+    let user = bearer_user(&state, &headers).await?;
+    if !readable(&state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    let feature = feature_for(&state, project.id, &feature).await?;
+    let tags = concord_db::panels::feature_tags(&state.pool, feature.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!({ "feature_id": feature.id, "tags": tags })))
+}
 
 // ── feature tags, feature milestone, strategic weight (§4.5, §6.2, §17) ────────────────────────────────────────────
 

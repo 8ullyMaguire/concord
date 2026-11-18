@@ -650,6 +650,12 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-72 (step 3, 2026-11-18): a D-48 handler move needs no route edit.** feature_tags was the last root-owned
+  handler of api/feature_meta.rs; its GET route already lived in the module with the tag writes. The handler moved in
+  (17 lines; lib.rs 1222 -> 1204) and the module doc was corrected; no route stanza changed. Compiler named bearer_user,
+  feature_for, project_for and readable (D-23), all imported. Byte-identity:
+  feature_tags_block_bytes_identical True, sha256 c56bf561bf79879a. Verified: policy 7 passed; 0 failed, route_policies
+  PASS (46 modules, 0 unmerged), replay 0 disagreed of 16 checked, 5 skipped.
 * **D-71 (step 3, 2026-11-18): complaint readers complete the complaint resource.** get_complaint,
   complaint_features, feature_complaints and their three GET routes joined api/complaints.rs (78 lines; lib.rs 1304 ->
   1222). numeric_project stays at the crate root because milestone and list readers still use it (D-43); compiler named
