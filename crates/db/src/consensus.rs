@@ -16,6 +16,7 @@
 //!    make every consumer handle a second shape for the same absence.
 
 use serde::Serialize;
+use utoipa::ToSchema;
 use serde_json::{json, Value};
 use sqlx::PgPool;
 
@@ -25,7 +26,7 @@ use concord_governance as governance;
 pub const DEFAULT_ACTIVITY_WINDOW_DAYS: f64 = 365.0;
 
 /// A consensus call, in the Go struct's wire shape.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Call {
     pub id: i64,
     pub project_id: i64,

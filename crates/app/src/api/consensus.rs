@@ -22,7 +22,7 @@ use crate::{
 async fn list_consensus(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<Vec<concord_db::consensus::Call>>, ApiError> {
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -30,7 +30,7 @@ async fn list_consensus(
     let calls = concord_db::consensus::list_calls(&state.pool, project.id, 0)
         .await
         .map_err(internal)?;
-    Ok(Json(serde_json::to_value(calls).map_err(internal)?))
+    Ok(Json(calls))
 }
 
 /// `GET /api/v1/projects/{slug}/consensus/{call_id}` — one call, with §6.6's hidden tally.

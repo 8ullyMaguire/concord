@@ -12,6 +12,7 @@
 //!   `unmeasured` are reported beside `n` and never folded into it.
 
 use serde::Serialize;
+use utoipa::ToSchema;
 use sqlx::{PgPool, Row};
 
 /// One value of a three-way provenance facet.
@@ -608,7 +609,7 @@ mod tests {
 }
 
 /// One recorded day of instance statistics.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Snapshot {
     /// The day, as `YYYY-MM-DD`.
     pub day: String,
@@ -695,7 +696,7 @@ pub async fn history(pool: &PgPool, days: i64) -> Result<Vec<Snapshot>, sqlx::Er
 }
 
 /// One row of the newcomer-responsiveness ranking.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ResponsivenessRow {
     /// The project.
     pub project_id: i64,

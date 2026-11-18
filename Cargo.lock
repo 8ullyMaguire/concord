@@ -333,6 +333,7 @@ dependencies = [
  "sqlx",
  "tokio",
  "ulid",
+ "utoipa",
 ]
 
 [[package]]

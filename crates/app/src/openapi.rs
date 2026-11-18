@@ -3,9 +3,20 @@
 use utoipa::OpenApi;
 
 use crate::api::meta::{HealthResponse, VersionResponse};
+use crate::api::milestones::{RoadmapResponse, RoadmapTotals};
 
 #[derive(OpenApi)]
-#[openapi(components(schemas(HealthResponse, VersionResponse)))]
+#[openapi(components(schemas(
+    HealthResponse,
+    VersionResponse,
+    RoadmapResponse,
+    RoadmapTotals,
+    concord_db::consensus::Call,
+    concord_db::milestones::Milestone,
+    concord_db::milestones::MilestoneSlippage,
+    concord_db::stats::Snapshot,
+    concord_db::stats::ResponsivenessRow,
+)))]
 pub struct ApiDoc;
 
 #[cfg(test)]

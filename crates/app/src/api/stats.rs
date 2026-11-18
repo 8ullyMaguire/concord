@@ -114,7 +114,7 @@ struct SearchParams {
 async fn stats_history(
     State(state): State<AppState>,
     Query(params): Query<HistoryParams>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<Vec<concord_db::stats::Snapshot>>, ApiError> {
     // `days` is read as TEXT and parsed here, not deserialized as a number: axum's `Query` rejects a
     // non-integer with a 400, and the Go handler falls back to the default instead. The header asks this route
     // for its series on every render, so a 400 is a broken chart for a value the reader never typed.
@@ -126,7 +126,7 @@ async fn stats_history(
     let rows = concord_db::stats::history(&state.pool, days)
         .await
         .map_err(internal)?;
-    Ok(Json(serde_json::to_value(rows).map_err(internal)?))
+    Ok(Json(rows))
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -142,11 +142,11 @@ struct HistoryParams {
 /// to publish.
 async fn stats_responsiveness(
     State(state): State<AppState>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<Vec<concord_db::stats::ResponsivenessRow>>, ApiError> {
     let rows = concord_db::stats::responsiveness_leaderboard(&state.pool)
         .await
         .map_err(internal)?;
-    Ok(Json(serde_json::to_value(rows).map_err(internal)?))
+    Ok(Json(rows))
 }
 
 /// Stats and search routes, typed on `AppState` (D-18).

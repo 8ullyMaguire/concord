@@ -31,5 +31,6 @@ sha2 = "0.10"
 ulid.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+utoipa.workspace = true
 sqlx.workspace = true
 tokio.workspace = true

@@ -2114,3 +2114,7 @@ memory.
   PASS. Full app unit tests `18 passed; 0 failed`. Gate `pages: 132/132 ok`, `gate: PASS`; CI `44409374916`
   success on head `c5e5ec4`. Live health `{"status":"ok"}`, version `{"version":"concord-rs 0.0.0+c5e5ec4+vendor"}`;
   anonymous walk PASS with 0 holes; security headers PASS.
+
+- **2026-11-18 — Step 4 slice 2 code landed (D-100).** Typed five small corpus routes by adding `ToSchema` to the
+  existing DB row structs and returning them directly; `/projects/{slug}/roadmap` gained a typed wrapper. Generated
+  contract grew from 2 to 9 schemas. `cargo test -p concord-app --lib` 18 passed; 0 failed. Gate/live proof pending.

@@ -7,12 +7,13 @@
 //! so a progress bar computed from `status` measures whoever ran the import.
 
 use serde::Serialize;
+use utoipa::ToSchema;
 use sqlx::{PgPool, Row};
 
 use crate::projects::ser_unix;
 
 /// One milestone with its computed counts.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Milestone {
     pub id: i64,
     pub project_id: i64,
@@ -34,7 +35,7 @@ pub struct Milestone {
 }
 
 /// How late a milestone is, which is a different question for a closed one than an open one.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct MilestoneSlippage {
     pub milestone_id: i64,
     pub title: String,

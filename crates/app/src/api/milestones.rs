@@ -7,7 +7,9 @@ use axum::{
     Extension, Json, Router,
 };
 use polaris_core::ApiError;
+use serde::Serialize;
 use serde_json::{json, Value};
+use utoipa::ToSchema;
 
 use crate::{
     internal, numeric_project, readable_project_segment, require_role, write_audit, AppState,
@@ -43,7 +45,7 @@ async fn get_milestone(
 async fn list_milestones(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<Vec<concord_db::milestones::Milestone>>, ApiError> {
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -51,7 +53,22 @@ async fn list_milestones(
     let milestones = concord_db::milestones::list_milestones(&state.pool, project.id)
         .await
         .map_err(internal)?;
-    Ok(Json(serde_json::to_value(milestones).map_err(internal)?))
+    Ok(Json(milestones))
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct RoadmapTotals {
+    pub total: i64,
+    pub open: i64,
+    pub shipped: i64,
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct RoadmapResponse {
+    pub milestones: Vec<concord_db::milestones::Milestone>,
+    pub slippage: Vec<concord_db::milestones::MilestoneSlippage>,
+    pub slug: String,
+    pub totals: RoadmapTotals,
 }
 
 /// `GET /api/v1/projects/{slug}/roadmap` — the milestones, their totals, and how late each one is.
@@ -61,7 +78,7 @@ async fn list_milestones(
 async fn roadmap(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<RoadmapResponse>, ApiError> {
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -78,12 +95,12 @@ async fn roadmap(
     let slippage = concord_db::milestones::roadmap_slippage(&state.pool, project.id)
         .await
         .map_err(internal)?;
-    Ok(Json(json!({
-        "slug": project.slug,
-        "milestones": serde_json::to_value(milestones).map_err(internal)?,
-        "totals": {"total": total, "open": open, "shipped": shipped},
-        "slippage": serde_json::to_value(slippage).map_err(internal)?,
-    })))
+    Ok(Json(RoadmapResponse {
+        milestones,
+        slippage,
+        slug: project.slug,
+        totals: RoadmapTotals { total, open, shipped },
+    }))
 }
 
 
