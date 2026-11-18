@@ -129,7 +129,6 @@ pub fn router(state: AppState) -> Router {
         // parameter's NAME, and the read side of this path is already registered as `{slug}`. The reference calls the
         // segment `project_id` while resolving it as a slug, so the shape is the same either way.
         .merge(api::complaints::routes())
-        .route("/api/v1/requests/{request_id}", get(one_request))
         .merge(api::arena_votes::routes())
         .merge(api::coverage::routes())
         // §5.1's FEATURE vote: what to build, ranked in the project's priority arena. A different route from the solutions
@@ -1452,46 +1451,6 @@ async fn require_readable_request(
     Ok(request)
 }
 
-/// `GET /projects/{id}/requests` — a project's requests, newest first.
-async fn list_project_requests(
-    State(state): State<AppState>,
-    Path(project): Path<String>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
-    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
-    // the top of the handler — the `project_id` the body uses is its id.
-    let project_id = project_by_id(&state, &project).await?.id;
-    let project = readable_project(&state, project_id, &headers).await?;
-    let rows = concord_db::requests::by_project(&state.pool, project.id)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::json!(rows)))
-}
-
-/// `GET /requests` — the instance-wide board: every request with no project.
-///
-/// Unguarded on purpose. A request with no project belongs to the instance, so there is no project whose visibility could
-/// hide it; the absence of an access check here is the correct code, not an oversight.
-async fn list_instance_requests(
-    State(state): State<AppState>,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let rows = concord_db::requests::instance_board(&state.pool)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::json!(rows)))
-}
-
-/// `GET /requests/{id}` — one request.
-async fn one_request(
-    State(state): State<AppState>,
-    Path(request_id): Path<String>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let request = require_readable_request(&state, &request_id, &headers).await?;
-    Ok(Json(serde_json::json!(request)))
-}
-
 /// `GET /requests/{id}/answers` — its answers, best rating first, never null.
 async fn request_answers(
     State(state): State<AppState>,
@@ -1505,22 +1464,6 @@ async fn request_answers(
     // Never null: "no answers yet" is the normal state of a new request, and an empty array is the honest answer where
     // `null` forces the client to special-case it.
     Ok(Json(serde_json::json!(rows)))
-}
-
-/// `GET /requests/{id}/tags` — its tag names, alphabetical.
-async fn request_tags(
-    State(state): State<AppState>,
-    Path(request_id): Path<String>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let request = require_readable_request(&state, &request_id, &headers).await?;
-    let tags = concord_db::requests::tags(&state.pool, request.id)
-        .await
-        .map_err(internal)?;
-    // WRAPPED, because that is the contract `requests.js` was written to and documents at the top of the file:
-    // `GET /api/v1/requests/{id}/tags -> {tags: [...]}`. It read `j.tags || []` and this route answered a bare array, so every request
-    // page said "No constraints recorded" no matter what the database held — the tags were there and unreadable.
-    Ok(Json(serde_json::json!({ "tags": tags })))
 }
 
 // ── complaint writes (§M1) ──────────────────────────────────────────────────────────────────────────────────────────

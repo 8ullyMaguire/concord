@@ -650,6 +650,13 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-66 (step 3, 2026-11-18): shared request guards stay at the root while their routes move.**
+  require_readable_request and request_answers are imported by api/answers.rs, so they remain root-owned (D-43). The
+  four route-owned readers — list_project_requests, list_instance_requests, one_request and request_tags — plus the
+  `/requests/{request_id}` route joined api/requests.rs (52 lines; lib.rs 1615 -> 1558). Compiler named project_by_id and
+  readable_project (D-23). All four blocks byte-identical to HEAD (D-45): 8952a918ec7699f1, 600fe3261a03269e,
+  b300b0f0c407a467, b5d752a5372944cf. Verified: policy 7 passed; 0 failed, route_policies PASS (44 modules, 0 unmerged),
+  replay 0 disagreed of 18 checked, 3 skipped.
 * **D-65 (step 3, 2026-11-18): a shared constant outranks the resource boundary.** PairSide, arena_next_pair and
   arena_verification plus two routes joined api/arena_votes.rs (164 lines; lib.rs 1785 -> 1615). STANDINGS_PER_FEATURE
   is imported by api/solutions.rs, so it was returned to the crate root (D-41/D-43); project_by_id and readable were

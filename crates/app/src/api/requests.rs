@@ -12,8 +12,8 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::{
-    bearer_user, internal, list_instance_requests, list_project_requests, readable_project_segment,
-    request_tags, require_readable_request, require_role, write_audit, AppState,
+    bearer_user, internal, project_by_id, readable_project, readable_project_segment, require_readable_request,
+    require_role, write_audit, AppState,
 };
 
 // ── filing with the duplicate gate (§6.1) ────────────────────────────────────────────────────────────────────────────
@@ -340,6 +340,62 @@ async fn set_request_tags(
     Ok(Json(serde_json::json!({ "tags": stored })))
 }
 
+/// `GET /projects/{id}/requests` — a project's requests, newest first.
+async fn list_project_requests(
+    State(state): State<AppState>,
+    Path(project): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
+    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
+    // the top of the handler — the `project_id` the body uses is its id.
+    let project_id = project_by_id(&state, &project).await?.id;
+    let project = readable_project(&state, project_id, &headers).await?;
+    let rows = concord_db::requests::by_project(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
+}
+
+/// `GET /requests` — the instance-wide board: every request with no project.
+///
+/// Unguarded on purpose. A request with no project belongs to the instance, so there is no project whose visibility could
+/// hide it; the absence of an access check here is the correct code, not an oversight.
+async fn list_instance_requests(
+    State(state): State<AppState>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let rows = concord_db::requests::instance_board(&state.pool)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(rows)))
+}
+
+/// `GET /requests/{id}` — one request.
+async fn one_request(
+    State(state): State<AppState>,
+    Path(request_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let request = require_readable_request(&state, &request_id, &headers).await?;
+    Ok(Json(serde_json::json!(request)))
+}
+
+/// `GET /requests/{id}/tags` — its tag names, alphabetical.
+async fn request_tags(
+    State(state): State<AppState>,
+    Path(request_id): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let request = require_readable_request(&state, &request_id, &headers).await?;
+    let tags = concord_db::requests::tags(&state.pool, request.id)
+        .await
+        .map_err(internal)?;
+    // WRAPPED, because that is the contract `requests.js` was written to and documents at the top of the file:
+    // `GET /api/v1/requests/{id}/tags -> {tags: [...]}`. It read `j.tags || []` and this route answered a bare array, so every request
+    // page said "No constraints recorded" no matter what the database held — the tags were there and unreadable.
+    Ok(Json(serde_json::json!({ "tags": tags })))
+}
+
 /// Request routes, typed on `AppState` (D-18). GET+POST and GET+PUT
 /// pairs stay in one MethodRouter (D-20).
 pub fn routes() -> Router<AppState> {
@@ -348,6 +404,7 @@ pub fn routes() -> Router<AppState> {
             "/api/v1/requests",
             axum::routing::get(list_instance_requests).post(create_instance_request),
         )
+        .route("/api/v1/requests/{request_id}", axum::routing::get(one_request))
         .route("/api/v1/similar/{kind}", axum::routing::get(find_similar))
         .route(
             "/api/v1/projects/{project_id}/requests",
