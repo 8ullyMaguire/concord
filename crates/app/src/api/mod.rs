@@ -40,3 +40,4 @@ pub mod answers;
 pub mod comments;
 pub mod moderation;
 pub mod stats;
+pub mod strategy;

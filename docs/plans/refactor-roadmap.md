@@ -650,6 +650,12 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-59 (step 3, 2026-11-18): shared refusal mappers stay at the root, the rest of the resource moves.**
+  api/strategy.rs owns StrategyCaller, strategy_project, weight/theme proposal reads and writes, theme_refusal and seven
+  routes (256 lines; lib.rs 2507 -> 2223). taxonomy_refusal and strategy_refusal have importers in api/moderation.rs and
+  api/feature_meta.rs, so they stay at the crate root (D-51); the cut stops before `readable`. Compiler named State and
+  project_by_id (D-23). Module merged in the same edit (D-47). Verified: policy 7 passed; 0 failed, route_policies PASS
+  (41 modules, 0 unmerged), replay 0 disagreed of 18 checked, 3 skipped.
 * **D-58 (step 3, 2026-11-18): anchor a slice on its doc comment when no section marker survives.**
   api/stats.rs owns stats, summary, search, history, responsiveness and five public GET routes (137 lines; lib.rs
   2649 -> 2507). The first script aborted on a missing `// ──` anchor before any write; the retry used the
