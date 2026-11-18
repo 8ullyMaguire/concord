@@ -646,6 +646,14 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-82 (step 3, 2026-11-18): create a new module when no sibling owns the resource.** `list_curation` was
+  root-owned with two GET stanzas and no curation module existed (D-68/D-69), so api/curation.rs was created and
+  mounted in `router()` in the same edit (D-47). 60 handler lines moved; lib.rs 947 -> 883. `bearer_user` and
+  `internal` were imported from the crate root; both route spellings moved with the handler. Byte-identity:
+  list_curation_bytes_identical True, sha256 41ea505c011f7690. Verified: cargo check green, policy 7 passed; 0 failed,
+  route_policies PASS (47 modules, 0 unmerged — the strengthened scanner sees the new module as mounted),
+  replay 0 disagreed of 16 checked, 5 skipped.
+
 * **D-81 (step 3, 2026-11-18): a ranking handler moves with its request struct, but not with a shared constant.**
   `CompositeRequest` and `composite_rank` moved from lib.rs into api/solutions.rs (103 lines; lib.rs 1052 -> 947)
   with the `POST /projects/{project_id}/rank/composite` route. `STANDINGS_PER_FEATURE` stayed at the crate root because
