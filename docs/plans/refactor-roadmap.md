@@ -650,6 +650,11 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-60 (step 3, 2026-11-18): one handler pair can serve two spellings of the same route.**
+  api/solution_calls.rs owns readiness, open and fallback plus three routes (128 lines; lib.rs 2223 -> 2083). The Go
+  `/consensus` and port `/solution-call` paths share one MethodRouter (D-20); feature_for stays at the crate root.
+  Compiler named StatusCode and write_error (D-23). Module merged in the same edit (D-47). Verified: policy 7 passed;
+  0 failed, route_policies PASS (42 modules, 0 unmerged), replay 0 disagreed of 16 checked, 5 skipped.
 * **D-59 (step 3, 2026-11-18): shared refusal mappers stay at the root, the rest of the resource moves.**
   api/strategy.rs owns StrategyCaller, strategy_project, weight/theme proposal reads and writes, theme_refusal and seven
   routes (256 lines; lib.rs 2507 -> 2223). taxonomy_refusal and strategy_refusal have importers in api/moderation.rs and

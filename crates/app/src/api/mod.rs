@@ -41,3 +41,4 @@ pub mod comments;
 pub mod moderation;
 pub mod stats;
 pub mod strategy;
+pub mod solution_calls;
