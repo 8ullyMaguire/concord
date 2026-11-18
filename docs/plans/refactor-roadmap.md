@@ -230,7 +230,7 @@ git show --stat HEAD | tail -3       # only moves: same line count in, same line
 
 ## Step 4 — the API gets a type (the 20 routes the UI calls)
 
-**Why.** 82 `Json<Value>` handlers and 152 `json!` sites mean the contract is discovered at runtime: four trailing-slash
+**Why.** 81 `Json<Value>` handlers across `api/*.rs` plus one in `lib.rs`, and 152 `json!` sites, mean the contract is discovered at runtime: four trailing-slash
 404s swallowed by `.catch`, a tags endpoint answering a bare array where the client documented `{tags: [...]}`.
 
 **Do 20, not 174.** Typed `Serialize + ToSchema` structs for the routes the UI actually calls; `utoipa` emits
@@ -573,6 +573,7 @@ Unclaimed rows are fair game.
   from a pure `nav_is_active(path, href)` helper. Verified: `cargo test -p concord-web --lib` 7 passed; 0 failed,
   `route_policies: PASS`, `cargo check -p concord-web --locked` green.
 
+| 4 | typed API contracts for the 20 UI routes | **in progress — spec and plan committed, no code yet.** Measured baseline at `25dc520`: 81 `Json<Value>` across `api/*.rs` + 1 in `lib.rs`, 152 `json!` sites; `scripts/parity/openapi_diff.py` is absent; `utoipa` is absent from `Cargo.lock`. The inventory is the 20 routes in `crates/parity/corpus.json`. Slice 1 types `/api/v1/healthz` and `/api/v1/version`, adds `utoipa` and checks in `docs/contracts/openapi.json` (D-95..D-98). |
 ## Blocked
 
 Items nobody working in this repo can finish alone. Each names what would unblock it and on whom, so the next session can
