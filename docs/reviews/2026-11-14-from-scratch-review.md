@@ -1973,3 +1973,12 @@ memory.
   route_policies: PASS — 46 modules, 0 unmerged · replay 0 disagreed of 18 checked, 3 skipped
   anonymous_walk: 0 holes · headers PASS · CI 44355093345 success
   ```
+
+- **2026-11-18 — step 3 sixtieth move live (7d0bdfb).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: /version equality True · /api/v1/curation 200 · /api/v1/curation/ 200
+  byte-identity: list_curation_bytes_identical True · sha256 41ea505c011f7690
+  route_policies: PASS — 47 modules, 0 unmerged · replay 0 disagreed of 16 checked, 5 skipped
+  anonymous_walk: 0 holes · headers PASS · CI 44360045399 success
+  ```
