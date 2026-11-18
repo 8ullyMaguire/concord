@@ -2089,3 +2089,7 @@ memory.
 - **2026-11-18 — browse/detail polish second RED fixed (D-92).** Full probe log: `FAIL and finds the project: got False
   want True` at line 63. Search anchor markup restored exactly; taxonomy keeps `class="tags"` and every row. Gate
   re-run pending.
+
+- **2026-11-18 — nav active state repaired in the live shell (D-93).** First live matrix: `active: 0` on all four
+  pages; the edited builder was not the code path `render()` uses. Live shell nav now derives from one table, with
+  `data-notifications-link` preserved, and two document-level tests pin it. Unit total 9 passed; 0 failed.

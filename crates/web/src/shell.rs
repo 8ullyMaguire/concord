@@ -196,19 +196,37 @@ pub fn document(
         );
     }
 
+    // The live nav is this template, not lib::document()'s builder. Derive the links from the same table so an
+    // active state is actually painted (D-93); keep the session.js hooks verbatim.
+    let nav_links = [
+        ("/scout", "Scout"),
+        ("/finder", "Finder"),
+        ("/search", "Search"),
+        ("/projects", "Projects"),
+        ("/taxonomy", "Taxonomy"),
+        ("/stats", "Statistics"),
+        ("/curation", "Curation"),
+        ("/notifications", "Notifications"),
+    ]
+    .iter()
+    .map(|(href, label)| {
+        let active = if nav_is_active(shell.path, href) {
+            " class=\"active\" aria-current=\"page\""
+        } else {
+            ""
+        };
+        let hook = if *href == "/notifications" { " data-notifications-link" } else { "" };
+        format!("<a href=\"{href}\"{active}{hook}>{label}</a>")
+    })
+    .collect::<Vec<_>>()
+    .join("\n      ");
+
     document.push_str(&format!(
         r#"<header class="site-header">
   <div class="container">
     <a href="/" class="brand" aria-label="Concord home"><span class="brand-tile">C</span><span class="brand-name">Concord</span></a>
     <nav class="site-nav">
-      <a href="/scout">Scout</a>
-      <a href="/finder">Finder</a>
-      <a href="/search">Search</a>
-      <a href="/projects">Projects</a>
-      <a href="/taxonomy">Taxonomy</a>
-      <a href="/stats">Statistics</a>
-      <a href="/curation">Curation</a>
-      <a href="/notifications" data-notifications-link>Notifications</a>
+      {nav_links}
       <a href="/login" data-auth-link="login">Sign in</a>
       <button type="button" class="nav-signout" data-signout hidden>Sign out</button>
     </nav>
@@ -364,6 +382,31 @@ mod tests {
     fn nav_active_never_marks_the_session_link() {
         assert!(!nav_is_active("/login", "/taxonomy"));
         assert!(!nav_is_active("/stats", "/curation"));
+    }
+
+    #[test]
+    fn live_document_marks_the_active_nav_link() {
+        let shell = super::Shell {
+            title: "Projects",
+            path: "/projects/suki",
+            description: "test",
+            body: "<p>body</p>",
+        };
+        let html = super::document("example.test", &shell, true, "v", None);
+        assert!(html.contains("<a href=\"/projects\" class=\"active\" aria-current=\"page\">Projects</a>"));
+        assert!(html.contains("data-notifications-link"));
+    }
+
+    #[test]
+    fn live_document_marks_exact_nav_destinations() {
+        let shell = super::Shell {
+            title: "Taxonomy",
+            path: "/taxonomy",
+            description: "test",
+            body: "<p>body</p>",
+        };
+        let html = super::document("example.test", &shell, true, "v", None);
+        assert!(html.contains("<a href=\"/taxonomy\" class=\"active\" aria-current=\"page\">Taxonomy</a>"));
     }
 
     #[test]

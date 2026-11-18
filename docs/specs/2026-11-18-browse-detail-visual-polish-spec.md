@@ -52,7 +52,7 @@ it preserves the measured contrast passes and keeps the landing page in the same
 | R6 | Active nav state reflects the route | browser: one `.site-nav a.active` with the expected `href` on `/projects`, `/taxonomy`, `/projects/suki` |
 | R7 | No layout regression at desktop and phone | browser: `scrollWidth - clientWidth === 0` at 1280 and 390 on all four routes |
 | R8 | Contrast floor holds | browser: computed colours on new text tokens keep the existing AA ratios; no new `#94a3b8`-as-text usage |
-| R9 | Unit tests cover the nav-active rule | `cargo test -p concord-web --lib`: 3 baseline tests + 4 new = 7 passed |
+| R9 | Unit tests cover the nav-active rule | `cargo test -p concord-web --lib`: 3 baseline + 4 helper tests + 2 live-document tests = 9 passed |
 | R10 | Gate and live probe prove the landing | `make gate`: `gate: PASS`; `make -o release deploy`; `probe_security_headers`: PASS; `anonymous_walk`: PASS |
 
 ## Success criteria

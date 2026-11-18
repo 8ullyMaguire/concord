@@ -107,13 +107,7 @@ pub fn document(host: &str, page: &Page<'_>, body: &str) -> String {
         .close("a")
         .open("nav", &[("class", "site-nav")]);
     for (href, label) in NAV {
-        if shell::nav_is_active(page.path, href) {
-            nav.open("a", &[("href", href), ("class", "active"), ("aria-current", "page")])
-                .text(label)
-                .close("a");
-        } else {
-            nav.open("a", &[("href", href)]).text(label).close("a");
-        }
+        nav.open("a", &[("href", href)]).text(label).close("a");
     }
     nav.open("a", &[("href", "/login"), ("data-auth-link", "login")]).text("Sign in").close("a");
     nav.close("nav").close("div");
