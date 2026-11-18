@@ -17,6 +17,7 @@
 //!    that pages on `limit` cannot tell "past the end" from "nothing matched" without it.
 
 use serde::Serialize;
+use utoipa::ToSchema;
 use sqlx::PgPool;
 
 /// The default page.
@@ -50,7 +51,7 @@ pub struct Filter {
 }
 
 /// One audit row.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Entry {
     pub id: i64,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -82,7 +83,7 @@ pub struct Entry {
 }
 
 /// One page plus the total it was drawn from.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Page {
     pub entries: Vec<Entry>,
     pub total: i64,

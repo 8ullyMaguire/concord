@@ -17,7 +17,7 @@ async fn list_features(
     State(state): State<AppState>,
     Path(slug): Path<String>,
     Query(query): Query<FeatureQuery>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<Vec<concord_db::features::Feature>>, ApiError> {
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -29,7 +29,7 @@ async fn list_features(
     )
     .await
     .map_err(internal)?;
-    Ok(Json(serde_json::to_value(features).map_err(internal)?))
+    Ok(Json(features))
 }
 
 /// `GET /api/v1/projects/{slug}/features/{id}` — one feature, but only under its own project.
@@ -40,7 +40,7 @@ async fn list_features(
 async fn get_feature(
     State(state): State<AppState>,
     Path((slug, feature_id)): Path<(String, String)>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<concord_db::features::Feature>, ApiError> {
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -53,7 +53,7 @@ async fn get_feature(
         .map_err(internal)?
         .filter(|feature| feature.project_id == project.id);
     match found {
-        Some(feature) => Ok(Json(serde_json::to_value(feature).map_err(internal)?)),
+        Some(feature) => Ok(Json(feature)),
         None => Err(ApiError::not_found(format!("feature {id}"))),
     }
 }

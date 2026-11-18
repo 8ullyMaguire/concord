@@ -48,7 +48,7 @@ async fn list_audit(
     State(state): State<AppState>,
     Path(slug): Path<String>,
     Query(query): Query<AuditQuery>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<concord_db::audit::Page>, ApiError> {
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -74,14 +74,14 @@ async fn list_audit(
     let page = concord_db::audit::list(&state.pool, &filter)
         .await
         .map_err(internal)?;
-    Ok(Json(serde_json::to_value(page).map_err(internal)?))
+    Ok(Json(page))
 }
 
 /// `GET /api/v1/projects/{slug}/audit/actions` — the filter vocabulary, alphabetical.
 async fn list_audit_actions(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<Vec<String>>, ApiError> {
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -89,7 +89,7 @@ async fn list_audit_actions(
     let actions = concord_db::audit::actions(&state.pool, project.id)
         .await
         .map_err(internal)?;
-    Ok(Json(serde_json::to_value(actions).map_err(internal)?))
+    Ok(Json(actions))
 }
 
 /// Audit routes, typed on `AppState` (D-18).

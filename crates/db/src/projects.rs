@@ -159,7 +159,7 @@ pub async fn list_projects(pool: &PgPool) -> Result<Vec<Project>, sqlx::Error> {
 }
 
 /// One column of the board.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct BoardColumn {
     pub name: String,
     pub wip: Option<i64>,
@@ -172,7 +172,7 @@ pub struct BoardColumn {
 /// status. A derived card has no row, so `id` and `column_id` are zero and it is addressed by
 /// `feature_id`; `derived` is what says so, and `title` is carried only for derived cards because a
 /// placed card's title is the feature's and the board page reads it from the feature.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct BoardCard {
     pub id: i64,
     pub project_id: i64,
@@ -214,7 +214,7 @@ fn ser_u64_unix<S: serde::Serializer>(value: &f64, serializer: S) -> Result<S::O
 }
 
 /// The board payload: `{cards, columns}` for one project slug.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Board {
     pub cards: Vec<BoardCard>,
     pub columns: Vec<BoardColumn>,
@@ -351,7 +351,7 @@ pub async fn board_by_slug(pool: &PgPool, slug: &str) -> Result<Option<Board>, s
 }
 
 /// A document as `GET /api/v1/projects/{slug}/documents` lists it.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Document {
     pub id: i64,
     pub project_id: i64,

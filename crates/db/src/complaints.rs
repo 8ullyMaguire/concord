@@ -7,12 +7,13 @@
 //! `merged_into` and decides the complaint was merged.
 
 use serde::Serialize;
+use utoipa::ToSchema;
 use sqlx::PgPool;
 
 use crate::projects::ser_unix;
 
 /// One complaint, as `/api/v1/projects/{slug}/complaints` returns it.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Complaint {
     pub id: i64,
     pub project_id: i64,

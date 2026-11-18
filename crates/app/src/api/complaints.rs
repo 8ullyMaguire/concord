@@ -21,7 +21,7 @@ async fn list_complaints(
     State(state): State<AppState>,
     Path(slug): Path<String>,
     Query(query): Query<FeatureQuery>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<Vec<concord_db::complaints::Complaint>>, ApiError> {
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -33,7 +33,7 @@ async fn list_complaints(
     )
     .await
     .map_err(internal)?;
-    Ok(Json(serde_json::to_value(complaints).map_err(internal)?))
+    Ok(Json(complaints))
 }
 
 

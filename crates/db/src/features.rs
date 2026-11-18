@@ -6,12 +6,13 @@
 //! key out — and a backlog is exactly the set of features with no milestone, which is a real answer.
 
 use serde::Serialize;
+use utoipa::ToSchema;
 use sqlx::PgPool;
 
 use crate::projects::ser_unix;
 
 /// One feature, as `/api/v1/projects/{slug}/features` and `/features/{id}` return it.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Feature {
     pub id: i64,
     pub project_id: i64,

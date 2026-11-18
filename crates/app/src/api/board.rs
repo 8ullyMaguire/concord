@@ -28,7 +28,7 @@ async fn get_board(
     State(state): State<AppState>,
     Path(slug): Path<String>,
     Query(query): Query<BoardQuery>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<concord_db::projects::Board>, ApiError> {
     let Some(mut board) = concord_db::projects::board_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -54,7 +54,7 @@ async fn get_board(
             card.feature_id != 0 && membership.get(&card.feature_id).copied() == Some(milestone)
         });
     }
-    Ok(Json(serde_json::to_value(board).map_err(internal)?))
+    Ok(Json(board))
 }
 
 /// The board's query string. `milestone` is the only parameter, and it is a STRING here rather than an `Option<i64>` so that an

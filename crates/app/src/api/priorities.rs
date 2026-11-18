@@ -20,7 +20,7 @@ use crate::{internal, AppState};
 async fn list_priorities(
     State(state): State<AppState>,
     Path(slug): Path<String>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<Vec<concord_db::priorities::FeaturePriority>>, ApiError> {
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -28,7 +28,7 @@ async fn list_priorities(
     let priorities = concord_db::priorities::feature_priorities(&state.pool, project.id)
         .await
         .map_err(internal)?;
-    Ok(Json(serde_json::to_value(priorities).map_err(internal)?))
+    Ok(Json(priorities))
 }
 
 /// Priority routes, typed on `AppState` (D-18).

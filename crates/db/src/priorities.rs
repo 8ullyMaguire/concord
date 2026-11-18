@@ -15,12 +15,13 @@
 //!   where it has tests.
 
 use serde::Serialize;
+use utoipa::ToSchema;
 use sqlx::PgPool;
 
 use concord_ranking as ranking;
 
 /// One feature's priority, with its inputs.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct FeaturePriority {
     pub id: i64,
     pub title: String,
@@ -41,7 +42,7 @@ pub struct FeaturePriority {
 
 /// The charter weights the score needs. Defaults are the baseline's, for a project whose charter has
 /// not been written yet — a project without a charter is not an error, it is a project with defaults.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, ToSchema)]
 pub struct Weights {
     /// The `λ` on the pain term.
     pub lam: f64,
