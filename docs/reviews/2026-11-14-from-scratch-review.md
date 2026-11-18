@@ -2118,3 +2118,11 @@ memory.
 - **2026-11-18 — Step 4 slice 2 code landed (D-100).** Typed five small corpus routes by adding `ToSchema` to the
   existing DB row structs and returning them directly; `/projects/{slug}/roadmap` gained a typed wrapper. Generated
   contract grew from 2 to 9 schemas. `cargo test -p concord-app --lib` 18 passed; 0 failed. Gate/live proof pending.
+
+- **2026-11-18 — Step 4 slice 2 landed live at `e2db8db`.** Five corpus routes now return typed DB rows:
+  `/projects/{slug}/consensus`, `/milestones`, `/stats/history`, `/stats/responsiveness`, `/projects/{slug}/roadmap`.
+  Generated contract: `openapi_diff: PASS — 9 schemas, 0 paths, 0 breaking changes`; app unit tests 18 passed; 0
+  failed. Gate `pages: 132/132 ok`, `gate: PASS`; CI `44411482591` success on head `e2db8db`. Live responses:
+  consensus/milestones/history/responsiveness `200 []`, roadmap `200
+  {"milestones":[],"slippage":[],"slug":"suki","totals":{"total":0,"open":0,"shipped":0}}`; anonymous walk PASS
+  with 0 holes; security headers PASS.

@@ -723,3 +723,10 @@ only on API writes.
 - Live health `{"status":"ok"}`, version stamped `c5e5ec4`; `concord-rs` active, `concord` inactive.
 - Next: type the small empty-array routes (`/consensus`, `/milestones`, `/stats/history`,
   `/stats/responsiveness`, `/notifications`, `/projects/{slug}/roadmap`) before the large list routes.
+
+## 2026-11-18 — roadmap row 4 slices 1–2
+
+- Code HEAD `e2db8db`; gate `PASS` (`132/132 ok`); CI `44411482591` success; unit tests 18 passed; 0 failed.
+- 7 of 20 corpus routes typed; `docs/contracts/openapi.json` has 9 schemas and passes `openapi_diff.py`.
+- Live typed routes verified; `concord-rs` active, `concord` inactive.
+- Next: type `/curation`, `/notifications`, `/search`, `/stats`, `/stats/summary`, then the project detail list routes.
