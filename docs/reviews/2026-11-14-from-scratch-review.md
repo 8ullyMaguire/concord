@@ -1932,3 +1932,12 @@ memory.
   route_policies: PASS — 46 modules, 0 unmerged · replay 0 disagreed of 16 checked, 5 skipped
   anonymous_walk: 0 holes · headers PASS · CI 44335023821 success
   ```
+
+- **2026-11-18 — step 3 fifty-seventh move live (671fbd5).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: /version equality True · /lists/2 200 · /lists/2/ 200 · /lists/2/entries 200 · /lists/abc 400
+  byte-identity: list_readers_bytes_identical True · sha256 fd38656b5025091d
+  route_policies: PASS — 46 modules, 0 unmerged · replay 0 disagreed of 18 checked, 3 skipped
+  anonymous_walk: 0 holes · headers PASS · CI 44341220717 success
+  ```
