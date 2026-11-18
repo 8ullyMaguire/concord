@@ -1904,6 +1904,10 @@ Being critical is not the same as being dismissive. These are decisions I would 
 Everything else on this list can wait; those five are the difference between a system that is maintained and a system that is curated by
 memory.
 
+- **2026-11-18 — step 3 sixty-sixth pure move: project_tags joined api/project_settings.rs (D-88).** 18 lines;
+  lib.rs 762 -> 743. No route edit (D-48). Byte-identity sha256 304061ad59b8d984. Policy 7 passed; 0 failed,
+  route_policies 49 modules 0 unmerged, replay 0 disagreed of 18 checked, 3 skipped.
+
 - **2026-11-18 — step 3 sixty-fifth pure move: settings and lists readers (D-87).** `project_languages` (16 lines)
   and `project_lists` (15 lines) joined their sole importers; lib.rs 795 -> 762. No route edit (D-48). Byte-identical
   sha256 b95672d64a765348 and 57b34541c7181217. Policy 7 passed; 0 failed, route_policies 49 modules 0 unmerged,

@@ -1,5 +1,5 @@
 //! Project settings: tags, languages and intake mode (step 3, ADR 0014).
-//! The language reader joined the module; its GET+PUT route already lives with the writes (D-20/D-48).
+//! Its readers joined the module; each GET+PUT route already lives with the writes (D-20/D-48/D-87).
 
 use axum::{
     extract::{Path, State},
@@ -9,9 +9,28 @@ use axum::{
 use polaris_core::ApiError;
 
 use crate::{
-    bearer_user, internal, project_for, project_tags, readable, readable_project_segment, require_role,
+    bearer_user, internal, project_for, readable, readable_project_segment, require_role,
     write_audit, AppState,
 };
+
+/// `GET /api/v1/projects/{slug}/tags` — the project's tag names.
+async fn project_tags(
+    State(state): State<AppState>,
+    Path(slug): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let project = project_for(&state, &slug).await?;
+    // Resolve and check the project FIRST: an empty list for a project the caller may not read is a 200 that
+    // confirms the slug exists, which is the leak this rule exists to close.
+    let user = bearer_user(&state, &headers).await?;
+    if !readable(&state, &project, user.as_ref()).await? {
+        return Err(ApiError::not_found("no such project"));
+    }
+    let tags = concord_db::taxonomy::project_tags(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(tags)))
+}
 
 /// `GET /api/v1/projects/{slug}/languages` — highest percentage first.
 async fn project_languages(

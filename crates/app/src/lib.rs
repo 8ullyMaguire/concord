@@ -494,25 +494,6 @@ pub(crate) async fn readable(
         .map_err(internal)
 }
 
-/// `GET /api/v1/projects/{slug}/tags` — the project's tag names.
-async fn project_tags(
-    State(state): State<AppState>,
-    Path(slug): Path<String>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let project = project_for(&state, &slug).await?;
-    // Resolve and check the project FIRST: an empty list for a project the caller may not read is a 200 that
-    // confirms the slug exists, which is the leak this rule exists to close.
-    let user = bearer_user(&state, &headers).await?;
-    if !readable(&state, &project, user.as_ref()).await? {
-        return Err(ApiError::not_found("no such project"));
-    }
-    let tags = concord_db::taxonomy::project_tags(&state.pool, project.id)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::json!(tags)))
-}
-
 /// A project by id, refused with a 404 the caller cannot use to enumerate private projects.
 ///
 /// 404 and not 403 on purpose: a 403 tells an anonymous caller that the id exists, which is the enumeration
