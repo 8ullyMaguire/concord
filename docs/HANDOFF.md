@@ -736,3 +736,9 @@ only on API writes.
 - Code HEAD `905c082`; gate `PASS` (`132/132 ok`); CI `44413903989` success; unit tests 18 passed; 0 failed.
 - 9 of 20 corpus routes typed; 13 schemas in the generated contract; live curation 200, notifications 401.
 - Next: type `/search`, `/stats`, `/stats/summary`, then the project detail list routes.
+
+## 2026-11-18 — roadmap row 4 slices 1–4
+
+- Code HEAD `100a719`; gate `PASS`; CI `44415912498` success; unit tests 18 passed; 0 failed.
+- 11 of 20 corpus routes typed; 20 schemas generated and diff-checked; live stats and summary 200.
+- Next: `/search`, then the project detail list routes, then client generation (separate row).

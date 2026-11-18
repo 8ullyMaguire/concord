@@ -2131,3 +2131,8 @@ memory.
   page/inbox structs typed with `ToSchema`; generated contract has 13 schemas. `cargo test -p concord-app --lib`
   18 passed; 0 failed. Gate `pages: 132/132 ok`, `gate: PASS`; CI `44413903989` success. Live `/curation` 200 with
   `{"items":[{"kind":"act",...`; `/notifications` anonymous 401 as declared. Walk PASS, headers PASS.
+
+- **2026-11-18 — Step 4 slice 4 landed live at `100a719`.** `/stats` and `/stats/summary` return typed
+  `StatsPayload` and `Census` with every nested schema registered: generated contract 20 schemas,
+  `openapi_diff: PASS`, unit tests 18 passed; 0 failed. Gate `pages: 132/132 ok`, `gate: PASS`; CI `44415912498`
+  success. Live both 200 with `census` / `features_by_status` keys; walk PASS, headers PASS.
