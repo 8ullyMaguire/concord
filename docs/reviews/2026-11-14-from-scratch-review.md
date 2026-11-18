@@ -2026,3 +2026,12 @@ memory.
   route_policies: PASS — 49 modules, 0 unmerged · replay 0 disagreed of 18 checked, 3 skipped
   anonymous_walk: 0 holes · headers PASS · CI 44374727897 success
   ```
+
+- **2026-11-18 — step 3 sixty-fourth move live (0a3f169).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: /version equality True · /projects/suki/criteria 200 · /criteria-profiles 200
+  byte-identity: criteria_readers_bytes_identical True · sha256 2b94019cb2229401
+  route_policies: PASS — 49 modules, 0 unmerged · replay 0 disagreed of 16 checked, 3 skipped
+  anonymous_walk: 0 holes · headers PASS · CI 44378690776 success
+  ```
