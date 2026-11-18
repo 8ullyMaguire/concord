@@ -2146,3 +2146,8 @@ memory.
   projections: board, features (list + one), complaints, priorities, audit (page + actions). Generated contract 30
   schemas, `openapi_diff: PASS`, unit tests 18 passed; 0 failed. Gate `pages: 132/132 ok`, `gate: PASS`;
   CI `44420385683` success. Live all six checked paths 200 with typed shapes; walk PASS, headers PASS.
+
+- **2026-11-18 — Step 4 COMPLETE live at `1de65dd`.** All 20 corpus routes typed; generated contract 37 schemas;
+  `openapi_diff: PASS`; app unit tests 18 passed; 0 failed. Gate `pages: 132/132 ok`, `gate: PASS`; CI
+  `44421966895` success. Live `/search?q=suki` 200 with echoed filters; `/projects/suki/documents` 200 with body;
+  `?fields=meta` 200 with `"body":` count 0 versus 1 in the full shape. Walk PASS, headers PASS.

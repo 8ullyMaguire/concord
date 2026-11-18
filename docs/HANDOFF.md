@@ -754,3 +754,9 @@ only on API writes.
 - Code HEAD `35a1340`; gate `PASS`; CI `44420385683` success; unit tests 18 passed; 0 failed.
 - 18 of 20 corpus routes typed; 30 schemas generated; live detail routes 200.
 - Remaining: `documents?fields=meta` (two shapes) and `/search` (facet name collision with stats).
+
+## 2026-11-18 — roadmap row 4 DONE
+
+- Code HEAD `1de65dd`; gate `PASS`; CI `44421966895` success; unit tests 18 passed; 0 failed.
+- All 20 corpus routes typed; 37 schemas generated and diff-checked; live search and both document shapes verified.
+- Steps 0–4 are done. Next: Step 5 (append-only events and an audit trail that cannot forget).
