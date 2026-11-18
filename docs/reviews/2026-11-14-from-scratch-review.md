@@ -242,6 +242,15 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44287885695 success
   ```
 
+- **2026-11-18 — step 3 fifty-first move live (614a916).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: priorities GET 200 (elo_r, pain_score)
+  byte-identity: priorities_block_bytes_identical True · sha256 1924d043649ded40
+  route_policies: PASS — 46 modules, 0 unmerged
+  anonymous_walk: 0 holes · headers PASS · CI 44291266171 success
+  ```
+
 - **2026-11-18 — step 3 fifty-first pure move: new api/priorities.rs (D-69).** Public priority ranking and its route
   moved (18 lines); lib.rs 1429 -> 1407. Byte-identity proof passed; policy 7 passed; 0 failed, route_policies: 46
   modules, 0 unmerged, replay 0 disagreed of 18 checked, 3 skipped.
