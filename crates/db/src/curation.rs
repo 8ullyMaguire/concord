@@ -17,6 +17,7 @@
 //!   paging bug into an infinite scroll.
 
 use serde::Serialize;
+use utoipa::ToSchema;
 use sqlx::PgPool;
 
 use crate::feature_writes::WriteError;
@@ -33,7 +34,7 @@ pub const CURATION_ACTIONS: [&str; 4] =
     ["arena.remove", "arena.restore", "feature.reject", "feature.unreject"];
 
 /// One row of the queue: a proposal of any kind, or a moderation act.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Item {
     /// `taxonomy`, `strategy` or `act`.
     pub kind: String,
@@ -74,7 +75,7 @@ pub struct Item {
 }
 
 /// One page of the queue plus the position after it.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Page {
     /// The rows.
     pub items: Vec<Item>,

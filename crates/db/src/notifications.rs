@@ -17,10 +17,11 @@
 //! real — a fact about another person.
 
 use serde::Serialize;
+use utoipa::ToSchema;
 use sqlx::PgPool;
 
 /// One row of the reader's inbox.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Notification {
     /// The row.
     pub id: i64,
@@ -47,7 +48,7 @@ pub struct Notification {
 }
 
 /// One inbox page, plus the badge.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Inbox {
     /// The reader's rows, newest first.
     pub notifications: Vec<Notification>,

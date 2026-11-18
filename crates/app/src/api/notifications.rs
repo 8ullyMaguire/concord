@@ -20,7 +20,7 @@ async fn list_notifications(
     State(state): State<AppState>,
     Query(query): Query<std::collections::HashMap<String, String>>,
     Extension(user): Extension<concord_db::auth::User>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<concord_db::notifications::Inbox>, ApiError> {
     let limit = query
         .get("limit")
         .and_then(|value| value.parse::<i64>().ok())
@@ -28,7 +28,7 @@ async fn list_notifications(
     let inbox = concord_db::notifications::list(&state.pool, user.id, limit)
         .await
         .map_err(internal)?;
-    Ok(Json(serde_json::to_value(inbox).map_err(internal)?))
+    Ok(Json(inbox))
 }
 
 /// `POST /api/v1/notifications/{id}/read` — idempotent, and only ever the reader's own row.

@@ -21,7 +21,7 @@ async fn list_curation(
     State(state): State<AppState>,
     Query(query): Query<std::collections::HashMap<String, String>>,
     headers: HeaderMap,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<concord_db::curation::Page>, ApiError> {
     let viewer = bearer_user(&state, &headers).await?.map_or(0, |user| user.id);
     let mut filter = concord_db::curation::Filter {
         viewer_id: viewer,
@@ -69,7 +69,7 @@ async fn list_curation(
             sqlx::Error::Decode(message) => ApiError::invalid_request(message.to_string()),
             other => internal(other),
         })?;
-    Ok(Json(serde_json::to_value(page).map_err(internal)?))
+    Ok(Json(page))
 }
 
 /// The Go mount answers both `/curation` and `/curation/`; a client that appends a slash must not get a 404.
