@@ -93,7 +93,7 @@ pub async fn search(
     }
 
     if !result.results.is_empty() {
-        body.open("ul", &[("class", "project-list project-grid")]);
+        body.open("ul", &[("class", "project-list"), ("data-grid", "browse")]);
         for hit in &result.results {
             body.open("li", &[])
                 .open("a", &[("class", "project-card-title"), ("href", &format!("/projects/{}", hit.project.slug))])

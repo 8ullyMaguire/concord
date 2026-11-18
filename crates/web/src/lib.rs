@@ -338,7 +338,7 @@ async fn project_index(State(pool): State<PgPool>, headers: HeaderMap) -> Respon
         .open("a", &[("class", "btn btn-primary"), ("href", "/projects/new")])
         .text("Start a project").close("a")
         .close("div");
-    body.open("ul", &[("class", "project-list project-grid")]);
+    body.open("ul", &[("class", "project-list"), ("data-grid", "browse")]);
     for project in &projects {
         body.open("li", &[])
             .open("a", &[("class", "project-card-title"), ("href", &format!("/projects/{}", project.slug))])

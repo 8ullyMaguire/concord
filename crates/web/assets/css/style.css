@@ -2383,17 +2383,17 @@ a.curation-target:hover { text-decoration: underline; }
 .page-title-lg { margin: 0; font-size: clamp(2rem, 4vw, 2.75rem); line-height: 1.1; letter-spacing: -.02em; }
 .page-lede { margin: .5rem 0 0; color: var(--slate-600); font-size: 1rem; line-height: 1.6; }
 
-.project-grid {
+.project-list[data-grid="browse"] {
   display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
   gap: 1rem; margin: 0; padding: 0; list-style: none;
 }
-.project-grid > li {
+.project-list[data-grid="browse"] > li {
   display: flex; flex-direction: column; gap: .5rem; min-width: 0;
   padding: 1rem; border: 1px solid var(--slate-200); border-radius: 12px;
   background: #fff; box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
   transition: border-color .15s, box-shadow .15s, transform .15s;
 }
-.project-grid > li:hover {
+.project-list[data-grid="browse"] > li:hover {
   border-color: var(--indigo-border); transform: translateY(-1px);
   box-shadow: 0 6px 18px rgb(15 23 42 / 8%);
 }
@@ -2439,6 +2439,6 @@ a.curation-target:hover { text-decoration: underline; }
 @media (max-width: 640px) {
   .search-form { grid-template-columns: minmax(0, 1fr); }
   .search-form label { grid-column: 1; }
-  .project-grid { grid-template-columns: minmax(0, 1fr); }
+  .project-list[data-grid="browse"] { grid-template-columns: minmax(0, 1fr); }
   .page-head { align-items: flex-start; }
 }

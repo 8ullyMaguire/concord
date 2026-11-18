@@ -2081,3 +2081,7 @@ memory.
 - **2026-11-18 — browse/detail visual polish code landed (D-90).** Stale-build premise disproved: served CSS MD5
   `db05fb28b3dcd42333d3e107286394f8` equals the repo. Added page-head/card-grid/chip-cloud/form/nav-active classes to
   `/projects`, `/search`, `/taxonomy`, `/projects/{slug}`; utility pages untouched. Awaiting gate and live proof.
+
+- **2026-11-18 — browse/detail polish gate RED then fixed (D-91).** First gate: `131/132 ok`, `probe_pages` failed
+  because `class="project-list"` no longer matched exactly. The grid moved to a data attribute; unit tests stayed
+  7 passed; 0 failed. Gate re-run pending.

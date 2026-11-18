@@ -46,7 +46,7 @@ it preserves the measured contrast passes and keeps the landing page in the same
 |----|-------------|-------|
 | R1 | Served deploy matches the tree before and after the work | `/api/v1/version` equals local HEAD stamp; served CSS bytes equal repo CSS bytes |
 | R2 | Four target pages have `.page-head` with an eyebrow and a title | browser: `document.querySelectorAll('main .page-head').length === 1` on each route |
-| R3 | Projects and search use the shared card grid | browser: `.project-grid > li` count > 0; computed `display` is `grid` |
+| R3 | Projects and search use the shared card grid | browser: `.project-list[data-grid="browse"] > li` count > 0; computed `display` is `grid` |
 | R4 | Taxonomy renders a chip cloud, not a bare bullet list | browser: `.tag-cloud` exists; its `list-style` is `none`; duplicate visible labels = 0 |
 | R5 | Detail page has a restyled header and active tab | browser: `.detail-header .page-eyebrow` exists; `.detail-tab.is-active` count = 1 |
 | R6 | Active nav state reflects the route | browser: one `.site-nav a.active` with the expected `href` on `/projects`, `/taxonomy`, `/projects/suki` |
