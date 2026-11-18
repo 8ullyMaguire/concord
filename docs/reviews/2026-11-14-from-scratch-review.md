@@ -197,6 +197,15 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44270030258 success
   ```
 
+- **2026-11-18 — step 3 forty-sixth move live (0532598).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: anon PUT objection resolve 403 consent_required
+  byte-identity: objection_block_bytes_identical True · sha256 fae744b90264dd54
+  route_policies: PASS — 44 modules, 0 unmerged
+  anonymous_walk: 0 holes · headers PASS · CI 44273128808 success
+  ```
+
 - **2026-11-18 — step 3 forty-sixth pure move: objection resolution into api/consensus.rs (D-64).** Request type,
   handler and one PUT route moved (26 lines); lib.rs 1816 -> 1785. Byte-identity proof passed. Policy 7 passed;
   0 failed, route_policies: 44 modules, 0 unmerged, replay 0 disagreed of 18 checked, 3 skipped.
