@@ -113,8 +113,6 @@ pub fn router(state: AppState) -> Router {
         // §4.7's write half. The read half has been routed since the port began, which is why its panel's "No field reports yet"
         // was not a state the instance happened to be in — it was the state the code guaranteed.
         .merge(api::field_reports::routes())
-        .route("/api/v1/projects/{project_id}/complaints/{complaint}", get(get_complaint))
-        .route("/api/v1/projects/{project_id}/complaints/{complaint}/features", get(complaint_features))
         .route("/api/v1/projects/{project_id}/lists/{list}", get(get_list))
         .route("/api/v1/projects/{project_id}/lists/{list}/", get(get_list))
         .route("/api/v1/projects/{project_id}/tallies", get(feature_tallies))
@@ -156,7 +154,6 @@ pub fn router(state: AppState) -> Router {
         // `{slug}` and not `{project_id}`: axum refuses two routes that differ only in a parameter NAME ("Insertion
         // failed due to conflict with previously registered route"), and the sibling feature routes under this
         // prefix already bind `{slug}`. The Go's shape is the same path — parameter names are not part of it.
-        .route("/api/v1/projects/{slug}/features/{feature}/complaints", get(feature_complaints))
         // §6.5's call, at the REFERENCE's path as well as the port's `/solution-call`: a caller written against the Go
         // service asks for `/consensus`, and answering 404 to a path that means the same thing is a migration papercut
         // that costs a client author an afternoon. Two paths, one pair of handlers.
@@ -834,85 +831,6 @@ async fn feature_evidence(
     }
     let feature = feature_for(&state, project.id, &feature).await?;
     let rows = concord_db::panels::evidence(&state.pool, feature.id)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::json!(rows)))
-}
-
-/// `GET /api/v1/projects/{project_id}/complaints/{id}` — one complaint, bound to the project in the path.
-///
-/// THE URL HAS TWO HALVES AND THEY MUST TIE. A complaint id is global, so a handler that reads only `{id}` makes
-/// the project half decoration: any caller could reach any complaint on the instance through their own project's
-/// URL, and a role check written against the URL's project would be checking a project the complaint has nothing to
-/// do with. A mismatch is a 404, not a 403 — a 403 confirms the id is real.
-///
-/// A non-numeric id is INVALID, not 404: parsing it as 0 asks the store about a row that does not exist, which is a
-/// 404 for the wrong reason.
-async fn get_complaint(
-    State(state): State<AppState>,
-    Path((project_id, complaint)): Path<(String, String)>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    // A non-numeric project segment is a 404 and not a 400, and the segment may be an id OR a slug: `complaint.js` asks for
-    // `/api/v1/projects/{slug}/complaints/{id}` and the reference answers it, while every page script builds its URLs from the slug. This
-    // handler was the last one still parsing the segment as an integer, so the complaint page rendered "No such complaint" for a complaint
-    // that exists — the third route in this family to fail that way, and the reason `project_by_id` now resolves both forms instead of
-    // each handler deciding for itself.
-    let project = project_by_id(&state, &project_id)
-        .await
-        .map_err(|_| ApiError::not_found("no such project"))?;
-    let user = bearer_user(&state, &headers).await?;
-    if !readable(&state, &project, user.as_ref()).await? {
-        return Err(ApiError::not_found("no such project"));
-    }
-    let id = complaint
-        .parse::<i64>()
-        .map_err(|_| ApiError::invalid_request("complaint id must be an integer"))?;
-    let found = concord_db::complaints::complaint(&state.pool, id)
-        .await
-        .map_err(internal)?;
-    match found {
-        Some(found) if found.project_id == project.id => Ok(Json(serde_json::json!(found))),
-        _ => Err(ApiError::not_found(format!("complaint {complaint}"))),
-    }
-}
-
-/// `GET /api/v1/projects/{project_id}/complaints/{id}/features` — the work built to answer this complaint.
-///
-/// An empty array, never null: `null` breaks a client that expects a list, and "no work answers this" is the common
-/// case rather than the edge.
-async fn complaint_features(
-    State(state): State<AppState>,
-    Path((project_id, complaint)): Path<(String, String)>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let project = numeric_project(&state, &project_id, &headers).await?;
-    let id = complaint
-        .parse::<i64>()
-        .map_err(|_| ApiError::invalid_request("complaint id must be an integer"))?;
-    // The complaint must belong to the project in the path, or one project's complaint is served under another's.
-    let found = concord_db::complaints::complaint(&state.pool, id)
-        .await
-        .map_err(internal)?;
-    match found {
-        Some(found) if found.project_id == project.id => {}
-        _ => return Err(ApiError::not_found(format!("complaint {complaint}"))),
-    }
-    let rows = concord_db::features::complaint_features(&state.pool, id)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::json!(rows)))
-}
-
-/// `GET /api/v1/projects/{project_id}/features/{id}/complaints` — what justifies this feature.
-async fn feature_complaints(
-    State(state): State<AppState>,
-    Path((project_id, feature)): Path<(String, String)>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    let project = numeric_project(&state, &project_id, &headers).await?;
-    let feature = feature_for(&state, project.id, &feature).await?;
-    let rows = concord_db::complaints::feature_complaints(&state.pool, feature.id)
         .await
         .map_err(internal)?;
     Ok(Json(serde_json::json!(rows)))
