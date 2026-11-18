@@ -2106,3 +2106,11 @@ memory.
   `aria-current="page"`; project/search grids and taxonomy chips measured; no horizontal overflow; detail `null`
   text nodes 0. Code commits `1a4b5b3`, `b9ec0fd`, `d97c94f`, `4cf6328`, `7080fab`; CI `44406382358` success.
   Four RED gates were reproduced and fixed before GREEN (D-91, D-92, D-93, D-94).
+
+- **2026-11-18 — Step 4 slice 1 landed at `c5e5ec4`.** Typed `/healthz` and `/version`:
+  `grep -c 'Json<Value>' crates/app/src/api/meta.rs` → `0`. `make openapi` → `1 passed; 0 failed`, generated
+  `docs/contracts/openapi.json` with `['HealthResponse', 'VersionResponse']`. Mutation gate:
+  `openapi_diff: FAIL — HealthResponse.status removed`, exit 1 when the mutant is `--current`; baseline re-check
+  PASS. Full app unit tests `18 passed; 0 failed`. Gate `pages: 132/132 ok`, `gate: PASS`; CI `44409374916`
+  success on head `c5e5ec4`. Live health `{"status":"ok"}`, version `{"version":"concord-rs 0.0.0+c5e5ec4+vendor"}`;
+  anonymous walk PASS with 0 holes; security headers PASS.

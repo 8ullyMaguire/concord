@@ -714,3 +714,12 @@ only on API writes.
 - Owner-visible data issues deliberately NOT changed because `probe_pages` requires every API row: raw numeric
   suffixes in taxonomy names, duplicate tag labels, and duplicate tag chips in the consent copy.
 - Next: roadmap Step 4 — typed contracts for the 20 routes the UI calls.
+
+## 2026-11-18 — roadmap row 4 slice 1 (typed meta responses)
+
+- Code HEAD `c5e5ec4`; gate `PASS` (`132/132 ok`); CI `44409374916` success; unit tests 18 passed; 0 failed.
+- `make openapi` generates `docs/contracts/openapi.json`; `python3 scripts/parity/openapi_diff.py` PASS with
+  2 schemas. Mutation (`--current` = mutant) correctly FAILs on a removed field.
+- Live health `{"status":"ok"}`, version stamped `c5e5ec4`; `concord-rs` active, `concord` inactive.
+- Next: type the small empty-array routes (`/consensus`, `/milestones`, `/stats/history`,
+  `/stats/responsiveness`, `/notifications`, `/projects/{slug}/roadmap`) before the large list routes.
