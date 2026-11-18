@@ -650,6 +650,11 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-56 (step 3, 2026-11-18): the labelled complaint section now holds only shared helpers.** Accept the
+  resource where it lives: the thread-comment slice was the next coherent handler group. api/comments.rs owns
+  thread_comments, post/delete/vote comment and three routes (95 lines; lib.rs 3013 -> 2904). The cut stops before
+  ArenaActRequest. Compiler named Value and StatusCode (D-23). Module merged in the same edit (D-47). Verified: policy 7
+  passed; 0 failed, route_policies PASS (38 modules, 0 unmerged), replay 0 disagreed of 18 checked, 3 skipped.
 * **D-55 (step 3, 2026-11-18): the answer resource includes its accept badge helpers.**
   api/answers.rs owns refusal_error, accept/unaccept, answer_request, vote_answer and three routes (217 lines; lib.rs
   3240 -> 3013). The slice begins at the accept refusal mapper and ends at the complaint section. Reader request_answers

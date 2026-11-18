@@ -37,3 +37,4 @@ pub mod feature_work;
 pub mod consensus;
 pub mod requests;
 pub mod answers;
+pub mod comments;
