@@ -2141,3 +2141,8 @@ memory.
   `Project` projection; 21 schemas, `openapi_diff: PASS`, unit tests 18 passed; 0 failed. Gate `pages: 132/132 ok`,
   `gate: PASS`; CI `44417822817` success. Live `/projects` 200 list of projects, `/projects/suki` 200 detail;
   walk PASS, headers PASS.
+
+- **2026-11-18 — Step 4 slice 6 landed live at `35a1340`.** Seven project detail routes now return typed DB
+  projections: board, features (list + one), complaints, priorities, audit (page + actions). Generated contract 30
+  schemas, `openapi_diff: PASS`, unit tests 18 passed; 0 failed. Gate `pages: 132/132 ok`, `gate: PASS`;
+  CI `44420385683` success. Live all six checked paths 200 with typed shapes; walk PASS, headers PASS.
