@@ -18,6 +18,7 @@
 //! tagged `rust` as the Go index did.
 
 use serde::{Deserialize, Serialize};
+use utoipa::ToSchema;
 use sqlx::{PgPool, Row};
 
 use crate::projects::Project;
@@ -32,7 +33,7 @@ enum Arg {
 }
 
 /// The filters the handler echoes back.
-#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize, ToSchema)]
 pub struct SearchFilters {
     /// Every tag must match.
     pub tags: Option<Vec<String>>,
@@ -55,7 +56,7 @@ pub struct SearchFilters {
 }
 
 /// One hit: the project row, plus how well it matched.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct ProjectHit {
     /// The project.
     #[serde(flatten)]
@@ -66,7 +67,8 @@ pub struct ProjectHit {
 }
 
 /// One facet value and how many of the hits carry it.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
+#[schema(as = SearchFacetCount)]
 pub struct FacetCount {
     /// The value.
     pub value: String,
@@ -75,7 +77,7 @@ pub struct FacetCount {
 }
 
 /// The facets over the hits.
-#[derive(Debug, Clone, Default, Serialize)]
+#[derive(Debug, Clone, Default, Serialize, ToSchema)]
 pub struct Facets {
     /// Tags, by frequency.
     pub tags: Vec<FacetCount>,
@@ -88,7 +90,7 @@ pub struct Facets {
 }
 
 /// The whole search answer.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct SearchResult {
     /// The query, echoed.
     pub query: String,

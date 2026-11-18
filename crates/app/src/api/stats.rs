@@ -39,7 +39,7 @@ async fn search(
     State(state): State<AppState>,
     Query(params): Query<SearchParams>,
     headers: HeaderMap,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<concord_db::search::SearchResult>, ApiError> {
     let filters = concord_db::search::SearchFilters {
         tags: params.tag,
         languages: params.language,
@@ -80,7 +80,7 @@ async fn search(
     )
     .await
     .map_err(internal)?;
-    Ok(Json(serde_json::to_value(result).map_err(internal)?))
+    Ok(Json(result))
 }
 
 #[derive(Debug, Deserialize, Default)]

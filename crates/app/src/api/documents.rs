@@ -9,16 +9,39 @@ use axum::{
     Extension, Json, Router,
 };
 use polaris_core::ApiError;
+use serde::Serialize;
+use utoipa::ToSchema;
 use serde::Deserialize;
 use serde_json::Value;
 
 use crate::{internal, readable_project_segment, require_role, AppState};
 
+/// The document list has two wire shapes: the full rows, or `?fields=meta` with bodies removed.
+#[derive(Debug, Serialize, ToSchema)]
+#[serde(untagged)]
+pub enum DocumentList {
+    Full(Vec<concord_db::projects::Document>),
+    Meta(Vec<DocumentMeta>),
+}
+
+#[derive(Debug, Serialize, ToSchema)]
+pub struct DocumentMeta {
+    pub id: i64,
+    pub project_id: i64,
+    pub kind: String,
+    pub slug: String,
+    pub title: String,
+    pub revision: i64,
+    pub author_id: Option<i64>,
+    pub created_at: f64,
+    pub updated_at: f64,
+}
+
 async fn list_documents(
     State(state): State<AppState>,
     Path(slug): Path<String>,
     Query(query): Query<DocumentListQuery>,
-) -> Result<Json<Value>, ApiError> {
+) -> Result<Json<DocumentList>, ApiError> {
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -26,21 +49,31 @@ async fn list_documents(
     let documents = concord_db::projects::list_documents(&state.pool, project.id)
         .await
         .map_err(internal)?;
-    let mut value = serde_json::to_value(documents).map_err(internal)?;
     // `?fields=meta` drops the bodies. The default shape is unchanged, which matters: the Go route returns bodies and the corpus replay
     // compares this response against the recorded one. What the browser needs is different from what the corpus needs — one project's
     // documents are 11.7 MB of prose, and the documents page measured 30+ seconds before it drew anything because it asked for all of it
     // to display one document. The reader fetches the single document at `/documents/{id}` instead.
-    if query.fields.as_deref() == Some("meta") {
-        if let Some(items) = value.as_array_mut() {
-            for item in items {
-                if let Some(object) = item.as_object_mut() {
-                    object.remove("body");
-                }
-            }
-        }
-    }
-    Ok(Json(value))
+    let response = if query.fields.as_deref() == Some("meta") {
+        DocumentList::Meta(
+            documents
+                .into_iter()
+                .map(|doc| DocumentMeta {
+                    id: doc.id,
+                    project_id: doc.project_id,
+                    kind: doc.kind,
+                    slug: doc.slug,
+                    title: doc.title,
+                    revision: doc.revision,
+                    author_id: doc.author_id,
+                    created_at: doc.created_at,
+                    updated_at: doc.updated_at,
+                })
+                .collect(),
+        )
+    } else {
+        DocumentList::Full(documents)
+    };
+    Ok(Json(response))
 }
 
 /// `?fields=` on the document list. Only `meta` is understood, and anything else is ignored rather than refused: an unknown field set is a
