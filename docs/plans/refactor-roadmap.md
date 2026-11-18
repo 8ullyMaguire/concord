@@ -648,6 +648,14 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-80 (step 3, 2026-11-18): a panel's count reader belongs with the panel's arena module.** `feature_tallies` was
+  root-owned only because its GET route was in the root router; the doc comment names it the arena panel's per-feature
+  counts, so it moved into api/arena_votes.rs (20 lines; lib.rs 1074 -> 1052) with that route. The module was already
+  mounted, so only its route table changed. `readable_project` was added to its imports; `project_by_id` and `internal`
+  were already there. The `null`-not-`[]` behaviour for a project with no features was not tidied (D-35).
+  Byte-identity: feature_tallies_bytes_identical True, sha256 0932cc3514cc7c11. Verified: cargo check green, policy
+  7 passed; 0 failed, route_policies PASS (46 modules, 0 unmerged), replay 0 disagreed of 16 checked, 5 skipped.
+
 * **D-79 (step 3, 2026-11-18): a resource owns its reader routes too, even when they live in the root router.**
   `readable_list`, `get_list` and `get_list_entries` were the last root-owned handlers of api/lists.rs (65 lines;
   lib.rs 1142 -> 1074). The two root GET stanzas for `/lists/{list}` and its trailing-slash twin moved with them; the

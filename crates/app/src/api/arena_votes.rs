@@ -11,9 +11,30 @@ use axum::{
 use polaris_core::ApiError;
 
 use crate::{
-    bearer_user, caller_feature, internal, project_by_id, readable, readable_project_segment,
-    STANDINGS_PER_FEATURE, AppState,
+    bearer_user, caller_feature, internal, project_by_id, readable, readable_project,
+    readable_project_segment, STANDINGS_PER_FEATURE, AppState,
 };
+
+/// `GET /api/v1/projects/{id}/tallies` — the arena panel's per-feature counts.
+///
+/// Answers `null` and not `[]` for a project with no features, because the Go's nil slice marshals that way and a
+/// deployed frontend is already reading it. The rest of the port's list routes answer `[]`; this one reproduces the
+/// service, and the difference is recorded rather than tidied.
+async fn feature_tallies(
+    State(state): State<AppState>,
+    Path(project): Path<String>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
+    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
+    // the top of the handler — the `project_id` the body uses is its id.
+    let project_id = project_by_id(&state, &project).await?.id;
+    let project = readable_project(&state, project_id, &headers).await?;
+    let tallies = concord_db::tallies::tallies(&state.pool, project.id)
+        .await
+        .map_err(internal)?;
+    Ok(Json(serde_json::json!(tallies)))
+}
 
 // ── §5.1: the solution arena's pairwise vote ──────────────────────────────────────────────────────────────────────
 
@@ -365,5 +386,9 @@ pub fn routes() -> Router<AppState> {
         .route(
             "/api/v1/projects/{project_id}/arenas/{arena_id}/verification",
             axum::routing::get(arena_verification),
+        )
+        .route(
+            "/api/v1/projects/{project_id}/tallies",
+            axum::routing::get(feature_tallies),
         )
 }

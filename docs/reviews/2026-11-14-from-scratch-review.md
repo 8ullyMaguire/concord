@@ -1904,6 +1904,10 @@ Being critical is not the same as being dismissive. These are decisions I would 
 Everything else on this list can wait; those five are the difference between a system that is maintained and a system that is curated by
 memory.
 
+- **2026-11-18 — step 3 fifty-eighth pure move: feature_tallies into api/arena_votes.rs (D-80).** One reader, 20
+  lines; lib.rs 1074 -> 1052. Route moved with it; byte-identity sha256 0932cc3514cc7c11. Policy 7 passed; 0 failed,
+  route_policies 46 modules 0 unmerged, replay 0 disagreed of 16 checked, 5 skipped.
+
 - **2026-11-18 — step 3 fifty-seventh pure move: list readers into api/lists.rs (D-79).** Three readers, 65 lines;
   lib.rs 1142 -> 1074. Two root GET stanzas moved with them; byte-identity sha256 fd38656b5025091d. Policy 7 passed;
   0 failed, route_policies 46 modules 0 unmerged, replay 0 disagreed of 18 checked, 3 skipped.

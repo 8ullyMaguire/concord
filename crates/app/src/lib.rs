@@ -113,7 +113,6 @@ pub fn router(state: AppState) -> Router {
         // §4.7's write half. The read half has been routed since the port began, which is why its panel's "No field reports yet"
         // was not a state the instance happened to be in — it was the state the code guaranteed.
         .merge(api::field_reports::routes())
-        .route("/api/v1/projects/{project_id}/tallies", get(feature_tallies))
         .merge(api::records::routes())
         .route("/api/v1/projects/{project_id}/rank/composite", post(composite_rank))
         .merge(api::solutions::routes())
@@ -802,27 +801,6 @@ async fn numeric_project(
         return Err(ApiError::not_found("no such project"));
     }
     Ok(project)
-}
-
-/// `GET /api/v1/projects/{id}/tallies` — the arena panel's per-feature counts.
-///
-/// Answers `null` and not `[]` for a project with no features, because the Go's nil slice marshals that way and a
-/// deployed frontend is already reading it. The rest of the port's list routes answer `[]`; this one reproduces the
-/// service, and the difference is recorded rather than tidied.
-async fn feature_tallies(
-    State(state): State<AppState>,
-    Path(project): Path<String>,
-    headers: HeaderMap,
-) -> Result<Json<serde_json::Value>, ApiError> {
-    // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
-    // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
-    // the top of the handler — the `project_id` the body uses is its id.
-    let project_id = project_by_id(&state, &project).await?.id;
-    let project = readable_project(&state, project_id, &headers).await?;
-    let tallies = concord_db::tallies::tallies(&state.pool, project.id)
-        .await
-        .map_err(internal)?;
-    Ok(Json(serde_json::json!(tallies)))
 }
 
 /// The body of `rank/composite`. Every field is optional: an absent body is "rank with every criterion's default".
