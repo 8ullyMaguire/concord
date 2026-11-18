@@ -171,6 +171,15 @@ failure is a slow page read in CI, not a regression. Action if it recurs: raise 
   anonymous_walk: 0 holes · headers PASS · CI 44260547188 success
   ```
 
+- **2026-11-18 — step 3 forty-third module live (b744df9).**
+  ```
+  gate: PASS — pages: 132/132 ok · rate: probe_rate_limit: PASS
+  live: anon POST outcome 403 consent_required
+  GET on POST-only path 500 route_declares_no_policy (pre-existing, three probes agree)
+  route_policies: PASS — 43 modules, 0 unmerged
+  anonymous_walk: 0 holes · headers PASS · CI 44263456328 success
+  ```
+
 - **2026-11-18 — step 3 forty-third pure move: api/consensus_outcomes.rs (D-61).** Outcome request/ammendment types
   and recorder plus one route moved (65 lines); lib.rs 2083 -> 2015. Charter reader stayed root-owned. Policy 7 passed;
   0 failed, route_policies: 43 modules, 0 unmerged, replay 0 disagreed of 18 checked, 3 skipped.
