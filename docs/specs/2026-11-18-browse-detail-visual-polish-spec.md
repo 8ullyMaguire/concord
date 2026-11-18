@@ -26,8 +26,8 @@ it preserves the measured contrast passes and keeps the landing page in the same
   may gain an active nav state, but their bodies are not restyled.
 - `/lists` remains a broken destination (raw JSON 404). It is recorded in the visual-directions doc as a known defect;
   adding a new page is a public-behaviour change the owner did not request in this pass.
-- No new data semantics: duplicate taxonomy names are collapsed **for display** only, and no tag name is rewritten to
-  hide its imported numeric suffix.
+- No new data semantics: duplicate taxonomy names and imported numeric suffixes remain visible; the gate requires one
+  rendered row per API tag.
 - No new webfont, CSS framework, client-side framework or theme. Direction B/C/D are documented alternatives, not
   partially adopted here.
 - No change to API routes, policy rows or the step-3 module split.
@@ -47,7 +47,7 @@ it preserves the measured contrast passes and keeps the landing page in the same
 | R1 | Served deploy matches the tree before and after the work | `/api/v1/version` equals local HEAD stamp; served CSS bytes equal repo CSS bytes |
 | R2 | Four target pages have `.page-head` with an eyebrow and a title | browser: `document.querySelectorAll('main .page-head').length === 1` on each route |
 | R3 | Projects and search use the shared card grid | browser: `.project-list[data-grid="browse"] > li` count > 0; computed `display` is `grid` |
-| R4 | Taxonomy renders a chip cloud, not a bare bullet list | browser: `.tag-cloud` exists; its `list-style` is `none`; duplicate visible labels = 0 |
+| R4 | Taxonomy renders a chip cloud, not a bare bullet list | browser: `ul.tags[data-cloud="1"]` exists; its `list-style` is `none`; every API tag still renders |
 | R5 | Detail page has a restyled header and active tab | browser: `.detail-header .page-eyebrow` exists; `.detail-tab.is-active` count = 1 |
 | R6 | Active nav state reflects the route | browser: one `.site-nav a.active` with the expected `href` on `/projects`, `/taxonomy`, `/projects/suki` |
 | R7 | No layout regression at desktop and phone | browser: `scrollWidth - clientWidth === 0` at 1280 and 390 on all four routes |
@@ -66,5 +66,5 @@ it preserves the measured contrast passes and keeps the landing page in the same
 
 - Direction A; see `docs/specs/2026-11-18-visual-directions.md` for the four options and the rejected alternatives.
 - Additive classes rather than editing `.project-list`/`.tags` globally, because utility pages share them.
-- Taxonomy dedupe by display name, no rewrite of imported numeric suffixes.
+- Taxonomy keeps every API row visible; the chip style is additive via `data-cloud`, not a content change.
 - `/lists` out of scope despite being broken; recorded, not silently dropped.

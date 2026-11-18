@@ -96,7 +96,7 @@ pub async fn search(
         body.open("ul", &[("class", "project-list"), ("data-grid", "browse")]);
         for hit in &result.results {
             body.open("li", &[])
-                .open("a", &[("class", "project-card-title"), ("href", &format!("/projects/{}", hit.project.slug))])
+                .open("a", &[("href", &format!("/projects/{}", hit.project.slug))])
                 .text(&hit.project.name)
                 .close("a");
             // Health only when measured: `min_health` filters on a score, so a hit with no score is a hit whose position the
@@ -219,7 +219,7 @@ pub async fn taxonomy(State(pool): State<PgPool>, headers: HeaderMap) -> Respons
         .open("span", &[("class", "page-eyebrow")]).text("Vocabulary").close("span")
         .open("h1", &[("class", "page-title-lg")]).text("Taxonomy").close("h1")
         .open("p", &[("class", "page-lede")])
-        .text(&format!("{} ratified tag(s), grouped by namespace. Repeating names are shown once.", tags.len()))
+        .text(&format!("{} ratified tag(s), grouped by namespace.", tags.len()))
         .close("p")
         .close("div")
         .close("div");
@@ -235,10 +235,8 @@ pub async fn taxonomy(State(pool): State<PgPool>, headers: HeaderMap) -> Respons
         let in_namespace: Vec<&concord_db::taxonomy::Tag> =
             tags.iter().filter(|tag| &tag.namespace == namespace).collect();
         let heading = if namespace.is_empty() { "(no namespace)" } else { namespace.as_str() };
-        body.open("h2", &[]).text(heading).close("h2").open("ul", &[("class", "tag-cloud")]);
-        let mut seen = std::collections::HashSet::new();
+        body.open("h2", &[]).text(heading).close("h2").open("ul", &[("class", "tags"), ("data-cloud", "1")]);
         for tag in in_namespace {
-            if !seen.insert(tag.name.as_str()) { continue; }
             body.open("li", &[])
                 .open("a", &[("href", &format!("/search?tag={}", urlencode(&tag.name)))])
                 .text(&tag.name)

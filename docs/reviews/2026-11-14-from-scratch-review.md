@@ -2085,3 +2085,7 @@ memory.
 - **2026-11-18 — browse/detail polish gate RED then fixed (D-91).** First gate: `131/132 ok`, `probe_pages` failed
   because `class="project-list"` no longer matched exactly. The grid moved to a data attribute; unit tests stayed
   7 passed; 0 failed. Gate re-run pending.
+
+- **2026-11-18 — browse/detail polish second RED fixed (D-92).** Full probe log: `FAIL and finds the project: got False
+  want True` at line 63. Search anchor markup restored exactly; taxonomy keeps `class="tags"` and every row. Gate
+  re-run pending.
