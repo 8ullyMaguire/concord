@@ -650,6 +650,12 @@ tell the difference between "not started" and "waiting".
   restoring the seven-section Go hero verbatim, moving the catalogue to `/projects`, and catalogue-only with no
   explanation. Full reasoning in `docs/adr/0018-home-page-overview.md`. Implementation is a separate, unstarted slice.
 
+* **D-53 (step 3, 2026-11-18): move a resource's readers and writers in two slices around shared helpers.**
+  api/consensus.rs owns list/get consensus plus four consensus writes and six routes (225 lines; lib.rs 3824 -> 3576).
+  The two slices stop before `project_for`/`parse_id` and before `ResolveObjectionRequest`; `require_maintainer` stays
+  root-owned. The compiler named json!, bearer_user, write_error and parse_id as missing imports (D-23). Merged in the
+  same edit (D-47). Verified: policy 7 passed; 0 failed, route_policies PASS (35 modules, 0 unmerged), replay 0 disagreed
+  of 16 checked, 5 skipped.
 * **D-52 (step 3, 2026-11-18): the last section can run to the end of the file.**
   api/feature_work.rs owns feature_work_refusal, seven work/dependency/evidence handlers and five routes (231 lines;
   lib.rs 4075 -> 3824). The cut ran from the section marker to EOF (D-39). Sibling grep found no other importers of
