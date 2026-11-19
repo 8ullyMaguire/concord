@@ -2397,3 +2397,5 @@ memory.
 - **2026-11-19 — consent boundary recorded.** `DEBUG_CONSENT 403 .../strategy/themes/1/consent`;
   `DEBUG_ELIGIBLE [(1,), (2,), (3,)]`; `DEBUG_MR` three merged MRs; `DEBUG_MEMBER` owner/contributor roles.
   The refusal needs server-side instrumentation, not another fixture guess.
+
+- **2026-11-19 — consent-boundary gate.** CI gate `44609397646 success in 2m30s`. Docs-only; no redeploy.
