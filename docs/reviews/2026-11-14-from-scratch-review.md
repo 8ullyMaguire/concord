@@ -2193,3 +2193,7 @@ memory.
 - **2026-11-18 — Step 5 claim slice code landed (D-112).** `claim_with_event` appends `project.claim` in the same
   transaction as the maintainer membership row. Store suite 33 passed; 0 failed. RED mutation failed
   `events_claim_writes_event` with `one claim writes one event` (0 passed / 1 failed), then restored.
+
+- **2026-11-18 — Step 5 claim slice live proof at `cb92097`.** `gate: PASS`, `pages: 132/132 ok`; live version
+  stamped `cb92097`; CI `44441490869` success. Store test plus RED mutation prove the same-transaction event. A live
+  claim needs a real account and a measured dormant project; credential `[REDACTED]` (owner: user), already Blocked.

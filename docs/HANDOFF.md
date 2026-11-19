@@ -786,3 +786,9 @@ only on API writes.
   RED mutation proved, CI `44437354684`.
 - Live vote needs an open call; `suki` has none, and opening one needs maintainer credential `[REDACTED]` (user).
 - Remaining: claim, feature state, document edit.
+
+## 2026-11-18 — Step 5 claim slice
+
+- Claim slice live at `cb92097`: `project.claim` in the membership transaction. Gate PASS 132/132, store suite 33,
+  RED mutation proved, CI `44441490869`.
+- Remaining: feature state, document edit. Live claim needs real account `[REDACTED]` (user).
