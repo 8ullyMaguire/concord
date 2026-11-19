@@ -1552,6 +1552,11 @@ tell the difference between "not started" and "waiting".
   use the same `project_by_id` resolver as the read routes. `settings_themes_e2e` went from `3 failed` to
   `1 passed / 2 failed in 29.47s`; suite not wired yet.
 
+- **D-154 — settings first paint is not a `signedIn` race.** Using the API token as an additional signed-in signal
+  left `settings_themes_e2e` at `1 passed / 2 failed in 44.79s`; reverted. Debug proof: no JS errors, page-context GET
+  returns the seeded `battery-life` proposal, but `[data-theme-proposals]` is absent. The remaining defect is in the
+  settings render/state path, not in auth detection or collection shape.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet

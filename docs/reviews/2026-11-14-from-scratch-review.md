@@ -2380,3 +2380,6 @@ memory.
 - **2026-11-19 — strategy slug fix landed live.** CI gate `44596573311 success in 3m0s`;
   `make release` (6m 05s) then `make -o release deploy`; live `/api/v1/version`
   `concord-rs 0.0.0+ced7603+vendor`; `concord-rs.service` active, `concord.service` inactive.
+
+- **2026-11-19 — settings dead end.** Signed-in-state change reverted after `1 passed / 2 failed in 44.79s`, unchanged.
+  Page-context API returns the seeded row; the DOM shows "No theme proposals". Next: instrument `strategyPanel`.

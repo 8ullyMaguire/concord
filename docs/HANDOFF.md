@@ -943,3 +943,8 @@ only on API writes.
 - CI gate `44596573311 success in 3m0s`; live version `concord-rs 0.0.0+ced7603+vendor`.
 - Services: `concord-rs.service` active, `concord.service` inactive.
 - `settings_themes_e2e` remains `1 passed / 2 failed`; debug why seeded rows are not rendered.
+
+## 2026-11-19 — settings dead end
+
+- `settings_themes_e2e` stays `1 passed / 2 failed`; signed-in-state theory disproved (D-154) and reverted.
+- Next: instrument `strategyPanel` to see what `s.themeProposals` contains at render time.
