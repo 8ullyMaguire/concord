@@ -1500,6 +1500,10 @@ tell the difference between "not started" and "waiting".
 - **D-135 — the board and milestones fixtures seed the durable user record before navigation.** Same signing contract as
   D-132/D-133: cookie + token + user record precede the first `goto`, or write controls are hidden.
 
+- **D-136 — the feature tags fixture also needs the durable user record.** Every suite that writes from a browser
+  page seeds token, navigation cookie and `concord.user` before the first load; `session.js` deletes the token and uses
+  the record as its only durable sign-in signal.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet

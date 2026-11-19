@@ -636,6 +636,10 @@ def test_the_tags_panel_shows_adds_and_removes_the_steering_tags(browser, server
     # localStorage afterwards left the writes going out with no Authorization header at all
     # (they arrived as a guest and were refused for the wrong reason).
     ctx.add_init_script("localStorage.setItem('concord.token', %r);" % token)
+    # session.js deletes the script-readable token and keeps the durable user record as the
+    # signed-in signal; without it the tag add/remove controls are hidden.
+    ctx.add_init_script("localStorage.setItem('concord.user', JSON.stringify(%s));" %
+                        '{"username":"feat-owner","display_name":"feat-owner"}')
     ctx.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
     pg = ctx.new_page()
     pg.errors = []
