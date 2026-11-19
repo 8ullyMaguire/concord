@@ -80,6 +80,7 @@
 
   function loadProjects() {
     return getJSON("/api/v1/projects")
+      .then(window.ConcordApi.list)
       .then(function (list) {
         (list || []).forEach(function (p) {
           projectsById[p.id] = p;

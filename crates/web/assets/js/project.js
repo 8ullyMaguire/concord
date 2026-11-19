@@ -327,12 +327,15 @@
             // The feature form's select needs the complaint list at render
             // time, so it is stashed rather than threaded through the markup.
             window.__complaints = complaints || [];
-            box.replaceChildren.apply(box, window.ConcordProjectRender.render(p, features, complaints, documents, {
+            // render() returns section fragments as arrays; replaceChildren() stringifies a
+            // nested array into "[object HTMLDivElement]" instead of appending its nodes.
+            var nodes = window.ConcordProjectRender.render(p, features, complaints, documents, {
               capabilities: res[3],
               fieldReports: res[4],
               solutions: res[5],
               alternatives: res[6]
-            }, requests, lists, workItems, res[10]));
+            }, requests, lists, workItems, res[10]).flat(Infinity).filter(function (n) { return n != null; });
+            box.replaceChildren.apply(box, nodes);
             if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
             wire(box, slug, p.id);
           });

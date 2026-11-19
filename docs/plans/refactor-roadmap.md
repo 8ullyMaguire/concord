@@ -1508,6 +1508,13 @@ tell the difference between "not started" and "waiting".
   normalizes `/priorities` and `/tallies` with `ConcordApi.list()`, and `_page()` seeds the navigation cookie, token and
   durable user record before the first `goto`.
 
+- **D-138 — `project.js` flattens the render fragments before `replaceChildren`.** `ConcordProjectRender.render()`
+  returns section fragments as nested arrays; spreading them directly into `replaceChildren` stringifies each array
+  into `[object HTMLDivElement]`, which silently hid the entire Requests section and its links.
+- **D-139 — `requests.js` normalizes the catalogue response with `ConcordApi.list()`.** The project lookup for answer
+  headings uses `/api/v1/projects`, which answers the Step-6 catalogue envelope; without unwrapping, every answer
+  fell back to `Project <id>` instead of a followable named link.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet

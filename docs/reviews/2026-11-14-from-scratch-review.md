@@ -2317,3 +2317,8 @@ memory.
 - **2026-11-19 — Step 9: `rank_links_e2e` repaired.** From `3 failed / 1 passed` to `4 passed in 24.83s`.
   The ranking table was empty because `/priorities` and `/tallies` returned page envelopes (D-137); the fixture also
   wrote its token after navigation. Already gate-named; ratchet stays at 15.
+
+- **2026-11-19 — Step 9: `requests_e2e` repaired.** From `2 failed / 16 passed` to `18 passed in 10.41s`.
+  Two product defects: nested render fragments were stringified by `replaceChildren` (D-138), hiding the Requests
+  section; and the answer project lookup read the Step-6 catalogue envelope as an array, producing bare `Project N`
+  headings (D-139). Already gate-named; ratchet stays at 15.
