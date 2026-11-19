@@ -2244,3 +2244,6 @@ memory.
 - **2026-11-19 — Step 8 complete at `be8ee25`.** `gate: PASS` with `vendor: corpse check: PASS — 4 vendored crates,
   0 with zero importers`, `domain: 0 sqlx deps`, `collection_pages: PASS`, `pages: 132/132 ok`. Live version stamped
   `be8ee25`; anonymous walk 0 holes; headers PASS; CI `44460212015` success.
+
+- **2026-11-19 — Step 9 suite 1/21: `lifecycle_e2e` wired.** Direct candidate run: `8 passed in 6.75s`.
+  Ratchet RED proof: setting `RECORDED_UNRUN = 22` failed the harness self-test; restored to 20 in the same commit.
