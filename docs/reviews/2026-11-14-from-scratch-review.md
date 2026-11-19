@@ -2313,3 +2313,7 @@ memory.
 - **2026-11-19 — Step 9: `feature_e2e` repaired.** From `4 failed / 11 passed` in the earlier live gate to
   `15 passed in 7.59s`; the remaining tags-panel failure was the same missing durable user record (D-136).
   Already gate-named; ratchet stays at 15.
+
+- **2026-11-19 — Step 9: `rank_links_e2e` repaired.** From `3 failed / 1 passed` to `4 passed in 24.83s`.
+  The ranking table was empty because `/priorities` and `/tallies` returned page envelopes (D-137); the fixture also
+  wrote its token after navigation. Already gate-named; ratchet stays at 15.

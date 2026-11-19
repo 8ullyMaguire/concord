@@ -139,10 +139,10 @@
   function load() {
     var base = '/api/v1/projects/' + encodeURIComponent(slug);
     Promise.all([
-      window.ConcordApi.get(base + '/priorities'),
+      window.ConcordApi.get(base + '/priorities').then(window.ConcordApi.list),
       // Tallies are supplementary: a ranking without participation counts is
       // less honest, but its absence must not blank the page.
-      window.ConcordApi.get(base + '/tallies').catch(function () { return []; })
+      window.ConcordApi.get(base + '/tallies').then(window.ConcordApi.list).catch(function () { return []; })
     ]).then(function (res) {
       render(res[0], res[1]);
       if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);

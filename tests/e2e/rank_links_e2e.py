@@ -166,14 +166,19 @@ def _page(browser, token=None, nav=False):
         extra_http_headers={"X-Forwarded-For": f"10.97.{next(_ips) % 250}.{next(_ips) % 250}"})
     if nav and token:
         ctx.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
+    if token:
+        # session.js deletes the script-readable token and keeps the durable user record.
+        # Seed both before the first goto; a token written afterwards makes the page anonymous.
+        username = next((u for u, t in TOKENS.items() if t == token), None) or "rank-reviewer"
+        ctx.add_init_script("localStorage.setItem('concord.token', %r);" % token)
+        ctx.add_init_script("localStorage.setItem('concord.user', JSON.stringify(%s));" %
+                            ('{"username":%r,"display_name":%r}' % (username, username)))
     pg = ctx.new_page()
     pg.errors = []
     pg.on("pageerror", lambda e: pg.errors.append("PAGEERROR: " + str(e)))
     pg.on("console", lambda m: pg.errors.append("CONSOLE: " + m.text)
           if m.type == "error" and "Failed to load resource" not in m.text else None)
     pg.goto(BASE + "/")
-    if token:
-        pg.evaluate("t => window.localStorage.setItem('concord.token', t)", token)
     return pg
 
 

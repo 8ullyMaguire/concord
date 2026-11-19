@@ -1504,6 +1504,10 @@ tell the difference between "not started" and "waiting".
   page seeds token, navigation cookie and `concord.user` before the first load; `session.js` deletes the token and uses
   the record as its only durable sign-in signal.
 
+- **D-137 — the ranking page and its fixture follow the same two contracts as the other wired suites.** `ranking.js`
+  normalizes `/priorities` and `/tallies` with `ConcordApi.list()`, and `_page()` seeds the navigation cookie, token and
+  durable user record before the first `goto`.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet
