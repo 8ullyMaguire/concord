@@ -2415,3 +2415,7 @@ memory.
 
 - **2026-11-19 — settings themes gate.** Harness self-test `14 passed in 11.49s`; CI gate `44625056614 success in 2m37s`.
   Test-only; no redeploy.
+
+- **2026-11-19 — workitems wired.** `workitems_e2e` `4 passed in 67.61s` (was `4 failed`). Complaints are work items,
+  drafts are excluded, order is complaint/sized/unsized, and the fixture seeds a durable user. Ratchet 11.
+

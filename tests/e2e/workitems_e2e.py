@@ -192,6 +192,13 @@ def _page_as(browser, server, slug, username, ip):
     if username:
         token = _mint_token(server["db"], username)
         pg.add_init_script("localStorage.setItem('concord.token', %r);" % token)
+        con = sqlite3.connect(server["db"])
+        user = con.execute(
+            "SELECT id, username, display_name FROM users WHERE username = ?", (username,)).fetchone()
+        con.close()
+        pg.add_init_script("localStorage.setItem('concord.user', JSON.stringify(%s));" %
+                           __import__('json').dumps({
+                               "id": user[0], "username": user[1], "display_name": user[2]}))
         ctx.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
     pg.goto(f"{BASE}/projects/{slug}")
     # The panel is the last thing the page renders, so waiting for a work-item card

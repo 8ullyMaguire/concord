@@ -988,3 +988,9 @@ only on API writes.
 
 - CI gate `44625056614 success in 2m37s`; harness self-test `14 passed in 11.49s`.
 - Live unchanged `concord-rs 0.0.0+725dedc+vendor`.
+
+## 2026-11-19 — workitems wired
+
+- `workitems_e2e`: `4 passed in 67.61s`; wired; ratchet `11`. D-160..D-163.
+- Product change needs a release build and live probe before this landing is complete.
+

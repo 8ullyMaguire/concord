@@ -28,10 +28,12 @@ const COMPARABLE: [&str; 5] = ["draft", "discussion", "consensus", "ready", "in_
 /// # Errors
 /// `sqlx::Error`.
 pub async fn work_items(pool: &PgPool, project_id: i64) -> Result<Vec<WorkItem>, sqlx::Error> {
-    let rows = sqlx::query_as::<_, (i64, i64, String, String, String, Option<i64>, bool, Option<i64>, f64)>(
+    // Complaints are a second kind of work item: the panel must tell a reader that an open complaint still needs
+    // validating, not silently omit it. Claims and labels remain feature-only, so a complaint carries no claim or size.
+    let rows = sqlx::query_as::<_, (String, i64, i64, String, String, String, Option<i64>, bool, Option<i64>, f64)>(
         // `claimed_by` is NOT a column on `features`: a claim is a row in `work_item_claims` that has not been released, which is
         // what makes the history of who held a task survive the release. The live claim is the newest unreleased one.
-        "select f.id, f.project_id, f.title, f.status,
+        "select 'feature'::text as kind, f.id, f.project_id, f.title, f.status,
                 coalesce(f.difficulty, '')::text, f.time_budget_minutes,
                 coalesce(f.needs_mentor, false),
                 (select c.user_id from work_item_claims c
@@ -39,17 +41,22 @@ pub async fn work_items(pool: &PgPool, project_id: i64) -> Result<Vec<WorkItem>,
                   order by c.claimed_at desc, c.user_id limit 1),
                 coalesce(f.impact_ratio, 0)::double precision
            from features f
-          where f.project_id = $1
-          order by f.id",
+          where f.project_id = $1 and f.status <> 'draft'
+          union all
+         select 'complaint'::text, c.id, c.project_id, c.title, c.status,
+                ''::text, null::bigint, false, null::bigint, 0::double precision
+           from complaints c
+          where c.project_id = $1
+          order by id",
     )
     .bind(project_id)
     .fetch_all(pool)
     .await?;
-    Ok(rows
+    let mut items: Vec<WorkItem> = rows
         .into_iter()
-        .map(|(id, project_id, title, status, difficulty, minutes, needs_mentor, claimed_by, impact)| {
+        .map(|(kind, id, project_id, title, status, difficulty, minutes, needs_mentor, claimed_by, impact)| {
             WorkItem {
-                kind: "feature".to_string(),
+                kind,
                 id,
                 project_id,
                 title,
@@ -61,7 +68,15 @@ pub async fn work_items(pool: &PgPool, project_id: i64) -> Result<Vec<WorkItem>,
                 impact_ratio: impact,
             }
         })
-        .collect())
+        .collect();
+    // The panel puts the cheapest real contribution first: a complaint needs validating before anyone can
+    // implement it. Among features, a sized task precedes an unsized one, which is not yet pick-up-able.
+    items.sort_by_key(|w| (
+        if w.kind == "complaint" { 0 } else { 1 },
+        w.time_budget_minutes.unwrap_or(i64::MAX),
+        w.id,
+    ));
+    Ok(items)
 }
 
 /// The stored health score of each of these projects, keyed by project id.
