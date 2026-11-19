@@ -870,3 +870,8 @@ only on API writes.
 - `audit.js` now uses `ConcordApi.list()` for the action vocabulary (D-140).
 - `probe_claim_button` also passes at this head: `VERDICT: POST reached the route`.
 - Next: full `gate-live` at `39df951` to prove the whole wired set in one pass.
+
+## 2026-11-19 — Step 9: full gate-live PASS
+
+- `scripts/gate.sh --live https://concord.polarisocial.xyz` at `94ea2c0`: `gate: PASS`, `pages: 132/132 ok`, every wired suite and probe green.
+- Row 9 remains open: 15 suites are still unwired (`RECORDED_UNRUN = 15`). Next: wire the next passing suite, one commit per suite.

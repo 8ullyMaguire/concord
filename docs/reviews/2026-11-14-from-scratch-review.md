@@ -2327,3 +2327,9 @@ memory.
   `11 passed in 11.36s`; the action filter vocabulary uses `ConcordApi.list()` (D-140). A full `gate-live` at
   `a3973cb` had every other wired check PASS, with `audit_e2e` the sole failure.
   No ratchet change: suite was already wired.
+
+- **2026-11-19 — Step 9: full live gate PASS at `94ea2c0`.** `scripts/gate.sh --live https://concord.polarisocial.xyz`
+  finished `gate: PASS` with `pages: 132/132 ok` and every wired suite passing (project_panels 26, feature 15,
+  board 8, requests 18, consensus 15, lifecycle 8, duplicates 5, milestones 5, new_project 6, rank_links 4,
+  audit 11, audit_undo 3, plus the probes). This proves the wired set only; 15 suites remain unwired, so row 9 is
+  still in progress and the ratchet stays at 15.
