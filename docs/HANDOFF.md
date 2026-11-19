@@ -827,3 +827,9 @@ only on API writes.
 - Ratchet stays 16: the suite was already wired; no new suite was added.
 - `gate-live` with the current binary FAILs on eight more checks the stale candidate had masked. See roadmap row 9.
 - Next: adapt signed-in fixtures across the failing suites, then wire one genuinely unwired suite.
+
+## 2026-11-19 — Step 9 audit_undo wired
+
+- `audit_undo_e2e` wired at `ed777c5`: `3 passed in 12.11s`; ratchet 21 -> 15.
+- Fixed the seed shim's FK/boolean sentinels, the audit actions page envelope, and server-side `can_undo`.
+- `make gate` PASS `132/132 ok`; next: re-run `gate-live` and continue with the remaining failing wired suites.
