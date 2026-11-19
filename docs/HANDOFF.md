@@ -969,3 +969,7 @@ only on API writes.
 - Durable owner record in `signed_page` prevents the guest swap; consent now succeeds.
 - `settings_themes_e2e` `2 passed / 1 failed in 49.85s`; live theme API has the row after ratification.
 - Next: trace why the reloaded settings page omits `[data-strategy-themes]`.
+
+## 2026-11-19 — theme fixture gate
+
+- CI gate `44617120063 success in 2m37s`; live unchanged `725dedc`.

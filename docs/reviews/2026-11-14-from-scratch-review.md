@@ -2403,3 +2403,6 @@ memory.
 - **2026-11-19 — theme consent unblocked.** `DBG_CONSENT caller=4` vs owner id 1 proved the guest-token swap;
   seeding the durable owner record moved the suite past consent. `DEBUG_LIVE_API` shows the ratified theme present,
   so the last failure is after-reload rendering/timing. `2 passed / 1 failed in 49.85s`.
+
+- **2026-11-19 — theme fixture gate.** CI gate `44617120063 success in 2m37s` (first queries hit GitHub TLS timeouts;
+  retry confirmed). Test-only; no redeploy.
