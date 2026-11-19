@@ -6,6 +6,7 @@ use axum::{
     Json, Router,
 };
 use polaris_core::ApiError;
+use crate::pagination::PageQuery;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -113,8 +114,10 @@ struct SearchParams {
 /// response.
 async fn stats_history(
     State(state): State<AppState>,
+    Query(page_query): Query<PageQuery>,
     Query(params): Query<HistoryParams>,
-) -> Result<Json<Vec<concord_db::stats::Snapshot>>, ApiError> {
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let page = page_query.valid().map_err(ApiError::invalid_request)?;
     // `days` is read as TEXT and parsed here, not deserialized as a number: axum's `Query` rejects a
     // non-integer with a 400, and the Go handler falls back to the default instead. The header asks this route
     // for its series on every render, so a 400 is a broken chart for a value the reader never typed.
@@ -126,7 +129,7 @@ async fn stats_history(
     let rows = concord_db::stats::history(&state.pool, days)
         .await
         .map_err(internal)?;
-    Ok(Json(rows))
+    Ok(crate::pagination::page_json(rows, &page)?)
 }
 
 #[derive(Debug, Deserialize, Default)]
@@ -142,11 +145,13 @@ struct HistoryParams {
 /// to publish.
 async fn stats_responsiveness(
     State(state): State<AppState>,
-) -> Result<Json<Vec<concord_db::stats::ResponsivenessRow>>, ApiError> {
+    Query(page_query): Query<PageQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let page = page_query.valid().map_err(ApiError::invalid_request)?;
     let rows = concord_db::stats::responsiveness_leaderboard(&state.pool)
         .await
         .map_err(internal)?;
-    Ok(Json(rows))
+    Ok(crate::pagination::page_json(rows, &page)?)
 }
 
 /// Stats and search routes, typed on `AppState` (D-18).

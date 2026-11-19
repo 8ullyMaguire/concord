@@ -2,11 +2,12 @@
 //! (step 3, ADR 0014). Shared project helpers stay at the root.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::header::HeaderMap,
     Extension, Json, Router,
 };
 use polaris_core::ApiError;
+use crate::pagination::PageQuery;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -21,8 +22,10 @@ use crate::{
 /// an empty call id and answered 405 to every reader.
 async fn list_consensus(
     State(state): State<AppState>,
+    Query(page_query): Query<PageQuery>,
     Path(slug): Path<String>,
-) -> Result<Json<Vec<concord_db::consensus::Call>>, ApiError> {
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let page = page_query.valid().map_err(ApiError::invalid_request)?;
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -30,7 +33,7 @@ async fn list_consensus(
     let calls = concord_db::consensus::list_calls(&state.pool, project.id, 0)
         .await
         .map_err(internal)?;
-    Ok(Json(calls))
+    Ok(crate::pagination::page_json(calls, &page)?)
 }
 
 /// `GET /api/v1/projects/{slug}/consensus/{call_id}` — one call, with §6.6's hidden tally.

@@ -326,6 +326,16 @@ else
   bad "an API path ends in a stray slash (the server answers 404)"
 fi
 
+
+# A collection handler that takes no page parameter can answer with an entire table. The 11.7 MB documents list was
+# one of those; the shared query is now structural, not a convention someone remembers.
+if python3 scripts/parity/collection_pages.py > /tmp/gate-collection-pages.txt 2>&1; then
+  grep "collection_pages:" /tmp/gate-collection-pages.txt | sed 's/^/api: /'
+else
+  cat /tmp/gate-collection-pages.txt
+  bad "a collection handler does not take the shared page query"
+fi
+
 # A route with no declared policy is a route nobody decided about: authentication used to be a line inside each
 # handler (122 of them), so a new route without it compiled, booted, answered, and nothing failed. The check is a
 # unit test (`crates/app/src/policy.rs` parses `router()` out of its own source with `include_str!`), so it is

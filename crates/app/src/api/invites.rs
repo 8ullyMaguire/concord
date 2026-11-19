@@ -4,11 +4,12 @@
 //! promotions below let it borrow the shared visibility rules rather than copy them.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{header::HeaderMap, StatusCode},
     Extension, Json, Router,
 };
 use polaris_core::ApiError;
+use crate::pagination::PageQuery;
 
 use crate::{internal, readable_project_segment, require_role, AppState};
 
@@ -78,10 +79,12 @@ async fn create_invite(
 /// a record of who was let in and by which link, and hiding the dead ones hides the history.
 async fn list_invites(
     State(state): State<AppState>,
+    Query(page_query): Query<PageQuery>,
     Path(project_segment): Path<String>,
     Extension(user): Extension<concord_db::auth::User>,
     headers: HeaderMap,
-) -> Result<Json<Vec<concord_db::invite_writes::Invite>>, ApiError> {
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let page = page_query.valid().map_err(ApiError::invalid_request)?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "contributor", &user)
         .await
@@ -89,7 +92,7 @@ async fn list_invites(
     let invites = concord_db::invite_writes::list(&state.pool, project.id)
         .await
         .map_err(internal)?;
-    Ok(Json(invites))
+    Ok(crate::pagination::page_json(invites, &page)?)
 }
 
 /// `POST /projects/{id}/invites/{invite}/revoke` — withdraw a link, keeping the record of it.

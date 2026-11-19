@@ -7,6 +7,7 @@ use axum::{
     Extension, Json, Router,
 };
 use polaris_core::ApiError;
+use crate::pagination::PageQuery;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -15,9 +16,11 @@ use crate::{internal, write_error, FeatureQuery, AppState};
 /// `GET /api/v1/projects/{slug}/features[?status=]` — the project's features, newest first.
 async fn list_features(
     State(state): State<AppState>,
+    Query(page_query): Query<PageQuery>,
     Path(slug): Path<String>,
     Query(query): Query<FeatureQuery>,
-) -> Result<Json<Vec<concord_db::features::Feature>>, ApiError> {
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let page = page_query.valid().map_err(ApiError::invalid_request)?;
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -29,7 +32,7 @@ async fn list_features(
     )
     .await
     .map_err(internal)?;
-    Ok(Json(features))
+    Ok(crate::pagination::page_json(features, &page)?)
 }
 
 /// `GET /api/v1/projects/{slug}/features/{id}` — one feature, but only under its own project.

@@ -58,3 +58,8 @@ There is no shared answer to "how much may one response contain", so each collec
 3. Apply `PageQuery` to `/api/v1/projects` and the document list; prove the live refusals and next cursor.
 4. Extend to the remaining collection routes until the scanner reports 0 without a page parameter.
 5. Gate, deploy, live probe, docs/vault/handoff.
+
+- D-119: `/api/v1/projects` keeps the full array under `projects` because `probe_pages.py` compares it with the
+  server-rendered bootstrap (73 live projects). The paged array is exposed as `items` with a `next` cursor. This is a
+  compatibility key, not a second pagination convention.
+

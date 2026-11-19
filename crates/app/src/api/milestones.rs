@@ -2,11 +2,12 @@
 //! (step 3, ADR 0014). write_error stays at the crate root: other resources share it (D-41/D-43).
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{header::HeaderMap, StatusCode},
     Extension, Json, Router,
 };
 use polaris_core::ApiError;
+use crate::pagination::PageQuery;
 use serde::Serialize;
 use serde_json::{json, Value};
 use utoipa::ToSchema;
@@ -44,8 +45,10 @@ async fn get_milestone(
 /// `GET /api/v1/projects/{slug}/milestones` — the milestones, with counts computed on read.
 async fn list_milestones(
     State(state): State<AppState>,
+    Query(page_query): Query<PageQuery>,
     Path(slug): Path<String>,
-) -> Result<Json<Vec<concord_db::milestones::Milestone>>, ApiError> {
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let page = page_query.valid().map_err(ApiError::invalid_request)?;
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -53,7 +56,7 @@ async fn list_milestones(
     let milestones = concord_db::milestones::list_milestones(&state.pool, project.id)
         .await
         .map_err(internal)?;
-    Ok(Json(milestones))
+    Ok(crate::pagination::page_json(milestones, &page)?)
 }
 
 #[derive(Debug, Serialize, ToSchema)]

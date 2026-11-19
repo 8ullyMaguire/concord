@@ -4,10 +4,11 @@
 //! process. Handler and route moved verbatim from `lib.rs`.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     Json, Router,
 };
 use polaris_core::ApiError;
+use crate::pagination::PageQuery;
 use serde_json::Value;
 
 use crate::{internal, AppState};
@@ -19,8 +20,10 @@ use crate::{internal, AppState};
 /// black box. The private act is casting a vote, not reading the ranking it produces.
 async fn list_priorities(
     State(state): State<AppState>,
+    Query(page_query): Query<PageQuery>,
     Path(slug): Path<String>,
-) -> Result<Json<Vec<concord_db::priorities::FeaturePriority>>, ApiError> {
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let page = page_query.valid().map_err(ApiError::invalid_request)?;
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -28,7 +31,7 @@ async fn list_priorities(
     let priorities = concord_db::priorities::feature_priorities(&state.pool, project.id)
         .await
         .map_err(internal)?;
-    Ok(Json(priorities))
+    Ok(crate::pagination::page_json(priorities, &page)?)
 }
 
 /// Priority routes, typed on `AppState` (D-18).

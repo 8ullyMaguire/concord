@@ -8,6 +8,7 @@ use axum::{
     Extension, Json, Router,
 };
 use polaris_core::ApiError;
+use crate::pagination::PageQuery;
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -19,9 +20,11 @@ use crate::{
 /// `GET /api/v1/projects/{slug}/complaints[?status=]` — the project's complaints, newest first.
 async fn list_complaints(
     State(state): State<AppState>,
+    Query(page_query): Query<PageQuery>,
     Path(slug): Path<String>,
     Query(query): Query<FeatureQuery>,
-) -> Result<Json<Vec<concord_db::complaints::Complaint>>, ApiError> {
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let page = page_query.valid().map_err(ApiError::invalid_request)?;
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -33,7 +36,7 @@ async fn list_complaints(
     )
     .await
     .map_err(internal)?;
-    Ok(Json(complaints))
+    Ok(crate::pagination::page_json(complaints, &page)?)
 }
 
 

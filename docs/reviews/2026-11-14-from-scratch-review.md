@@ -2215,3 +2215,8 @@ memory.
 - **2026-11-18 — Step 5 complete at `f971637`.** Six write paths, six RED mutations proved, final `gate: PASS`
   (`pages: 132/132 ok`), live board move `200` with event readback `card.move:board_card:triaged` and
   `event_counts card.move|3`, CI `44448730621` success, anonymous walk 0 holes, headers PASS. D-106..D-114.
+
+- **2026-11-19 — Step 6 code landed (D-115..D-119).** Shared `PageQuery`, 4 unit tests passed (baseline 0),
+  structural gate `collection_pages: PASS — 10 collection routes, 0 without PageQuery` (baseline 10 missing).
+  All ten collection handlers take the page query; `/api/v1/projects` preserves the full `projects` key for the
+  bootstrap probe and exposes the paged array as `items` with `next`.

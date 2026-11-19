@@ -8,6 +8,7 @@ use axum::{
     Json, Router,
 };
 use polaris_core::ApiError;
+use crate::pagination::PageQuery;
 use serde::Deserialize;
 use serde_json::Value;
 
@@ -80,8 +81,10 @@ async fn list_audit(
 /// `GET /api/v1/projects/{slug}/audit/actions` — the filter vocabulary, alphabetical.
 async fn list_audit_actions(
     State(state): State<AppState>,
+    Query(page_query): Query<PageQuery>,
     Path(slug): Path<String>,
-) -> Result<Json<Vec<String>>, ApiError> {
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let page = page_query.valid().map_err(ApiError::invalid_request)?;
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
@@ -89,7 +92,7 @@ async fn list_audit_actions(
     let actions = concord_db::audit::actions(&state.pool, project.id)
         .await
         .map_err(internal)?;
-    Ok(Json(actions))
+    Ok(crate::pagination::page_json(actions, &page)?)
 }
 
 /// Audit routes, typed on `AppState` (D-18).

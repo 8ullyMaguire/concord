@@ -4,19 +4,24 @@
 //! axum merges the methods for the same path (D-20).
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     Json, Router,
 };
 use polaris_core::ApiError;
+use crate::pagination::PageQuery;
 use serde_json::Value;
 
 use crate::{internal, AppState};
 
-async fn list_projects(State(state): State<AppState>) -> Result<Json<Vec<concord_db::projects::Project>>, ApiError> {
+async fn list_projects(
+    State(state): State<AppState>,
+    Query(page_query): Query<PageQuery>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let page = page_query.valid().map_err(ApiError::invalid_request)?;
     let projects = concord_db::projects::list_projects(&state.pool)
         .await
         .map_err(internal)?;
-    Ok(Json(projects))
+    Ok(crate::pagination::catalog_json(projects, &page)?)
 }
 
 async fn get_project(
