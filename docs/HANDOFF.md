@@ -772,3 +772,10 @@ only on API writes.
 - Row 5 slice 1 live at `18eed17`: events table + `card.move` written in the board transaction. Gate PASS
   132/132, store suite 30 passed, RED mutation proved, live event readback `card.move|2`, CI `44426488213`.
 - Remaining in row 5: archive, vote, claim, feature state, document edit — one transaction-wrapped path at a time.
+
+## 2026-11-18 — Step 5 archive slice
+
+- Archive slice live at `bfacce2`: `project.archive`/`project.unarchive` in the project transaction. Gate PASS
+  132/132, store suite 31 passed, RED mutation proved, CI `44432046125`.
+- Remaining: vote, claim, feature state, document edit. Maintainer credential `[REDACTED]` (user) needed only for a
+  production archive POST; the store test proves the transaction.

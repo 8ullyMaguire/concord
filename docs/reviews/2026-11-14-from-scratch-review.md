@@ -2174,3 +2174,8 @@ memory.
   or `project.unarchive` in the same transaction as the project update; the legacy `add_audit` call stays as a
   best-effort mirror. Store suite 31 passed; 0 failed. RED mutation removing the append failed
   `events_archive_writes_both_events` with `one archive writes one event` (30 passed / 1 failed), then restored.
+
+- **2026-11-18 — Step 5 archive slice live proof at `bfacce2`.** `gate: PASS` with `pages: 132/132 ok`; live version
+  stamped `bfacce2`; `events` table readable (2 rows, both earlier `card.move`); anonymous walk 0 holes; CI
+  `44432046125` success. The archive write itself is gated on maintainer credentials `[REDACTED]` (owner: user),
+  so its RED/GREEN transaction proof is the store test and mutation, not a production POST.
