@@ -820,3 +820,10 @@ only on API writes.
 
 - Vendored corpses deleted at `be8ee25`; gate PASS 132/132 with corpse check; CI `44460212015`.
 - Steps 1–8 of 9 done. Next: Step 9 — the suites nobody runs.
+
+## 2026-11-19 — Step 9 consensus repaired, wider drift measured
+
+- `consensus_e2e` repaired at `ac378ab`: `15 passed in 17.85s` (was `5 failed / 10 passed`).
+- Ratchet stays 16: the suite was already wired; no new suite was added.
+- `gate-live` with the current binary FAILs on eight more checks the stale candidate had masked. See roadmap row 9.
+- Next: adapt signed-in fixtures across the failing suites, then wire one genuinely unwired suite.

@@ -2279,3 +2279,11 @@ memory.
   No ratchet change: the suite was already named by the gate, so the duplicate entry and the 16 -> 15 ratchet move were reverted.
   Targeted gate: `CONCORD_E2E_CANDIDATE=$PWD/target/debug/concord-cli scripts/parity/e2e_candidate.sh
   tests/e2e/consensus_e2e.py -q` → `15 passed in 17.85s`.
+
+- **2026-11-19 — current-binary `gate-live` baseline (stale-candidate claim retracted).** With
+  `CONCORD_E2E_CANDIDATE=$PWD/target/debug/concord-cli` built from `ac378ab`, the previously reported "all suites pass except
+  consensus" is not reproducible: the earlier run used an old binary in `~/.cargo-target`. The real current failures are
+  `project_panels_e2e` 25 failed/1 passed; `feature_e2e` 4 failed/11 passed; `board_e2e` 7 failed/1 passed;
+  `requests_e2e` 2 failed/16 passed; `duplicates_e2e` 3 failed/1 passed; `milestones_e2e` 8 failed/3 passed;
+  `rank_links_e2e` 8 failed/3 passed; `audit_e2e` 5 failed; `probe_claim_button` no claim button. `consensus_e2e` now
+  passes `15 passed`. Recorded from `/tmp/concord-gate-step9-consensus.log`; no PASS is claimed.
