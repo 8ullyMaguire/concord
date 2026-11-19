@@ -2409,3 +2409,7 @@ memory.
 
 - **2026-11-19 — settings themes order dependence.** Single test `1 passed in 72.78s` with the row present;
   full suite `2 passed / 1 failed in 76.67s` on the same assertion. D-158; not wired.
+
+- **2026-11-19 — settings themes wired.** `3 passed in 35.48s` (from `2 passed / 1 failed`). Isolation proved test 1
+  was the predecessor; the pending-proposal selector was the defect. Ratchet 12.
+

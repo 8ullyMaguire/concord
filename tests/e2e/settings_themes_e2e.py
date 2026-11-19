@@ -259,8 +259,11 @@ def test_a_consent_below_quorum_reads_as_recorded_and_then_ratifies(signed_page,
 
     # The second eligible consent, through the API, reaches quorum.
     token = _mint_token(server["db"], "thirdvoter")
+    # A previous test leaves its own pending proposal behind. Selecting any pending row here
+    # ratifies that one instead of the battery-life proposal this test is supposed to ratify.
     proposal = sqlite3.connect(server["db"]).execute(
-        "SELECT id FROM strategic_theme_proposals WHERE status='pending'").fetchone()[0]
+        "SELECT id FROM strategic_theme_proposals WHERE status='pending' AND theme_tag=?",
+        (MUTED_TAG,)).fetchone()[0]
     harness.api(server["base"], "POST",
                 f"/api/v1/projects/{SLUG}/strategy/themes/{proposal}/consent", {}, token=token)
 

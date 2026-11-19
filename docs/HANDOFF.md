@@ -978,3 +978,9 @@ only on API writes.
 
 - The post-reload assertion passes alone and fails in the full suite; suite stays unwired (D-158).
 - Next: isolate shared-seed state between tests, or fix the render/timing with a deterministic wait.
+
+## 2026-11-19 — settings themes wired
+
+- `settings_themes_e2e`: `3 passed in 35.48s`; wired; ratchet `12`. D-158 resolved by D-159.
+- Next: wire the next green suite.
+
