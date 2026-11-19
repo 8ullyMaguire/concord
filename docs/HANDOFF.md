@@ -875,3 +875,10 @@ only on API writes.
 
 - `scripts/gate.sh --live https://concord.polarisocial.xyz` at `94ea2c0`: `gate: PASS`, `pages: 132/132 ok`, every wired suite and probe green.
 - Row 9 remains open: 15 suites are still unwired (`RECORDED_UNRUN = 15`). Next: wire the next passing suite, one commit per suite.
+
+## 2026-11-19 — Step 9: unwired triage
+
+- Full `gate-live` PASS at `94ea2c0`; all wired checks green.
+- All 15 unwired suites ran: 12 setup failures, 3 behavior failures (curation, notifications, settings).
+- `notifications_e2e` needs a server-rendered unread-count feature; curation sign-in fix did not help and was reverted.
+- Next: fix the shared harness setup assumptions so a batch of unwired suites can be wired, starting with `arena_e2e`.

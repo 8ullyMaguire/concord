@@ -2333,3 +2333,9 @@ memory.
   board 8, requests 18, consensus 15, lifecycle 8, duplicates 5, milestones 5, new_project 6, rank_links 4,
   audit 11, audit_undo 3, plus the probes). This proves the wired set only; 15 suites remain unwired, so row 9 is
   still in progress and the ratchet stays at 15.
+
+- **2026-11-19 — Step 9: unwired-suite triage.** All 15 unwired suites were run once with the current candidate.
+  Twelve fail in setup on remaining SQLite assumptions; three fail on behavior: `curation_e2e` 5 failed,
+  `notifications_e2e` 4 failed, `settings_e2e` 11 failed / 8 passed. `notifications_e2e` needs a server-rendered
+  unread-count badge that does not exist in the Rust port. A sign-in-before-navigation change to `curation_e2e` left
+  all five failures unchanged and was reverted. No suite was wired from this batch; the ratchet stays at 15.
