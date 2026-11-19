@@ -1464,28 +1464,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "polaris-healthz"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
-name = "polaris-ledger"
-version = "0.4.0"
-dependencies = [
- "chrono",
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "polaris-ratelimit"
-version = "0.1.0"
-
-[[package]]
-name = "polaris-slug"
 version = "0.1.0"
 
 [[package]]

@@ -2235,3 +2235,8 @@ memory.
   `collection_pages: PASS — 10 routes, 0 without PageQuery`, `pages: 132/132 ok`. Domain tests 3 passed; mutation
   proved the tally call is live; live version stamped `d2226c0`, pagination still `items 1 next o:1`, anonymous walk
   0 holes, headers PASS, CI `44457649459` success.
+
+- **2026-11-19 — Step 8 code landed (D-123/D-124).** Three zero-importer vendored crates deleted; four used ones remain.
+  `cargo check --workspace` Finished; `corpse check: PASS — 4 vendored crates, 0 with zero importers`. RED proof: a
+  temporary unused `polaris-zzcorpse` directory produced `corpse check: FAIL — polaris-zzcorpse`, exit 1, then was
+  removed and the checker went back to PASS.

@@ -4,11 +4,8 @@ members = [
     # The estate crates, vendored (ADR 0013): they lived in unversioned sibling directories until 2026-11-15, which is why a
     # clean clone could not compile and CI had never been green. Verbatim copies, checked with `diff -r` at the time of the move.
     "vendor/polaris-core",
-    "vendor/polaris-healthz",
     "vendor/polaris-authz",
-    "vendor/polaris-ledger",
     "vendor/polaris-ratelimit",
-    "vendor/polaris-slug",
     "vendor/polaris-comments",
     "crates/embed",
     "crates/domain",
@@ -52,9 +49,6 @@ uuid = { version = "1", features = ["v4", "serde"] }
 # repository until 2026-11-15: seven unversioned crates, 4,052 lines, existing on one host. A clean clone could not compile —
 # which is the failure CI had been reporting since 2026-11-14 without anyone reading it as that.
 polaris-core = { path = "vendor/polaris-core" }
-polaris-healthz = { path = "vendor/polaris-healthz" }
 polaris-authz = { path = "vendor/polaris-authz" }
-polaris-ledger = { path = "vendor/polaris-ledger" }
 polaris-ratelimit = { path = "vendor/polaris-ratelimit" }
-polaris-slug = { path = "vendor/polaris-slug" }
 polaris-comments = { path = "vendor/polaris-comments" }

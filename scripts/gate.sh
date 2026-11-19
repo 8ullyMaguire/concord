@@ -344,6 +344,15 @@ else
   bad "a collection handler does not take the shared page query"
 fi
 
+# A vendored crate nobody imports is a copy that will drift. The roadmap's corpse check is structural, not a one-time
+# cleanup: if somebody vendors another crate and forgets to use it, the gate fails.
+if python3 scripts/parity/vendor_corpses.py > /tmp/gate-vendor-corpses.txt 2>&1; then
+  grep "corpse check:" /tmp/gate-vendor-corpses.txt | sed 's/^/vendor: /'
+else
+  cat /tmp/gate-vendor-corpses.txt
+  bad "a vendored crate has no importer"
+fi
+
 # A route with no declared policy is a route nobody decided about: authentication used to be a line inside each
 # handler (122 of them), so a new route without it compiled, booted, answered, and nothing failed. The check is a
 # unit test (`crates/app/src/policy.rs` parses `router()` out of its own source with `include_str!`), so it is
