@@ -157,9 +157,15 @@ async fn cast_consensus_position(
 ) -> Result<Json<Value>, ApiError> {
     let project = project_for(&state, &slug).await?;
     let call_id = parse_id(&call, "call id")?;
-    concord_db::consensus_writes::cast_position(&state.pool, project.id, call_id, user.id, &body.position)
-        .await
-        .map_err(write_error)?;
+    concord_db::consensus_writes::cast_position_with_event(
+        &state.pool,
+        project.id,
+        call_id,
+        user.id,
+        &body.position,
+    )
+    .await
+    .map_err(write_error)?;
     let _ = concord_db::feature_writes::add_audit(
         &state.pool,
         project.id,

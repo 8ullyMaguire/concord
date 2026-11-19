@@ -1287,3 +1287,30 @@ async fn events_archive_writes_both_events() {
         .unwrap();
     assert_eq!(undone, 1, "one unarchive writes one event");
 }
+
+#[tokio::test]
+async fn events_consensus_position_writes_event() {
+    let pool = pool().await;
+    let (user, project, _, _, _) = writable(&pool).await;
+    let call: i64 = sqlx::query_scalar(
+        "insert into consensus_calls (project_id, feature_id, opened_by, opens_at, closes_at, \
+                                      status, question, public_id) \
+         values ($1, null, $2, now(), now() + interval '7 days', 'open', 'ship it?', $3) returning id",
+    )
+    .bind(project)
+    .bind(user)
+    .bind(ulid::Ulid::new().to_string())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    let before = concord_db::events::count_kind(&pool, "consensus.position")
+        .await
+        .unwrap();
+    concord_db::consensus_writes::cast_position_with_event(&pool, project, call, user, "consent")
+        .await
+        .unwrap();
+    let after = concord_db::events::count_kind(&pool, "consensus.position")
+        .await
+        .unwrap();
+    assert_eq!(after - before, 1, "one vote writes one event");
+}

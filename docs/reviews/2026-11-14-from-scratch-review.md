@@ -2179,3 +2179,8 @@ memory.
   stamped `bfacce2`; `events` table readable (2 rows, both earlier `card.move`); anonymous walk 0 holes; CI
   `44432046125` success. The archive write itself is gated on maintainer credentials `[REDACTED]` (owner: user),
   so its RED/GREEN transaction proof is the store test and mutation, not a production POST.
+
+- **2026-11-18 — Step 5 vote slice code landed (D-111).** `cast_position_with_event` appends `consensus.position`
+  in the stance transaction; replacing a stance still writes one event. Store suite 32 passed; 0 failed. RED mutation
+  removing the append failed `events_consensus_position_writes_event` with `one vote writes one event`
+  (0 passed / 1 failed), restored.

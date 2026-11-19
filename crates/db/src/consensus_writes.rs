@@ -22,7 +22,7 @@
 //!   against the default number while the page showed the tuned one.
 
 use serde_json::{json, Value};
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 
 use concord_governance as governance;
 
@@ -162,6 +162,37 @@ pub async fn cast_position(
     user_id: i64,
     stance: &str,
 ) -> Result<(), WriteError> {
+    let mut tx = pool.begin().await.map_err(WriteError::Database)?;
+    cast_position_tx(&mut tx, project_id, call_id, user_id, stance).await?;
+    tx.commit().await.map_err(WriteError::Database)?;
+    Ok(())
+}
+
+/// One vote, one event, one transaction. A replace of an existing stance is still one event: the record says what
+/// the caller did, not what the previous row was.
+pub async fn cast_position_with_event(
+    pool: &PgPool,
+    project_id: i64,
+    call_id: i64,
+    user_id: i64,
+    stance: &str,
+) -> Result<(), WriteError> {
+    let mut tx = pool.begin().await.map_err(WriteError::Database)?;
+    let written = cast_position_tx(&mut tx, project_id, call_id, user_id, stance).await?;
+    crate::events::append(&mut tx, project_id, user_id, "consensus.position", "consensus_call", call_id, written)
+        .await
+        .map_err(WriteError::Database)?;
+    tx.commit().await.map_err(WriteError::Database)?;
+    Ok(())
+}
+
+async fn cast_position_tx(
+    db: &mut PgConnection,
+    project_id: i64,
+    call_id: i64,
+    user_id: i64,
+    stance: &str,
+) -> Result<&'static str, WriteError> {
     let Some(stance) = governance::Stance::parse(stance) else {
         return Err(WriteError::Invalid(
             "position must be one of consent, abstain, stand_aside, block".into(),
@@ -171,7 +202,7 @@ pub async fn cast_position(
         sqlx::query_scalar("select status from consensus_calls where id = $1 and project_id = $2")
             .bind(call_id)
             .bind(project_id)
-            .fetch_optional(pool)
+            .fetch_optional(&mut *db)
             .await?;
     let Some(status) = status else {
         return Err(WriteError::NotFound(format!("consensus call {call_id}")));
@@ -181,6 +212,7 @@ pub async fn cast_position(
             "this call is closed; a closed call's tally is its record".into(),
         ));
     }
+    let written = stance.as_str();
     sqlx::query(
         "insert into positions (call_id, user_id, position, updated_at) \
          values ($1, $2, $3, now()) \
@@ -189,10 +221,10 @@ pub async fn cast_position(
     )
     .bind(call_id)
     .bind(user_id)
-    .bind(stance.as_str())
-    .execute(pool)
+    .bind(written)
+    .execute(&mut *db)
     .await?;
-    Ok(())
+    Ok(written)
 }
 
 /// Record an objection — §6.6's block, in writing.
