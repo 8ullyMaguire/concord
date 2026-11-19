@@ -888,3 +888,10 @@ only on API writes.
 - `arena_e2e` from `5 errors` to `1 failed / 4 passed in 14.21s`; not wired.
 - Shim now supports `cursor()`, float epochs and non-`id` primary keys (D-141); arena labels map contest type to entry type (D-142).
 - Next: fix the remaining arena vote-application failure, then wire the suite.
+
+## 2026-11-19 — Step 9: arena wired
+
+- `arena_e2e` `5 passed in 21.49s`; wired into `scripts/gate.sh`; ratchet `RECORDED_UNRUN = 14`.
+- The vote was not broken: the test navigated away before the `200` arrived. It now waits for the response.
+- Next: wire the next green suite.
+

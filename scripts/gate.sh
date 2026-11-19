@@ -484,7 +484,7 @@ if [ -n "$LIVE" ]; then
   # binary against its own scratch database, so they need the binary path and the harness DSN -- not the live URL.
   if [ -n "${CONCORD_E2E_CANDIDATE:-}" ] && [ -x "${CONCORD_E2E_CANDIDATE:-}" ]; then
     for suite in project_panels_e2e feature_e2e board_e2e documents_e2e requests_e2e consensus_e2e \
-                 ai_declaration_e2e duplicates_e2e lifecycle_e2e milestones_e2e new_project_e2e rank_links_e2e audit_e2e audit_undo_e2e; do
+                 ai_declaration_e2e duplicates_e2e lifecycle_e2e milestones_e2e new_project_e2e rank_links_e2e audit_e2e audit_undo_e2e arena_e2e; do
       out=$(timeout 900 scripts/parity/e2e_candidate.sh "tests/e2e/$suite.py" -q 2>&1); status=$?
       echo "  $(echo "$out" | tail -1)"
       [ "$status" -eq 0 ] || bad "$suite"

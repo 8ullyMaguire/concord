@@ -278,7 +278,12 @@ def test_judging_a_pair_moves_the_rating_and_records_the_vote(page, server):
 
     pair.locator("input[name=outcome][value=a]").check()
     pair.locator("input[name=reason]").fill("fewer moving parts")
-    pair.locator("button[type=submit]").click()
+    # Wait for the vote response BEFORE the reload: the button reloads the page on success,
+    # and a bare wait_for_load_state() can resolve on the old document and navigate away
+    # before the POST is done, leaving the rating untouched.
+    with page.expect_response(lambda r: "/vote" in r.url) as vote_info:
+        pair.locator("button[type=submit]").click()
+    assert vote_info.value.status == 200, vote_info.value.status
 
     # The vote reloads the page (a vote changes two ratings and can change the
     # order), so everything below is read off the new document.

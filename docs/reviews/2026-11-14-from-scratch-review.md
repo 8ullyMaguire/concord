@@ -2344,3 +2344,12 @@ memory.
   `1 failed / 4 passed in 14.21s`. The shared shim now supplies `cursor()`, converts float epoch parameters,
   and resolves real primary keys for `INSERT OR REPLACE`; arena labels resolve projects by the contest type.
   The remaining failure is a vote that leaves the rating unchanged, so the suite stays out of the gate.
+
+- **2026-11-19 — Step 9: `arena_e2e` wired.** `5 passed in 21.49s` (was 5 setup errors, then 1 failed / 4 passed).
+  The vote endpoint returned `200` and moved the rating once the test waited for the response instead of racing the
+  reload. Gate loop now names 15 suites; `RECORDED_UNRUN = 14`.
+
+- **2026-11-19 — gate attempt after wiring arena.** `make gate` was terminated by its 1500 s timeout during
+  `cargo test --workspace` while compiling the `orbital` dependency; no gate PASS is claimed. Targeted proofs:
+  `arena_e2e` `5 passed in 21.49s`, harness self-test `14 passed in 12.00s`.
+
