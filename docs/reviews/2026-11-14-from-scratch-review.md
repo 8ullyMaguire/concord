@@ -2253,3 +2253,5 @@ memory.
 - **2026-11-19 — Step 9 suite wired: `new_project_e2e`.** Direct candidate run: `6 passed in 8.55s`. Ratchet now 18.
 
 - **2026-11-19 — Step 9 suite wired: `rank_links_e2e`.** Direct candidate run: `4 passed in 6.44s`. Ratchet now 17.
+
+- **2026-11-19 — Step 9 suite wired: `audit_e2e`.** Direct candidate run: `11 passed in 5.60s`. Ratchet now 16.
