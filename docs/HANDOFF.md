@@ -833,3 +833,9 @@ only on API writes.
 - `audit_undo_e2e` wired at `ed777c5`: `3 passed in 12.11s`; ratchet 21 -> 15.
 - Fixed the seed shim's FK/boolean sentinels, the audit actions page envelope, and server-side `can_undo`.
 - `make gate` PASS `132/132 ok`; next: re-run `gate-live` and continue with the remaining failing wired suites.
+
+## 2026-11-19 — Step 9 project panels repaired
+
+- `project_panels_e2e` repaired at `b842bb2`: `26 passed in 18.17s` (was 25 failed / 1 passed).
+- Without a ratchet change (already wired). `make gate` PASS `132/132 ok`.
+- Next: remeasure `gate-live` and fix the remaining wired suites.
