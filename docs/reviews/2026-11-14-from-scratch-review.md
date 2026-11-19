@@ -2413,3 +2413,5 @@ memory.
 - **2026-11-19 — settings themes wired.** `3 passed in 35.48s` (from `2 passed / 1 failed`). Isolation proved test 1
   was the predecessor; the pending-proposal selector was the defect. Ratchet 12.
 
+- **2026-11-19 — settings themes gate.** Harness self-test `14 passed in 11.49s`; CI gate `44625056614 success in 2m37s`.
+  Test-only; no redeploy.
