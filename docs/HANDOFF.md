@@ -863,3 +863,10 @@ only on API writes.
 - `requests_e2e` at `82c8f64`: `18 passed in 10.41s` (was 2 failed / 16 passed).
 - Real product fixes: flatten render fragments before `replaceChildren` (D-138); unwrap the catalogue envelope in the answer project lookup (D-139).
 - Next: `probe_claim_button`, then full `gate-live` at this head.
+
+## 2026-11-19 — Step 9: audit_e2e repaired; all wired checks green in isolation
+
+- `audit_e2e` at `39df951`: `11 passed in 11.36s` (was 2 failed / 9 passed in the full live gate).
+- `audit.js` now uses `ConcordApi.list()` for the action vocabulary (D-140).
+- `probe_claim_button` also passes at this head: `VERDICT: POST reached the route`.
+- Next: full `gate-live` at `39df951` to prove the whole wired set in one pass.
