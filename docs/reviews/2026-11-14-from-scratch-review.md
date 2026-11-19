@@ -2184,3 +2184,8 @@ memory.
   in the stance transaction; replacing a stance still writes one event. Store suite 32 passed; 0 failed. RED mutation
   removing the append failed `events_consensus_position_writes_event` with `one vote writes one event`
   (0 passed / 1 failed), restored.
+
+- **2026-11-18 — Step 5 vote slice live proof at `9ed519e`.** `gate: PASS`, `pages: 132/132 ok`; live version stamped
+  `9ed519e`; CI `44437354684` success. The vote transaction is proved by the store test and RED mutation. A live
+  vote needs an open call; `/api/v1/projects/suki/consensus` returned `[]`, and opening one needs a maintainer
+  account `[REDACTED]` (owner: user), already recorded in Blocked.

@@ -779,3 +779,10 @@ only on API writes.
   132/132, store suite 31 passed, RED mutation proved, CI `44432046125`.
 - Remaining: vote, claim, feature state, document edit. Maintainer credential `[REDACTED]` (user) needed only for a
   production archive POST; the store test proves the transaction.
+
+## 2026-11-18 — Step 5 vote slice
+
+- Vote slice live at `9ed519e`: `consensus.position` in the stance transaction. Gate PASS 132/132, store suite 32,
+  RED mutation proved, CI `44437354684`.
+- Live vote needs an open call; `suki` has none, and opening one needs maintainer credential `[REDACTED]` (user).
+- Remaining: claim, feature state, document edit.

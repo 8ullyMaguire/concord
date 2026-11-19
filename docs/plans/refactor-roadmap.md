@@ -611,7 +611,7 @@ Unclaimed rows are fair game.
   `derive helper attribute is used before it is introduced`. The document list's `?fields=meta` branch became an
   untagged `DocumentList` with a body-less `DocumentMeta`, so both shapes are typed without changing either wire body.
 
-| 5 | events + audit trail that cannot forget | **in progress — vote slice landed in code.** `cast_position_with_event` writes `consensus.position` in the same transaction as the stance; a replace is still one event (D-111). Store suite 32 passed; 0 failed. RED mutation removing the append: `one vote writes one event`, 0 passed / 1 failed, then restored. Awaiting gate/live proof. Remaining three paths: claim, feature state, document edit. |
+| 5 | events + audit trail that cannot forget | **in progress — vote slice live at `9ed519e`.** `cast_position_with_event` writes `consensus.position` in the stance transaction (D-111). Store suite 32 passed; RED mutation proved (`one vote writes one event`, 0 passed / 1 failed), restored. `gate: PASS` — 132/132 ok. Live version `9ed519e`, CI `44437354684` success. No open call exists on `suki` (`/consensus` returned `[]`), and opening one needs a maintainer account (`[REDACTED]`, owner: user), so the transaction is proved by the store test; live readback is blocked on that credential, already in Blocked. Remaining three paths: claim, feature state, document edit. |
 ## Blocked
 
 Items nobody working in this repo can finish alone. Each names what would unblock it and on whom, so the next session can
