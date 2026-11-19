@@ -2427,3 +2427,7 @@ memory.
 - **2026-11-19 — notifications wired.** `notifications_e2e` `4 passed in 8.64s` (was `4 failed`). Server-rendered badge,
   real inbox page, durable fixture user. Ratchet 10.
 
+- **2026-11-19 — notifications live.** Release `ccdd724`, `make -o release deploy` `DEPLOY=0`;
+  `https://concord.polarisocial.xyz/api/v1/version` returned `concord-rs 0.0.0+ccdd724+vendor`.
+  Live `/notifications` contains `notifications-root` and no badge for an anonymous reader.
+  Harness self-test `14 passed in 6.71s`; CI gate `44640154048 success in 2m35s`.

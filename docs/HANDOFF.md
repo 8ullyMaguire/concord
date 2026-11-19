@@ -1005,3 +1005,7 @@ only on API writes.
 - `notifications_e2e`: `4 passed in 8.64s`; wired; ratchet `10`. D-164..D-166.
 - Needs a release build, live deploy and badge probe.
 
+## 2026-11-19 — notifications live
+
+- Live `concord-rs 0.0.0+ccdd724+vendor`; `/notifications` contains `notifications-root`; anonymous has no badge.
+- Gate `44640154048 success in 2m35s`; harness `14 passed in 6.71s`. Ratchet 10.
