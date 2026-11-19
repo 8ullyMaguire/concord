@@ -973,3 +973,8 @@ only on API writes.
 ## 2026-11-19 — theme fixture gate
 
 - CI gate `44617120063 success in 2m37s`; live unchanged `725dedc`.
+
+## 2026-11-19 — settings themes flake
+
+- The post-reload assertion passes alone and fails in the full suite; suite stays unwired (D-158).
+- Next: isolate shared-seed state between tests, or fix the render/timing with a deterministic wait.

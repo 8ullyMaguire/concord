@@ -1572,6 +1572,11 @@ tell the difference between "not started" and "waiting".
   the consent step; `settings_themes_e2e` still `2 passed / 1 failed in 49.85s` because the ratified theme row is
   absent after reload even though `GET /strategy/themes` returns it.
 
+- **D-158 — `settings_themes_e2e` is order-dependent.** With the candidate alone the consent/ratification test
+  passes (`1 passed in 72.78s`, `DEBUG_THEMESLEN 1`, `DEBUG_TABLE YES`); in the full suite it fails at the same
+  post-reload assertion (`2 passed / 1 failed in 76.67s`). Do not wire it until the shared-seed contamination is
+  identified. Instrumentation was removed.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet
