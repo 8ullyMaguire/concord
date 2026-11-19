@@ -309,6 +309,14 @@ pub(crate) async fn auth_gate(
     }
     let method = request.method().as_str().to_uppercase();
     let Some((policy, enforced)) = policy::policy_for(&method, &route) else {
+        if policy::path_is_declared(&route) {
+            return coded(
+                StatusCode::METHOD_NOT_ALLOWED,
+                "method_not_allowed",
+                "this path is declared for another method",
+            )
+            .into_response();
+        }
         tracing::error!(%method, %route, "no policy declared for this route");
         return coded(
             StatusCode::INTERNAL_SERVER_ERROR,

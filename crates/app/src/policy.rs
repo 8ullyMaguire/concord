@@ -305,6 +305,16 @@ pub(crate) fn policy_for(method: &str, route: &str) -> Option<(Policy, bool)> {
         .map(|(_, _, policy, enforced)| (*policy, *enforced))
 }
 
+/// Whether this exact path is declared for any method.
+///
+/// A method mismatch is a caller's mistake, not a deployment bug. `auth_gate` uses this to answer 405 for a
+/// declared path with the wrong verb while keeping the 500 alarm for a path nobody declared at all.
+pub(crate) fn path_is_declared(route: &str) -> bool {
+    ROUTES
+        .iter()
+        .any(|(_, declared_path, _, _)| *declared_path == route)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -574,6 +584,14 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_declared_path_with_the_wrong_method_is_not_an_undeclared_route() {
+        assert!(path_is_declared("/api/v1/auth/login"));
+        assert!(!path_is_declared("/api/v1/nope"));
+        assert_eq!(policy_for("GET", "/api/v1/auth/login"), None);
+        assert_eq!(policy_for("POST", "/api/v1/auth/login").map(|(p, _)| p), Some(Policy::Public));
     }
 
     #[test]
