@@ -931,3 +931,9 @@ only on API writes.
 ## 2026-11-19 — themes-doc gate
 
 - CI gate `44593114163 success in 2m51s`; live unchanged `89d7d2e`.
+
+## 2026-11-19 — strategy slug repair
+
+- Six strategy write handlers now resolve project slugs (D-153); no `Path<i64>` remains in that module.
+- `settings_themes_e2e`: `1 passed / 2 failed in 29.47s`; not wired.
+- Next: debug why seeded theme rows are not rendered in the remaining two tests.

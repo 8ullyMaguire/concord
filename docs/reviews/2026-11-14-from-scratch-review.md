@@ -2373,3 +2373,6 @@ memory.
   baseline. No product change; candidate rebuilt only.
 
 - **2026-11-19 — themes-doc gate.** CI gate `44593114163 success in 2m51s`. Docs-only; no redeploy.
+
+- **2026-11-19 — strategy slug repair.** Probe: `DEBUG_THEME_POST 400 Invalid URL: Cannot parse `e2e-themes` to a `i64``.
+  After the resolver fix, `settings_themes_e2e` `1 passed / 2 failed in 29.47s` (was `3 failed`). Not wired.

@@ -1547,6 +1547,11 @@ tell the difference between "not started" and "waiting".
   array. Wrapping it in `ConcordApi.list()` left the suite at `3 failed in 52.93s`; the change was reverted. The first
   test creates its proposal through the form, so an empty table before submit is expected. Next: inspect the form POST.
 
+- **D-153 — strategy write routes resolve project slugs.** Six handlers took `Path<i64>` while the client builds URLs
+  from the slug; `POST /strategy/themes` answered `400 Invalid URL: Cannot parse `e2e-themes` to a `i64``. They now
+  use the same `project_by_id` resolver as the read routes. `settings_themes_e2e` went from `3 failed` to
+  `1 passed / 2 failed in 29.47s`; suite not wired yet.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet

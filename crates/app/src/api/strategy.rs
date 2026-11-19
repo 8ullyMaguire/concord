@@ -101,10 +101,11 @@ async fn list_themes(
 
 async fn propose_weight(
     State(state): State<AppState>,
-    Path(project_id): Path<i64>,
+    Path(project): Path<String>,
     Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
+    let project_id = project_by_id(&state, &project).await?.id;
     let who = strategy_project(&state, project_id, &user).await?;
     let feature_id = body
         .get("feature_id")
@@ -124,10 +125,11 @@ async fn propose_weight(
 
 async fn propose_theme(
     State(state): State<AppState>,
-    Path(project_id): Path<i64>,
+    Path(project): Path<String>,
     Extension(user): Extension<concord_db::auth::User>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
+    let project_id = project_by_id(&state, &project).await?.id;
     let who = strategy_project(&state, project_id, &user).await?;
     let tag = body.get("theme_tag").and_then(serde_json::Value::as_str).unwrap_or("");
     let namespace = body
@@ -159,9 +161,10 @@ async fn propose_theme(
 /// did not. The Go handler draws the same line, which is why this mirrors it clause for clause.
 async fn consent_theme(
     State(state): State<AppState>,
-    Path((project_id, id)): Path<(i64, i64)>,
+    Path((project, id)): Path<(String, i64)>,
     Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
+    let project_id = project_by_id(&state, &project).await?.id;
     let who = strategy_project(&state, project_id, &user).await?;
     match concord_db::themes::consent(&state.pool, id, who.user.id).await {
         Ok((proposal, ratified)) => Ok((
@@ -192,9 +195,10 @@ async fn consent_theme(
 
 async fn consent_weight(
     State(state): State<AppState>,
-    Path((project_id, id)): Path<(i64, i64)>,
+    Path((project, id)): Path<(String, i64)>,
     Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
+    let project_id = project_by_id(&state, &project).await?.id;
     let who = strategy_project(&state, project_id, &user).await?;
     match concord_db::strategy::consent(&state.pool, id, who.user.id).await {
         Ok(recorded) => Ok((
@@ -214,9 +218,10 @@ async fn consent_weight(
 
 async fn withdraw_theme(
     State(state): State<AppState>,
-    Path((project_id, id)): Path<(i64, i64)>,
+    Path((project, id)): Path<(String, i64)>,
     Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<StatusCode, ApiError> {
+    let project_id = project_by_id(&state, &project).await?.id;
     let who = strategy_project(&state, project_id, &user).await?;
     let maintainer = who.role == "maintainer" || who.role == "owner";
     concord_db::themes::withdraw(&state.pool, id, who.user.id, maintainer)
@@ -227,9 +232,10 @@ async fn withdraw_theme(
 
 async fn withdraw_weight(
     State(state): State<AppState>,
-    Path((project_id, id)): Path<(i64, i64)>,
+    Path((project, id)): Path<(String, i64)>,
     Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<StatusCode, ApiError> {
+    let project_id = project_by_id(&state, &project).await?.id;
     let who = strategy_project(&state, project_id, &user).await?;
     let maintainer = who.role == "maintainer" || who.role == "owner";
     concord_db::strategy::withdraw(&state.pool, id, who.user.id, maintainer)
