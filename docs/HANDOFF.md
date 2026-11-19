@@ -857,3 +857,9 @@ only on API writes.
 - `rank_links_e2e` at `1aa8cf8`: `4 passed in 24.83s` (was 3 failed / 1 passed).
 - `ranking.js` now unwraps `/priorities` and `/tallies`; fixture signs in before navigation (D-137).
 - Next: `gate-live`, `requests_e2e`, `probe_claim_button`.
+
+## 2026-11-19 — Step 9: requests_e2e repaired
+
+- `requests_e2e` at `82c8f64`: `18 passed in 10.41s` (was 2 failed / 16 passed).
+- Real product fixes: flatten render fragments before `replaceChildren` (D-138); unwrap the catalogue envelope in the answer project lookup (D-139).
+- Next: `probe_claim_button`, then full `gate-live` at this head.
