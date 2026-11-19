@@ -2225,3 +2225,8 @@ memory.
   routes, 0 without PageQuery` and `pages: 132/132 ok`. Live refusals 400 for `limit=10000` and `cursor=garbage`;
   default projects body carried `items` 50, `projects` 73, `next o:50`; second page via `cursor=o:1` returned the
   next row. anonymous walk 0 holes; headers PASS; CI `44452443868` success.
+
+- **2026-11-19 — Step 7 code landed (D-120..D-122).** Three pure rules live in `concord-domain` and are called by the
+  store/handler. Domain tests 3 passed; 0 failed. `cargo tree -p concord-domain | grep -c sqlx` = 0. The consensus
+  store test now casts every stance; a mutant copy that ignores `stand_aside` failed
+  `the domain rule counts stand_aside` (0 passed / 1 failed), then was restored.

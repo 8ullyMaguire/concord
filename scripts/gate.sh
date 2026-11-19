@@ -315,6 +315,14 @@ if command -v node >/dev/null 2>&1; then
   fi
 fi
 
+# The domain crate owns product rules and must never grow a database dependency: a rule that needs SQL is a rule the
+# store has not extracted yet.
+if [ "$(cargo tree -p concord-domain 2>/dev/null | grep -c sqlx)" = "0" ]; then
+  echo "domain: 0 sqlx deps"
+else
+  bad "concord-domain gained a sqlx dependency"
+fi
+
 # Parsing is not the same as reaching a route. The port matches exactly, so a path with a trailing slash is a 404 -- and
 # three call sites carried one for a day (`/similar/{kind}/`, `/documents/`, `/features/`), each wrapped in a `.catch` or a
 # `getOrNull`, so the page looked fine and the feature was dead. See scripts/parity/api_paths.py.

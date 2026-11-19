@@ -1384,3 +1384,46 @@ async fn events_document_put_writes_event() {
     .unwrap();
     assert_eq!(entity_id, doc.id);
 }
+
+#[tokio::test]
+async fn domain_tally_counts_every_stance() {
+    let pool = pool().await;
+    let (user, project, _, _, _) = writable(&pool).await;
+    let call: i64 = sqlx::query_scalar(
+        "insert into consensus_calls (project_id, feature_id, opened_by, opens_at, closes_at, \
+                                      status, question, public_id) \
+         values ($1, null, $2, now(), now() + interval '7 days', 'open', 'count every stance?', $3) returning id",
+    )
+    .bind(project)
+    .bind(user)
+    .bind(ulid::Ulid::new().to_string())
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    for (offset, stance) in ["consent", "abstain", "stand_aside", "block"].iter().enumerate() {
+        let voter: i64 = sqlx::query_scalar(
+            "insert into users (username, public_id) values ($1, $2) returning id",
+        )
+        .bind(format!("step7-voter-{offset}-{}", ulid::Ulid::new()))
+        .bind(ulid::Ulid::new().to_string())
+        .fetch_one(&pool)
+        .await
+        .unwrap();
+        sqlx::query(
+            "insert into positions (call_id, user_id, position, updated_at) \
+             values ($1, $2, $3, now())",
+        )
+        .bind(call)
+        .bind(voter)
+        .bind(stance)
+        .execute(&pool)
+        .await
+        .unwrap();
+    }
+    let counts = concord_db::consensus::tally(&pool, project, call).await.unwrap();
+    assert_eq!(counts.participants, 4);
+    assert_eq!(counts.consent, 1);
+    assert_eq!(counts.abstain, 1);
+    assert_eq!(counts.stand_aside, 1, "the domain rule counts stand_aside");
+    assert_eq!(counts.block, 1);
+}

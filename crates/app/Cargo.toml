@@ -8,6 +8,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+concord-domain = { path = "../domain" }
 concord-finder = { workspace = true }
 concord-embed.workspace = true
 concord-governance = { path = "../governance" }

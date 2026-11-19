@@ -78,38 +78,33 @@ async fn claim_project(
     Path(slug): Path<String>,
     Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<Value>, ApiError> {
-    if concord_db::identity::is_guest(&state.pool, user.id).await.map_err(internal)? {
-        return Err(ApiError::forbidden(
-            "a guest cannot adopt: the record must name somebody",
-        ));
-    }
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
         .map_err(internal)?
         .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
 
-    match project.stage.as_str() {
-        "dormant" => {}
-        "archived" => {
-            return Err(ApiError::invalid_request(format!(
+    if let Err(refusal) = concord_domain::claim_eligible(
+        concord_db::identity::is_guest(&state.pool, user.id).await.map_err(internal)?,
+        project.stage.as_str(),
+    ) {
+        return Err(ApiError::invalid_request(match refusal {
+            concord_domain::ClaimRefusal::Guest => refusal.message(),
+            concord_domain::ClaimRefusal::Archived(_) => format!(
                 "{} was declared archived by its maintainer: {}",
                 project.slug, project.stage_because
-            )))
-        }
-        "unknown" => {
-            return Err(ApiError::invalid_request(format!(
+            ),
+            concord_domain::ClaimRefusal::Unknown(_) => format!(
                 "{} names no repository this instance can read, so its silence has not been measured — it cannot be offered for adoption \
                  on the strength of a number nobody took",
                 project.slug
-            )))
-        }
-        stage => {
-            return Err(ApiError::invalid_request(format!(
+            ),
+            concord_domain::ClaimRefusal::NotDormant(stage, _) => format!(
                 "{} is {stage}, not dormant: {}",
                 project.slug, project.stage_because
-            )))
-        }
+            ),
+        }));
     }
+
 
     // Read the number the refusal above would have quoted, so the success carries the same measurement the pool showed.
     let days = concord_db::adoption::days_silent(&state.pool, project.id)

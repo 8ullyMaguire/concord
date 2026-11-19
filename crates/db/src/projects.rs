@@ -85,7 +85,7 @@ pub(crate) fn project_from_row(row: &sqlx::postgres::PgRow) -> Result<Project, s
     // that goes wrong when a column is appended — it did, once, and read `ai_involvement` instead (a text column, so the read succeeded
     // and the stage silently stayed `seed`).
     let archived_reason: Option<String> = row.try_get("archived_reason")?;
-    let verdict = concord_ranking::lifecycle::stage(concord_ranking::lifecycle::Signals {
+    let verdict = concord_domain::stage(concord_domain::Signals {
         archived: archived_reason.as_deref(),
         has_repository: row.try_get(13)?,
         last_commit_age_days: row.try_get(15)?,

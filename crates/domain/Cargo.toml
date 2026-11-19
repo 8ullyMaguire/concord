@@ -8,3 +8,5 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+concord-governance = { path = "../governance" }
+concord-ranking = { path = "../ranking" }

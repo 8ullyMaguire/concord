@@ -339,26 +339,17 @@ pub async fn tally(
     project_id: i64,
     call_id: i64,
 ) -> Result<governance::ConsensusCounts, sqlx::Error> {
-    let mut counts = governance::ConsensusCounts::default();
-    for position in positions(pool, call_id).await? {
-        counts.participants += 1;
-        match position.position.as_str() {
-            "consent" => counts.consent += 1,
-            "stand_aside" => counts.stand_aside += 1,
-            "block" => counts.block += 1,
-            "abstain" => counts.abstain += 1,
-            _ => {}
-        }
-    }
-    for objection in objections(pool, call_id).await? {
-        if objection.status == "open" {
-            counts.open_objections += 1;
-        }
-    }
-    counts.eligible = eligible_collaborators(pool, project_id, DEFAULT_ACTIVITY_WINDOW_DAYS)
+    let rows = positions(pool, call_id).await?;
+    let stances: Vec<&str> = rows.iter().map(|row| row.position.as_str()).collect();
+    let open_objections = objections(pool, call_id)
+        .await?
+        .iter()
+        .filter(|objection| objection.status == "open")
+        .count() as i64;
+    let eligible = eligible_collaborators(pool, project_id, DEFAULT_ACTIVITY_WINDOW_DAYS)
         .await?
         .len() as i64;
-    Ok(counts)
+    Ok(concord_domain::tally_counts(&stances, open_objections, eligible))
 }
 
 /// The thresholds summary — both ratios and both bars, in one object.
