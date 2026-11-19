@@ -908,3 +908,8 @@ only on API writes.
 - Shim now normalizes quoted identifiers, executes no-param SQL without params, and makes the cursor iterable (D-147..D-149).
 - Finder/scout/taxonomy now fail on behavior rather than setup; 13 suites remain unwired.
 
+## 2026-11-19 — feeds gate
+
+- CI gate `44587919576 success in 2m19s`; harness self-test `14 passed in 4.14s`.
+- Test-only wiring; live version remains `concord-rs 0.0.0+89d7d2e+vendor`.
+

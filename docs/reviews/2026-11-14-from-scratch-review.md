@@ -2361,3 +2361,6 @@ memory.
   `finder_e2e` and `scout_e2e` moved from setup errors to behavior failures; `taxonomy_e2e` from `6 errors in 2.98s`
   to `6 failed in 103.70s` (no setup errors). No suite was wired on a failing line.
 
+- **2026-11-19 — feeds wiring gate.** `feeds_e2e` `4 passed in 3.69s`, harness self-test `14 passed in 4.14s`,
+  CI gate `44587919576 success in 2m19s`. Test-only change; no redeploy.
+
