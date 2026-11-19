@@ -815,3 +815,8 @@ only on API writes.
 - Domain rules live at `d2226c0`: stage, tally, claim eligibility; gate PASS 132/132; `domain: 0 sqlx deps`;
   mutation proved; CI `44457649459`.
 - Steps 1–7 of 9 done. Next: Step 8 — delete the corpses.
+
+## 2026-11-19 — Step 8 done
+
+- Vendored corpses deleted at `be8ee25`; gate PASS 132/132 with corpse check; CI `44460212015`.
+- Steps 1–8 of 9 done. Next: Step 9 — the suites nobody runs.

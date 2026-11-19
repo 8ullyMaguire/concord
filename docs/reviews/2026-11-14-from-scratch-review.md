@@ -2240,3 +2240,7 @@ memory.
   `cargo check --workspace` Finished; `corpse check: PASS — 4 vendored crates, 0 with zero importers`. RED proof: a
   temporary unused `polaris-zzcorpse` directory produced `corpse check: FAIL — polaris-zzcorpse`, exit 1, then was
   removed and the checker went back to PASS.
+
+- **2026-11-19 — Step 8 complete at `be8ee25`.** `gate: PASS` with `vendor: corpse check: PASS — 4 vendored crates,
+  0 with zero importers`, `domain: 0 sqlx deps`, `collection_pages: PASS`, `pages: 132/132 ok`. Live version stamped
+  `be8ee25`; anonymous walk 0 holes; headers PASS; CI `44460212015` success.
