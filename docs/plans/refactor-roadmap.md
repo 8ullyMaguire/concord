@@ -1484,6 +1484,12 @@ tell the difference between "not started" and "waiting".
 - **D-130 — `can_undo` is computed by the audit handler from the caller's role, not hardcoded false in the store.** The
   read is still public; only the offer of a write is gated, and only on an un-reversed `arena.remove` row.
 
+- **D-131 — `ConcordApi.list()` normalizes both `{items,next}` and `{entries}` page envelopes to rows.** Step 6 changed
+  collection shapes; a client that only needs rows must not render an error from a valid response. Callers that need totals
+  keep the page object.
+- **D-132 — the project-panel verdict fixture stores a durable `concord.user` record.** A script-readable token is deleted by
+  `session.js`; without the user record the browser is signed out even though its navigation cookie resolves.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet

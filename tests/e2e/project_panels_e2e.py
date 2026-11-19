@@ -981,6 +981,9 @@ def _verdicts_page(browser, server, username, ip):
     pg.on("console", lambda m: errors.append(m.text) if m.type == "error" else None)
     pg.errors = errors
     pg.add_init_script("localStorage.setItem('concord.token', %r);" % token)
+    # session.js deletes the script-readable token on load and uses the user record as the durable sign-in signal.
+    pg.add_init_script("localStorage.setItem('concord.user', JSON.stringify(%s));" %
+                       ('{"username":%r,"display_name":%r}' % (username, username)))
     ctx.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
     pg.goto(f"{BASE}/projects/{VERDICTS_PROJECT}")
     pg.wait_for_selector("text=Export drops the last row", timeout=10000)

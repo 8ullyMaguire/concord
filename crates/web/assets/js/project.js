@@ -256,6 +256,7 @@
         // result is worse than an error, because nothing prompts anyone to look.
         return Promise.all([
           window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/features')
+            .then(window.ConcordApi.list)
             .catch(function (error) {
               if (error && error.status === 401) throw { auth: true };
               throw { status: error && error.status };
@@ -265,6 +266,7 @@
           // because a second request failed would be a worse outcome than
           // showing the complaints as unavailable.
           window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/complaints')
+            .then(window.ConcordApi.list)
             .catch(function () { return []; }),
           // Documents are a count badge and a link, not content on this page,
           // so a failure here degrades to no badge rather than to an error. The
@@ -274,6 +276,7 @@
           // project on the live instance, measured, which held this page's whole `Promise.all` open past thirty seconds and left the
           // overview parked on its skeleton. The badge needs the length of an array, not the prose inside it.
           window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/documents?fields=meta')
+            .then(window.ConcordApi.list)
             .catch(function () { return []; }),
           // The two §4.10 panels. Both swallow their own failures and resolve to
           // null, which panelError() renders differently from an empty result --
@@ -297,7 +300,9 @@
           // first version went in after complaints and fed documents to
           // capabilities, which renders as a panel quietly missing rather than an
           // error. Anything added here goes LAST, and the mapping below is by index.
-          window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/requests').catch(function () { return []; }),
+          window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/requests')
+            .then(window.ConcordApi.list)
+            .catch(function () { return []; }),
           // Lists (16), appended last so no existing index shifts. Same non-fatal
           // shape as complaints and requests.
           window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/lists').catch(function () { return []; }),

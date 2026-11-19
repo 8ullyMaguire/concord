@@ -88,10 +88,20 @@
     });
   }
 
+  // A collection read may answer a bare array (older routes) or a page envelope (the Step 6 convention).
+  // Callers that only need the rows should not have to know which; callers that need `total`/`offset` keep the page.
+  function list(data) {
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.items)) return data.items;
+    if (data && Array.isArray(data.entries)) return data.entries;
+    return [];
+  }
+
   window.ConcordApi = {
     ApiError: ApiError,
     headers: headers,
     request: request,
+    list: list,
     get: function (path, options) { return request('GET', path, null, options); },
     post: function (path, body, options) { return request('POST', path, body === undefined ? null : body, options); },
     put: function (path, body, options) { return request('PUT', path, body === undefined ? null : body, options); },

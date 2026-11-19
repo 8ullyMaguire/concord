@@ -2294,3 +2294,8 @@ memory.
   now sets it from the caller's maintainer role for un-reversed `arena.remove` rows. Ratchet RED: `RECORDED_UNRUN = 16`
   failed after wiring; restored to 15. Targeted gate: `scripts/parity/e2e_candidate.sh tests/e2e/audit_undo_e2e.py -q`
   → `3 passed in 12.11s`.
+
+- **2026-11-19 — Step 9: `project_panels_e2e` repaired at 26 passed.** Baseline with the current candidate was
+  `25 failed / 1 passed`; after the fix `26 passed in 18.17s`. Two defects: the project overview treated Step-6
+  `{items,next}` responses as arrays (now normalized by `ConcordApi.list()`), and the verdicts fixture omitted the durable
+  user record that replaces the deleted token. This suite was already gate-named; the ratchet stays at 15.
