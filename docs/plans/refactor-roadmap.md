@@ -1567,6 +1567,11 @@ tell the difference between "not started" and "waiting".
   replicated `eligible_collaborators` query returns `[1, 2, 3]`. Next: log `who.user.id`, `pending.project_id` and
   `eligible_ids` inside `themes::consent` on a candidate build. No speculative fixture rewrite.
 
+- **D-157 — theme fixture needs a durable owner record.** `session.js` replaced the fixture token with a guest
+  identity (`id 4`), so consent was made as a guest and refused. Seeding `concord.user` with the owner record fixed
+  the consent step; `settings_themes_e2e` still `2 passed / 1 failed in 49.85s` because the ratified theme row is
+  absent after reload even though `GET /strategy/themes` returns it.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet

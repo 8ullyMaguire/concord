@@ -191,6 +191,14 @@ def signed_page(browser, server):
     ctx = browser.new_context(
         extra_http_headers={"X-Forwarded-For": f"10.77.{n // 200}.{n % 200}"})
     ctx.add_init_script("localStorage.setItem('concord.token', %r);" % token)
+    # session.js treats a token without a durable user record as incomplete and replaces it with
+    # a guest identity. Store the owner record too, or every signed-in request is made as a guest.
+    con = harness.connect(server["db"])
+    owner = con.execute(
+        "SELECT id, username, display_name FROM users WHERE username = 'setowner'").fetchone()
+    ctx.add_init_script("localStorage.setItem('concord.user', JSON.stringify(%s));" %
+                        __import__('json').dumps({
+                            "id": owner[0], "username": owner[1], "display_name": owner[2]}))
     ctx.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
     pg = ctx.new_page()
     pg.errors = []

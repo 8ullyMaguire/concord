@@ -2399,3 +2399,7 @@ memory.
   The refusal needs server-side instrumentation, not another fixture guess.
 
 - **2026-11-19 — consent-boundary gate.** CI gate `44609397646 success in 2m30s`. Docs-only; no redeploy.
+
+- **2026-11-19 — theme consent unblocked.** `DBG_CONSENT caller=4` vs owner id 1 proved the guest-token swap;
+  seeding the durable owner record moved the suite past consent. `DEBUG_LIVE_API` shows the ratified theme present,
+  so the last failure is after-reload rendering/timing. `2 passed / 1 failed in 49.85s`.
