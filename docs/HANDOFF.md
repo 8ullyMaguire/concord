@@ -839,3 +839,9 @@ only on API writes.
 - `project_panels_e2e` repaired at `b842bb2`: `26 passed in 18.17s` (was 25 failed / 1 passed).
 - Without a ratchet change (already wired). `make gate` PASS `132/132 ok`.
 - Next: remeasure `gate-live` and fix the remaining wired suites.
+
+## 2026-11-19 — Step 9: four more wired suites repaired
+
+- `duplicates_e2e` `5 passed in 15.72s`, `milestones_e2e` `5 passed in 15.22s`, `board_e2e` `8 passed in 14.94s`.
+- All were signed-out fixtures (token written after navigation); board/feature pages also needed the shared page-envelope unwrap (D-133..D-135).
+- `make gate` PASS `132/132 ok`. Next: remeasure `gate-live` at this head and fix `feature_e2e` / `requests_e2e` / `rank_links_e2e` / `probe_claim_button`.
