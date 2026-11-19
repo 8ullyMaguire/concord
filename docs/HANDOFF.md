@@ -913,3 +913,9 @@ only on API writes.
 - CI gate `44587919576 success in 2m19s`; harness self-test `14 passed in 4.14s`.
 - Test-only wiring; live version remains `concord-rs 0.0.0+89d7d2e+vendor`.
 
+## 2026-11-19 — guest setup unblocked
+
+- Idempotent guest seed: `1 failed / 4 passed in 40.22s` (was a duplicate-key setup error).
+- Not wired: needs a `/register` page route/template; recorded as product work in the roadmap.
+- Next: fix a different small behavior suite, then wire it.
+

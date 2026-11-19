@@ -2364,3 +2364,6 @@ memory.
 - **2026-11-19 — feeds wiring gate.** `feeds_e2e` `4 passed in 3.69s`, harness self-test `14 passed in 4.14s`,
   CI gate `44587919576 success in 2m19s`. Test-only change; no redeploy.
 
+- **2026-11-19 — guest setup unblocked, suite deferred.** `guest_e2e` from a duplicate-key setup error to
+  `1 failed / 4 passed in 40.22s`. The remaining failure waits for `/reg-username`; the port has no `/register` page.
+

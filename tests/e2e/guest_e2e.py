@@ -42,23 +42,28 @@ def seed(db):
     con = sqlite3.connect(db)
     cur = con.cursor()
     now = time.time()
-    owner = cur.execute(
+    # The port seeds into one shared PostgreSQL database rather than a fresh SQLite file per
+    # run, so fixture rows from an earlier run are already present. Reuse them instead of
+    # colliding on the username/slug unique constraints.
+    row = cur.execute("SELECT id FROM users WHERE username = 'guest-demo-owner'").fetchone()
+    owner = row[0] if row else cur.execute(
         "INSERT INTO users (username, display_name, created_at) VALUES (?,?,?)",
         ("guest-demo-owner", "Demo Owner", now)).lastrowid
-    pid = cur.execute(
+    row = cur.execute("SELECT id FROM projects WHERE slug = ?", (SLUG,)).fetchone()
+    pid = row[0] if row else cur.execute(
         "INSERT INTO projects (slug, name, description, governance_model, license,"
         " visibility, created_at, updated_at)"
         " VALUES (?,?,?,'collective','AGPL-3.0','public',?,?)",
         (SLUG, "Guest Demo", "Where a visitor files without an account", now, now)).lastrowid
     cur.execute(
-        "INSERT INTO members (project_id, user_id, role, joined_at) VALUES (?,?,'owner',?)",
-        (pid, owner, now))
+        "INSERT INTO members (project_id, user_id, role, joined_at) VALUES (?,?,'owner',?)"
+        " ON CONFLICT DO NOTHING", (pid, owner, now))
     # A guest is a users row with is_guest = 1 and no credential, exactly as
     # store.CreateGuest writes one: the page must render it as "guest", not as a
     # synthetic handle.
     cur.execute(
         "INSERT INTO users (username, display_name, created_at, is_guest)"
-        " VALUES ('guest-abcd1234','guest',?,1)", (now,))
+        " VALUES ('guest-abcd1234','guest',?,1) ON CONFLICT DO NOTHING", (now,))
     con.commit()
     con.close()
     return pid
