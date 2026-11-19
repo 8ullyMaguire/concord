@@ -2367,3 +2367,5 @@ memory.
 - **2026-11-19 — guest setup unblocked, suite deferred.** `guest_e2e` from a duplicate-key setup error to
   `1 failed / 4 passed in 40.22s`. The remaining failure waits for `/reg-username`; the port has no `/register` page.
 
+- **2026-11-19 — guest seed push gate.** CI gate `44589401206 success in 2m50s`. Test-only change; no redeploy.
+

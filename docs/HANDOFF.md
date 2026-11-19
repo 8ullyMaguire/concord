@@ -919,3 +919,7 @@ only on API writes.
 - Not wired: needs a `/register` page route/template; recorded as product work in the roadmap.
 - Next: fix a different small behavior suite, then wire it.
 
+## 2026-11-19 — guest gate
+
+- CI gate `44589401206 success in 2m50s`; live version remains `concord-rs 0.0.0+89d7d2e+vendor`.
+
