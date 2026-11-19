@@ -927,3 +927,7 @@ only on API writes.
 
 - `settings_themes_e2e` still `3 failed in 52.93s`; envelope theory disproved (D-152) and reverted.
 - Next: inspect the theme proposal form POST, not the list fetch.
+
+## 2026-11-19 — themes-doc gate
+
+- CI gate `44593114163 success in 2m51s`; live unchanged `89d7d2e`.

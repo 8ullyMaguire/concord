@@ -2371,3 +2371,5 @@ memory.
 
 - **2026-11-19 — themes dead end recorded.** Envelope normalization reverted after `3 failed in 52.93s`, unchanged from
   baseline. No product change; candidate rebuilt only.
+
+- **2026-11-19 — themes-doc gate.** CI gate `44593114163 success in 2m51s`. Docs-only; no redeploy.
