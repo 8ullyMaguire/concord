@@ -7,6 +7,7 @@
 use sqlx::postgres::{PgPool, PgPoolOptions};
 
 pub mod auth;
+pub mod events;
 pub mod alternatives;
 pub mod adoption;
 pub mod arena;

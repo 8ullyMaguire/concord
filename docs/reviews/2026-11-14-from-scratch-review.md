@@ -2157,3 +2157,9 @@ memory.
   `anonymous_walk: 0 unreachable · 0 hole(s) · 0 declared but not enforced · 0 wrongly refused · PASS`,
   `probe_security_headers: PASS`. The method-aware policy table from D-10 survived every module move and the typed
   contract work; row 1 is now done.
+
+- **2026-11-18 — Step 5 slice 1 code landed (D-106..D-109).** `events` table added as migration 0003; `card.move`
+  is appended in the same transaction as the board change via `move_card_with_event`; the HTTP handler calls the
+  new path. Store suite: 30 passed; 0 failed. RED mutation: removing the append failed
+  `events_card_move_writes_exactly_one_event` with `one move writes one event` (29 passed / 1 failed), restored
+  immediately. Gate/live proof pending.

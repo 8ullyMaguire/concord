@@ -46,6 +46,11 @@ pub const MIGRATIONS: &[Migration] = &[
         name: "project_archived",
         sql: include_str!("../sql/0002_project_archived.sql"),
     },
+    Migration {
+        version: 3,
+        name: "events",
+        sql: include_str!("../sql/0003_events.sql"),
+    },
 ];
 
 /// What one `apply` did.

@@ -82,9 +82,9 @@ async fn move_card(
     headers: HeaderMap,
 ) -> Result<Json<Value>, ApiError> {
     use concord_db::projects::MoveError;
-    if bearer_user(&state, &headers).await?.is_none() {
-        return Err(ApiError::unauthenticated("authentication required"));
-    }
+    let actor = bearer_user(&state, &headers)
+        .await?
+        .ok_or_else(|| ApiError::unauthenticated("authentication required"))?;
     let to = query
         .to
         .ok_or_else(|| ApiError::invalid_request("to is required"))?;
@@ -92,12 +92,13 @@ async fn move_card(
         .await
         .map_err(internal)?
         .ok_or_else(|| ApiError::not_found(format!("project {slug}")))?;
-    match concord_db::projects::move_card(
+    match concord_db::projects::move_card_with_event(
         &state.pool,
         project.id,
         card_id,
         query.feature_id.unwrap_or(0),
         &to,
+        actor.id,
     )
     .await
     {

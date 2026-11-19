@@ -1241,3 +1241,26 @@ async fn an_open_call_hides_its_tally_and_an_unset_eligible_would_make_quorum_va
     );
     let _ = sqlx::query("select 1").fetch_one(&pool).await.unwrap().get::<i32, _>(0);
 }
+
+#[tokio::test]
+async fn events_card_move_writes_exactly_one_event() {
+    let pool = pool().await;
+    let (project, feature) = fixture(&pool).await;
+    let before = concord_db::events::count_kind(&pool, "card.move")
+        .await
+        .unwrap();
+    concord_db::projects::move_card_with_event(&pool, project, 0, feature, "inbox", 1)
+        .await
+        .expect("move with event");
+    let after = concord_db::events::count_kind(&pool, "card.move")
+        .await
+        .unwrap();
+    assert_eq!(after - before, 1, "one move writes one event");
+    let detail: String = sqlx::query_scalar(
+        "select detail from events where kind = 'card.move' order by id desc limit 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(detail, "inbox");
+}

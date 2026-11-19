@@ -7,7 +7,7 @@
 use serde::Serialize;
 use utoipa::ToSchema;
 use serde_json::Number;
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 
 /// A row of `projects` joined to its metrics, in the shape `/api/v1/projects/{slug}` serves.
 #[derive(Debug, Clone, Serialize, ToSchema)]
@@ -453,11 +453,11 @@ impl From<sqlx::Error> for MoveError {
     }
 }
 
-async fn column_id(pool: &PgPool, project_id: i64, phase: &str) -> Result<i64, MoveError> {
+async fn column_id(db: &mut PgConnection, project_id: i64, phase: &str) -> Result<i64, MoveError> {
     sqlx::query_scalar("select id from board_columns where project_id = $1 and phase = $2")
         .bind(project_id)
         .bind(phase)
-        .fetch_optional(pool)
+        .fetch_optional(&mut *db)
         .await?
         .ok_or_else(|| MoveError::NoSuchColumn(format!("phase {phase:?}")))
 }
@@ -469,7 +469,7 @@ async fn column_id(pool: &PgPool, project_id: i64, phase: &str) -> Result<i64, M
 /// the column it already occupies is not a refusal — otherwise every retry of a successful move
 /// would report a full column.
 async fn check_wip(
-    pool: &PgPool,
+    db: &mut PgConnection,
     column: i64,
     card_id: i64,
     project_id: i64,
@@ -479,7 +479,7 @@ async fn check_wip(
         sqlx::query_scalar("select wip_limit from board_columns where id = $1 and project_id = $2")
             .bind(column)
             .bind(project_id)
-            .fetch_optional(pool)
+            .fetch_optional(&mut *db)
             .await?
             .ok_or_else(|| MoveError::NoSuchColumn(format!("board column {column}")))?;
     let Some(limit) = limit else {
@@ -489,14 +489,14 @@ async fn check_wip(
         sqlx::query_scalar("select count(*) from board_cards where column_id = $1 and id = $2")
             .bind(column)
             .bind(card_id)
-            .fetch_one(pool)
+            .fetch_one(&mut *db)
             .await?;
     if already > 0 {
         return Ok(());
     }
     let count: i64 = sqlx::query_scalar("select count(*) from board_cards where column_id = $1")
         .bind(column)
-        .fetch_one(pool)
+        .fetch_one(&mut *db)
         .await?;
     if count >= limit {
         return Err(MoveError::ColumnFull(format!(
@@ -521,17 +521,49 @@ pub async fn move_card(
     feature_id: i64,
     to: &str,
 ) -> Result<(), MoveError> {
+    let mut tx = pool.begin().await.map_err(MoveError::Database)?;
+    move_card_tx(&mut tx, project_id, card_id, feature_id, to).await?;
+    tx.commit().await.map_err(MoveError::Database)?;
+    Ok(())
+}
+
+/// One move, one event, one transaction. If the event insert fails the board change rolls back with it.
+pub async fn move_card_with_event(
+    pool: &PgPool,
+    project_id: i64,
+    card_id: i64,
+    feature_id: i64,
+    to: &str,
+    actor_id: i64,
+) -> Result<(), MoveError> {
+    let mut tx = pool.begin().await.map_err(MoveError::Database)?;
+    move_card_tx(&mut tx, project_id, card_id, feature_id, to).await?;
+    let entity_id = if feature_id > 0 { feature_id } else { card_id };
+    crate::events::append(&mut tx, project_id, actor_id, "card.move", "board_card", entity_id, to)
+        .await
+        .map_err(MoveError::Database)?;
+    tx.commit().await.map_err(MoveError::Database)?;
+    Ok(())
+}
+
+async fn move_card_tx(
+    db: &mut PgConnection,
+    project_id: i64,
+    card_id: i64,
+    feature_id: i64,
+    to: &str,
+) -> Result<(), MoveError> {
     match (card_id, feature_id) {
         (c, f) if c > 0 && f > 0 => Err(MoveError::Invalid(
             "name a card by id or by feature, not both".into(),
         )),
-        (_, f) if f > 0 => place_feature(pool, project_id, f, to).await,
-        _ => move_row(pool, project_id, card_id, to).await,
+        (_, f) if f > 0 => place_feature(db, project_id, f, to).await,
+        _ => move_row(db, project_id, card_id, to).await,
     }
 }
 
 async fn move_row(
-    pool: &PgPool,
+    db: &mut PgConnection,
     project_id: i64,
     card_id: i64,
     to: &str,
@@ -539,8 +571,8 @@ async fn move_row(
     if card_id <= 0 {
         return Err(MoveError::Invalid("no card identified".into()));
     }
-    let column = column_id(pool, project_id, to).await?;
-    check_wip(pool, column, card_id, project_id, to).await?;
+    let column = column_id(db, project_id, to).await?;
+    check_wip(db, column, card_id, project_id, to).await?;
     // RowsAffected separates "moved" from "no such card": without it a bogus id is reported as a
     // success, which is a lie the board cannot tell from a move.
     let affected = sqlx::query(
@@ -549,7 +581,7 @@ async fn move_row(
     .bind(column)
     .bind(card_id)
     .bind(project_id)
-    .execute(pool)
+    .execute(&mut *db)
     .await?
     .rows_affected();
     if affected == 0 {
@@ -559,18 +591,18 @@ async fn move_row(
 }
 
 async fn place_feature(
-    pool: &PgPool,
+    db: &mut PgConnection,
     project_id: i64,
     feature_id: i64,
     to: &str,
 ) -> Result<(), MoveError> {
-    let column = column_id(pool, project_id, to).await?;
+    let column = column_id(db, project_id, to).await?;
     // The feature must belong to this project, or a caller could place any feature on any board.
     let owned: Option<i64> =
         sqlx::query_scalar("select id from features where id = $1 and project_id = $2")
             .bind(feature_id)
             .bind(project_id)
-            .fetch_optional(pool)
+            .fetch_optional(&mut *db)
             .await?;
     if owned.is_none() {
         return Err(MoveError::NotFound(format!(
@@ -588,12 +620,12 @@ async fn place_feature(
     )
     .bind(project_id)
     .bind(feature_id)
-    .fetch_optional(pool)
+    .fetch_optional(&mut *db)
     .await?;
     match existing {
-        None => check_wip(pool, column, 0, project_id, to).await?,
+        None => check_wip(db, column, 0, project_id, to).await?,
         Some((card, current)) if current != Some(column) => {
-            check_wip(pool, column, card, project_id, to).await?
+            check_wip(db, column, card, project_id, to).await?
         }
         _ => {}
     }
@@ -605,7 +637,7 @@ async fn place_feature(
     .bind(project_id)
     .bind(feature_id)
     .bind(column)
-    .execute(pool)
+    .execute(&mut *db)
     .await?;
     Ok(())
 }
