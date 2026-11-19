@@ -948,3 +948,8 @@ only on API writes.
 
 - `settings_themes_e2e` stays `1 passed / 2 failed`; signed-in-state theory disproved (D-154) and reverted.
 - Next: instrument `strategyPanel` to see what `s.themeProposals` contains at render time.
+
+## 2026-11-19 — settings first paint
+
+- Token-direct signal fixes first-paint private collections (D-155); `settings_themes_e2e` `2 passed / 1 failed in 35.00s`.
+- Remaining failure: consent eligibility despite seeded merged MR and owner membership; not wired.

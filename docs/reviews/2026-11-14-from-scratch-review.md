@@ -2385,3 +2385,7 @@ memory.
   Page-context API returns the seeded row; the DOM shows "No theme proposals". Next: instrument `strategyPanel`.
 
 - **2026-11-19 — settings-deadend gate.** CI gate `44601826596 success in 2m51s`. Docs-only; no redeploy.
+
+- **2026-11-19 — settings first paint fixed.** `DEBUG_PANEL null` proved the null collection; token-direct check gives
+  `settings_themes_e2e` `2 passed / 1 failed in 35.00s` (was `1 passed / 2 failed`). Remaining failure: consent refusal
+  "only an eligible collaborator may consent", though the seeded merged MR and owner membership are present.

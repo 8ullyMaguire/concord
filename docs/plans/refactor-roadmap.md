@@ -1557,6 +1557,11 @@ tell the difference between "not started" and "waiting".
   returns the seeded `battery-life` proposal, but `[data-theme-proposals]` is absent. The remaining defect is in the
   settings render/state path, not in auth detection or collection shape.
 
+- **D-155 — first paint reads the stored token directly.** Instrumentation showed `s.themeProposals === null`
+  because `ConcordSession` initialises after `settings.js` first `load()`. Reading `concord.token` /
+  `concord.user` from storage makes `mine()` fetch private collections on first paint.
+  `settings_themes_e2e` went `1 passed / 2 failed` -> `2 passed / 1 failed in 35.00s`; not wired yet.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet

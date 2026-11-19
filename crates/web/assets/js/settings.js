@@ -655,7 +655,13 @@
     // render anything but empty anyway: `probe_requests.py` saw exactly four 401s on an anonymous crawl. Asking only when
     // there is a session keeps the crawl honest — a 401 there would mean a route that broke, not one that was never ours
     // to read. `members` stays unconditional: a member list is public on this product.
-    var signedIn = !!(window.ConcordSession && window.ConcordSession.instance().signedIn());
+    // ConcordSession is initialised after settings.js first calls load(). Its signedIn() is
+    // therefore false on first paint even when the fixture token is already in localStorage.
+    // Reading the storage directly is the same signal session.js itself uses on startup.
+    var signedIn = false;
+    try { signedIn = !!(localStorage.getItem("concord.token") || localStorage.getItem("concord.user")); }
+    catch (e) { /* storage disabled: fall through to the session object */ }
+    signedIn = signedIn || !!(window.ConcordSession && window.ConcordSession.instance().signedIn());
     var mine = function (path) { return signedIn ? getOrNull(path) : Promise.resolve(null); };
     return Promise.all([
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/charter"),
