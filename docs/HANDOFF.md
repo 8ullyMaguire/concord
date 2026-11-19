@@ -809,3 +809,9 @@ only on API writes.
 - Pagination convention live at `9631f0a`: 10/10 collection routes take `PageQuery`; gate PASS 132/132;
   live 400 refusals and cursors proved; CI `44452443868`.
 - Steps 1–6 of 9 done. Next: Step 7 — the domain crate stops being a comment.
+
+## 2026-11-19 — Step 7 done
+
+- Domain rules live at `d2226c0`: stage, tally, claim eligibility; gate PASS 132/132; `domain: 0 sqlx deps`;
+  mutation proved; CI `44457649459`.
+- Steps 1–7 of 9 done. Next: Step 8 — delete the corpses.

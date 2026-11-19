@@ -2230,3 +2230,8 @@ memory.
   store/handler. Domain tests 3 passed; 0 failed. `cargo tree -p concord-domain | grep -c sqlx` = 0. The consensus
   store test now casts every stance; a mutant copy that ignores `stand_aside` failed
   `the domain rule counts stand_aside` (0 passed / 1 failed), then was restored.
+
+- **2026-11-19 — Step 7 complete at `d2226c0`.** `gate: PASS` with `domain: 0 sqlx deps`,
+  `collection_pages: PASS — 10 routes, 0 without PageQuery`, `pages: 132/132 ok`. Domain tests 3 passed; mutation
+  proved the tally call is live; live version stamped `d2226c0`, pagination still `items 1 next o:1`, anonymous walk
+  0 holes, headers PASS, CI `44457649459` success.
