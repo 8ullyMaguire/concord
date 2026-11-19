@@ -116,9 +116,14 @@ async fn claim_project(
         .await
         .map_err(internal)?
         .unwrap_or(0.0);
-    concord_db::projects::claim(&state.pool, project.id, user.id)
-        .await
-        .map_err(internal)?;
+    concord_db::projects::claim_with_event(
+        &state.pool,
+        project.id,
+        user.id,
+        &format!("adopted after {days:.0} days without a commit: {}", user.username),
+    )
+    .await
+    .map_err(internal)?;
     let _ = concord_db::feature_writes::add_audit(
         &state.pool,
         project.id,

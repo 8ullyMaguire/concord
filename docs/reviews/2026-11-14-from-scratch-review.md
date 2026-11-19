@@ -2189,3 +2189,7 @@ memory.
   `9ed519e`; CI `44437354684` success. The vote transaction is proved by the store test and RED mutation. A live
   vote needs an open call; `/api/v1/projects/suki/consensus` returned `[]`, and opening one needs a maintainer
   account `[REDACTED]` (owner: user), already recorded in Blocked.
+
+- **2026-11-18 — Step 5 claim slice code landed (D-112).** `claim_with_event` appends `project.claim` in the same
+  transaction as the maintainer membership row. Store suite 33 passed; 0 failed. RED mutation failed
+  `events_claim_writes_event` with `one claim writes one event` (0 passed / 1 failed), then restored.

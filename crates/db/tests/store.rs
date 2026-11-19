@@ -1314,3 +1314,19 @@ async fn events_consensus_position_writes_event() {
         .unwrap();
     assert_eq!(after - before, 1, "one vote writes one event");
 }
+
+#[tokio::test]
+async fn events_claim_writes_event() {
+    let pool = pool().await;
+    let (project, _feature) = fixture(&pool).await;
+    let before = concord_db::events::count_kind(&pool, "project.claim")
+        .await
+        .unwrap();
+    concord_db::projects::claim_with_event(&pool, project, 1, "adopted after 90 days")
+        .await
+        .unwrap();
+    let after = concord_db::events::count_kind(&pool, "project.claim")
+        .await
+        .unwrap();
+    assert_eq!(after - before, 1, "one claim writes one event");
+}

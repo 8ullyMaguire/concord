@@ -956,6 +956,29 @@ pub async fn claim(
     project_id: i64,
     user_id: i64,
 ) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    claim_tx(&mut tx, project_id, user_id).await?;
+    tx.commit().await
+}
+
+/// A claim is a person taking responsibility, so the event is written in the same transaction as the membership row.
+pub async fn claim_with_event(
+    pool: &PgPool,
+    project_id: i64,
+    user_id: i64,
+    detail: &str,
+) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    claim_tx(&mut tx, project_id, user_id).await?;
+    crate::events::append(&mut tx, project_id, user_id, "project.claim", "project", project_id, detail).await?;
+    tx.commit().await
+}
+
+async fn claim_tx(
+    db: &mut PgConnection,
+    project_id: i64,
+    user_id: i64,
+) -> Result<(), sqlx::Error> {
     sqlx::query(
         "insert into members (project_id, user_id, role, joined_at) values ($1, $2, 'maintainer', now()) \
          on conflict (project_id, user_id) do update set role = \
@@ -963,7 +986,7 @@ pub async fn claim(
     )
     .bind(project_id)
     .bind(user_id)
-    .execute(pool)
+    .execute(&mut *db)
     .await?;
     Ok(())
 }
