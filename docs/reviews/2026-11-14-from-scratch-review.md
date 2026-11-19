@@ -2261,3 +2261,10 @@ memory.
   no-op for `projects_fts`. With it, `settings_e2e` moved from 19 setup errors to 5 passed / 14 failed; the 14 are real
   harness/behavior gaps (charter form, CSP inline-script assertions and similar), not missing dependencies. The shim is
   kept because it removes a class of false failures; the remaining suites need per-suite fixes before wiring.
+
+- **2026-11-19 — Step 9 CSP repair (partial).** `consensus.html` and `settings.html` embedded their four-row skeleton as an inline
+  `<script>`, which the CSP probe correctly refuses. Moved both to `assets/js/{consensus,settings}-skeleton.js` loaded through the
+  template's `asset` helper. First attempt left literal backslashes in the template and the browser fetched `/` as a script; fixed.
+  With the corrected candidate, `consensus_e2e` went from 7 failed / 8 passed to **5 failed / 10 passed**: the CSP violations are gone,
+  the remaining failures are data/session behavior in the recorded suite. `consensus_e2e` therefore stays unwired until those five are
+  fixed; no gate line is claimed for it.

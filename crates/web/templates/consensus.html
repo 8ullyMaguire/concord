@@ -39,10 +39,7 @@
 -->
 <div id="consensus-root" aria-busy="true" data-project="{{.Slug}}" data-call="{{.CallID}}">
 <script src="{{ asset "/assets/js/skeleton.js" }}"></script>
-<script>
-(function(){var b=document.getElementById("consensus-root");
-if(b&&window.ConcordSkeleton){b.innerHTML=window.ConcordSkeleton.rows(4);}})();
-</script>
+<script src="{{ asset "/assets/js/consensus-skeleton.js" }}"></script>
 
   <div id="consensus-error" class="error-state" hidden>
     <p class="error-state-title" id="consensus-error-title"></p>
