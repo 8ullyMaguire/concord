@@ -1543,6 +1543,10 @@ tell the difference between "not started" and "waiting".
 - **D-149 — the seed cursor is iterable.** `for row in con.execute(...)` is ordinary sqlite3 usage and now works.
 - **D-150 — `feeds_e2e` is wired.** `4 passed in 3.69s`; ratchet 14 → 13.
 
+- **D-152 — `settings_themes_e2e` is not an envelope bug.** `GET /strategy/theme-proposals` already answers a bare
+  array. Wrapping it in `ConcordApi.list()` left the suite at `3 failed in 52.93s`; the change was reverted. The first
+  test creates its proposal through the form, so an empty table before submit is expected. Next: inspect the form POST.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet

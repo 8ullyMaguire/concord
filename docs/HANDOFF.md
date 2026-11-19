@@ -923,3 +923,7 @@ only on API writes.
 
 - CI gate `44589401206 success in 2m50s`; live version remains `concord-rs 0.0.0+89d7d2e+vendor`.
 
+## 2026-11-19 — themes dead end
+
+- `settings_themes_e2e` still `3 failed in 52.93s`; envelope theory disproved (D-152) and reverted.
+- Next: inspect the theme proposal form POST, not the list fetch.

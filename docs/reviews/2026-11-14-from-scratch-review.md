@@ -2369,3 +2369,5 @@ memory.
 
 - **2026-11-19 — guest seed push gate.** CI gate `44589401206 success in 2m50s`. Test-only change; no redeploy.
 
+- **2026-11-19 — themes dead end recorded.** Envelope normalization reverted after `3 failed in 52.93s`, unchanged from
+  baseline. No product change; candidate rebuilt only.
