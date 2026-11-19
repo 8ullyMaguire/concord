@@ -2287,3 +2287,10 @@ memory.
   `requests_e2e` 2 failed/16 passed; `duplicates_e2e` 3 failed/1 passed; `milestones_e2e` 8 failed/3 passed;
   `rank_links_e2e` 8 failed/3 passed; `audit_e2e` 5 failed; `probe_claim_button` no claim button. `consensus_e2e` now
   passes `15 passed`. Recorded from `/tmp/concord-gate-step9-consensus.log`; no PASS is claimed.
+
+- **2026-11-19 — Step 9 suite 6: `audit_undo_e2e` wired at 3 passed.** Baseline was 3 setup errors. The shim's nullable-FK
+  and boolean literal conversions cleared setup; the page then exposed two real defects: `/audit/actions` had become a paged
+  object (Step 6) while `audit.js` still called `.map` on it, and `audit::Entry::can_undo` was hardcoded `false`. The handler
+  now sets it from the caller's maintainer role for un-reversed `arena.remove` rows. Ratchet RED: `RECORDED_UNRUN = 16`
+  failed after wiring; restored to 15. Targeted gate: `scripts/parity/e2e_candidate.sh tests/e2e/audit_undo_e2e.py -q`
+  → `3 passed in 12.11s`.

@@ -126,11 +126,30 @@ if os.environ.get("CONCORD_E2E_CANDIDATE") and os.environ.get("CONCORD_E2E_DSN")
                     table, cols_text, values_text = m.group(1), m.group(2), m.group(3)
                     given_cols = [c.strip() for c in cols_text.split(",")]
                     self._cur.execute(
-                        "select column_name, data_type from information_schema.columns where table_name = %s",
-                        (table,))
-                    types = dict(self._cur.fetchall())
-                    args = tuple(bool(v) if types.get(c) == "boolean" and isinstance(v, int) else v
-                                 for c, v in zip(given_cols, args))
+                        "select column_name, data_type, is_nullable from information_schema.columns "
+                        "where table_name = %s", (table,))
+                    meta = {name: (dtype, nullable) for name, dtype, nullable in self._cur.fetchall()}
+                    types = {name: dtype for name, (dtype, _) in meta.items()}
+                    # SQLite fixtures use 0 as "no foreign key"; the port uses NULL. Identity keys start at 1, so a
+                    # nullable *_id column set to a literal 0 can only mean "none". Rewrite the literal in the SQL
+                    # as well as bound parameters: several fixtures inline it rather than binding it.
+                    values = [v.strip() for v in values_text.split(",")]
+                    if len(values) == len(given_cols):
+                        for i, col in enumerate(given_cols):
+                            if (col.endswith("_id") and meta.get(col, (None, ""))[1] == "YES"
+                                    and values[i] == "0"):
+                                values[i] = "NULL"
+                            elif meta.get(col, (None, ""))[0] == "boolean" and values[i] in ("0", "1"):
+                                values[i] = "FALSE" if values[i] == "0" else "TRUE"
+                        new_values = ", ".join(values)
+                        if new_values != values_text:
+                            sql = sql.replace(f"VALUES ({values_text})", f"VALUES ({new_values})", 1)
+                            values_text = new_values
+                    args = tuple(
+                        None if (v == 0 and c.endswith("_id") and meta.get(c, (None, ""))[1] == "YES")
+                        else bool(v) if types.get(c) == "boolean" and isinstance(v, int)
+                        else v
+                        for c, v in zip(given_cols, args))
                     self._cur.execute(
                         "select column_name, data_type from information_schema.columns "
                         "where table_name = %s and is_nullable = 'NO' and column_default is null "

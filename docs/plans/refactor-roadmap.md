@@ -1477,6 +1477,13 @@ tell the difference between "not started" and "waiting".
   `innerHTML`. The gate now greps `.innerHTML =` and `.insertAdjacentHTML(`; measured from git: 125 real sinks before this
   slice, 123 after (criteria 2→0). D-12 still counts both spellings; this only decides what counts as a sink.
 
+- **D-128 — the seed shim treats 0 in a nullable `*_id` as NULL, and 0/1 in a boolean as FALSE/TRUE.** SQLite fixtures use
+  sentinel zeros; PostgreSQL enforces FKs and real booleans. Narrow to columns whose schema says the conversion is safe.
+- **D-129 — the audit page accepts both a bare array and a page envelope for `/audit/actions`.** Step 6 wrapped the
+  vocabulary in `page_json`; the client must not blank the filter because a collection convention changed.
+- **D-130 — `can_undo` is computed by the audit handler from the caller's role, not hardcoded false in the store.** The
+  read is still public; only the offer of a write is gated, and only on an un-reversed `arena.remove` row.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet

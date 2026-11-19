@@ -105,6 +105,10 @@ def seed(db):
 
 def _page(browser, token=None, user=None):
     ctx = browser.new_context(extra_http_headers={"X-Forwarded-For": "10.97.9.9"})
+    if token:
+        # The undo controls are rendered by the server from the navigation cookie; a script-readable token alone
+        # cannot make a page navigation signed in.
+        ctx.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
     pg = ctx.new_page()
     pg.errors = []
     pg.on("pageerror", lambda e: pg.errors.append("PAGEERROR: " + str(e)))

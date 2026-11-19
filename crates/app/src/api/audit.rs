@@ -5,6 +5,7 @@
 
 use axum::{
     extract::{Path, Query, State},
+    http::HeaderMap,
     Json, Router,
 };
 use polaris_core::ApiError;
@@ -12,7 +13,7 @@ use crate::pagination::PageQuery;
 use serde::Deserialize;
 use serde_json::Value;
 
-use crate::{internal, AppState};
+use crate::{bearer_user, internal, require_role, AppState};
 
 #[derive(Debug, Deserialize, Default)]
 struct AuditQuery {
@@ -49,6 +50,7 @@ async fn list_audit(
     State(state): State<AppState>,
     Path(slug): Path<String>,
     Query(query): Query<AuditQuery>,
+    headers: HeaderMap,
 ) -> Result<Json<concord_db::audit::Page>, ApiError> {
     let project = concord_db::projects::project_by_slug(&state.pool, &slug)
         .await
@@ -72,9 +74,19 @@ async fn list_audit(
         offset: query.offset.and_then(|value| value.parse().ok()).unwrap_or(0),
         limit: query.limit.and_then(|value| value.parse().ok()).unwrap_or(0),
     };
-    let page = concord_db::audit::list(&state.pool, &filter)
+    let mut page = concord_db::audit::list(&state.pool, &filter)
         .await
         .map_err(internal)?;
+    // Undo is a write, so the read decides who MAY be offered it from the caller's real role, not from a
+    // client-side guess. Anonymous readers still get the log; they simply get no undo controls.
+    let caller = bearer_user(&state, &headers).await.ok().flatten();
+    let may_undo = match &caller {
+        Some(user) => require_role(&state, &project, "maintainer", user).await.is_ok(),
+        None => false,
+    };
+    for entry in &mut page.entries {
+        entry.can_undo = may_undo && entry.action == "arena.remove" && !entry.undone;
+    }
     Ok(Json(page))
 }
 

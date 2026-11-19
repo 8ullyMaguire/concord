@@ -233,7 +233,10 @@
         .catch(function () { return null; }));
     }
     Promise.all(fetches).then(function (res) {
-      render(res[0], res[1], res[2]);
+      // The action vocabulary is a collection route too: it now comes back as a page envelope. Accept the
+      // legacy bare array as well so an old cache cannot blank the filter control.
+      var actions = Array.isArray(res[1]) ? res[1] : (res[1] && Array.isArray(res[1].entries) ? res[1].entries : []);
+      render(res[0], actions, res[2]);
       // The note is set AFTER the render, because render() replaces the node it lives in.
       if (note) say(note);
       if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);
