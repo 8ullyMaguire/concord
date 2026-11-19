@@ -29,10 +29,13 @@
   // One session (review item 9b): `concord.token` is `session.js`'s key, and ten files reading `localStorage` themselves is
   // how a change to where the token lives turns into ten silent breakages. This reads the session's copy, so signing out in
   // another tab is visible here on the next render.
-  function token() {
+  // A browser session is an HttpOnly `concord_nav` cookie, not a script-readable token.
+  // The page may only ask whether somebody is signed in; the server decides who may
+  // actually write (maintainer for close, eligibility for positions).
+  function signedIn() {
     try {
-      return window.ConcordSession ? (window.ConcordSession.instance().token || '') : '';
-    } catch (e) { return ''; }
+      return !!(window.ConcordSession && window.ConcordSession.instance().signedIn());
+    } catch (e) { return false; }
   }
 
   function show(el, on) { if (el) el.hidden = !on; }
@@ -343,7 +346,7 @@
       }
       // Signed out: the objection is readable and the control is not offered --
       // there is nobody to attribute a resolution to.
-      if (token() && (!o.status || o.status === 'open')) {
+      if (signedIn() && (!o.status || o.status === 'open')) {
         // The objector gets the one act that is theirs; everyone else gets the
         // control the server decides on. See `mine` above for why this page may
         // answer that question about itself and not about anybody else.
@@ -359,7 +362,7 @@
   // the server's answer -- a client-side role check would be a claim the page cannot
   // check, exactly as with the objection controls above.
   function closeControls(call) {
-    if (!token() || !callEl) { show(closeEl, false); return; }
+    if (!signedIn() || !callEl) { show(closeEl, false); return; }
     if ((call.status || '') !== 'open') {
       // A closed call shows its result in the meta line instead; offering a second
       // close would be offering a second verdict on a decision that has one.
@@ -448,10 +451,10 @@
 
     // Signed out: the window is readable like the call, and no write control is offered.
     // The prompt above the page covers what to do about it.
-    var signedIn = !!token();
+    var isSignedIn = !!signedIn();
 
     if (!data) {
-      if (signedIn) show(overrideNoneEl, true);
+      if (isSignedIn) show(overrideNoneEl, true);
       return;
     }
     if ((data.status || '') === 'closed') {
@@ -476,12 +479,12 @@
     for (var i = 0; i < buttons.length; i++) {
       var chosen = buttons[i].getAttribute('data-override-position') === (data.my_position || '');
       buttons[i].className = chosen ? 'btn btn-primary' : 'btn';
-      buttons[i].disabled = !signedIn;
+      buttons[i].disabled = !isSignedIn;
     }
     show(overrideProgress, true);
-    show(overridePositionsEl, signedIn);
-    show(overrideNote, signedIn);
-    show(overrideCloseBtn, signedIn);
+    show(overridePositionsEl, isSignedIn);
+    show(overrideNote, isSignedIn);
+    show(overrideCloseBtn, isSignedIn);
     show(overrideLiveEl, true);
   }
 
@@ -639,7 +642,7 @@
   function outcomeControls(call) {
     if (!outcomeEl) return;
     var solvable = !!call.solution_id;
-    if (!token() || !solvable || call.outcome) { show(outcomeEl, false); return; }
+    if (!signedIn() || !solvable || call.outcome) { show(outcomeEl, false); return; }
     show(outcomeEl, true);
   }
 
@@ -724,7 +727,7 @@
     show(callEl, true);
 
     // Signed out: read-only, with a prompt where each write control would be.
-    if (!token()) {
+    if (!signedIn()) {
       show(positionsEl, false);
       show(signedOutEl, true);
     } else {

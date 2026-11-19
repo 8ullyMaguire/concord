@@ -2268,3 +2268,14 @@ memory.
   With the corrected candidate, `consensus_e2e` went from 7 failed / 8 passed to **5 failed / 10 passed**: the CSP violations are gone,
   the remaining failures are data/session behavior in the recorded suite. `consensus_e2e` therefore stays unwired until those five are
   fixed; no gate line is claimed for it.
+
+- **2026-11-19 — Step 9: `consensus_e2e` repaired at 15 passed (already one of the original eight wired suites; ratchet stays 16).** Before the fix, with the corrected candidate,
+  `consensus_e2e` was `5 failed / 10 passed`; a targeted rerun of the close-control test reproduced
+  `1 failed, 14 deselected`. Three coupled defects were fixed in the same commit:
+  1. `consensus.js` gated write controls on a script-readable token that `session.js` deletes by design; it now asks
+     `ConcordSession.instance().signedIn()`, and the fixture logs in the way a browser does (navigation cookie plus user record).
+  2. Renaming that helper to `signedIn` shadowed a local `var signedIn` in `renderOverride`; the local is now `isSignedIn`.
+  3. The two inline skeleton scripts had already been moved out of the templates (commit `19da4e4`), removing the CSP failures.
+  No ratchet change: the suite was already named by the gate, so the duplicate entry and the 16 -> 15 ratchet move were reverted.
+  Targeted gate: `CONCORD_E2E_CANDIDATE=$PWD/target/debug/concord-cli scripts/parity/e2e_candidate.sh
+  tests/e2e/consensus_e2e.py -q` → `15 passed in 17.85s`.

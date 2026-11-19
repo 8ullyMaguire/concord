@@ -588,7 +588,12 @@ def new_page(browser, client, token=None):
     """
     ctx = browser.new_context(extra_http_headers={"X-Forwarded-For": client})
     if token:
-        ctx.add_init_script("localStorage.setItem('concord.token', %r);" % token)
+        # A real login leaves an HttpOnly navigation cookie and a user record; script cannot read the cookie, so the
+        # page's signed-in state comes from the user record. Setting only localStorage's old token key is not a login
+        # any more — session.js deletes that key on purpose (security baseline, row 2).
+        ctx.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
+        ctx.add_init_script("localStorage.setItem('concord.user', JSON.stringify(%s));" %
+                            '{"username":"browser-reader","display_name":"Browser Reader"}')
     pg = ctx.new_page()
     pg.errors = []
     pg.on("pageerror", lambda e: pg.errors.append("PAGEERROR: " + str(e)))
