@@ -135,7 +135,10 @@ if os.environ.get("CONCORD_E2E_CANDIDATE") and os.environ.get("CONCORD_E2E_DSN")
                 m = _re.match(r"(?is)^insert into ([\w.]+)\s*\(([^)]*)\)\s*values\s*\((.*?)\)", sql)
                 if m:
                     table, cols_text, values_text = m.group(1), m.group(2), m.group(3)
-                    given_cols = [c.strip() for c in cols_text.split(",")]
+                    # SQLite fixtures quote reserved words such as "values". PostgreSQL's
+                    # catalogue reports them unquoted; keeping the quote made every one of
+                    # them look missing and the shim appended the column a second time.
+                    given_cols = [c.strip().strip('"`[]') for c in cols_text.split(",")]
                     self._cur.execute(
                         "select column_name, data_type, is_nullable from information_schema.columns "
                         "where table_name = %s", (table,))
@@ -170,7 +173,7 @@ if os.environ.get("CONCORD_E2E_CANDIDATE") and os.environ.get("CONCORD_E2E_DSN")
                         "select column_name, data_type from information_schema.columns "
                         "where table_name = %s and is_nullable = 'NO' and column_default is null "
                         "and is_identity = 'NO'", (table,))
-                    given = {c.strip().lower() for c in cols_text.split(",")}
+                    given = {c.strip().strip('"`[]').lower() for c in cols_text.split(",")}
                     extra_cols, extra_vals = [], []
                     for name, dtype in self._cur.fetchall():
                         if name in given:
@@ -191,11 +194,22 @@ if os.environ.get("CONCORD_E2E_CANDIDATE") and os.environ.get("CONCORD_E2E_DSN")
                             f"({cols_text}, {', '.join(extra_cols)}) VALUES ({values_text}, "
                             + ", ".join(["%s"] * len(extra_cols)) + ")", 1)
                         args = args + tuple(extra_vals)
-            self._cur.execute(sql, args)
+            # psycopg2 interprets a literal `%` in SQL as a placeholder whenever params are
+            # supplied, even as an empty tuple. SQLite fixtures use LIKE 'prefix%' with no
+            # parameters, so call the one-argument form in that case.
+            if args:
+                self._cur.execute(sql, args)
+            else:
+                self._cur.execute(sql)
             if returning:
                 row = self._cur.fetchone()
                 self.lastrowid = row[0] if row else None
             return self
+
+        def __iter__(self):
+            # sqlite3 lets callers write `for row in con.execute(...)`; the adapter returns the
+            # cursor itself, so make that cursor iterable over mapped rows.
+            return iter(self.fetchall())
 
         def fetchone(self):
             row = self._cur.fetchone()

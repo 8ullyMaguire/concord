@@ -902,3 +902,9 @@ only on API writes.
 - User-unit checks: `concord-rs.service` active, `concord.service` inactive (D-146).
 - Next: wire the next green suite; 14 remain unwired.
 
+## 2026-11-19 — Step 9: feeds wired
+
+- `feeds_e2e`: `4 passed in 3.69s`; wired; ratchet `13`.
+- Shim now normalizes quoted identifiers, executes no-param SQL without params, and makes the cursor iterable (D-147..D-149).
+- Finder/scout/taxonomy now fail on behavior rather than setup; 13 suites remain unwired.
+

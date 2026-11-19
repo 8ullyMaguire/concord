@@ -2357,3 +2357,7 @@ memory.
   `make -o release deploy` alone exited 0 but left live at `94ea2c0` (D-145); after `make release` the live version is
   `concord-rs 0.0.0+89d7d2e+vendor`. `systemctl --user is-active concord-rs.service` = active, `concord.service` = inactive.
 
+- **2026-11-19 — Step 9: feeds wired; three setups unblocked.** `feeds_e2e` `4 passed in 3.69s`.
+  `finder_e2e` and `scout_e2e` moved from setup errors to behavior failures; `taxonomy_e2e` from `6 errors in 2.98s`
+  to `6 failed in 103.70s` (no setup errors). No suite was wired on a failing line.
+

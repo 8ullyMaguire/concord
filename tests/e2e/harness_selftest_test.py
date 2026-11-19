@@ -147,7 +147,7 @@ def test_every_suite_the_gate_names_exists_and_the_unrun_set_cannot_grow():
         f"gate.sh names only {len(named)} suites ({named}) — the live layer must keep the eight it "
         "runs today, or this ratchet has silently grown back to zero")
 
-    RECORDED_UNRUN = 14
+    RECORDED_UNRUN = 13
     assert len(unrun) == RECORDED_UNRUN, (
         f"the gate runs {len(named)} of {len(suites)} suites; {len(unrun)} are run by nobody "
         f"({unrun}). This test recorded {RECORDED_UNRUN}. Wire a suite into scripts/gate.sh's live "
