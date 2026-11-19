@@ -803,3 +803,9 @@ only on API writes.
 
 - All six event paths live at `f971637`; gate PASS 132/132, six RED mutations proved, CI `44448730621`.
 - Steps 1–5 of 9 done. Next: Step 6 — one pagination convention, enforced.
+
+## 2026-11-19 — Step 6 done
+
+- Pagination convention live at `9631f0a`: 10/10 collection routes take `PageQuery`; gate PASS 132/132;
+  live 400 refusals and cursors proved; CI `44452443868`.
+- Steps 1–6 of 9 done. Next: Step 7 — the domain crate stops being a comment.

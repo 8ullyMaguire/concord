@@ -2220,3 +2220,8 @@ memory.
   structural gate `collection_pages: PASS — 10 collection routes, 0 without PageQuery` (baseline 10 missing).
   All ten collection handlers take the page query; `/api/v1/projects` preserves the full `projects` key for the
   bootstrap probe and exposes the paged array as `items` with `next`.
+
+- **2026-11-19 — Step 6 complete at `9631f0a`.** `gate: PASS` with `api: collection_pages: PASS — 10 collection
+  routes, 0 without PageQuery` and `pages: 132/132 ok`. Live refusals 400 for `limit=10000` and `cursor=garbage`;
+  default projects body carried `items` 50, `projects` 73, `next o:50`; second page via `cursor=o:1` returned the
+  next row. anonymous walk 0 holes; headers PASS; CI `44452443868` success.
