@@ -81,8 +81,10 @@
           api.get('/api/v1/projects/' + encodeURIComponent(slug) + '/board' + boardQuery())
             .catch(function () { return { columns: [], cards: [] }; }),
           api.get('/api/v1/projects/' + encodeURIComponent(slug) + '/features')
+            .then(window.ConcordApi.list)
             .catch(function () { return []; }),
           api.get('/api/v1/projects/' + encodeURIComponent(slug) + '/milestones')
+            .then(window.ConcordApi.list)
             .catch(function () { return []; })
         ]).then(function (res) { return { project: p, board: res[0], features: res[1], milestones: res[2] }; });
       })

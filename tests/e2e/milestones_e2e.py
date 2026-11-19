@@ -167,6 +167,11 @@ def _goto(page, path, token):
     # and only a write ever notices.
     page.add_init_script(
         "window.localStorage.setItem('concord.token', %r);" % token)
+    # session.js deletes the script-readable token and keeps the durable user record as
+    # the signed-in signal. Without it the client hides every write control.
+    page.add_init_script(
+        "window.localStorage.setItem('concord.user', JSON.stringify(%s));" %
+        ('{"username":%r,"display_name":%r}' % (OWNER, OWNER)))
     page.goto(BASE + path)
     expect(page.locator("body")).to_be_visible()
 

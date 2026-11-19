@@ -2304,3 +2304,8 @@ memory.
   `5 failed in 163s` because `#complaint-form` never appeared; the fixture wrote its token after the first navigation,
   so `session.js` rendered the project anonymous. Seeding token, user record and `concord_nav` cookie before `goto`
   gives `5 passed in 15.72s`. Already gate-named; ratchet stays at 15.
+
+- **2026-11-19 — Step 9: `milestones_e2e` and `board_e2e` repaired.** `milestones_e2e` went from
+  `2 failed / 3 passed` to `5 passed in 15.22s`; `board_e2e` from `7 failed / 1 passed` to
+  `8 passed in 14.94s`. Both needed the durable user record before navigation (D-135); board and feature
+  pages also had to unwrap Step-6 page envelopes (D-134). Already gate-named; ratchet stays at 15.

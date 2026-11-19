@@ -182,8 +182,6 @@ def page(browser, server):
     pg.on("pageerror", lambda e: pg.errors.append("PAGEERROR: " + str(e)))
     pg.on("console", lambda m: pg.errors.append("CONSOLE: " + m.text)
           if m.type == "error" and "Failed to load resource" not in m.text else None)
-    pg.goto(BASE + "/")
-
     username = f"board-mover-{next(_ips)}"
     body = harness.api(BASE, "POST", "/api/v1/auth/register", {
         "username": username, "password": "correct-horse-battery",
@@ -205,7 +203,14 @@ def page(browser, server):
     finally:
         con.close()
 
-    pg.evaluate("t => window.localStorage.setItem('concord.token', t)", token)
+    # session.js deletes a script-readable token and keeps the durable user record as
+    # the signed-in signal. Seed both and the nav cookie BEFORE navigation; writing the
+    # token after goto made the board render anonymous and refuse every move.
+    pg.add_init_script("localStorage.setItem('concord.token', %r);" % token)
+    pg.add_init_script("localStorage.setItem('concord.user', JSON.stringify(%s));" %
+                       ('{"username":%r,"display_name":%r}' % (username, username)))
+    ctx.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
+    pg.goto(BASE + "/")
     return pg
 
 

@@ -437,9 +437,9 @@
     json(base + '/features/' + encodeURIComponent(at.id) + '/tags'),
     // §354's extra link, read TOLERANTLY: a page that cannot offer the control must
     // still render the feature.
-    json(base + '/complaints?status=validated').catch(function () { return []; }),
+    json(base + '/complaints?status=validated').then(window.ConcordApi.list).catch(function () { return []; }),
     // R17/R18's three reads, each TOLERANT for the same reason.
-    json(base + '/milestones').catch(function () { return []; }),
+    json(base + '/milestones').then(window.ConcordApi.list).catch(function () { return []; }),
     json(base + '/features/' + encodeURIComponent(at.id) + '/deps').catch(function () { return {}; }),
     json(base + '/features/' + encodeURIComponent(at.id) + '/evidence').catch(function () { return []; })
   ]).then(function (res) {

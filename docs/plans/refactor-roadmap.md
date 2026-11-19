@@ -1494,6 +1494,12 @@ tell the difference between "not started" and "waiting".
   script-readable token and relies on the durable user record; a token written after the first `goto` is gone by the time
   the project page loads, so the filing forms never render. Cookie, token and user record must precede navigation.
 
+- **D-134 — board and feature collection reads also normalize page envelopes.** The shared `ConcordApi.list()` is now
+  used by `board.js` and `feature.js` for `/features`, `/complaints` and `/milestones`; `Array.isArray` guards were the
+  original symptom of the Step-6 shape change, not a reason to weaken the pages.
+- **D-135 — the board and milestones fixtures seed the durable user record before navigation.** Same signing contract as
+  D-132/D-133: cookie + token + user record precede the first `goto`, or write controls are hidden.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet
