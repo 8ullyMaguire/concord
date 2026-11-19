@@ -845,3 +845,9 @@ only on API writes.
 - `duplicates_e2e` `5 passed in 15.72s`, `milestones_e2e` `5 passed in 15.22s`, `board_e2e` `8 passed in 14.94s`.
 - All were signed-out fixtures (token written after navigation); board/feature pages also needed the shared page-envelope unwrap (D-133..D-135).
 - `make gate` PASS `132/132 ok`. Next: remeasure `gate-live` at this head and fix `feature_e2e` / `requests_e2e` / `rank_links_e2e` / `probe_claim_button`.
+
+## 2026-11-19 — Step 9: feature_e2e repaired
+
+- `feature_e2e` at `9d9dc92`: `15 passed in 7.59s` (was 4 failed / 11 passed).
+- The tags fixture lacked the durable `concord.user` record; same sign-in contract as D-131..D-135 (D-136).
+- Next: gate-live at this head, then `requests_e2e` / `rank_links_e2e` / `probe_claim_button`.
