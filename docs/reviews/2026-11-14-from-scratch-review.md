@@ -2247,3 +2247,5 @@ memory.
 
 - **2026-11-19 — Step 9 suite 1/21: `lifecycle_e2e` wired.** Direct candidate run: `8 passed in 6.75s`.
   Ratchet RED proof: setting `RECORDED_UNRUN = 22` failed the harness self-test; restored to 20 in the same commit.
+
+- **2026-11-19 — Step 9 suite wired: `milestones_e2e`.** Direct candidate run: `5 passed in 10.29s`. Ratchet now 19.
