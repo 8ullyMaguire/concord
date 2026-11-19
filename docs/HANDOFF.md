@@ -999,3 +999,9 @@ only on API writes.
 - Live `concord-rs 0.0.0+6d3d90c+vendor`; `concord-rs.service active`, `concord.service inactive`.
 - Probe: `concord total 60 complaints 49 drafts 0 first complaint`; `lorebook total 15 complaints 4 drafts 0 first complaint`.
 - Gate `44634126432 success in 2m26s`; harness self-test `14 passed in 71.13s`. Ratchet 11.
+
+## 2026-11-19 — notifications wired
+
+- `notifications_e2e`: `4 passed in 8.64s`; wired; ratchet `10`. D-164..D-166.
+- Needs a release build, live deploy and badge probe.
+

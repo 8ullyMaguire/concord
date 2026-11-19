@@ -359,12 +359,16 @@ async fn project_index(State(pool): State<PgPool>, headers: HeaderMap) -> Respon
             })
         }).collect::<Vec<_>>(),
     });
-    render(&headers, Page {
+    let unread = match nav_user(&pool, &headers).await {
+        Some(user) => concord_db::notifications::count_unread(&pool, user.id).await.ok().filter(|n| *n > 0),
+        None => None,
+    };
+    render_with_unread(&headers, Page {
         title: "Projects",
         path: "/projects",
         description: "Every project in the catalogue, with the model it is governed by.",
         bootstrap,
-    }, body.finish())
+    }, body.finish(), unread)
 }
 
 /// `/adopt` — the pool of projects the lifecycle has measured dormant, and the act of taking one on (roadmap step 5).
@@ -595,6 +599,13 @@ async fn project_overview(
 /// Goes through the shell, which is the reference's `base.html` contract: `data-consent` on the body, the notice rendered by the server
 /// from the reader's own cookie, the nav hooks `session.js` needs, and the project tabs driven by the path.
 pub(crate) fn render(headers: &HeaderMap, page: Page<'_>, body: String) -> Response {
+    render_with_unread(headers, page, body, None)
+}
+
+/// The same document, with the navigation reader's unread count painted into the first paint by the server.
+pub(crate) fn render_with_unread(
+    headers: &HeaderMap, page: Page<'_>, body: String, unread: Option<i64>,
+) -> Response {
     let host = host_of(headers);
     let accepted = shell::consent_accepted(headers);
     let version = std::env::var("CONCORD_VERSION").unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string());
@@ -605,6 +616,7 @@ pub(crate) fn render(headers: &HeaderMap, page: Page<'_>, body: String) -> Respo
             path: page.path,
             description: page.description,
             body: &body,
+            unread,
         },
         accepted,
         &version,

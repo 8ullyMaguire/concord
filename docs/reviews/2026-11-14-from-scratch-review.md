@@ -2423,3 +2423,7 @@ memory.
   `https://concord.polarisocial.xyz/api/v1/version` returned `concord-rs 0.0.0+6d3d90c+vendor`.
   Live probe: `concord total 60 complaints 49 drafts 0 first complaint`; `lorebook total 15 complaints 4 drafts 0 first complaint`.
   Harness self-test `14 passed in 71.13s`; CI gate `44634126432 success in 2m26s`.
+
+- **2026-11-19 — notifications wired.** `notifications_e2e` `4 passed in 8.64s` (was `4 failed`). Server-rendered badge,
+  real inbox page, durable fixture user. Ratchet 10.
+

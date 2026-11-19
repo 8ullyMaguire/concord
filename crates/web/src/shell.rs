@@ -29,6 +29,8 @@ pub struct Shell<'a> {
     pub description: &'a str,
     /// The body markup.
     pub body: &'a str,
+    /// Unread inbox rows for the navigation reader. `None` renders no badge, so zero is absence rather than a numeral.
+    pub unread: Option<i64>,
 }
 
 /// The project sub-page tabs, as the reference orders them. `Vote` is `/rank` and `Modlog` is `/audit` — the reference's own labels, kept
@@ -216,7 +218,11 @@ pub fn document(
             ""
         };
         let hook = if *href == "/notifications" { " data-notifications-link" } else { "" };
-        format!("<a href=\"{href}\"{active}{hook}>{label}</a>")
+        let badge = if *href == "/notifications" {
+            shell.unread.filter(|n| *n > 0).map(|n| format!(
+                "<span class=\"nav-badge\" data-unread-count=\"{n}\">{n}</span>")).unwrap_or_default()
+        } else { String::new() };
+        format!("<a href=\"{href}\"{active}{hook}>{label}{badge}</a>")
     })
     .collect::<Vec<_>>()
     .join("\n      ");
@@ -391,6 +397,7 @@ mod tests {
             path: "/projects/suki",
             description: "test",
             body: "<p>body</p>",
+            unread: None,
         };
         let html = super::document("example.test", &shell, true, "v", None);
         assert!(html.contains("<a href=\"/projects\" class=\"active\" aria-current=\"page\">Projects</a>"));
@@ -404,6 +411,7 @@ mod tests {
             path: "/taxonomy",
             description: "test",
             body: "<p>body</p>",
+            unread: None,
         };
         let html = super::document("example.test", &shell, true, "v", None);
         assert!(html.contains("<a href=\"/taxonomy\" class=\"active\" aria-current=\"page\">Taxonomy</a>"));

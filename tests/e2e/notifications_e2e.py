@@ -104,13 +104,17 @@ def seed(db):
 
     AUTHOR_TOKEN[0] = author_token
     MODERATOR_TOKEN[0] = moderator_token
+    AUTHOR_ID[0] = author_uid
+    MODERATOR_ID[0] = moderator_uid
 
 
 AUTHOR_TOKEN = [None]
 MODERATOR_TOKEN = [None]
+AUTHOR_ID = [None]
+MODERATOR_ID = [None]
 
 
-def _page(browser, token):
+def _page(browser, token, user_id, username):
     ctx = browser.new_context(
         extra_http_headers={"X-Forwarded-For": f"10.96.{next(_ips) % 250}.{next(_ips) % 250}"})
     # The navigation cookie is what lets the SERVER know the reader on a page request; without
@@ -118,6 +122,11 @@ def _page(browser, token):
     # earlier suite conclude a feature was missing.
     ctx.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
     pg = ctx.new_page()
+    # Without a durable user record session.js mints a guest after load, and the guest bearer shadows the
+    # navigation cookie on POSTs -- the mark-read control then 404s on the guest's own empty inbox.
+    pg.add_init_script("localStorage.setItem('concord.user', JSON.stringify(%s));" %
+                       __import__('json').dumps({
+                           "id": user_id, "username": username, "display_name": username}))
     pg.errors = []
     pg.on("pageerror", lambda e: pg.errors.append("PAGEERROR: " + str(e)))
     pg.goto(BASE + "/")
@@ -136,7 +145,7 @@ def test_the_header_shows_the_unread_count_before_any_script_runs(server):
 
 
 def test_reading_the_page_marks_nothing_read(server, browser):
-    pg = _page(browser, AUTHOR_TOKEN[0])
+    pg = _page(browser, AUTHOR_TOKEN[0], AUTHOR_ID[0], AUTHOR)
     pg.goto(BASE + "/notifications")
     expect(pg.locator("#notifications-root")).to_have_attribute("aria-busy", "false", timeout=15000)
     expect(pg.locator(".notif-card")).to_have_count(1)
@@ -151,7 +160,7 @@ def test_reading_the_page_marks_nothing_read(server, browser):
 
 
 def test_marking_read_clears_the_card_and_the_header(server, browser):
-    pg = _page(browser, AUTHOR_TOKEN[0])
+    pg = _page(browser, AUTHOR_TOKEN[0], AUTHOR_ID[0], AUTHOR)
     pg.goto(BASE + "/notifications")
     expect(pg.locator(".notif-card")).to_have_count(1)
 
@@ -170,7 +179,7 @@ def test_marking_read_clears_the_card_and_the_header(server, browser):
 
 
 def test_a_moderator_sees_nothing_of_another_readers_inbox(server, browser):
-    pg = _page(browser, MODERATOR_TOKEN[0])
+    pg = _page(browser, MODERATOR_TOKEN[0], MODERATOR_ID[0], MODERATOR)
     pg.goto(BASE + "/notifications")
     expect(pg.locator("#notifications-root")).to_have_attribute("aria-busy", "false", timeout=15000)
     # The empty state is a statement about THIS reader's record, not about the feature.

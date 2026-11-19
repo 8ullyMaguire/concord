@@ -228,19 +228,40 @@ pub async fn curation(State(pool): State<PgPool>, headers: HeaderMap) -> Respons
 }
 
 /// `/notifications` — the reader's own inbox, and a page that must say "sign in" rather than pretend it is empty.
-pub async fn notifications(State(_pool): State<PgPool>, headers: HeaderMap) -> Response {
-    // No token is read here: this crate renders documents from public reads, and an inbox is not public. The page is honest about what
-    // it cannot show rather than printing an empty list that looks like "you have no notifications".
-    let mut body = Html::new();
-    body.open("p", &[]).text("Notifications are delivered to the signed-in reader.").close("p")
-        .open("p", &[]).open("a", &[("href", "/login")]).text("Sign in").close("a").close("p");
-    let bootstrap = serde_json::json!({"route": "/notifications", "requires": "session"});
-    render(&headers, Page {
+pub async fn notifications(State(pool): State<PgPool>, headers: HeaderMap) -> Response {
+    let reader = crate::nav_user(&pool, &headers).await;
+    let unread = match &reader {
+        Some(user) => concord_db::notifications::count_unread(&pool, user.id).await.ok().filter(|n| *n > 0),
+        None => None,
+    };
+    let body = if reader.is_none() {
+        // An inbox is not public. Say so rather than printing an empty list that looks like "you have no notifications".
+        let mut anonymous = Html::new();
+        anonymous.open("p", &[]).text("Notifications are delivered to the signed-in reader.").close("p")
+            .open("p", &[]).open("a", &[("href", "/login")]).text("Sign in").close("a").close("p");
+        anonymous.finish()
+    } else {
+        format!(r#"<div class="page-head"><div>
+  <p class="breadcrumb">Your inbox</p>
+  <h1>Notifications</h1>
+  <p class="lede">Decisions on your contributions. Looking does not mark them read; only the control does.</p>
+</div></div>
+<div id="notifications-root" aria-busy="true">
+<script src="{skeleton}"></script>
+  <div class="empty-state"><p class="empty-state-title">Loading your inbox&hellip;</p></div>
+</div>
+<script src="{js}"></script>
+"#,
+            skeleton = crate::shell::asset("/assets/js/skeleton.js"),
+            js = crate::shell::asset("/assets/js/notifications.js"))
+    };
+    let bootstrap = serde_json::json!({"route": "/notifications", "mount": "notifications-root"});
+    crate::render_with_unread(&headers, Page {
         title: "Notifications",
         path: "/notifications",
         description: "Your notifications.",
         bootstrap,
-    }, body.finish())
+    }, body, unread)
 }
 
 /// `/login?next=…`
