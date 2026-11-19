@@ -2419,3 +2419,7 @@ memory.
 - **2026-11-19 — workitems wired.** `workitems_e2e` `4 passed in 67.61s` (was `4 failed`). Complaints are work items,
   drafts are excluded, order is complaint/sized/unsized, and the fixture seeds a durable user. Ratchet 11.
 
+- **2026-11-19 — workitems live.** Release `6d3d90c`, `make -o release deploy` `DEPLOY=0`;
+  `https://concord.polarisocial.xyz/api/v1/version` returned `concord-rs 0.0.0+6d3d90c+vendor`.
+  Live probe: `concord total 60 complaints 49 drafts 0 first complaint`; `lorebook total 15 complaints 4 drafts 0 first complaint`.
+  Harness self-test `14 passed in 71.13s`; CI gate `44634126432 success in 2m26s`.

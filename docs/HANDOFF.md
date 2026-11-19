@@ -994,3 +994,8 @@ only on API writes.
 - `workitems_e2e`: `4 passed in 67.61s`; wired; ratchet `11`. D-160..D-163.
 - Product change needs a release build and live probe before this landing is complete.
 
+## 2026-11-19 — workitems live
+
+- Live `concord-rs 0.0.0+6d3d90c+vendor`; `concord-rs.service active`, `concord.service inactive`.
+- Probe: `concord total 60 complaints 49 drafts 0 first complaint`; `lorebook total 15 complaints 4 drafts 0 first complaint`.
+- Gate `44634126432 success in 2m26s`; harness self-test `14 passed in 71.13s`. Ratchet 11.
