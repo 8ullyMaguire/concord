@@ -2383,3 +2383,5 @@ memory.
 
 - **2026-11-19 — settings dead end.** Signed-in-state change reverted after `1 passed / 2 failed in 44.79s`, unchanged.
   Page-context API returns the seeded row; the DOM shows "No theme proposals". Next: instrument `strategyPanel`.
+
+- **2026-11-19 — settings-deadend gate.** CI gate `44601826596 success in 2m51s`. Docs-only; no redeploy.
