@@ -937,3 +937,9 @@ only on API writes.
 - Six strategy write handlers now resolve project slugs (D-153); no `Path<i64>` remains in that module.
 - `settings_themes_e2e`: `1 passed / 2 failed in 29.47s`; not wired.
 - Next: debug why seeded theme rows are not rendered in the remaining two tests.
+
+## 2026-11-19 — strategy slug live
+
+- CI gate `44596573311 success in 3m0s`; live version `concord-rs 0.0.0+ced7603+vendor`.
+- Services: `concord-rs.service` active, `concord.service` inactive.
+- `settings_themes_e2e` remains `1 passed / 2 failed`; debug why seeded rows are not rendered.

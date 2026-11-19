@@ -2376,3 +2376,7 @@ memory.
 
 - **2026-11-19 — strategy slug repair.** Probe: `DEBUG_THEME_POST 400 Invalid URL: Cannot parse `e2e-themes` to a `i64``.
   After the resolver fix, `settings_themes_e2e` `1 passed / 2 failed in 29.47s` (was `3 failed`). Not wired.
+
+- **2026-11-19 — strategy slug fix landed live.** CI gate `44596573311 success in 3m0s`;
+  `make release` (6m 05s) then `make -o release deploy`; live `/api/v1/version`
+  `concord-rs 0.0.0+ced7603+vendor`; `concord-rs.service` active, `concord.service` inactive.
