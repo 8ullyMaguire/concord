@@ -1562,6 +1562,11 @@ tell the difference between "not started" and "waiting".
   `concord.user` from storage makes `mine()` fetch private collections on first paint.
   `settings_themes_e2e` went `1 passed / 2 failed` -> `2 passed / 1 failed in 35.00s`; not wired yet.
 
+- **D-156 — consent eligibility is a server-state discrepancy, not a fixture gap.** The browser POST is
+  `403 /strategy/themes/1/consent`; the same seed's `merge_requests` are merged, memberships are valid, and the
+  replicated `eligible_collaborators` query returns `[1, 2, 3]`. Next: log `who.user.id`, `pending.project_id` and
+  `eligible_ids` inside `themes::consent` on a candidate build. No speculative fixture rewrite.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet

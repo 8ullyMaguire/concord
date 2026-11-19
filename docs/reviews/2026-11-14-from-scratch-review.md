@@ -2393,3 +2393,7 @@ memory.
 - **2026-11-19 — settings first-paint fix landed live.** CI gate `44605193493 success in 2m59s`;
   `make release` then `make -o release deploy`; live `/api/v1/version`
   `concord-rs 0.0.0+725dedc+vendor`; `concord-rs.service` active, `concord.service` inactive.
+
+- **2026-11-19 — consent boundary recorded.** `DEBUG_CONSENT 403 .../strategy/themes/1/consent`;
+  `DEBUG_ELIGIBLE [(1,), (2,), (3,)]`; `DEBUG_MR` three merged MRs; `DEBUG_MEMBER` owner/contributor roles.
+  The refusal needs server-side instrumentation, not another fixture guess.

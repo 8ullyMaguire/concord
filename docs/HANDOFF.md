@@ -958,3 +958,8 @@ only on API writes.
 
 - CI gate `44605193493 success in 2m59s`; live version `concord-rs 0.0.0+725dedc+vendor`.
 - `settings_themes_e2e` `2 passed / 1 failed`; consent eligibility remains.
+
+## 2026-11-19 — consent boundary
+
+- `settings_themes_e2e` remains `2 passed / 1 failed`; POST route and eligibility data are correct (D-156).
+- Next: instrument `themes::consent` to log caller id, proposal project id and eligible ids.
