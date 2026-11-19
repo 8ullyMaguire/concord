@@ -2322,3 +2322,8 @@ memory.
   Two product defects: nested render fragments were stringified by `replaceChildren` (D-138), hiding the Requests
   section; and the answer project lookup read the Step-6 catalogue envelope as an array, producing bare `Project N`
   headings (D-139). Already gate-named; ratchet stays at 15.
+
+- **2026-11-19 — Step 9: `audit_e2e` repaired at full-gate scope.** From `2 failed / 9 passed` to
+  `11 passed in 11.36s`; the action filter vocabulary uses `ConcordApi.list()` (D-140). A full `gate-live` at
+  `a3973cb` had every other wired check PASS, with `audit_e2e` the sole failure.
+  No ratchet change: suite was already wired.

@@ -224,7 +224,7 @@
       window.ConcordApi.get(base + '/audit' + query()),
       // The action list is supplementary: a log that cannot be filtered by
       // action is less usable, but its absence must not blank the page.
-      window.ConcordApi.get(base + '/audit/actions').catch(function () { return []; })
+      window.ConcordApi.get(base + '/audit/actions').then(window.ConcordApi.list).catch(function () { return []; })
     ];
     if (filtered) {
       // Only when a filter is active, and only to make the count line honest.
@@ -233,10 +233,8 @@
         .catch(function () { return null; }));
     }
     Promise.all(fetches).then(function (res) {
-      // The action vocabulary is a collection route too: it now comes back as a page envelope. Accept the
-      // legacy bare array as well so an old cache cannot blank the filter control.
-      var actions = Array.isArray(res[1]) ? res[1] : (res[1] && Array.isArray(res[1].entries) ? res[1].entries : []);
-      render(res[0], actions, res[2]);
+      // ConcordApi.list accepts the Step-6 {items,next} envelope, the legacy {entries} audit page and a bare array.
+      render(res[0], res[1], res[2]);
       // The note is set AFTER the render, because render() replaces the node it lives in.
       if (note) say(note);
       if (window.ConcordSkeleton) window.ConcordSkeleton.done(root);

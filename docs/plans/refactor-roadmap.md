@@ -1515,6 +1515,10 @@ tell the difference between "not started" and "waiting".
   headings uses `/api/v1/projects`, which answers the Step-6 catalogue envelope; without unwrapping, every answer
   fell back to `Project <id>` instead of a followable named link.
 
+- **D-140 — the audit filter vocabulary uses `ConcordApi.list()`.** Its hand-written unwrap knew only the legacy
+  `{entries}` shape; Step 6's `/audit/actions` now answers `{items,next}`, so the action select stayed empty. One shared
+  helper now covers bare arrays, audit pages and Step-6 pages.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet
