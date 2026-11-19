@@ -792,3 +792,9 @@ only on API writes.
 - Claim slice live at `cb92097`: `project.claim` in the membership transaction. Gate PASS 132/132, store suite 33,
   RED mutation proved, CI `44441490869`.
 - Remaining: feature state, document edit. Live claim needs real account `[REDACTED]` (user).
+
+## 2026-11-18 — Step 5 feature status slice
+
+- Feature status slice live at `5af4a0f`: `feature.status` in the status transaction. Gate PASS 132/132,
+  targeted test 1 passed, RED mutation proved, CI `44446173923`.
+- Remaining: document edit. Live status move needs contributor credential `[REDACTED]` (user).

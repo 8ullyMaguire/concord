@@ -2202,3 +2202,7 @@ memory.
   `feature.status` in the status transaction with `from -> to` as detail; `validate_feature_status` is shared so the
   evidence/dependency gates are unchanged. Targeted test 1 passed; RED mutation failed with
   `one status move writes one event` (0 passed / 1 failed), restored.
+
+- **2026-11-18 — Step 5 feature status slice live proof at `5af4a0f`.** `gate: PASS`, `pages: 132/132 ok`;
+  live version stamped `5af4a0f`; CI `44446173923` success. Targeted store test plus RED mutation prove the
+  same-transaction event. A live status move needs a contributor account `[REDACTED]` (owner: user), already Blocked.
