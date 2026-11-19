@@ -851,3 +851,9 @@ only on API writes.
 - `feature_e2e` at `9d9dc92`: `15 passed in 7.59s` (was 4 failed / 11 passed).
 - The tags fixture lacked the durable `concord.user` record; same sign-in contract as D-131..D-135 (D-136).
 - Next: gate-live at this head, then `requests_e2e` / `rank_links_e2e` / `probe_claim_button`.
+
+## 2026-11-19 — Step 9: rank_links_e2e repaired
+
+- `rank_links_e2e` at `1aa8cf8`: `4 passed in 24.83s` (was 3 failed / 1 passed).
+- `ranking.js` now unwraps `/priorities` and `/tallies`; fixture signs in before navigation (D-137).
+- Next: `gate-live`, `requests_e2e`, `probe_claim_button`.
