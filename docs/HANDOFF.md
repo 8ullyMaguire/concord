@@ -798,3 +798,8 @@ only on API writes.
 - Feature status slice live at `5af4a0f`: `feature.status` in the status transaction. Gate PASS 132/132,
   targeted test 1 passed, RED mutation proved, CI `44446173923`.
 - Remaining: document edit. Live status move needs contributor credential `[REDACTED]` (user).
+
+## 2026-11-18 — Step 5 done
+
+- All six event paths live at `f971637`; gate PASS 132/132, six RED mutations proved, CI `44448730621`.
+- Steps 1–5 of 9 done. Next: Step 6 — one pagination convention, enforced.

@@ -2211,3 +2211,7 @@ memory.
   project-document transaction. `prepare_document` and `insert_document_tx` are shared with the plain writer so the
   kind/slug validation and the revision-advancing upsert do not drift. Targeted test 1 passed; RED mutation failed
   `events_document_put_writes_event` with `one document write writes one event` (0 passed / 1 failed), restored.
+
+- **2026-11-18 — Step 5 complete at `f971637`.** Six write paths, six RED mutations proved, final `gate: PASS`
+  (`pages: 132/132 ok`), live board move `200` with event readback `card.move:board_card:triaged` and
+  `event_counts card.move|3`, CI `44448730621` success, anonymous walk 0 holes, headers PASS. D-106..D-114.
