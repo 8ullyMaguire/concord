@@ -130,10 +130,16 @@ def page(browser, server):
     pg.on("pageerror", lambda e: pg.errors.append("PAGEERROR: " + str(e)))
     pg.on("console", lambda m: pg.errors.append("CONSOLE: " + m.text)
           if m.type == "error" and "Failed to load resource" not in m.text else None)
+    # session.js deletes the script-readable token on load and uses the durable user record
+    # as the signed-in signal. Seed both, plus the navigation cookie, BEFORE the first goto:
+    # writing the token afterwards made the next navigation look anonymous and hid the forms.
+    username = f"dup-filer-{next(_ips)}"
+    token = _member_token(server["db"], username)
+    pg.add_init_script("localStorage.setItem('concord.token', %r);" % token)
+    pg.add_init_script("localStorage.setItem('concord.user', JSON.stringify(%s));" %
+                       ('{"username":%r,"display_name":%r}' % (username, username)))
+    ctx.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
     pg.goto(BASE + "/")
-
-    token = _member_token(server["db"], f"dup-filer-{next(_ips)}")
-    pg.evaluate("t => window.localStorage.setItem('concord.token', t)", token)
     return pg
 
 

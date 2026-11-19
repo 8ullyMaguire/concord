@@ -2299,3 +2299,8 @@ memory.
   `25 failed / 1 passed`; after the fix `26 passed in 18.17s`. Two defects: the project overview treated Step-6
   `{items,next}` responses as arrays (now normalized by `ConcordApi.list()`), and the verdicts fixture omitted the durable
   user record that replaces the deleted token. This suite was already gate-named; the ratchet stays at 15.
+
+- **2026-11-19 — Step 9: `duplicates_e2e` repaired at 5 passed.** Baseline with the current candidate was
+  `5 failed in 163s` because `#complaint-form` never appeared; the fixture wrote its token after the first navigation,
+  so `session.js` rendered the project anonymous. Seeding token, user record and `concord_nav` cookie before `goto`
+  gives `5 passed in 15.72s`. Already gate-named; ratchet stays at 15.

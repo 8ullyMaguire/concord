@@ -1490,6 +1490,10 @@ tell the difference between "not started" and "waiting".
 - **D-132 — the project-panel verdict fixture stores a durable `concord.user` record.** A script-readable token is deleted by
   `session.js`; without the user record the browser is signed out even though its navigation cookie resolves.
 
+- **D-133 — the duplicates fixture seeds its sign-in before the first navigation.** `session.js` deletes a
+  script-readable token and relies on the durable user record; a token written after the first `goto` is gone by the time
+  the project page loads, so the filing forms never render. Cookie, token and user record must precede navigation.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet
