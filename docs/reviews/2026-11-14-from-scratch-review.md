@@ -2169,3 +2169,8 @@ memory.
   {"status":"moved"}`; PostgreSQL readback `last_event card.move:board_card:inbox`, `event_counts card.move|2`.
   The event row was written in the same transaction as the move, and the RED mutation proved the test guards it.
   anonymous walk 0 holes; headers PASS; `concord-rs` active, `concord` inactive.
+
+- **2026-11-18 — Step 5 archive slice code landed (D-110).** `set_archived_with_event` appends `project.archive`
+  or `project.unarchive` in the same transaction as the project update; the legacy `add_audit` call stays as a
+  best-effort mirror. Store suite 31 passed; 0 failed. RED mutation removing the append failed
+  `events_archive_writes_both_events` with `one archive writes one event` (30 passed / 1 failed), then restored.

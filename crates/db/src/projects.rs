@@ -977,6 +977,32 @@ pub async fn set_archived(
     project_id: i64,
     declaration: Option<(i64, &str)>,
 ) -> Result<(), sqlx::Error> {
+    let mut tx = pool.begin().await?;
+    set_archived_tx(&mut tx, project_id, declaration).await?;
+    tx.commit().await
+}
+
+/// Archive or unarchive with one event in the same transaction. The kind follows the declaration, so a reversal
+/// cannot be mistaken for an archive when the audit page is read back.
+pub async fn set_archived_with_event(
+    pool: &PgPool,
+    project_id: i64,
+    actor_id: i64,
+    declaration: Option<(i64, &str)>,
+    detail: &str,
+) -> Result<(), sqlx::Error> {
+    let kind = if declaration.is_some() { "project.archive" } else { "project.unarchive" };
+    let mut tx = pool.begin().await?;
+    set_archived_tx(&mut tx, project_id, declaration).await?;
+    crate::events::append(&mut tx, project_id, actor_id, kind, "project", project_id, detail).await?;
+    tx.commit().await
+}
+
+async fn set_archived_tx(
+    db: &mut PgConnection,
+    project_id: i64,
+    declaration: Option<(i64, &str)>,
+) -> Result<(), sqlx::Error> {
     match declaration {
         Some((actor, reason)) => {
             sqlx::query(
@@ -986,7 +1012,7 @@ pub async fn set_archived(
             .bind(project_id)
             .bind(reason)
             .bind(actor)
-            .execute(pool)
+            .execute(&mut *db)
             .await?;
         }
         None => {
@@ -994,7 +1020,7 @@ pub async fn set_archived(
                 "update projects set archived_at = null, archived_reason = null, archived_by = null where id = $1",
             )
             .bind(project_id)
-            .execute(pool)
+            .execute(&mut *db)
             .await?;
         }
     }

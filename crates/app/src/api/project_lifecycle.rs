@@ -158,9 +158,15 @@ async fn archive_project(
             "archiving needs a reason: it is the sentence the next reader acts on",
         ));
     }
-    concord_db::projects::set_archived(&state.pool, project.id, Some((user.id, &reason)))
-        .await
-        .map_err(internal)?;
+    concord_db::projects::set_archived_with_event(
+        &state.pool,
+        project.id,
+        user.id,
+        Some((user.id, &reason)),
+        &reason,
+    )
+    .await
+    .map_err(internal)?;
     let _ = concord_db::feature_writes::add_audit(
         &state.pool,
         project.id,
@@ -187,9 +193,15 @@ async fn unarchive_project(
     let previous = concord_db::projects::archived_reason(&state.pool, project.id)
         .await
         .map_err(internal)?;
-    concord_db::projects::set_archived(&state.pool, project.id, None)
-        .await
-        .map_err(internal)?;
+    concord_db::projects::set_archived_with_event(
+        &state.pool,
+        project.id,
+        user.id,
+        None,
+        &previous.clone().unwrap_or_else(|| "(no reason recorded)".to_string()),
+    )
+    .await
+    .map_err(internal)?;
     let _ = concord_db::feature_writes::add_audit(
         &state.pool,
         project.id,

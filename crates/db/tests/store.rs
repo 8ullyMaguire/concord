@@ -1264,3 +1264,26 @@ async fn events_card_move_writes_exactly_one_event() {
     .unwrap();
     assert_eq!(detail, "inbox");
 }
+
+#[tokio::test]
+async fn events_archive_writes_both_events() {
+    let pool = pool().await;
+    let (project, _feature) = fixture(&pool).await;
+    let before = concord_db::events::count_kind(&pool, "project.archive")
+        .await
+        .unwrap();
+    concord_db::projects::set_archived_with_event(&pool, project, 1, Some((1, "done upstream")), "done upstream")
+        .await
+        .unwrap();
+    let after = concord_db::events::count_kind(&pool, "project.archive")
+        .await
+        .unwrap();
+    assert_eq!(after - before, 1, "one archive writes one event");
+    concord_db::projects::set_archived_with_event(&pool, project, 1, None, "done upstream")
+        .await
+        .unwrap();
+    let undone = concord_db::events::count_kind(&pool, "project.unarchive")
+        .await
+        .unwrap();
+    assert_eq!(undone, 1, "one unarchive writes one event");
+}
