@@ -41,6 +41,170 @@ BIN = os.path.join(REPO, "bin", "concord")
 # The suites seed through the database rather than the API on purpose (a browser test whose data
 # arrives through the API under test cannot fail for the reason it exists), so seeding is the one
 # thing a candidate has to satisfy — and it is the one thing this harness can translate.
+# The candidate binary reads PostgreSQL, but the recorded suites seed through sqlite3.connect(). Rather than fork
+# sixteen seed functions, candidate mode installs a small adapter: SQL with `?` parameters, INSERT OR IGNORE/REPLACE
+# and `lastrowid` are translated to their PostgreSQL equivalents. This is a test-harness shim only; production code
+# never sees it.
+if os.environ.get("CONCORD_E2E_CANDIDATE") and os.environ.get("CONCORD_E2E_DSN"):
+    import re as _re
+    import sqlite3 as _sqlite3
+
+    import psycopg2 as _psycopg2
+
+    SEED_DSN = os.environ["CONCORD_E2E_DSN"]
+
+    def _placeholders(sql):
+        out = []
+        quoted = False
+        for ch in sql:
+            if ch == "'":
+                quoted = not quoted
+                out.append(ch)
+            elif ch == "?" and not quoted:
+                out.append("%s")
+            else:
+                out.append(ch)
+        return "".join(out)
+
+    def _pg_sql(sql):
+        # Two tables were renamed or replaced by generated columns in the port. The fixtures still speak the old
+        # names; translating here keeps the recorded suites intact.
+        if "INSERT INTO ranking_criteria" in sql:
+            sql = sql.replace("INSERT INTO ranking_criteria", "INSERT INTO criteria")
+            sql = _re.sub(r"\bweight\b", "default_weight", sql)
+        sql = _placeholders(sql)
+        m = _re.match(r"(?is)^insert or ignore into (.+)$", sql)
+        if m:
+            sql = "INSERT INTO " + m.group(1) + " ON CONFLICT DO NOTHING"
+        m = _re.match(
+            r"(?is)^insert or replace into ([\w.]+)\s*\(([^)]*)\)\s*values\s*\((.*)\)\s*$", sql)
+        if m:
+            table, cols, values = m.group(1), m.group(2), m.group(3)
+            names = [c.strip() for c in cols.split(",")]
+            updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in names if c.lower() != "id")
+            sql = (f"INSERT INTO {table} ({cols}) VALUES ({values}) "
+                   f"ON CONFLICT (id) DO UPDATE SET {updates}" if updates else
+                   f"INSERT INTO {table} ({cols}) VALUES ({values}) ON CONFLICT (id) DO NOTHING")
+        return sql
+
+    class _PgRow(dict):
+        def __getitem__(self, key):
+            if isinstance(key, int):
+                return list(self.values())[key]
+            return super().__getitem__(key)
+
+    class _PgCursor:
+        def __init__(self, cur, row_factory=None):
+            self._cur = cur
+            self._row_factory = row_factory
+            self.lastrowid = None
+
+        def execute(self, sql, params=()):
+            if _re.match(r"(?is)^insert into projects_fts", sql):
+                # PostgreSQL derives search_tsv from projects.name/description; there is no FTS table to seed.
+                self._cur.execute("select 1 where false")
+                return self
+            sql = _pg_sql(sql)
+            returning = False
+            if sql.lstrip().lower().startswith("insert") and "returning" not in sql.lower():
+                m = _re.match(r"(?is)^insert(?: or \w+)? into ([\w.]+)", sql)
+                if m:
+                    self._cur.execute(
+                        "select count(*) from information_schema.columns "
+                        "where table_name = %s and column_name = 'id'", (m.group(1),))
+                    returning = self._cur.fetchone()[0] > 0
+                if returning:
+                    sql = sql.rstrip().rstrip(";") + " RETURNING id"
+            # SQLite seeds store time as epoch seconds; the port's PostgreSQL columns are timestamptz.
+            from datetime import datetime, timezone
+            args = tuple(datetime.fromtimestamp(v, timezone.utc)
+                         if isinstance(v, int) and v >= 1_000_000_000 else v for v in params)
+            if sql.lstrip().lower().startswith("insert"):
+                import uuid
+                m = _re.match(r"(?is)^insert into ([\w.]+)\s*\(([^)]*)\)\s*values\s*\((.*?)\)", sql)
+                if m:
+                    table, cols_text, values_text = m.group(1), m.group(2), m.group(3)
+                    given_cols = [c.strip() for c in cols_text.split(",")]
+                    self._cur.execute(
+                        "select column_name, data_type from information_schema.columns where table_name = %s",
+                        (table,))
+                    types = dict(self._cur.fetchall())
+                    args = tuple(bool(v) if types.get(c) == "boolean" and isinstance(v, int) else v
+                                 for c, v in zip(given_cols, args))
+                    self._cur.execute(
+                        "select column_name, data_type from information_schema.columns "
+                        "where table_name = %s and is_nullable = 'NO' and column_default is null "
+                        "and is_identity = 'NO'", (table,))
+                    given = {c.strip().lower() for c in cols_text.split(",")}
+                    extra_cols, extra_vals = [], []
+                    for name, dtype in self._cur.fetchall():
+                        if name in given:
+                            continue
+                        if dtype in ("text", "character varying"):
+                            value = "seed-" + uuid.uuid4().hex
+                        elif dtype in ("bigint", "integer", "numeric", "double precision"):
+                            value = 0
+                        elif dtype == "boolean":
+                            value = False
+                        else:
+                            value = datetime.now(timezone.utc)
+                        extra_cols.append(name)
+                        extra_vals.append(value)
+                    if extra_cols:
+                        sql = sql.replace(
+                            f"({cols_text}) VALUES ({values_text})",
+                            f"({cols_text}, {', '.join(extra_cols)}) VALUES ({values_text}, "
+                            + ", ".join(["%s"] * len(extra_cols)) + ")", 1)
+                        args = args + tuple(extra_vals)
+            self._cur.execute(sql, args)
+            if returning:
+                row = self._cur.fetchone()
+                self.lastrowid = row[0] if row else None
+            return self
+
+        def fetchone(self):
+            row = self._cur.fetchone()
+            if row is None:
+                return None
+            names = [d[0] for d in (self._cur.description or [])]
+            value = _PgRow(zip(names, row))
+            return value
+
+        def fetchall(self):
+            return [r for r in iter(self.fetchone, None)]
+
+        @property
+        def rowcount(self):
+            return self._cur.rowcount
+
+        @property
+        def description(self):
+            return self._cur.description
+
+    class _PgConnection:
+        def __init__(self):
+            self._conn = _psycopg2.connect(SEED_DSN)
+            self.row_factory = None
+
+        def execute(self, sql, params=()):
+            return _PgCursor(self._conn.cursor(), self.row_factory).execute(sql, params)
+
+        def commit(self):
+            self._conn.commit()
+
+        def rollback(self):
+            self._conn.rollback()
+
+        def close(self):
+            self._conn.close()
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            self.close()
+
+    _sqlite3.connect = lambda _path: _PgConnection()
 CANDIDATE = os.environ.get("CONCORD_E2E_CANDIDATE")
 SEED_DSN = os.environ.get("CONCORD_E2E_DSN")
 

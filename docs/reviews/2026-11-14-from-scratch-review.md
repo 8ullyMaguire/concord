@@ -2255,3 +2255,9 @@ memory.
 - **2026-11-19 — Step 9 suite wired: `rank_links_e2e`.** Direct candidate run: `4 passed in 6.44s`. Ratchet now 17.
 
 - **2026-11-19 — Step 9 suite wired: `audit_e2e`.** Direct candidate run: `11 passed in 5.60s`. Ratchet now 16.
+
+- **2026-11-19 — PG seed shim (partial, not a suite wiring).** Candidate mode now adapts the suites SQLite seed calls
+  to PostgreSQL: `?` placeholders, epoch-to-timestamptz, NOT NULL defaults, boolean coercion, two renamed tables and a
+  no-op for `projects_fts`. With it, `settings_e2e` moved from 19 setup errors to 5 passed / 14 failed; the 14 are real
+  harness/behavior gaps (charter form, CSP inline-script assertions and similar), not missing dependencies. The shim is
+  kept because it removes a class of false failures; the remaining suites need per-suite fixes before wiring.
