@@ -2163,3 +2163,9 @@ memory.
   new path. Store suite: 30 passed; 0 failed. RED mutation: removing the append failed
   `events_card_move_writes_exactly_one_event` with `one move writes one event` (29 passed / 1 failed), restored
   immediately. Gate/live proof pending.
+
+- **2026-11-18 — Step 5 slice 1 live proof at `18eed17`.** `gate: PASS` with `pages: 132/132 ok`, all 13 routes
+  answered and rate PASS; CI `44426488213` success. Live board move with a generated guest identity: `200
+  {"status":"moved"}`; PostgreSQL readback `last_event card.move:board_card:inbox`, `event_counts card.move|2`.
+  The event row was written in the same transaction as the move, and the RED mutation proved the test guards it.
+  anonymous walk 0 holes; headers PASS; `concord-rs` active, `concord` inactive.

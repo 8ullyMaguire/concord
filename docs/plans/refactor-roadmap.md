@@ -611,7 +611,7 @@ Unclaimed rows are fair game.
   `derive helper attribute is used before it is introduced`. The document list's `?fields=meta` branch became an
   untagged `DocumentList` with a body-less `DocumentMeta`, so both shapes are typed without changing either wire body.
 
-| 5 | events + audit trail that cannot forget | **in progress — spec and plan committed, no code yet.** Measured baseline at `436f476`: `cargo test -p concord-db --test store -- events` → `running 0 tests`, `0 passed; 29 filtered out`; no `create table events` in `crates/db/sql/*.sql`; hand-written audit calls across 20+ modules are places where a record can be skipped. Slice 1 adds migration `0003_events.sql`, `concord_db::events::append`, and an event written in the same transaction as `move_card` (D-106..D-109). |
+| 5 | events + audit trail that cannot forget | **in progress — slice 1 live at `18eed17`.** `0003_events.sql`, `concord_db::events::append`, and `move_card_with_event` write one `card.move` row in the same transaction as the board change. Store suite 30 passed; 0 failed; RED mutation removing the append gave `one move writes one event` 29 passed / 1 failed, then restored. `gate: PASS` — 132/132 ok, all 13 routes answered, rate PASS. Live `/version` stamped `18eed17`; a generated guest board move returned `200 {"status":"moved"}` and the live table showed `last_event card.move:board_card:inbox` with `event_counts card.move|2`. anonymous walk 0 holes, headers PASS, CI `44426488213` success; `concord-rs` active, `concord` inactive. Remaining five paths: archive, vote, claim, feature state, document edit. |
 ## Blocked
 
 Items nobody working in this repo can finish alone. Each names what would unblock it and on whom, so the next session can
