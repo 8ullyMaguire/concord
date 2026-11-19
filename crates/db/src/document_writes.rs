@@ -11,7 +11,7 @@
 //! The kinds are enumerated rather than free text: `kind` is the first half of the document's address (`spec/architecture`), and
 //! a typo in it makes a document that no page will ever list.
 
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 
 /// The kinds a document may be. Ordered the way the reference lists them, which is the order its refusal message prints.
 pub const KINDS: [&str; 7] = ["readme", "spec", "plan", "wiki", "adr", "changelog", "scout"];
@@ -47,22 +47,9 @@ impl From<sqlx::Error> for Refused {
 ///
 /// # Errors
 /// [`Refused::Invalid`] for an unknown kind or an empty slug.
-pub async fn put(
-    pool: &PgPool,
-    project_id: i64,
-    author_id: i64,
-    kind: &str,
-    slug: &str,
-    title: &str,
-    body: &str,
-) -> Result<crate::projects::Document, Refused> {
+fn prepare_document(kind: &str, slug: &str, title: &str) -> Result<(String, String, String), Refused> {
     let kind = kind.trim().to_ascii_lowercase();
-    let slug = slug.trim();
-    if project_id == 0 || author_id == 0 {
-        return Err(Refused::Invalid(
-            "a document needs a project and an author".to_string(),
-        ));
-    }
+    let slug = slug.trim().to_string();
     if !is_kind(&kind) {
         return Err(Refused::Invalid(format!(
             "kind must be one of {}",
@@ -74,10 +61,22 @@ pub async fn put(
     }
     // A README has no meaningful title; fall back to the slug rather than storing an empty display name.
     let title = if title.trim().is_empty() {
-        slug.to_string()
+        slug.clone()
     } else {
         title.trim().to_string()
     };
+    Ok((kind, slug, title))
+}
+
+async fn insert_document_tx(
+    db: &mut PgConnection,
+    project_id: i64,
+    author_id: i64,
+    kind: &str,
+    slug: &str,
+    title: &str,
+    body: &str,
+) -> Result<i64, Refused> {
     let id: i64 = sqlx::query_scalar(
         // `public_id` is NOT NULL with no default on every API-facing table in this schema (the estate profile's stable
         // handle), so the writer supplies one — and only on insert: the on-conflict branch must not rewrite it, or a
@@ -94,14 +93,62 @@ pub async fn put(
          returning id",
     )
     .bind(project_id)
-    .bind(&kind)
+    .bind(kind)
     .bind(slug)
-    .bind(&title)
+    .bind(title)
     .bind(body)
     .bind(author_id)
     .bind(ulid::Ulid::new().to_string())
-    .fetch_one(pool)
+    .fetch_one(&mut *db)
     .await?;
+    Ok(id)
+}
+
+pub async fn put(
+    pool: &PgPool,
+    project_id: i64,
+    author_id: i64,
+    kind: &str,
+    slug: &str,
+    title: &str,
+    body: &str,
+) -> Result<crate::projects::Document, Refused> {
+    if project_id == 0 || author_id == 0 {
+        return Err(Refused::Invalid(
+            "a document needs a project and an author".to_string(),
+        ));
+    }
+    let (kind, slug, title) = prepare_document(kind, slug, title)?;
+    let mut tx = pool.begin().await?;
+    let id = insert_document_tx(&mut tx, project_id, author_id, &kind, &slug, &title, body).await?;
+    tx.commit().await?;
+    crate::projects::document(pool, project_id, id)
+        .await?
+        .ok_or(Refused::NotFound)
+}
+
+/// A document is what a project says about itself, so the revision and the event that names it are one act.
+pub async fn put_with_event(
+    pool: &PgPool,
+    project_id: i64,
+    author_id: i64,
+    kind: &str,
+    slug: &str,
+    title: &str,
+    body: &str,
+) -> Result<crate::projects::Document, Refused> {
+    if project_id == 0 || author_id == 0 {
+        return Err(Refused::Invalid(
+            "a document needs a project and an author".to_string(),
+        ));
+    }
+    let (kind, slug, title) = prepare_document(kind, slug, title)?;
+    let detail = format!("{kind}/{slug}");
+    let mut tx = pool.begin().await?;
+    let id = insert_document_tx(&mut tx, project_id, author_id, &kind, &slug, &title, body).await?;
+    crate::events::append(&mut tx, project_id, author_id, "document.put", "project_document", id, &detail)
+        .await?;
+    tx.commit().await?;
     crate::projects::document(pool, project_id, id)
         .await?
         .ok_or(Refused::NotFound)

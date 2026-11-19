@@ -139,7 +139,7 @@ async fn put_document(
     // this handler resolves its project by slug rather than through a project-id guard.
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
     require_role(&state, &project, "contributor", &user).await?;
-    let document = concord_db::document_writes::put(
+    let document = concord_db::document_writes::put_with_event(
         &state.pool,
         project.id,
         user.id,

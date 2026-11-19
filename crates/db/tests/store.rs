@@ -1353,3 +1353,34 @@ async fn events_feature_status_writes_event() {
         .unwrap();
     assert_eq!(after - before, 1, "one status move writes one event");
 }
+
+#[tokio::test]
+async fn events_document_put_writes_event() {
+    let pool = pool().await;
+    let (project, _feature) = fixture(&pool).await;
+    let before = concord_db::events::count_kind(&pool, "document.put")
+        .await
+        .unwrap();
+    let doc = concord_db::document_writes::put_with_event(
+        &pool,
+        project,
+        1,
+        "spec",
+        "step5-event-proof",
+        "Step 5",
+        "body",
+    )
+    .await
+    .unwrap();
+    let after = concord_db::events::count_kind(&pool, "document.put")
+        .await
+        .unwrap();
+    assert_eq!(after - before, 1, "one document write writes one event");
+    let entity_id: i64 = sqlx::query_scalar(
+        "select entity_id from events where kind = 'document.put' order by id desc limit 1",
+    )
+    .fetch_one(&pool)
+    .await
+    .unwrap();
+    assert_eq!(entity_id, doc.id);
+}

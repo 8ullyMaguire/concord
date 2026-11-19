@@ -611,7 +611,7 @@ Unclaimed rows are fair game.
   `derive helper attribute is used before it is introduced`. The document list's `?fields=meta` branch became an
   untagged `DocumentList` with a body-less `DocumentMeta`, so both shapes are typed without changing either wire body.
 
-| 5 | events + audit trail that cannot forget | **in progress — feature status slice live at `5af4a0f`.** `update_feature_status_with_event` writes `feature.status` in the status transaction with `from -> to` detail (D-113); validation shared. Targeted store test 1 passed; RED mutation proved (`one status move writes one event`, 0 passed / 1 failed), restored. `gate: PASS` — 132/132 ok; live version `5af4a0f`; CI `44446173923` success. A live status move needs a contributor account `[REDACTED]` (owner: user), already in Blocked; the transaction is proved by the store test. Remaining one path: document edit. |
+| 5 | events + audit trail that cannot forget | **in progress — document slice landed in code.** `put_with_event` writes `document.put` in the document transaction, carrying `kind/slug` and the document id (D-114); `prepare_document` and `insert_document_tx` are shared so validation and the upsert stay identical. Targeted store test 1 passed; RED mutation proved (`one document write writes one event`, 0 passed / 1 failed), restored. Six of six write paths now have RED/GREEN proofs. Awaiting full gate/live proof. |
 ## Blocked
 
 Items nobody working in this repo can finish alone. Each names what would unblock it and on whom, so the next session can

@@ -2206,3 +2206,8 @@ memory.
 - **2026-11-18 — Step 5 feature status slice live proof at `5af4a0f`.** `gate: PASS`, `pages: 132/132 ok`;
   live version stamped `5af4a0f`; CI `44446173923` success. Targeted store test plus RED mutation prove the
   same-transaction event. A live status move needs a contributor account `[REDACTED]` (owner: user), already Blocked.
+
+- **2026-11-18 — Step 5 document slice code landed (D-114).** `put_with_event` appends `document.put` in the
+  project-document transaction. `prepare_document` and `insert_document_tx` are shared with the plain writer so the
+  kind/slug validation and the revision-advancing upsert do not drift. Targeted test 1 passed; RED mutation failed
+  `events_document_put_writes_event` with `one document write writes one event` (0 passed / 1 failed), restored.
