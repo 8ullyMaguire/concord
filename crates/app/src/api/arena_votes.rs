@@ -269,8 +269,17 @@ async fn arena_next_pair(
     let b_win = concord_ranking::win_probability(b.r, b.rd, a.r, a.rd);
     let mut sides = Vec::with_capacity(2);
     for (entry, win) in [(&a, a_win), (&b, b_win)] {
+        // An arena's type says what the contest is ("alternatives", "feature-priority"); the label
+        // lookup needs the entity type of the thing being compared ("project", "feature"). Passing
+        // the former yields an empty label and a panel of "entity N" instead of names.
+        let entity_type = match arena.entity_type.as_str() {
+            "alternatives" | "use-case" => "project",
+            "feature-priority" => "feature",
+            "solution" => "solution",
+            other => other,
+        };
         let (label, slug, baseline) =
-            concord_db::arena::label_of(&state.pool, &arena.entity_type, entry.entity_id)
+            concord_db::arena::label_of(&state.pool, entity_type, entry.entity_id)
                 .await
                 .map_err(internal)?;
         sides.push(PairSide {

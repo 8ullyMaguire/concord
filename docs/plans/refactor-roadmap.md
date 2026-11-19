@@ -1519,6 +1519,14 @@ tell the difference between "not started" and "waiting".
   `{entries}` shape; Step 6's `/audit/actions` now answers `{items,next}`, so the action select stayed empty. One shared
   helper now covers bare arrays, audit pages and Step-6 pages.
 
+- **D-141 — the e2e shim translates SQLite cursor, float epochs and real primary keys.** Older suites call
+  `sqlite3.connect()` and `con.cursor()`, bind `time.time()` floats into `timestamptz`, and use `INSERT OR REPLACE`
+  on tables whose key is not `id`. The adapter now covers all three.
+- **D-142 — an arena's label lookup maps contest type to entry entity type.** `alternatives`/`use-case` compare
+  projects, `feature-priority` compares features; passing the arena type straight to `label_of` produced `entity N`.
+- **D-143 — `arena_e2e` is not wired yet.** Setup errors are gone and 4 of 5 tests pass; the remaining vote-application
+  failure is a product defect, so the ratchet stays at 15.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet

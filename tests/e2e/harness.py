@@ -81,10 +81,20 @@ if os.environ.get("CONCORD_E2E_CANDIDATE") and os.environ.get("CONCORD_E2E_DSN")
         if m:
             table, cols, values = m.group(1), m.group(2), m.group(3)
             names = [c.strip() for c in cols.split(",")]
-            updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in names if c.lower() != "id")
+            # SQLite's rowid is not a column. Many port tables have `id`, but api_tokens and
+            # join tables use a different primary key; ask the catalogue instead of guessing.
+            with _psycopg2.connect(SEED_DSN) as _pk_conn:
+                with _pk_conn.cursor() as _pk_cur:
+                    _pk_cur.execute(
+                        "select a.attname from pg_index i join pg_attribute a "
+                        "on a.attrelid = i.indrelid and a.attnum = ANY(i.indkey) "
+                        "where i.indrelid = %s::regclass and i.indisprimary limit 1", (table,))
+                    row = _pk_cur.fetchone()
+            pk = row[0] if row else "id"
+            updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in names if c.lower() != pk.lower())
             sql = (f"INSERT INTO {table} ({cols}) VALUES ({values}) "
-                   f"ON CONFLICT (id) DO UPDATE SET {updates}" if updates else
-                   f"INSERT INTO {table} ({cols}) VALUES ({values}) ON CONFLICT (id) DO NOTHING")
+                   f"ON CONFLICT ({pk}) DO UPDATE SET {updates}" if updates else
+                   f"INSERT INTO {table} ({cols}) VALUES ({values}) ON CONFLICT ({pk}) DO NOTHING")
         return sql
 
     class _PgRow(dict):
@@ -118,7 +128,8 @@ if os.environ.get("CONCORD_E2E_CANDIDATE") and os.environ.get("CONCORD_E2E_DSN")
             # SQLite seeds store time as epoch seconds; the port's PostgreSQL columns are timestamptz.
             from datetime import datetime, timezone
             args = tuple(datetime.fromtimestamp(v, timezone.utc)
-                         if isinstance(v, int) and v >= 1_000_000_000 else v for v in params)
+                         if isinstance(v, (int, float)) and not isinstance(v, bool) and v >= 1_000_000_000 else v
+                         for v in params)
             if sql.lstrip().lower().startswith("insert"):
                 import uuid
                 m = _re.match(r"(?is)^insert into ([\w.]+)\s*\(([^)]*)\)\s*values\s*\((.*?)\)", sql)
@@ -141,6 +152,11 @@ if os.environ.get("CONCORD_E2E_CANDIDATE") and os.environ.get("CONCORD_E2E_DSN")
                                 values[i] = "NULL"
                             elif meta.get(col, (None, ""))[0] == "boolean" and values[i] in ("0", "1"):
                                 values[i] = "FALSE" if values[i] == "0" else "TRUE"
+                            elif (meta.get(col, (None, ""))[0] in ("timestamp with time zone", "timestamp without time zone")
+                                  and _re.fullmatch(r"\d{9,14}(?:\.\d+)?", values[i])):
+                                # Several suites inline an epoch second instead of binding it; bound epochs are
+                                # converted above, inlined ones need the same treatment.
+                                values[i] = "to_timestamp(%s)" % values[i]
                         new_values = ", ".join(values)
                         if new_values != values_text:
                             sql = sql.replace(f"VALUES ({values_text})", f"VALUES ({new_values})", 1)
@@ -204,6 +220,12 @@ if os.environ.get("CONCORD_E2E_CANDIDATE") and os.environ.get("CONCORD_E2E_DSN")
         def __init__(self):
             self._conn = _psycopg2.connect(SEED_DSN)
             self.row_factory = None
+            self.lastrowid = None
+
+        def cursor(self):
+            # Most suites call con.execute() directly, but a dozen older ones take an explicit
+            # cursor and read `cur.lastrowid`. Return the same adapter execute() uses.
+            return _PgCursor(self._conn.cursor(), self.row_factory)
 
         def execute(self, sql, params=()):
             return _PgCursor(self._conn.cursor(), self.row_factory).execute(sql, params)

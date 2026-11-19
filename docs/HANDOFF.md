@@ -882,3 +882,9 @@ only on API writes.
 - All 15 unwired suites ran: 12 setup failures, 3 behavior failures (curation, notifications, settings).
 - `notifications_e2e` needs a server-rendered unread-count feature; curation sign-in fix did not help and was reverted.
 - Next: fix the shared harness setup assumptions so a batch of unwired suites can be wired, starting with `arena_e2e`.
+
+## 2026-11-19 — Step 9: arena setup unblocked
+
+- `arena_e2e` from `5 errors` to `1 failed / 4 passed in 14.21s`; not wired.
+- Shim now supports `cursor()`, float epochs and non-`id` primary keys (D-141); arena labels map contest type to entry type (D-142).
+- Next: fix the remaining arena vote-application failure, then wire the suite.

@@ -91,6 +91,9 @@ def _context(browser, token=None):
     ctx = browser.new_context(extra_http_headers={"X-Forwarded-For": f"10.66.{n // 200}.{n % 200}"})
     if token:
         ctx.add_init_script("localStorage.setItem('concord.token', %r);" % token)
+        # session.js deletes the token and uses the durable user record as the signed-in signal.
+        ctx.add_init_script("localStorage.setItem('concord.user', JSON.stringify(%s));" %
+                            '{"username":"arena-owner","display_name":"arena-owner"}')
         ctx.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
     return ctx
 

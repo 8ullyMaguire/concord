@@ -2339,3 +2339,8 @@ memory.
   `notifications_e2e` 4 failed, `settings_e2e` 11 failed / 8 passed. `notifications_e2e` needs a server-rendered
   unread-count badge that does not exist in the Rust port. A sign-in-before-navigation change to `curation_e2e` left
   all five failures unchanged and was reverted. No suite was wired from this batch; the ratchet stays at 15.
+
+- **2026-11-19 — Step 9: `arena_e2e` setup unblocked, still not wired.** From `5 errors` to
+  `1 failed / 4 passed in 14.21s`. The shared shim now supplies `cursor()`, converts float epoch parameters,
+  and resolves real primary keys for `INSERT OR REPLACE`; arena labels resolve projects by the contest type.
+  The remaining failure is a vote that leaves the rating unchanged, so the suite stays out of the gate.
