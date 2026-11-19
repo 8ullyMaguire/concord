@@ -2197,3 +2197,8 @@ memory.
 - **2026-11-18 — Step 5 claim slice live proof at `cb92097`.** `gate: PASS`, `pages: 132/132 ok`; live version
   stamped `cb92097`; CI `44441490869` success. Store test plus RED mutation prove the same-transaction event. A live
   claim needs a real account and a measured dormant project; credential `[REDACTED]` (owner: user), already Blocked.
+
+- **2026-11-18 — Step 5 feature status slice code landed (D-113).** `update_feature_status_with_event` appends
+  `feature.status` in the status transaction with `from -> to` as detail; `validate_feature_status` is shared so the
+  evidence/dependency gates are unchanged. Targeted test 1 passed; RED mutation failed with
+  `one status move writes one event` (0 passed / 1 failed), restored.

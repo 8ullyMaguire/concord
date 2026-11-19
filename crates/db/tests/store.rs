@@ -1330,3 +1330,26 @@ async fn events_claim_writes_event() {
         .unwrap();
     assert_eq!(after - before, 1, "one claim writes one event");
 }
+
+#[tokio::test]
+async fn events_feature_status_writes_event() {
+    let pool = pool().await;
+    let (project, feature) = fixture(&pool).await;
+    let before = concord_db::events::count_kind(&pool, "feature.status")
+        .await
+        .unwrap();
+    concord_db::feature_writes::update_feature_status_with_event(
+        &pool,
+        project,
+        feature,
+        1,
+        "discussion",
+        "draft",
+    )
+    .await
+    .unwrap();
+    let after = concord_db::events::count_kind(&pool, "feature.status")
+        .await
+        .unwrap();
+    assert_eq!(after - before, 1, "one status move writes one event");
+}

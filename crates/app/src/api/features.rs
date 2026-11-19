@@ -143,9 +143,16 @@ async fn set_feature_status(
         .filter(|row| row.project_id == project.id)
         .ok_or_else(|| ApiError::not_found(format!("feature {id}")))?;
     let from = found.status.clone();
-    concord_db::feature_writes::update_feature_status(&state.pool, id, &body.status)
-        .await
-        .map_err(write_error)?;
+    concord_db::feature_writes::update_feature_status_with_event(
+        &state.pool,
+        project.id,
+        id,
+        user.id,
+        &body.status,
+        &from,
+    )
+    .await
+    .map_err(write_error)?;
     let _ = concord_db::feature_writes::add_audit(
         &state.pool,
         project.id,

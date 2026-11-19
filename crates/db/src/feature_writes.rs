@@ -12,7 +12,7 @@
 //!   `RemoveFeatureEvidence` both delete rows and neither un-readies anything. Without the re-check
 //!   the gate on `ready` would have a hole — ready, unlink, start work.
 
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 
 use crate::{features::Feature, projects::CreateError};
 
@@ -230,6 +230,53 @@ pub async fn update_feature_status(
     feature_id: i64,
     status: &str,
 ) -> Result<(), WriteError> {
+    validate_feature_status(pool, feature_id, status).await?;
+    let affected = sqlx::query("update features set status = $1, updated_at = now() where id = $2")
+        .bind(status)
+        .bind(feature_id)
+        .execute(pool)
+        .await?
+        .rows_affected();
+    if affected == 0 {
+        return Err(WriteError::NotFound(format!("feature {feature_id}")));
+    }
+    Ok(())
+}
+
+/// A status move is a decision about work, so the row that records it is written in the same transaction as the
+/// status change. Validation stays outside: it only reads, and its verdict is unchanged by the event insert.
+pub async fn update_feature_status_with_event(
+    pool: &PgPool,
+    project_id: i64,
+    feature_id: i64,
+    user_id: i64,
+    status: &str,
+    from: &str,
+) -> Result<(), WriteError> {
+    validate_feature_status(pool, feature_id, status).await?;
+    let mut tx = pool.begin().await.map_err(WriteError::Database)?;
+    let affected = sqlx::query("update features set status = $1, updated_at = now() where id = $2")
+        .bind(status)
+        .bind(feature_id)
+        .execute(&mut *tx)
+        .await?
+        .rows_affected();
+    if affected == 0 {
+        return Err(WriteError::NotFound(format!("feature {feature_id}")));
+    }
+    let detail = format!("{from} -> {status}");
+    crate::events::append(&mut tx, project_id, user_id, "feature.status", "feature", feature_id, &detail)
+        .await
+        .map_err(WriteError::Database)?;
+    tx.commit().await.map_err(WriteError::Database)?;
+    Ok(())
+}
+
+async fn validate_feature_status(
+    pool: &PgPool,
+    feature_id: i64,
+    status: &str,
+) -> Result<(), WriteError> {
     if status == "ready" || status == "in_progress" {
         crate::features::feature(pool, feature_id)
             .await?
@@ -257,15 +304,6 @@ pub async fn update_feature_status(
                 ));
             }
         }
-    }
-    let affected = sqlx::query("update features set status = $1, updated_at = now() where id = $2")
-        .bind(status)
-        .bind(feature_id)
-        .execute(pool)
-        .await?
-        .rows_affected();
-    if affected == 0 {
-        return Err(WriteError::NotFound(format!("feature {feature_id}")));
     }
     Ok(())
 }

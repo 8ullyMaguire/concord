@@ -611,7 +611,7 @@ Unclaimed rows are fair game.
   `derive helper attribute is used before it is introduced`. The document list's `?fields=meta` branch became an
   untagged `DocumentList` with a body-less `DocumentMeta`, so both shapes are typed without changing either wire body.
 
-| 5 | events + audit trail that cannot forget | **in progress — claim slice live at `cb92097`.** `claim_with_event` writes `project.claim` in the membership transaction (D-112). Store suite 33 passed; RED mutation proved (`one claim writes one event`, 0 passed / 1 failed), restored. `gate: PASS` — 132/132 ok; live version `cb92097`; CI `44441490869` success. A live claim needs a real account and a measured dormant project; credentials `[REDACTED]` (owner: user), already in Blocked, so the transaction is proved by the store test. Remaining two paths: feature state, document edit. |
+| 5 | events + audit trail that cannot forget | **in progress — feature status slice landed in code.** `update_feature_status_with_event` writes `feature.status` in the status transaction, carrying the `from -> to` sentence (D-113); `validate_feature_status` is shared so the gates stay identical. Targeted store test 1 passed; RED mutation proved (`one status move writes one event`, 0 passed / 1 failed), restored. Awaiting gate/live proof. Remaining one path: document edit. |
 ## Blocked
 
 Items nobody working in this repo can finish alone. Each names what would unblock it and on whom, so the next session can
