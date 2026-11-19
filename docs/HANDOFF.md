@@ -953,3 +953,8 @@ only on API writes.
 
 - Token-direct signal fixes first-paint private collections (D-155); `settings_themes_e2e` `2 passed / 1 failed in 35.00s`.
 - Remaining failure: consent eligibility despite seeded merged MR and owner membership; not wired.
+
+## 2026-11-19 — settings first-paint live
+
+- CI gate `44605193493 success in 2m59s`; live version `concord-rs 0.0.0+725dedc+vendor`.
+- `settings_themes_e2e` `2 passed / 1 failed`; consent eligibility remains.

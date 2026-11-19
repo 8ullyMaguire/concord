@@ -2389,3 +2389,7 @@ memory.
 - **2026-11-19 — settings first paint fixed.** `DEBUG_PANEL null` proved the null collection; token-direct check gives
   `settings_themes_e2e` `2 passed / 1 failed in 35.00s` (was `1 passed / 2 failed`). Remaining failure: consent refusal
   "only an eligible collaborator may consent", though the seeded merged MR and owner membership are present.
+
+- **2026-11-19 — settings first-paint fix landed live.** CI gate `44605193493 success in 2m59s`;
+  `make release` then `make -o release deploy`; live `/api/v1/version`
+  `concord-rs 0.0.0+725dedc+vendor`; `concord-rs.service` active, `concord.service` inactive.
