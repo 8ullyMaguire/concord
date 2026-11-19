@@ -2353,3 +2353,7 @@ memory.
   `cargo test --workspace` while compiling the `orbital` dependency; no gate PASS is claimed. Targeted proofs:
   `arena_e2e` `5 passed in 21.49s`, harness self-test `14 passed in 12.00s`.
 
+- **2026-11-19 — Step 9: wired arena landed live.** CI gate `44575714382 success in 2m17s`.
+  `make -o release deploy` alone exited 0 but left live at `94ea2c0` (D-145); after `make release` the live version is
+  `concord-rs 0.0.0+89d7d2e+vendor`. `systemctl --user is-active concord-rs.service` = active, `concord.service` = inactive.
+

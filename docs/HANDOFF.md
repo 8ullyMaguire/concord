@@ -895,3 +895,10 @@ only on API writes.
 - The vote was not broken: the test navigated away before the `200` arrived. It now waits for the response.
 - Next: wire the next green suite.
 
+## 2026-11-19 — Step 9 deployed
+
+- Live `concord-rs 0.0.0+89d7d2e+vendor`; CI gate `44575714382 success in 2m17s`.
+- `make release` before `make -o release deploy`; the latter alone reinstalled a stale binary (D-145).
+- User-unit checks: `concord-rs.service` active, `concord.service` inactive (D-146).
+- Next: wire the next green suite; 14 remain unwired.
+
