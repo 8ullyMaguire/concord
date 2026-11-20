@@ -1020,3 +1020,7 @@ only on API writes.
 - Gate `44642556287` failed on the session-storage probe, not on `guest_e2e`; D-169 shim fix.
 - Live remains `concord-rs 0.0.0+d62933d+vendor`.
 
+## 2026-11-20 — guest gate confirmed
+
+- Gate `44644159827 success in 2m50s`; harness self-test `14 passed in 241.25s`; ratchet 9.
+- Live probe: `/register` serves `register-form`, `reg-username`, `reg-display`, `reg-password`, `assets/js/auth.js`.
