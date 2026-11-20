@@ -1030,3 +1030,7 @@ only on API writes.
 - `taxonomy_e2e`: `6 passed in 9.88s`; wired; ratchet `8`. D-170..D-173.
 - Needs a release build, live deploy and taxonomy-panel probe.
 
+## 2026-11-20 — taxonomy live
+
+- Live `concord-rs 0.0.0+b40b26a+vendor`; `/taxonomy` mounts the panel and its script.
+- Gate `44654786305 success in 2m49s`; harness `14 passed in 3.28s`. Ratchet 8.

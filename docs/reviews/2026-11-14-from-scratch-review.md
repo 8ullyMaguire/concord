@@ -2444,3 +2444,7 @@ memory.
 - **2026-11-20 — taxonomy wired.** `taxonomy_e2e` `6 passed in 9.88s` (was `6 failed`). Store instrumentation proved
   `eligible=7 consents=1 qmin=3` and verdict `InsufficientQuorum`; the client misread the 202. Ratchet 8.
 
+- **2026-11-20 — taxonomy live.** Release `b40b26a`, `make -o release deploy` `DEPLOY=0`;
+  `https://concord.polarisocial.xyz/api/v1/version` returned `concord-rs 0.0.0+b40b26a+vendor`.
+  Live `/taxonomy` contains `taxonomy-root`, `taxonomy-live`, `assets/js/taxonomy.js`.
+  Harness self-test `14 passed in 3.28s`; CI gate `44654786305 success in 2m49s`.
