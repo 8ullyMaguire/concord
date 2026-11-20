@@ -1065,3 +1065,7 @@ only on API writes.
 - `lists_e2e`: `13 passed in 28.74s`; wired; ratchet `5`. D-182/D-183.
 - Needs a release build, live deploy and list-page probe.
 
+## 2026-11-20 — lists live
+
+- Live `concord-rs 0.0.0+16e16e3+vendor`; both list page and unknown-list page probed.
+- Gate `44674173404 success in 2m47s`; harness `14 passed in 16.35s`. Ratchet 5.

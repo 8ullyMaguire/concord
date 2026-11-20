@@ -2469,3 +2469,8 @@ memory.
 - **2026-11-20 — lists wired.** `lists_e2e` `13 passed in 28.74s` (was `10 failed / 3 passed`). Mounted the ranking panel and gave
   the unknown-list case an honest page. Ratchet 5.
 
+- **2026-11-20 — lists live.** Release `16e16e3`, `make -o release deploy` `DEPLOY=0`;
+  `https://concord.polarisocial.xyz/api/v1/version` returned `concord-rs 0.0.0+16e16e3+vendor`.
+  Live `/projects/concord/lists/1` serves `list-root` and `assets/js/list.js`; `/lists/9999` serves
+  `list-root` with "There is no list at this address". Harness self-test `14 passed in 16.35s`;
+  CI gate `44674173404 success in 2m47s`.
