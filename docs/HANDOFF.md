@@ -1110,5 +1110,4 @@ only on API writes.
 ## 2026-11-20 — scout wired, ratchet zero
 
 - `scout_e2e`: `26 passed in 28.84s`; wired; ratchet `0`. D-203..D-205.
-- Needs release, live deploy and scout-page probe.
-
+- Live `4c46314`, probes PASS, gate `44752488674 success in 2m40s`. **Step 9 complete: 29 of 29 wired, ratchet 0.**

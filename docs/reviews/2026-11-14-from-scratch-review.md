@@ -2527,3 +2527,7 @@ memory.
 - **2026-11-20 — scout wired, ratchet zero.** `scout_e2e` `26 passed in 28.84s` (baseline `26 failed in 285.93s`).
   Shell and closed textarea D-203, parsed API contract D-204, signed-in fixture D-205. Ratchet `1 -> 0`; wired.
 
+- **2026-11-20 — step 9 complete.** All 29 e2e suites wired (`RECORDED_UNRUN = 0`); scout `26 passed in 28.84s`.
+  Code `4c46314`, probe fix `4cc98e1`, live `concord-rs 0.0.0+4c46314+vendor` with scout hooks, services correct.
+  Gate `44751619715` failed on a stale DOM shim, repaired in `4cc98e1`; gate `44752488674 success in 2m40s`.
+
