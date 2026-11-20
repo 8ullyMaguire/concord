@@ -76,7 +76,7 @@ function get(url) {
   if (/\/strategy\/weight-proposals$/.test(url)) return Promise.resolve([{ id: 5, feature_id: 9, weight_before: 1, weight_after: 2, rationale: HOSTILE_RATIONALE }]);
   if (/\/strategy\/themes$/.test(url)) return Promise.resolve([]);
   if (/\/strategy\/theme-proposals$/.test(url)) return Promise.resolve([{ id: 8, theme_tag: HOSTILE_TAG, weight_before: null, weight_after: 2, rationale: 'r', status: 'pending' }]);
-  if (/\/features$/.test(url)) return Promise.resolve({ features: [{ id: 9, title: 'f', strategic_weight: 1 }] });
+  if (/\/features$/.test(url)) return Promise.resolve({ items: [{ id: 9, title: 'f', strategic_weight: 1 }], next: null });
   if (/\/languages$/.test(url)) return Promise.resolve({ languages: [{ language: HOSTILE_LANG, pct: 70 }] });
   if (/\/tags$/.test(url)) return Promise.resolve({ tags: ['rust'] });
   if (/\/invites$/.test(url)) return Promise.resolve([{ id: 3, token: HOSTILE_TOKEN, uses: 0, max_uses: 1, expires_at: 0 }]);
@@ -104,6 +104,7 @@ function makeSandbox(root, live, slugEl) {
   sandbox.ConcordSession = { instance() { return { signedIn() { return true; } }; } };
   sandbox.ConcordApi = {
     get: get,
+    list(data) { return Array.isArray(data) ? data : (data && data.items) || (data && data.features) || []; },
     request() { const e = new Error(HOSTILE_ERROR); e.status = 403; return Promise.reject(e); },
     post() { const e = new Error(HOSTILE_ERROR); e.status = 403; return Promise.reject(e); },
     put() { return Promise.resolve({}); },
