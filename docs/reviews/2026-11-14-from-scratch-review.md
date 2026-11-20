@@ -2519,3 +2519,8 @@ memory.
 - **2026-11-20 — finder wired.** `finder_e2e` `38 passed in 21.35s` (baseline: every test failed before any wizard mounted).
   Static shell D-200 and real stop/skip controls D-201. Ratchet `2 -> 1`; wired.
 
+- **2026-11-20 — finder live.** `finder_e2e` `38 passed in 21.35s`. Code `0730722`, probe-copy fix `f735f79`.
+  Live `BUILD=0` in `2m 53s`, `DEPLOY=0`, `concord-rs 0.0.0+f735f79+vendor`; `/finder` serves `needs a session`,
+  `finder-root`, `finder-seed-form`, `finder-stop`, `assets/js/finder.js`.
+  Gate `44741091753` failed on the missing session sentence; repaired gate `44742244838 success in 3m16s`. Ratchet `1`.
+

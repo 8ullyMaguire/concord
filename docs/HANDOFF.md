@@ -1105,5 +1105,4 @@ only on API writes.
 ## 2026-11-20 — finder wired
 
 - `finder_e2e`: `38 passed in 21.35s`; wired; ratchet `1`. D-200/D-201.
-- Needs release, live deploy and finder-page probe.
-
+- Live `f735f79`, probes PASS, gate `44742244838 success in 3m16s`.
