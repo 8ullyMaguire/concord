@@ -116,7 +116,8 @@
     "proposal (§5.1), which is why the button is absent on yours.";
 
   function proposalCard(p, tagNames) {
-    var mine = token() && p.proposed_by === currentUserID();
+    var uid = currentUserID();
+    var mine = uid !== null && p.proposed_by === uid;
     var pending = p.status === "pending";
     var unknownTarget = tagNames[String(p.target_tag).toLowerCase()] ? null :
       el("span", {
@@ -277,7 +278,10 @@
         btn.disabled = true;
         post("/api/v1/taxonomy/proposals/" + encodeURIComponent(id) + "/consent", {}).then(function (body) {
           btn.disabled = false;
-          if (body && body.ratified === false) {
+          // A below-quorum consent answers 202 with the proposal still pending and the honest
+          // count in `message`. There is no `ratified` flag; reading one made every 202 say "Ratified".
+          var stillPending = body && body.proposal && body.proposal.status === "pending";
+          if (stillPending) {
             say((body && body.message) ||
               "Recorded. The quorum is not met yet, so nothing has changed.", false);
             reload();

@@ -2440,3 +2440,7 @@ memory.
 
 - **2026-11-20 — guest gate confirmed.** CI gate `44644159827 success in 2m50s` for `2ec81e2`.
   `guest_e2e` `5 passed in 13.71s`; live `concord-rs 0.0.0+d62933d+vendor`; ratchet 9.
+
+- **2026-11-20 — taxonomy wired.** `taxonomy_e2e` `6 passed in 9.88s` (was `6 failed`). Store instrumentation proved
+  `eligible=7 consents=1 qmin=3` and verdict `InsufficientQuorum`; the client misread the 202. Ratchet 8.
+

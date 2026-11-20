@@ -248,6 +248,13 @@ pub async fn taxonomy(State(pool): State<PgPool>, headers: HeaderMap) -> Respons
         }
         body.close("ul");
     }
+    // The page above is the public, server-rendered vocabulary. The interactive panel below is the proposal/consent
+    // surface: without its mount and script a reader can see ratified tags but has no way to change them.
+    body.open("div", &[("id", "taxonomy-root"), ("aria-busy", "true")])
+        .open("p", &[("class", "empty")]).text("Loading the vocabulary panel\u{2026}").close("p")
+        .close("div");
+    body.open("div", &[("id", "taxonomy-live"), ("aria-live", "polite")]).close("div");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/taxonomy.js"))]).close("script");
     let bootstrap = serde_json::json!({
         "route": "/taxonomy",
         "namespaces": namespaces.iter().map(|namespace| serde_json::json!({

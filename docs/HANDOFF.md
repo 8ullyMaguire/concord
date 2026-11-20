@@ -1024,3 +1024,9 @@ only on API writes.
 
 - Gate `44644159827 success in 2m50s`; harness self-test `14 passed in 241.25s`; ratchet 9.
 - Live probe: `/register` serves `register-form`, `reg-username`, `reg-display`, `reg-password`, `assets/js/auth.js`.
+
+## 2026-11-20 — taxonomy wired
+
+- `taxonomy_e2e`: `6 passed in 9.88s`; wired; ratchet `8`. D-170..D-173.
+- Needs a release build, live deploy and taxonomy-panel probe.
+

@@ -141,6 +141,10 @@ def _page(browser, token=None, user=None, **kw):
           if m.type == "error" and "Failed to load resource" not in m.text else None)
     pg.goto(BASE + "/")
     if token:
+        ctx.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
+        # The first page load minted a guest before this fixture installed the account. Its bearer is
+        # kept in sessionStorage for registration, so it must be cleared here or it shadows the cookie.
+        pg.evaluate("() => sessionStorage.removeItem('concord.guest-token')")
         pg.evaluate("t => window.localStorage.setItem('concord.token', t)", token)
     if user:
         pg.evaluate("u => window.localStorage.setItem('concord.user', JSON.stringify(u))", user)
@@ -253,7 +257,7 @@ def test_consenting_below_quorum_is_answered_202_and_reads_as_information(browse
 
     card.locator("button[data-consent]").click()
     live = pg.locator("#taxonomy-live")
-    expect(live).to_contain_text("consents", timeout=15000)
+    expect(live).to_contain_text("consent recorded", timeout=15000)
 
     # Not an error: the 202 carries the count it reached, which is the only place the
     # quorum is explained. `error-state` is the class a refusal gets.
@@ -294,7 +298,7 @@ def test_an_anonymous_visitor_is_told_why_they_cannot_consent_rather_than_refuse
 
     card.locator("button[data-consent]").click()
     live = pg.locator("#taxonomy-live")
-    expect(live).to_contain_text("only an eligible tagger", timeout=15000)
+    expect(live).to_contain_text("only eligible taggers", timeout=15000)
 
     expect(card).to_contain_text("pending")
     assert not pg.errors, pg.errors
