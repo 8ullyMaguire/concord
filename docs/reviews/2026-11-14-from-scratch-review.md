@@ -2524,3 +2524,6 @@ memory.
   `finder-root`, `finder-seed-form`, `finder-stop`, `assets/js/finder.js`.
   Gate `44741091753` failed on the missing session sentence; repaired gate `44742244838 success in 3m16s`. Ratchet `1`.
 
+- **2026-11-20 — scout wired, ratchet zero.** `scout_e2e` `26 passed in 28.84s` (baseline `26 failed in 285.93s`).
+  Shell and closed textarea D-203, parsed API contract D-204, signed-in fixture D-205. Ratchet `1 -> 0`; wired.
+

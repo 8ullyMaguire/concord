@@ -377,15 +377,10 @@
     if (ex) q += '&exclude_licenses=' + encodeURIComponent(ex);
 
     root.setAttribute('aria-busy', 'true');
+    // ConcordApi.get resolves the parsed body and rejects non-2xx itself; the
+    // old raw-Response `.text()`/.ok shape no longer exists (D-204).
     window.ConcordApi.get('/api/v1/scout?' + q)
-      .then(function (r) {
-        return r.text().then(function (txt) {
-          var data = {};
-          try { data = txt ? JSON.parse(txt) : {}; } catch (err) { data = {}; }
-          if (!r.ok) throw new Error(data.error || ('HTTP ' + r.status));
-          return data;
-        });
-      })
+      .then(function (data) { return data || {}; })
       .then(renderReport)
       .catch(function (err) { fail(err.message || 'Scout could not answer.'); })
       .then(function () { root.setAttribute('aria-busy', 'false'); });

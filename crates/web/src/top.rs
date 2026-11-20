@@ -286,8 +286,9 @@ pub async fn scout(State(pool): State<PgPool>, headers: HeaderMap) -> Response {
         .close("p")
         .open("form", &[("method", "get"), ("action", "/api/v1/scout"), ("class", "scout-form")])
         .open("label", &[("for", "idea")]).text("Your idea").close("label")
-        .void("textarea", &[("id", "idea"), ("name", "idea"), ("rows", "4"),
+        .open("textarea", &[("id", "idea"), ("name", "idea"), ("rows", "4"),
                             ("placeholder", "a tool that checks whether a library is still maintained")])
+        .close("textarea")
         .open("button", &[("type", "submit")]).text("Scout it").close("button")
         .close("form")
         .open("p", &[("class", "muted"), ("data-capabilities", &catalogue.len().to_string())])
@@ -303,6 +304,35 @@ pub async fn scout(State(pool): State<PgPool>, headers: HeaderMap) -> Response {
             .text("No capabilities are registered, so Scout has nothing to compare an idea against.")
             .close("p");
     }
+    // The static copy above stays for the page probe. The interactive report needs
+    // its own shell; scout.js fills these slots (D-203).
+    body.raw(r##"<div id="scout-root" aria-busy="true">
+      <section id="scout-seed">
+        <form id="scout-seed-form">
+          <label for="scout-seed-text">Your idea</label>
+          <textarea id="scout-seed-text" name="idea" rows="4"></textarea>
+          <label for="scout-exclude">Exclude projects</label>
+          <input id="scout-exclude" name="exclude" type="text" />
+          <button type="submit">Scout it</button>
+        </form>
+      </section>
+      <div id="scout-error" role="status" aria-live="polite" hidden></div>
+      <section id="scout-report" hidden>
+        <p id="scout-stats"></p>
+        <p id="scout-decomp-summary"></p>
+        <div id="scout-capabilities"></div>
+        <div id="scout-verdicts"></div>
+        <div id="scout-save">
+          <label for="scout-save-slug">Save to project</label>
+          <input id="scout-save-slug" type="text" />
+          <button type="button">Save report</button>
+          <p id="scout-save-error" hidden></p>
+          <p id="scout-save-ok" hidden></p>
+        </div>
+        <button id="scout-again" type="button">Scout another idea</button>
+      </section>
+    </div>"##);
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/scout.js")), ("defer", "")]).close("script");
     let bootstrap = serde_json::json!({"route": "/scout", "capabilities": catalogue.len()});
     render(&headers, Page {
         title: "Scout",

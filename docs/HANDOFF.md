@@ -1106,3 +1106,9 @@ only on API writes.
 
 - `finder_e2e`: `38 passed in 21.35s`; wired; ratchet `1`. D-200/D-201.
 - Live `f735f79`, probes PASS, gate `44742244838 success in 3m16s`.
+
+## 2026-11-20 — scout wired, ratchet zero
+
+- `scout_e2e`: `26 passed in 28.84s`; wired; ratchet `0`. D-203..D-205.
+- Needs release, live deploy and scout-page probe.
+

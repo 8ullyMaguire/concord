@@ -180,6 +180,13 @@ def signed_in(page, server):
     token = body.get("token")
     assert token, f"register returned no token: {body}"
 
+    # A bearer token alone is not a signed-in browser: session.js needs concord.user
+    # and the navigation cookie, or the save runs as a guest (D-205).
+    me = harness.api(server["base"], "GET", "/api/v1/auth/me", token=token)
+    page.context.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
+    page.goto(BASE + "/")
+    page.evaluate("u => localStorage.setItem('concord.user', JSON.stringify(u))", me)
+
     # Grant contributor rights directly, on every seeded project.
     #
     # There is no API route for this: server.go registers GET .../members and
