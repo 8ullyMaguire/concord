@@ -135,7 +135,8 @@ async function scoutCase(opts) {
       get(url) {
         calls.push('GET ' + url);
         if (opts.fail) return Promise.reject(new Error(HOSTILE));
-        return Promise.resolve({ ok: true, status: 200, text: function () { return Promise.resolve(JSON.stringify(data)); } });
+        // ConcordApi.get resolves the parsed body, not a raw Response (D-206).
+        return Promise.resolve(data);
       },
       put(url, body) { calls.push('PUT ' + url + ' ' + JSON.stringify(body)); return Promise.resolve({ kind: 'scout', revision: 2 }); },
     },

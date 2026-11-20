@@ -1667,6 +1667,8 @@ tell the difference between "not started" and "waiting".
 - **D-204 — scout reads the parsed API body.** `ConcordApi.get` resolves JSON and rejects non-2xx; scout.js still called `.text()`/`.ok` on a raw `Response`, so every report stayed hidden.
 - **D-205 — the save fixture seeds a full signed-in browser.** A register token alone left `concord.user` unset and the save ran as a guest; the fixture now sets the navigation cookie and user before navigation.
 
+- **D-206 — the scout DOM shim resolves parsed JSON.** The fake `ConcordApi.get` still returned a raw `Response`, so the capability row vanished after the shipped client moved to the shared parsed-body contract.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet
