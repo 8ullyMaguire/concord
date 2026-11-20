@@ -1115,5 +1115,5 @@ only on API writes.
 ## 2026-11-20 — site-review repairs
 
 - `site_review_e2e: 10 passed in 4.76s`; wired; 30 of 30 suites. D-207..D-212.
-- Needs release, live deploy and public-host browser walk.
-
+- Live `c63f706`, gate `44778091113 success in 2m27s`. Public browser walk: home count 73; `/lists` and `/no-such-page` in shell; Scout `forms=1` (was 2); criteria/documents 390px overflow 0 (was 241); feature detail renders; milestone detail gives explicit "Could not load this milestone".
+- **Row 10 done.** Deferred nits (hero gradient, nav density, date formats, settings help text) are deliberately not shipped; D-207..D-214 record the repairs.
