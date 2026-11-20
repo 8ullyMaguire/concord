@@ -280,8 +280,8 @@ def main():
 
     status, _content_type, scout_page = get("/scout")
     check("GET /scout is a document", status, 200)
-    check("  and its form submits to the API's own verdict route",
-          '<form method="get" action="/api/v1/scout"' in scout_page, True)
+    check("  and its single interactive form is mounted",
+          'id="scout-seed-form"' in scout_page, True)
     # The vocabulary Scout compares against is the `capabilities` table, which has NO JSON route — only `capableseed` reads it. So the
     # page is compared against itself: the number in the sentence must be the number in the attribute a client reads. Anything else
     # would be the probe asserting an agreement it cannot observe.
