@@ -2478,3 +2478,9 @@ memory.
 - **2026-11-20 — readers wired.** `readers_e2e` `10 passed in 19.63s` (was `9 failed / 1 passed`). Fixed the join control,
   objection verdict statuses, objector withdrawal, coverage decoding, paged features read, and the contributor gate. Ratchet 4.
 
+- **2026-11-20 — readers live.** `55079b1` release `BUILD=0`, `DEPLOY=0`, live `concord-rs 0.0.0+55079b1+vendor`,
+  `/projects/concord/settings` hooks `settings-root assets/js/settings.js`, `/projects/concord/features/1` hooks
+  `assets/js/feature.js data-feature`, `concord-rs.service active`, `concord.service inactive`. Harness `14 passed in 7.99s`.
+  Gate `44686649187` failed at the settings DOM probe (`ConcordApi.list is not a function`); shim `f852c48` repaired it;
+  gate `44687743662 success in 2m33s`.
+

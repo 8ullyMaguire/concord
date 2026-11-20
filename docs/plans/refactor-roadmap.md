@@ -1643,6 +1643,7 @@ tell the difference between "not started" and "waiting".
 - **D-187 — coverage `contested` is a bigint count, not a bool.** Decoding it as bool made every feature page answer 500.
 - **D-188 — the settings panel normalises the paged features read.** The propose form had no feature to select.
 - **D-189 — proposing a strategic weight requires a contributor role.** The handler's own comment claimed a gate it never had.
+- **D-190 — the settings DOM probe must serve the paged features shape and `ConcordApi.list`.** A fake API left at the old `get`-only surface turned a green suite into a structural gate failure.
 
 ## Decisions proposed (not taken)
 

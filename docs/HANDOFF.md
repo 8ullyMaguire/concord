@@ -1073,5 +1073,4 @@ only on API writes.
 ## 2026-11-20 — readers wired
 
 - `readers_e2e`: `10 passed in 19.63s`; wired; ratchet `4`. D-184..D-189.
-- Needs a release build, live deploy and reader-page probes.
-
+- Live `55079b1`, probes PASS, gate `44687743662 success in 2m33s` after the settings DOM shim `f852c48`.
