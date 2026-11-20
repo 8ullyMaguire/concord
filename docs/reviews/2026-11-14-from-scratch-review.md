@@ -2491,3 +2491,9 @@ memory.
   `{'language': 'pct'}` from the fixture DB, and the protected-project member page still times out waiting for
   `#settings-root`. `cargo test -p concord-app --lib policy` `7 passed; 0 failed`.
 
+- **2026-11-20 — settings partial is live.** `39c906b` release `BUILD=0` in `2m 01s`, `DEPLOY=0`, live
+  `concord-rs 0.0.0+39c906b+vendor`; `/api/v1/projects/concord/charter` `200`,
+  `/api/v1/projects/concord/strategy/weight-proposals` `200` anonymous, `/projects/concord/settings` serves
+  `settings-root assets/js/settings.js`; `concord-rs.service active`, `concord.service inactive`.
+  Gate `44704848657 success in 2m31s`. Settings is still unwired at `17 passed, 2 failed`.
+
