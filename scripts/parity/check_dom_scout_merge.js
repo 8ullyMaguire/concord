@@ -130,6 +130,8 @@ async function scoutCase(opts) {
   const sandbox = baseSandbox({
     location: { pathname: '/scout', href: 'https://concord.polarisocial.xyz/scout' },
     ConcordApi: {
+      // The shipped page normalises both bare arrays and Step-6 envelopes here.
+      list(data) { return Array.isArray(data) ? data : (data && data.items) || []; },
       get(url) {
         calls.push('GET ' + url);
         if (opts.fail) return Promise.reject(new Error(HOSTILE));
@@ -161,11 +163,14 @@ async function mergeCase(opts) {
     location: { pathname: '/projects/lorebook/merge', href: 'https://concord.polarisocial.xyz/projects/lorebook/merge' },
     ConcordSession: { instance: function () { return { signedIn: function () { return !opts.signedOut; } }; } },
     ConcordApi: {
+      list(data) { return Array.isArray(data) ? data : (data && data.items) || []; },
       get(url) {
         calls.push('GET ' + url);
         if (opts.fail) return Promise.reject(new Error(HOSTILE));
         if (/\/features$/.test(url)) return Promise.resolve(features);
-        return Promise.resolve(mrs);
+        return Promise.resolve(mrs.map(function (row) {
+          return { request: row, gate: row.gate };
+        }));
       },
       request(method, url, body) {
         calls.push(method + ' ' + url + (body ? ' ' + JSON.stringify(body) : ''));

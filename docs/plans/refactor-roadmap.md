@@ -1619,6 +1619,10 @@ tell the difference between "not started" and "waiting".
   fixes both.
 - **D-175 — merge fixture needs a durable user.** Without `concord.user`, `session.js` reports signed out and hides Confirm/Merge/Reject.
 
+- **D-176 — the merge structural probe needed the real API shape.** It supplied flat rows and no `ConcordApi.list()`, so after the
+  request/gate unwrap the gate reported "the merge row disappeared". Gate `44657400518` failed at that arm; the shim now supplies
+  `{request, gate}` rows and `list()`. Local arm: `dom scout+merge pages: PASS — hostile fields are text, gates and counts verbatim, no string sink`.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet

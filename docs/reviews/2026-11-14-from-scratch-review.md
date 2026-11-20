@@ -2452,3 +2452,6 @@ memory.
 - **2026-11-20 — merge wired.** `merge_e2e` `7 passed in 13.06s` (was `5 failed / 2 passed`). API envelope unwrapped and the
   signed-in fixture completed. Ratchet 7.
 
+- **2026-11-20 — merge gate shim.** CI gate `44657400518` failed at the DOM scout+merge arm (D-176), not at `merge_e2e` itself.
+  Shim repaired; local arm passes.
+

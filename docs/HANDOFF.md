@@ -1040,3 +1040,8 @@ only on API writes.
 - `merge_e2e`: `7 passed in 13.06s`; wired; ratchet `7`. D-174/D-175.
 - Needs a release build, live deploy and merge-page probe.
 
+## 2026-11-20 — merge gate shim
+
+- Gate `44657400518` failed on the merge DOM probe; D-176 shim fix.
+- Live remains `concord-rs 0.0.0+57dab60+vendor`.
+
