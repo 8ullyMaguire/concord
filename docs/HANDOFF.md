@@ -1009,3 +1009,9 @@ only on API writes.
 
 - Live `concord-rs 0.0.0+ccdd724+vendor`; `/notifications` contains `notifications-root`; anonymous has no badge.
 - Gate `44640154048 success in 2m35s`; harness `14 passed in 6.71s`. Ratchet 10.
+
+## 2026-11-19 — guest wired
+
+- `guest_e2e`: `5 passed in 13.71s`; wired; ratchet `9`. D-167/D-168.
+- Needs a release build, live deploy and auth-page probe.
+

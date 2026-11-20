@@ -13,6 +13,10 @@
 
   var TOKEN_KEY = 'concord.token';
   var USER_KEY = 'concord.user';
+  // A guest has no HttpOnly cookie: the bearer is the only credential that can promote their work at registration.
+  // sessionStorage survives navigation in the same tab but not a browser restart, the narrowest lifetime that
+  // lets the register form present it. Login tokens stay in memory only; their cookie is durable.
+  var GUEST_TOKEN_KEY = 'concord.guest-token';
 
   function ConcordSession() {
     // `this.token` is the credential ONLY for the life of the page that received it: it is set by `store` after a
@@ -27,6 +31,8 @@
       // A token left by an older build is deleted rather than migrated: it is a credential in a place script can read,
       // and the cookie that replaced it is already in the browser.
       localStorage.removeItem(TOKEN_KEY);
+      this.token = sessionStorage.getItem(GUEST_TOKEN_KEY) || null;
+      if (this.token && !(this.user && this.user.is_guest)) this.token = null;
     } catch (e) {
       // Storage can be unavailable (private mode, or a policy that blocks it).
       // That means "not signed in" for our purposes, not an error worth
@@ -104,6 +110,8 @@
       // cookie, which is the credential a reloaded page uses. Holding it in memory covers the requests this page makes
       // before it navigates.
       localStorage.setItem(USER_KEY, JSON.stringify(user || {}));
+      if (user && user.is_guest && token) sessionStorage.setItem(GUEST_TOKEN_KEY, token);
+      else sessionStorage.removeItem(GUEST_TOKEN_KEY);
       return true;
     } catch (e) {
       return false;

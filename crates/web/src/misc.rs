@@ -328,12 +328,12 @@ pub async fn login(Query(request): Query<LoginQuery>, headers: HeaderMap) -> Res
     let next = if request.next.starts_with('/') { request.next.as_str() } else { "/" };
     let mut body = Html::new();
     body.open("h2", &[]).text("Sign in").close("h2")
-        .open("form", &[("method", "post"), ("action", "/api/v1/auth/login"), ("class", "auth-form")])
+        .open("form", &[("id", "login-form"), ("method", "post"), ("action", "/api/v1/auth/login"), ("class", "auth-form")])
         .void("input", &[("type", "hidden"), ("name", "next"), ("value", next)])
-        .open("label", &[("for", "username")]).text("Username").close("label")
-        .void("input", &[("type", "text"), ("id", "username"), ("name", "username"), ("autocomplete", "username")])
-        .open("label", &[("for", "password")]).text("Password").close("label")
-        .void("input", &[("type", "password"), ("id", "password"), ("name", "password"),
+        .open("label", &[("for", "login-username")]).text("Username").close("label")
+        .void("input", &[("type", "text"), ("id", "login-username"), ("name", "username"), ("autocomplete", "username")])
+        .open("label", &[("for", "login-password")]).text("Password").close("label")
+        .void("input", &[("type", "password"), ("id", "login-password"), ("name", "password"),
                          ("autocomplete", "current-password")])
         .open("button", &[("type", "submit")]).text("Sign in").close("button")
         .close("form")
@@ -343,6 +343,7 @@ pub async fn login(Query(request): Query<LoginQuery>, headers: HeaderMap) -> Res
         .text("A wrong password and an unknown account produce the same message — that is deliberate.")
         .close("p")
         .open("p", &[]).open("a", &[("href", "/register")]).text("Create an account").close("a").close("p");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/auth.js"))]).close("script");
     let bootstrap = serde_json::json!({"route": "/login", "next": next});
     render(&headers, Page {
         title: "Sign in",
@@ -356,11 +357,13 @@ pub async fn login(Query(request): Query<LoginQuery>, headers: HeaderMap) -> Res
 pub async fn register(headers: HeaderMap) -> Response {
     let mut body = Html::new();
     body.open("h2", &[]).text("Create an account").close("h2")
-        .open("form", &[("method", "post"), ("action", "/api/v1/auth/register"), ("class", "auth-form")])
-        .open("label", &[("for", "username")]).text("Username").close("label")
-        .void("input", &[("type", "text"), ("id", "username"), ("name", "username"), ("autocomplete", "username")])
-        .open("label", &[("for", "password")]).text("Password").close("label")
-        .void("input", &[("type", "password"), ("id", "password"), ("name", "password"),
+        .open("form", &[("id", "register-form"), ("method", "post"), ("action", "/api/v1/auth/register"), ("class", "auth-form")])
+        .open("label", &[("for", "reg-username")]).text("Username").close("label")
+        .void("input", &[("type", "text"), ("id", "reg-username"), ("name", "username"), ("autocomplete", "username")])
+        .open("label", &[("for", "reg-display")]).text("Display name").close("label")
+        .void("input", &[("type", "text"), ("id", "reg-display"), ("name", "display_name")])
+        .open("label", &[("for", "reg-password")]).text("Password").close("label")
+        .void("input", &[("type", "password"), ("id", "reg-password"), ("name", "password"),
                          ("autocomplete", "new-password")])
         .open("button", &[("type", "submit")]).text("Create account").close("button")
         .close("form")
@@ -369,6 +372,7 @@ pub async fn register(headers: HeaderMap) -> Response {
         .open("p", &[("class", "muted")])
         .text("If you have been reading as a guest, registering keeps your identity: your votes and filings stay yours.")
         .close("p");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/auth.js"))]).close("script");
     let bootstrap = serde_json::json!({"route": "/register"});
     render(&headers, Page {
         title: "Create an account",

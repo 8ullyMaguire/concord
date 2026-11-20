@@ -2431,3 +2431,7 @@ memory.
   `https://concord.polarisocial.xyz/api/v1/version` returned `concord-rs 0.0.0+ccdd724+vendor`.
   Live `/notifications` contains `notifications-root` and no badge for an anonymous reader.
   Harness self-test `14 passed in 6.71s`; CI gate `44640154048 success in 2m35s`.
+
+- **2026-11-19 — guest wired.** `guest_e2e` `5 passed in 13.71s` (was `1 failed / 4 passed`). Real forms and a bridged guest
+  token promote the guest identity in place. Ratchet 9.
+
