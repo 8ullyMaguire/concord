@@ -1101,3 +1101,9 @@ only on API writes.
 
 - `criteria_e2e`: `13 passed in 14.88s`; wired; ratchet `2`. D-194..D-198.
 - Live `dfddc1b`, probes PASS, gate `44730218670 success in 1m59s`; harness `14 passed in 13.51s`.
+
+## 2026-11-20 — finder wired
+
+- `finder_e2e`: `38 passed in 21.35s`; wired; ratchet `1`. D-200/D-201.
+- Needs release, live deploy and finder-page probe.
+

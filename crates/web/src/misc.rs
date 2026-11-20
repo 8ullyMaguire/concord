@@ -456,11 +456,52 @@ pub async fn finder(State(pool): State<PgPool>, headers: HeaderMap) -> Response 
         }
         body.close("ul");
     }
-    // The flow itself needs a session, and a session is a POST with a cookie. The page says so: a reader who expects a wizard here
-    // should learn on this page, not after clicking nothing.
-    body.open("p", &[("class", "muted")])
-        .text("Answering the questions needs a session; the interactive flow arrives with the frontend bundle.")
-        .close("p");
+    // The explanatory copy above is the public page. The wizard is the mount below:
+    // without `finder-root` and its script the page can describe the flow but never
+    // run it (D-200).
+    // The wizard's shell is static markup; finder.js fills the slots. The IDs are
+    // the same set the DOM probe asserts, so a missing hook is a gate failure (D-200).
+    body.raw(r##"<div id="finder-root" aria-busy="true">
+      <section id="finder-seed">
+        <form id="finder-seed-form">
+          <label for="finder-seed-text">Start from a project idea</label>
+          <input id="finder-seed-text" name="seed" type="text" autocomplete="off" />
+          <div id="finder-categories"></div>
+          <button type="submit">Find projects</button>
+        </form>
+      </section>
+      <section id="finder-flow" hidden>
+        <p id="finder-progress-text"></p>
+        <div id="finder-progress-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"></div>
+        <button id="finder-back" type="button">Back</button>
+        <h2 id="finder-question-text"></h2>
+        <details id="finder-why"><summary>Why this question?</summary><p id="finder-why-text"></p></details>
+        <div id="finder-options"></div>
+        <button type="button" data-mode="skip">Skip this question</button>
+        <div id="finder-stop-prompt" hidden>
+          <p id="finder-stop-reason"></p>
+          <div id="finder-stop-top"></div>
+          <button id="finder-stop-go" type="button">See results</button>
+          <button id="finder-stop-keep" type="button" hidden>Keep narrowing</button>
+        </div>
+        <button id="finder-stop" type="button">Stop and see results</button>
+      </section>
+      <section id="finder-results" hidden>
+        <p id="finder-shortlist-summary"></p>
+        <div id="finder-shortlist-items"></div>
+        <div id="finder-answers"></div>
+        <h2 id="finder-ranked-heading"></h2>
+        <div id="finder-ranked"></div>
+        <div id="finder-unknown" hidden><p>Unknown is not no:</p><div id="finder-unknown-items"></div></div>
+        <div id="finder-filtered-out" hidden><p>Filtered out:</p><div id="finder-filtered-items"></div></div>
+        <div id="finder-nothing" hidden><p id="finder-nothing-detail"></p></div>
+        <div id="finder-results-answers"></div>
+        <a id="finder-export-json" href="#">Export these results as JSON</a>
+        <button id="finder-view-all" type="button">View all projects</button>
+      </section>
+      <div id="finder-error" role="status" aria-live="polite" hidden></div>
+    </div>"##);
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/finder.js")), ("defer", "")]).close("script");
     let bootstrap = serde_json::json!({
         "route": "/finder",
         "projects": projects.len(),

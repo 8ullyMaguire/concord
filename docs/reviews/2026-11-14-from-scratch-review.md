@@ -2516,3 +2516,6 @@ memory.
   Gate `44728682250` caught a stale DOM shim; repaired with D-199 in `2496f38`; gate `44730218670 success in 1m59s`.
   Ratchet `2`.
 
+- **2026-11-20 — finder wired.** `finder_e2e` `38 passed in 21.35s` (baseline: every test failed before any wizard mounted).
+  Static shell D-200 and real stop/skip controls D-201. Ratchet `2 -> 1`; wired.
+
