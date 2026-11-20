@@ -625,6 +625,8 @@ Unclaimed rows are fair game.
 - **D-211 — list-shape clients use `ConcordApi.list`.** Home's project count and the consensus calls index assumed a bare array and read a valid paged response as zero/empty.
 - **D-212 — detail pages never end on a loading string.** A watchdog replaces a stale loading placeholder with an explicit failure sentence.
 
+- **D-213 — structural probes are part of the repair.** The list cap must not put a `null` child into `replaceChildren`, and the loading watchdog must read `textContent` when a fake DOM has no `innerText`; both are asserted by the DOM probes.
+
 ## Blocked
 
 Items nobody working in this repo can finish alone. Each names what would unblock it and on whom, so the next session can
