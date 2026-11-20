@@ -237,7 +237,21 @@ pub async fn list(
         // A list with `project_id IS NULL` is instance-wide, and `criteria::lists` deliberately includes those on every project's
         // page — so a 404 here would be a link the page itself just printed. Another PROJECT's list is still a 404.
         Ok(Some(row)) if row.project_id.is_none() || row.project_id == Some(project.id) => row,
-        Ok(_) => return crate::not_found(&headers),
+        Ok(_) => {
+            // A stale link is still a page: say so where the reader was looking, inside the same
+            // mount the live page uses, rather than dropping them on a generic 404 shell.
+            let mut missing = Html::new();
+            missing.open("div", &[("id", "list-root")])
+                .open("p", &[("class", "empty-state-title")])
+                .text("There is no list at this address.").close("p")
+                .close("div");
+            return render(&headers, Page {
+                title: "List not found",
+                path: &format!("/projects/{slug}/lists/{id}"),
+                description: "The list at this address does not exist.",
+                bootstrap: serde_json::json!({}),
+            }, missing.finish());
+        }
         Err(error) => return crate::error_page(&headers, "the list could not be read", &error.to_string()),
     };
     let entries = concord_db::criteria::entries(&pool, id).await.unwrap_or_default();
@@ -268,6 +282,13 @@ pub async fn list(
         }
         body.close("ul");
     }
+    // The server-rendered entries are the public copy. The interactive ranking panel below is the
+    // reader's surface: ratings, uncertainty bands, categories and voting live in list.js, and
+    // without its mount the list page shows a static table with no comparison control.
+    body.open("div", &[("id", "list-root"), ("aria-busy", "true")])
+        .open("p", &[("class", "empty")]).text("Loading the ranked list").close("p")
+        .close("div");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/list.js"))]).close("script");
     let bootstrap = serde_json::json!({
         "list": {"id": row.id, "name": row.title, "status": row.status},
         "entries": entries.iter().map(|entry| serde_json::json!({

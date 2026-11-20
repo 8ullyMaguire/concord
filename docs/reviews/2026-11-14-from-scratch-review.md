@@ -2465,3 +2465,7 @@ memory.
   `https://concord.polarisocial.xyz/api/v1/version` returned `concord-rs 0.0.0+b0fddd4+vendor`.
   Live `/curation` serves `curation-root`, `curation-list`, `curation-unvoted`, `assets/js/curation.js`.
   Harness self-test `14 passed in 9.67s`; CI gate `44668631047 success in 2m44s`.
+
+- **2026-11-20 — lists wired.** `lists_e2e` `13 passed in 28.74s` (was `10 failed / 3 passed`). Mounted the ranking panel and gave
+  the unknown-list case an honest page. Ratchet 5.
+

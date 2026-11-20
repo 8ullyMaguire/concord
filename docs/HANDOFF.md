@@ -1059,3 +1059,9 @@ only on API writes.
 
 - Live `concord-rs 0.0.0+b0fddd4+vendor`; `/curation` mounts the queue and its script.
 - Gate `44668631047 success in 2m44s`; harness `14 passed in 9.67s`. Ratchet 6.
+
+## 2026-11-20 — lists wired
+
+- `lists_e2e`: `13 passed in 28.74s`; wired; ratchet `5`. D-182/D-183.
+- Needs a release build, live deploy and list-page probe.
+
