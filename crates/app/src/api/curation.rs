@@ -9,7 +9,7 @@ use axum::{
 use polaris_core::ApiError;
 use serde_json::Value;
 
-use crate::{bearer_user, internal, AppState};
+use crate::{api::moderation::mod_trust_min, bearer_user, internal, AppState};
 
 /// `GET /api/v1/curation` — §4's queue: every proposal kind and every reviewed act, one page.
 ///
@@ -24,6 +24,9 @@ async fn list_curation(
 ) -> Result<Json<concord_db::curation::Page>, ApiError> {
     let viewer = bearer_user(&state, &headers).await?.map_or(0, |user| user.id);
     let mut filter = concord_db::curation::Filter {
+        // The queue opens on WORK, not on the whole history: an undone act is a fact in the log,
+        // not a review waiting to happen. The page sends `state=all` when the reader opens the log.
+        state: "open".to_string(),
         viewer_id: viewer,
         ..Default::default()
     };
@@ -31,7 +34,10 @@ async fn list_curation(
         filter.kind = value.trim().to_string();
     }
     if let Some(value) = query.get("state") {
-        filter.state = value.trim().to_string();
+        filter.state = match value.trim() {
+            "all" => String::new(),
+            other => other.to_string(),
+        };
     }
     if let Some(value) = query.get("q") {
         filter.text = value.trim().to_string();
@@ -69,6 +75,14 @@ async fn list_curation(
             sqlx::Error::Decode(message) => ApiError::invalid_request(message.to_string()),
             other => internal(other),
         })?;
+    let mut page = page;
+    for item in &mut page.items {
+        item.can_vote = concord_db::curation::may_vote(
+            &state.pool, item, viewer, mod_trust_min(),
+        )
+        .await
+        .map_err(internal)?;
+    }
     Ok(Json(page))
 }
 

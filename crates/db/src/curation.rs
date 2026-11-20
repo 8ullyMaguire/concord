@@ -74,6 +74,48 @@ pub struct Item {
     pub can_vote: bool,
 }
 
+/// May `viewer` act on this row? The same rule the write route enforces, read here so the queue
+/// can hide a control the server would refuse. Anonymous never may. Proposals use their kind's
+/// own eligible set; acts use the moderation door (project reviewer, or instance trust).
+pub async fn may_vote(
+    pool: &PgPool,
+    item: &Item,
+    viewer: i64,
+    mod_trust_min: i32,
+) -> Result<bool, sqlx::Error> {
+    if viewer == 0 || item.actor_id == viewer {
+        return Ok(false);
+    }
+    match item.kind.as_str() {
+        "taxonomy" => {
+            let count: i64 = if item.project_id > 0 {
+                sqlx::query_scalar(
+                    "select count(*) from members where project_id = $1 and user_id = $2                        and role in ('contributor','reviewer','maintainer','owner')",
+                )
+                .bind(item.project_id)
+                .bind(viewer)
+                .fetch_one(pool)
+                .await?
+            } else {
+                sqlx::query_scalar(
+                    "select count(*) from members where user_id = $1                        and role in ('contributor','reviewer','maintainer','owner')",
+                )
+                .bind(viewer)
+                .fetch_one(pool)
+                .await?
+            };
+            Ok(count > 0)
+        }
+        "strategy" => Ok(crate::consensus::eligible_collaborators(
+            pool, item.project_id, 0.0,
+        )
+        .await?
+        .contains(&viewer)),
+        "act" => crate::moderation::may_moderate(pool, item.project_id, viewer, mod_trust_min).await,
+        _ => Ok(false),
+    }
+}
+
 /// One page of the queue plus the position after it.
 #[derive(Debug, Clone, Serialize, ToSchema)]
 pub struct Page {

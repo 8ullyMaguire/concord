@@ -58,7 +58,7 @@ impl ArenaActRequest {
 
 /// The trust floor for a moderation act; `CONCORD_MOD_TRUST_MIN` moves it, and 1 is the default the Go
 /// config ships with.
-fn mod_trust_min() -> i32 {
+pub(crate) fn mod_trust_min() -> i32 {
     std::env::var("CONCORD_MOD_TRUST_MIN")
         .ok()
         .and_then(|value| value.parse::<i32>().ok())
@@ -237,6 +237,19 @@ async fn curation_vote(
                     "proposal": recorded.proposal,
                 })),
             )),
+            Err(concord_db::taxonomy::Refused::NotYet {
+                verdict, consents, eligible,
+            }) => Ok((
+                StatusCode::ACCEPTED,
+                Json(serde_json::json!({
+                    "recorded": true,
+                    "ratified": false,
+                    "decided": false,
+                    "message": format!(
+                        "the consent was recorded and the proposal is {verdict} ({consents} of {eligible} eligible consenting)"
+                    ),
+                })),
+            )),
             Err(refusal) => Err(taxonomy_refusal(refusal)),
         },
         // §5.1: a strategic weight is proposed, consented to by §8.2's eligible population, and applied only if
@@ -251,6 +264,19 @@ async fn curation_vote(
                     "consents": recorded.consents,
                     "eligible": recorded.eligible,
                     "proposal": recorded.proposal,
+                })),
+            )),
+            Err(concord_db::strategy::Refused::NotYet {
+                verdict, consents, eligible,
+            }) => Ok((
+                StatusCode::ACCEPTED,
+                Json(serde_json::json!({
+                    "recorded": true,
+                    "ratified": false,
+                    "decided": false,
+                    "message": format!(
+                        "the consent was recorded and the proposal is {verdict} ({consents} of {eligible} eligible consenting)"
+                    ),
                 })),
             )),
             Err(refusal) => Err(strategy_refusal(refusal)),

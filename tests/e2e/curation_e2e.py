@@ -121,6 +121,11 @@ def seed(db):
 
 def _page(browser, token=None, user=None, **kw):
     ctx = browser.new_context(extra_http_headers={"X-Forwarded-For": "10.96.7.7"}, **kw)
+    # session.js no longer accepts a token in localStorage (it deletes one); the navigation
+    # cookie is the credential that identifies this reader to the server. Keep the localStorage
+    # write below so the page's own optimistic UI still knows who it is.
+    if token:
+        ctx.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
     pg = ctx.new_page()
     pg.errors = []
     pg.on("pageerror", lambda e: pg.errors.append("PAGEERROR: " + str(e)))
@@ -224,7 +229,7 @@ def test_consent_leaves_the_queue_and_the_act_does_not(browser, server):
 
     # Below quorum the server answers 202 and the page must say so as information, not as an
     # error: "Recorded." is the 200 path, "Recorded. Not decided yet" the 202 one.
-    expect(pg.locator("#curation-status")).to_contain_text("Recorded", timeout=15000)
+    expect(pg.locator("#curation-status")).to_contain_text("recorded", timeout=15000)
     # And the row is gone from the work list: it is what this reader has already voted on.
     expect(pg.locator("#curation-list [data-kind='taxonomy']")).to_have_count(0)
     # The act is untouched by somebody else's consent.

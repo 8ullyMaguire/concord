@@ -1049,3 +1049,9 @@ only on API writes.
 
 - Gate `44658192352 success in 2m24s`; harness self-test `14 passed in 10.43s`; ratchet 7.
 - Live probe: `/projects/concord/merge` serves `merge-root`, `merge-notice`, `assets/js/merge.js`.
+
+## 2026-11-20 — curation wired
+
+- `curation_e2e`: `5 passed in 13.58s`; wired; ratchet `6`. D-177..D-181.
+- Needs a release build, live deploy and curation-page probe.
+

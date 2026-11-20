@@ -265,10 +265,12 @@
         item.my_vote = choice === 'yes' ? 1 : -1;
         item.yes = data.yes || 0;
         item.no = data.no || 0;
-        var msg = 'Recorded.';
+        // A below-quorum consent is a 202 with the server's own sentence. Use it: the reader
+        // needs the verdict and the count, not a client-side guess at what the server meant.
+        var msg = data.message || 'Recorded.';
         // The server's own flags. `202` was the Go service's way of saying "recorded, not decided", and the Rust port
         // answers 200 for every case — so the status branch was dead and this message never appeared.
-        if (data.ratified === false || data.decided === false) {
+        if (!data.message && (data.ratified === false || data.decided === false)) {
           msg = 'Recorded. Not decided yet \u2014 ' + item.yes + ' consent(s) so far.';
         } else if (item.kind !== 'act') {
           item.state = 'ratified';
@@ -288,8 +290,10 @@
   function load(append, note) {
     var params = new URLSearchParams();
     if (kindEl && kindEl.value) params.set('kind', kindEl.value);
+    var workView = !!(unvotedEl && unvotedEl.checked);
     if (stateEl && stateEl.value) params.set('state', stateEl.value);
-    if (unvotedEl && unvotedEl.checked) params.set('unvoted', '1');
+    else if (!workView) params.set('state', 'all');
+    if (workView) params.set('unvoted', '1');
     if (qEl && qEl.value.trim()) params.set('q', qEl.value.trim());
     if (append && cursor) params.set('cursor', cursor);
     params.set('limit', '20');

@@ -2457,3 +2457,7 @@ memory.
 
 - **2026-11-20 — merge gate confirmed.** CI gate `44658192352 success in 2m24s` for `81f5b12`.
   `merge_e2e` `7 passed in 13.06s`; live `concord-rs 0.0.0+57dab60+vendor`; ratchet 7.
+
+- **2026-11-20 — curation wired.** `curation_e2e` `5 passed in 13.58s` (was `5 failed`). Mounted the queue, derived `can_vote`, returned
+  202 for below-quorum consent, and defaulted the queue to open work. Ratchet 6.
+

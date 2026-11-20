@@ -214,6 +214,35 @@ pub async fn curation(State(pool): State<PgPool>, headers: HeaderMap) -> Respons
     if page.items.is_empty() {
         body.open("p", &[("class", "empty")]).text("The queue is empty.").close("p");
     }
+    // The readable queue above is a server-rendered public notice. The interactive queue below is
+    // the curator's surface: without its mount and script a reader can see the count but cannot
+    // filter, consent, or undo. The script fetches the same projection the count came from.
+    body.open("div", &[("id", "curation-root"), ("aria-busy", "true")])
+        .open("div", &[("class", "curation-filters")])
+        .open("label", &[]).text("Kind ").close("label")
+        .open("select", &[("id", "curation-kind")])
+        .open("option", &[("value", "")]).text("All kinds").close("option")
+        .open("option", &[("value", "taxonomy")]).text("Taxonomy").close("option")
+        .open("option", &[("value", "strategy")]).text("Strategy").close("option")
+        .open("option", &[("value", "act")]).text("Moderation acts").close("option")
+        .close("select")
+        .open("label", &[]).text("State ").close("label")
+        .open("select", &[("id", "curation-state")])
+        .open("option", &[("value", "")]).text("Open queue").close("option")
+        .open("option", &[("value", "pending")]).text("Waiting for review").close("option")
+        .open("option", &[("value", "ratified")]).text("Ratified").close("option")
+        .open("option", &[("value", "all")]).text("All states").close("option")
+        .close("select")
+        .close("div")
+        .open("label", &[]).text("Hide my own work and votes ").close("label")
+        .open("input", &[("type", "checkbox"), ("id", "curation-unvoted"), ("checked", "checked")]).close("input")
+.open("input", &[("type", "search"), ("id", "curation-q"), ("placeholder", "Search the queue")]).close("input")
+        .open("ul", &[("id", "curation-list"), ("class", "curation-list")]).close("ul")
+        .open("button", &[("id", "curation-more"), ("type", "button"), ("hidden", "hidden")])
+        .text("Show more").close("button")
+        .open("p", &[("id", "curation-status"), ("class", "muted"), ("aria-live", "polite")]).close("p")
+        .close("div");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/curation.js"))]).close("script");
     let bootstrap = serde_json::json!({
         "route": "/curation",
         "shown": page.items.len(),
