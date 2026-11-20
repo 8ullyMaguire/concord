@@ -1095,5 +1095,4 @@ only on API writes.
 ## 2026-11-20 — settings wired
 
 - `settings_e2e`: `19 passed in 31.54s`; wired; ratchet `3`. D-192/D-193.
-- Needs a release build, live deploy and settings-page probe.
-
+- Live `0b711c6`, probes PASS, gate `44709668306 success in 2m44s`; harness `14 passed in 6.90s`.

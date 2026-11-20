@@ -2501,3 +2501,8 @@ memory.
   Final fixes: the language assertion reads dict-like rows by key, and the settings page checks `readable_for` with the
   navigation cookie (D-192/D-193). Ratchet `4 -> 3`; wired.
 
+- **2026-11-20 — settings live.** `0b711c6` release `BUILD=0` in `2m 00s`, `DEPLOY=0`, live
+  `concord-rs 0.0.0+0b711c6+vendor`; `/projects/concord/settings` serves `settings-root assets/js/settings.js`;
+  `/api/v1/projects/concord/charter` `200`, `/api/v1/projects/concord/strategy/weight-proposals` `200` anonymous.
+  Harness `14 passed in 6.90s`; gate `44709668306 success in 2m44s`. Ratchet `3`.
+
