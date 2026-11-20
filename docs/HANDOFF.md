@@ -1096,3 +1096,9 @@ only on API writes.
 
 - `settings_e2e`: `19 passed in 31.54s`; wired; ratchet `3`. D-192/D-193.
 - Live `0b711c6`, probes PASS, gate `44709668306 success in 2m44s`; harness `14 passed in 6.90s`.
+
+## 2026-11-20 — criteria wired
+
+- `criteria_e2e`: `13 passed in 14.88s`; wired; ratchet `2`. D-194..D-198.
+- Needs release, live deploy and criteria-page probe.
+

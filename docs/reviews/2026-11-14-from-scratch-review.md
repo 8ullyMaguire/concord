@@ -2506,3 +2506,7 @@ memory.
   `/api/v1/projects/concord/charter` `200`, `/api/v1/projects/concord/strategy/weight-proposals` `200` anonymous.
   Harness `14 passed in 6.90s`; gate `44709668306 success in 2m44s`. Ratchet `3`.
 
+- **2026-11-20 — criteria wired.** `criteria_e2e` `13 passed in 14.88s` (baseline `13 failed in 215.88s`).
+  Mount D-194, numeric rank id D-195, paged priorities D-196, durable identity D-197, guest vote D-198.
+  Ratchet `3 -> 2`; wired.
+

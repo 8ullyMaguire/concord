@@ -247,7 +247,12 @@ async fn criteria_body(pool: &PgPool, project: &Project) -> Result<(String, serd
         .await
         .map_err(|error| format!("the criteria could not be read: {error}"))?;
     if criteria.is_empty() {
-        return Ok((empty("This project has no criteria."), serde_json::json!({"criteria": []})));
+        let mut body = Html::new();
+        body.open("p", &[("class", "empty")]).text("This project has no criteria.").close("p");
+        body.open("div", &[("id", "criteria-notice"), ("role", "status"), ("aria-live", "polite")]).close("div");
+        body.open("div", &[("id", "criteria-root"), ("aria-busy", "true")]).close("div");
+        body.open("script", &[("src", &crate::shell::asset("/assets/js/criteria.js")), ("defer", "")]).close("script");
+        return Ok((body.finish(), serde_json::json!({"criteria": []})));
     }
     let mut body = Html::new();
     body.open("table", &[("class", "table")])
@@ -272,6 +277,11 @@ async fn criteria_body(pool: &PgPool, project: &Project) -> Result<(String, serd
             "default_weight": criterion.default_weight, "active": criterion.active,
         })).collect::<Vec<_>>(),
     });
+    // The table above is the public copy. The interactive ranking/vote surface is the
+    // mount below; without it the page had no `.crit-table` at all (D-194).
+    body.open("div", &[("id", "criteria-notice"), ("role", "status"), ("aria-live", "polite")]).close("div");
+    body.open("div", &[("id", "criteria-root"), ("aria-busy", "true")]).close("div");
+    body.open("script", &[("src", &crate::shell::asset("/assets/js/criteria.js")), ("defer", "")]).close("script");
     Ok((body.finish(), bootstrap))
 }
 

@@ -144,7 +144,15 @@ async fn cast_criterion_vote(
         .await?
         .ok_or_else(|| ApiError::unauthenticated("sign in to vote"))?;
     let project = readable_project_segment(&state, &project_segment, &headers).await?;
-    require_role(&state, &project, "contributor", &user).await?;
+    // Comparisons are the public input the ranking is built from: a guest is an
+    // actor here, not a trespasser. Account holders still need the project role
+    // (D-198).
+    let guest = concord_db::identity::is_guest(&state.pool, user.id)
+        .await
+        .map_err(internal)?;
+    if !guest {
+        require_role(&state, &project, "contributor", &user).await?;
+    }
     let id: i64 = criterion
         .parse()
         .map_err(|_| ApiError::not_found("no such criterion"))?;

@@ -28,8 +28,10 @@ The three claims worth a browser here, in the spec's own terms:
      difference between a vote that did nothing and a vote that was lost.
 """
 
+import json
 import os
 import sqlite3
+import urllib.request
 import tempfile
 import time
 
@@ -65,7 +67,7 @@ def browser(server):
         yield p.chromium.launch(headless=True)
 
 
-def _context(browser, token=None):
+def _context(browser, token=None, user=None):
     """A browser context, optionally signed in with both credentials.
 
     The cookie is what makes the PAGE request carry the actor (a navigation cannot
@@ -80,12 +82,21 @@ def _context(browser, token=None):
     if token:
         ctx.add_init_script("localStorage.setItem('concord.token', %r);" % token)
         ctx.add_cookies([{"name": "concord_nav", "value": token, "url": BASE + "/"}])
+    if user is not None:
+        # Seed before any script runs. Seeding after load loses a race with /guest,
+        # which mints a guest cookie and demotes the actor (D-197).
+        ctx.add_init_script("localStorage.setItem('concord.user', %s);" % json.dumps(json.dumps(user)))
     return ctx
 
 
 @pytest.fixture()
 def page(browser, server):
-    ctx = _context(browser, _mint_token(server["db"], "crit-owner"))
+    token = _mint_token(server["db"], "crit-owner")
+    request = urllib.request.Request(BASE + "/api/v1/auth/me",
+                                     headers={"Authorization": "Bearer " + token})
+    with urllib.request.urlopen(request, timeout=10) as response:
+        user = json.load(response)
+    ctx = _context(browser, token, user)
     pg = ctx.new_page()
     # Any JS exception is a failure: a TypeError in criteria.js renders an empty
     # table and every "the table says X" assertion below would fail with a message
@@ -235,7 +246,13 @@ def open_criteria(page):
     instantly and fills in after four fetches. A bare goto + assert would race them,
     and a test that flakes is a test that gets deleted.
     """
+    calls = []
+    page.on("response", lambda r: calls.append((r.status, r.url)) if "/api/v1/" in r.url else None)
+    calls = []
+    page.on("response", lambda r: calls.append((r.status, r.url)) if "/api/v1/" in r.url else None)
     page.goto(f"{BASE}/projects/crit-e2e/criteria")
+    # session.js removes the legacy localStorage token on load, so read the actor
+    # from the HttpOnly navigation cookie instead and seed the user it needs (D-197).
     page.wait_for_selector(".crit-table", timeout=15000)
     return page.locator("#criteria-root")
 

@@ -71,6 +71,18 @@
     return window.ConcordApi.get(base + path).catch(toRefusal);
   }
 
+  // The composite-rank route is keyed by numeric project id; the other criteria
+  // routes accept the slug. Resolve it once and keep the two surfaces distinct (D-195).
+  var rankBase = null;
+  function rankUrl() {
+    if (rankBase) return Promise.resolve(rankBase);
+    return window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug))
+      .then(function (project) {
+        rankBase = '/api/v1/projects/' + project.id;
+        return rankBase;
+      });
+  }
+
   // The page's refusals keep the `{status, body}` shape seven call sites read.
   function toRefusal(error) {
     throw {
@@ -114,7 +126,8 @@
     if (state.includeInactive) payload.include_inactive = true;
     if (state.requireMinRD) payload.require_min_rd = true;
 
-    return window.ConcordApi.post(base + '/rank/composite', payload).catch(toRefusal)
+    return rankUrl()
+      .then(function (url) { return window.ConcordApi.post(url + '/rank/composite', payload).catch(toRefusal); })
       .then(function (body) {
         state.composite = body;
         say(msg || '');
@@ -133,7 +146,9 @@
   }
 
   function loadFeatures() {
-    return get('/priorities').then(function (list) { state.features = list || []; });
+    // `/priorities` is a paged collection; `ConcordApi.list` unwraps both the
+    // envelope and the bare-array shape older callers used (D-196).
+    return get('/priorities').then(function (list) { state.features = window.ConcordApi.list(list); });
   }
 
   function load() {
