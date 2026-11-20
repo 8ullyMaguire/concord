@@ -668,8 +668,8 @@ def test_a_language_correction_starts_from_the_current_numbers_and_is_stored(pag
     con = sqlite3.connect(server["db"])
     try:
         pid = con.execute("SELECT id FROM projects WHERE slug=?", (SLUG,)).fetchone()[0]
-        rows = dict(con.execute(
-            "SELECT language, pct FROM project_languages WHERE project_id=?", (pid,)).fetchall())
+        rows = {r["language"]: r["pct"] for r in con.execute(
+            "SELECT language, pct FROM project_languages WHERE project_id=?", (pid,)).fetchall()}
     finally:
         con.close()
     assert rows == {"Rust": 90.0, "Go": 10.0}, rows

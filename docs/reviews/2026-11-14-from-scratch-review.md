@@ -2497,3 +2497,7 @@ memory.
   `settings-root assets/js/settings.js`; `concord-rs.service active`, `concord.service inactive`.
   Gate `44704848657 success in 2m31s`. Settings is still unwired at `17 passed, 2 failed`.
 
+- **2026-11-20 — settings wired.** `settings_e2e` `19 passed in 31.54s` (was `11 failed, 8 passed`; partial `17 passed, 2 failed`).
+  Final fixes: the language assertion reads dict-like rows by key, and the settings page checks `readable_for` with the
+  navigation cookie (D-192/D-193). Ratchet `4 -> 3`; wired.
+

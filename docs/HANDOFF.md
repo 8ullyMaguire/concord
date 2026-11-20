@@ -1091,3 +1091,9 @@ only on API writes.
 - Live `39c906b`, gate `44704848657 success in 2m31s`; settings still unwired.
 - Remaining: language DB rows `{'language': 'pct'}` (fixture/shim read), and the protected-project member page
   timeout at `#settings-root`. Next action: instrument `set_project_languages` and the protected navigation cookie.
+
+## 2026-11-20 — settings wired
+
+- `settings_e2e`: `19 passed in 31.54s`; wired; ratchet `3`. D-192/D-193.
+- Needs a release build, live deploy and settings-page probe.
+

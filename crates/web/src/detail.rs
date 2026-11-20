@@ -515,7 +515,21 @@ pub async fn settings(
     Path(slug): Path<String>,
     headers: HeaderMap,
 ) -> Response {
-    let Some(project) = project_of(&pool, &slug).await else { return crate::not_found(&headers) };
+    // The settings shell is a project subpage, so it must answer the same visibility
+    // question the project page and the API answer. `project_of` is public-only:
+    // using it here hid a protected project from a member with a valid nav cookie (D-192).
+    let Some(project) = concord_db::projects::project_by_slug(&pool, &slug)
+        .await
+        .ok()
+        .flatten()
+    else {
+        return crate::not_found(&headers);
+    };
+    let reader = crate::nav_user(&pool, &headers).await;
+    match concord_db::projects::readable_for(&pool, &project, reader.map(|user| user.id)).await {
+        Ok(true) => {}
+        _ => return crate::not_found(&headers),
+    }
     // The reference renders this page IN THE BROWSER too: `settings.js` reads the project's charter from `/api/v1/projects/{slug}/charter`
     // and prints the quorum, the vote window and the WIP limits. The port printed them itself, which read correctly and failed the probe's
     // own question — the numbers a reader acts on have to come from the one read the API serves, or a page and its API can disagree about
