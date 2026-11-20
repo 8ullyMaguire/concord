@@ -627,6 +627,8 @@ Unclaimed rows are fair game.
 
 - **D-213 — structural probes are part of the repair.** The list cap must not put a `null` child into `replaceChildren`, and the loading watchdog must read `textContent` when a fake DOM has no `innerText`; both are asserted by the DOM probes.
 
+- **D-214 — the home project count uses the search total.** The projects endpoint is paged at 50, so counting it printed 50 on a 73-project instance; the search response carries the true total.
+
 ## Blocked
 
 Items nobody working in this repo can finish alone. Each names what would unblock it and on whom, so the next session can

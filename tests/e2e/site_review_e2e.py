@@ -95,12 +95,13 @@ def test_scout_has_one_form(page):
     assert page.locator("textarea").count() == 1
 
 
-def test_home_project_count_is_not_zero(page):
+def test_home_project_count_is_the_true_total(page):
     page.goto(BASE + "/")
     page.wait_for_function(
         "() => /^[1-9]/.test(document.getElementById('stat-projects').innerText)",
         timeout=10000)
-    assert int(page.locator("#stat-projects").inner_text()) > 0
+    total = harness.api(BASE, "GET", "/api/v1/search?sort=updated")["total"]
+    assert int(page.locator("#stat-projects").inner_text()) == total
 
 
 def test_consensus_calls_accept_the_list_envelope(page, server):

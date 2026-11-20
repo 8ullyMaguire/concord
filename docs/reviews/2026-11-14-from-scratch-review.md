@@ -2535,3 +2535,5 @@ memory.
   Raw page 404 now uses the shell (D-207); `/lists` is a real page (D-208); one Scout form (D-209);
   tab strip wraps at 390px (D-210); home/consensus use the shared list shape (D-211); no permanent loading (D-212).
 
+- **2026-11-20 — live walk correction.** The first deploy printed `50` (paged length) for home Projects; patched to use `/api/v1/search` `total` (D-214). `site_review_e2e: 10 passed in 15.40s` after rebuild.
+

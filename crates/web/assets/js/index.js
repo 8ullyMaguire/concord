@@ -11,15 +11,21 @@
   }
 
   document.addEventListener('DOMContentLoaded', function () {
-    // One client (review item 9b): the two reads the homepage's stats row needs, with the fallback each already had.
-    var projects = window.ConcordApi.get('/api/v1/projects')
-      .then(window.ConcordApi.list).catch(function () { return []; });
-    var search = window.ConcordApi.get('/api/v1/search?sort=updated').catch(function () { return { facets: {} }; });
+    // One client (review item 9b): the search response carries the TRUE total. The
+    // projects endpoint is paged, so counting its 50 items printed 50 on a 73-project
+    // instance (D-214). Reuse the same response for the facets and the count.
+    var search = window.ConcordApi.get('/api/v1/search?sort=updated')
+      .catch(function () { return { facets: {}, total: 0 }; });
+    var projects = search.then(function (data) {
+      return typeof data.total === 'number'
+        ? data.total
+        : window.ConcordApi.list(data).length;
+    }).catch(function () { return 0; });
 
-    projects.then(function (list) {
-      setText('stat-projects', Array.isArray(list) ? list.length : 0);
+    projects.then(function (total) {
+      setText('stat-projects', total);
       statsSettled();
-    }).catch(function () { setText('stat-projects', 0); statsSettled(); });
+    });
 
     // aria-busy is cleared only once BOTH fetches have settled, not on the
     // first one to land. The stats row is one region; clearing it when only the
