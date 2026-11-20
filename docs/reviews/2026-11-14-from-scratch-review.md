@@ -2448,3 +2448,7 @@ memory.
   `https://concord.polarisocial.xyz/api/v1/version` returned `concord-rs 0.0.0+b40b26a+vendor`.
   Live `/taxonomy` contains `taxonomy-root`, `taxonomy-live`, `assets/js/taxonomy.js`.
   Harness self-test `14 passed in 3.28s`; CI gate `44654786305 success in 2m49s`.
+
+- **2026-11-20 — merge wired.** `merge_e2e` `7 passed in 13.06s` (was `5 failed / 2 passed`). API envelope unwrapped and the
+  signed-in fixture completed. Ratchet 7.
+

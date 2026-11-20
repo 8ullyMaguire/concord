@@ -83,6 +83,15 @@ def _context(browser, token=None):
 
 def _signed_in(browser, db, username):
     ctx = _context(browser, _mint_token(db, username))
+    # session.js decides "signed in" from the durable user record, not the cookie or token.
+    # Without it the row renders the sign-in sentence instead of the write controls.
+    con = sqlite3.connect(db)
+    user = con.execute(
+        "SELECT id, username, display_name FROM users WHERE username = ?", (username,)).fetchone()
+    con.close()
+    ctx.add_init_script("localStorage.setItem('concord.user', JSON.stringify(%s));" %
+                        __import__('json').dumps({
+                            "id": user[0], "username": user[1], "display_name": user[2]}))
     pg = ctx.new_page()
     errors = []
     pg.on("pageerror", lambda e: errors.append(str(e)))

@@ -1034,3 +1034,9 @@ only on API writes.
 
 - Live `concord-rs 0.0.0+b40b26a+vendor`; `/taxonomy` mounts the panel and its script.
 - Gate `44654786305 success in 2m49s`; harness `14 passed in 3.28s`. Ratchet 8.
+
+## 2026-11-20 — merge wired
+
+- `merge_e2e`: `7 passed in 13.06s`; wired; ratchet `7`. D-174/D-175.
+- Needs a release build, live deploy and merge-page probe.
+

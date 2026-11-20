@@ -152,10 +152,15 @@
 
   function load() {
     return Promise.all([
-      get(base + '/merge'),
-      get(base + '/features').catch(function () { return []; })
+      get(base + '/merge').then(function (data) { return window.ConcordApi.list(data); }),
+      get(base + '/features').then(function (data) { return window.ConcordApi.list(data); })
+        .catch(function () { return []; })
     ]).then(function (out) {
-      var mrs = out[0] || [];
+      // The API serves each row as { request, gate } so the server's own gate travels with it.
+      // The table wants one flat row: spreading the request keeps id/title/status/feature_id.
+      var mrs = (out[0] || []).map(function (row) {
+        return Object.assign({}, row.request || {}, { gate: row.gate });
+      });
       var feats = out[1] || [];
       render(Array.isArray(mrs) ? mrs : [], Array.isArray(feats) ? feats : []);
     }).catch(function (err) {
