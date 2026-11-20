@@ -2510,3 +2510,9 @@ memory.
   Mount D-194, numeric rank id D-195, paged priorities D-196, durable identity D-197, guest vote D-198.
   Ratchet `3 -> 2`; wired.
 
+- **2026-11-20 — criteria live.** `dfddc1b` release `BUILD=0` in `1m 49s`, `DEPLOY=0`, live
+  `concord-rs 0.0.0+dfddc1b+vendor`; `/projects/concord/criteria` serves `criteria-root criteria-notice assets/js/criteria.js`;
+  `/api/v1/projects/concord/criteria` `200`, `/api/v1/projects/concord/priorities` `200`. Harness `14 passed in 13.51s`.
+  Gate `44728682250` caught a stale DOM shim; repaired with D-199 in `2496f38`; gate `44730218670 success in 1m59s`.
+  Ratchet `2`.
+
