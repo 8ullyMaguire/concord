@@ -264,8 +264,18 @@ async fn resolve_consensus_objection(
     Json(body): Json<ResolveObjectionRequest>,
 ) -> Result<Json<Value>, ApiError> {
     let project = project_for(&state, &slug).await?;
-    require_maintainer(&state.pool, project.id, user.id).await?;
     let objection_id = parse_id(&objection, "objection id")?;
+    // §6.6 leaves withdrawal with the objector. The four verdicts remain a maintainer's act;
+    // reading the author here keeps that door closed while letting a blocker drop their own
+    // objection without asking the person they blocked to do it for them.
+    let author: Option<i64> = sqlx::query_scalar("select user_id from objections where id = $1")
+        .bind(objection_id)
+        .fetch_optional(&state.pool)
+        .await
+        .map_err(internal)?;
+    if !(body.status == "withdrawn" && author == Some(user.id)) {
+        require_maintainer(&state.pool, project.id, user.id).await?;
+    }
     concord_db::consensus_writes::resolve_objection(
         &state.pool,
         objection_id,

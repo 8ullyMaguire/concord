@@ -246,7 +246,9 @@ pub async fn coverage_claims(pool: &PgPool, solution_id: i64) -> Result<Vec<Cove
         out.push(CoverageClaim {
             complaint_id: row.try_get(0)?,
             claim: row.try_get(1)?,
-            contested: row.try_get::<bool, _>(2)?,
+            // The column is a bigint count of contest votes, not a boolean. Decoding it as
+            // bool made every feature page answer 500 as soon as one solution had a claim.
+            contested: row.try_get::<i64, _>(2)? != 0,
             contest_reason: row.try_get(3)?,
         });
     }

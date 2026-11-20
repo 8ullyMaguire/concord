@@ -107,6 +107,11 @@ async fn propose_weight(
 ) -> Result<(StatusCode, Json<serde_json::Value>), ApiError> {
     let project_id = project_by_id(&state, &project).await?.id;
     let who = strategy_project(&state, project_id, &user).await?;
+    if !matches!(who.role.as_str(), "contributor" | "reviewer" | "maintainer" | "owner") {
+        return Err(ApiError::forbidden(
+            "proposing a strategic weight needs a contributor role in this project",
+        ));
+    }
     let feature_id = body
         .get("feature_id")
         .and_then(serde_json::Value::as_i64)

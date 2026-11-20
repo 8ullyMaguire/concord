@@ -349,7 +349,7 @@ async fn require_maintainer(
         .unwrap_or_default();
     if !matches!(role.as_str(), "owner" | "maintainer") {
         return Err(ApiError::forbidden(
-            "calling and closing consensus is a maintainer's act",
+            "permission denied: calling and closing consensus is a maintainer's act (owner or maintainer in this project)",
         ));
     }
     Ok(())

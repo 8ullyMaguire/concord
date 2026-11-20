@@ -288,9 +288,15 @@ pub async fn resolve_objection(
             "resolving an objection requires a written answer".into(),
         ));
     }
-    if !matches!(status, "upheld" | "withdrawn" | "answered") {
+    // The resolution panel offers resolved/overridden/vetoed/withdrawn (reader-coverage spec §6.6).
+    // `upheld`/`answered` are kept for older callers: refusing a status the UI never offered was why
+    // the maintainer's control answered 400 for its own first option.
+    if !matches!(
+        status,
+        "resolved" | "overridden" | "vetoed" | "withdrawn" | "upheld" | "answered"
+    ) {
         return Err(WriteError::Invalid(
-            "status must be upheld, withdrawn or answered".into(),
+            "status must be resolved, overridden, vetoed or withdrawn".into(),
         ));
     }
     let affected = sqlx::query(

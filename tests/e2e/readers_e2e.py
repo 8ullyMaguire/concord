@@ -394,7 +394,7 @@ def test_the_objector_cannot_resolve_their_own_objection(browser, server):
         con.execute(
             "INSERT INTO objections (call_id, user_id, principle, violation, remedy, status,"
             " created_at) VALUES (1, ?, ?, 'it touches another project', 'split it',"
-            " 'open', ?)", (uid, principle, time.time()))
+            " 'open', ?)", (uid, principle, time.time() - 100000))
     con.commit()
     new_id = con.execute(
         "SELECT id FROM objections WHERE user_id = ? ORDER BY id DESC LIMIT 1",
@@ -422,7 +422,7 @@ def test_the_objector_cannot_resolve_their_own_objection(browser, server):
                     + 'objections/' + id + '/resolve', {
                     method: 'PUT',
                     headers: {'Content-Type': 'application/json',
-                              Authorization: 'Bearer ' + localStorage.getItem('concord.token')},
+                              }, // the HttpOnly navigation cookie is the signed-in credential
                     body: JSON.stringify({status: 'resolved', resolution: 'I decide my own block'})
                 });
                 return {status: r.status, body: await r.text()};
@@ -524,13 +524,14 @@ def test_a_member_contests_a_coverage_claim_on_the_feature_page(browser, server)
         pg.locator("[data-contest]").first.click()
         pg.locator("[data-contest-reason]").first.fill("it only fixes the first page")
         pg.locator("[data-contest-send]").first.click()
+        expect(pg.locator("[data-coverage-claims]")).to_contain_text(
+            "contested", timeout=15000)
         pg.wait_for_load_state("load")
 
         contested = _one(db, "SELECT contested FROM solution_coverage WHERE solution_id = 1")
         reason = _one(db, "SELECT contest_reason FROM solution_coverage WHERE solution_id = 1")
         assert contested == 1, "the contest was not recorded"
         assert reason == "it only fixes the first page", f"stored reason: {reason!r}"
-        expect(pg.locator("[data-coverage-claims]")).to_contain_text("contested")
         assert not pg.errors, pg.errors
     finally:
         ctx.close()

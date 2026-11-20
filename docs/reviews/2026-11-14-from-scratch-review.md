@@ -2474,3 +2474,7 @@ memory.
   Live `/projects/concord/lists/1` serves `list-root` and `assets/js/list.js`; `/lists/9999` serves
   `list-root` with "There is no list at this address". Harness self-test `14 passed in 16.35s`;
   CI gate `44674173404 success in 2m47s`.
+
+- **2026-11-20 — readers wired.** `readers_e2e` `10 passed in 19.63s` (was `9 failed / 1 passed`). Fixed the join control,
+  objection verdict statuses, objector withdrawal, coverage decoding, paged features read, and the contributor gate. Ratchet 4.
+

@@ -262,8 +262,9 @@
     var proposals = s.proposals || [];
     var themes = s.themes || [];
     var themeProposals = s.themeProposals || [];
-    var features = (s.features && s.features.features) || s.features || [];
-    if (!Array.isArray(features)) features = [];
+    // The features read is paged now: {items, next} rather than a bare array. The shared
+    // normalizer handles both, so a proposal form does not silently lose every feature.
+    var features = window.ConcordApi.list(s.features);
 
     var propose = el("form", { id: "propose-weight-form", class: "card" }, [
       el("h3", { class: "form-title" }, "Propose a weight change"),

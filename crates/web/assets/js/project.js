@@ -103,14 +103,11 @@
     // server granted is what every panel's visibility depends on, and a page
     // that kept its old render would show a member the controls of a guest.
     var joinBtn = document.getElementById('project-join');
-    if (joinBtn && window.ConcordSession && window.ConcordSession.instance()) {
-      var joinHeaders = window.ConcordSession.instance().authHeaders();
-      var hasToken = false;
-      for (var hk in joinHeaders) {
-        if (Object.prototype.hasOwnProperty.call(joinHeaders, hk) &&
-            hk.toLowerCase() === 'authorization') hasToken = true;
-      }
-      if (hasToken) {
+    var session = window.ConcordSession && window.ConcordSession.instance();
+    if (joinBtn && session && session.signedIn()) {
+      // A signed-in browser authenticates with an HttpOnly cookie, so authHeaders() is
+      // legitimately empty. Testing for a bearer here hid the button from every reader
+      // who had actually signed in; the session's own signedIn() is the question.
         joinBtn.hidden = false;
         joinBtn.addEventListener('click', function () {
           joinBtn.disabled = true;
@@ -128,8 +125,7 @@
               note.textContent = 'Could not join: ' + (err.message || String(err));
               joinBtn.parentNode.appendChild(note);
             });
-        });
-      }
+      });
     }
 
     var complaintForm = document.getElementById('complaint-form');

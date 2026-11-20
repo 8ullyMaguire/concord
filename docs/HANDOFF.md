@@ -1069,3 +1069,9 @@ only on API writes.
 
 - Live `concord-rs 0.0.0+16e16e3+vendor`; both list page and unknown-list page probed.
 - Gate `44674173404 success in 2m47s`; harness `14 passed in 16.35s`. Ratchet 5.
+
+## 2026-11-20 — readers wired
+
+- `readers_e2e`: `10 passed in 19.63s`; wired; ratchet `4`. D-184..D-189.
+- Needs a release build, live deploy and reader-page probes.
+
