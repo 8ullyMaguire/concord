@@ -431,7 +431,7 @@ else
              python3 scripts/parity/probe_pages.py >"$SCRATCH/probe-pages.log" 2>&1; then
           tail -1 "$SCRATCH/probe-pages.log" | sed 's/^/pages: /'
         else
-          tail -14 "$SCRATCH/probe-pages.log"
+          cat "$SCRATCH/probe-pages.log"
           bad "probe_pages (a document is missing its mount or its title)"
         fi
       else
