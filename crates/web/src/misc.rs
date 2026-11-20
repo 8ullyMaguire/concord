@@ -459,6 +459,9 @@ pub async fn finder(State(pool): State<PgPool>, headers: HeaderMap) -> Response 
     // The explanatory copy above is the public page. The wizard is the mount below:
     // without `finder-root` and its script the page can describe the flow but never
     // run it (D-200).
+    body.open("p", &[("class", "muted")])
+        .text("Answering the questions needs a session; the interactive flow arrives with the frontend bundle.")
+        .close("p");
     // The wizard's shell is static markup; finder.js fills the slots. The IDs are
     // the same set the DOM probe asserts, so a missing hook is a gate failure (D-200).
     body.raw(r##"<div id="finder-root" aria-busy="true">

@@ -1661,6 +1661,8 @@ tell the difference between "not started" and "waiting".
 - **D-200 — the finder page supplies the wizard's static shell.** The page described the flow but mounted only an empty `finder-root`; `finder.js` needs the full set of IDs the DOM probe asserts. The shell now ships those IDs and the script tag.
 - **D-201 — `finder-stop` is a button, and skip is a real control.** A wrapper `<div>` let a Playwright click land on an empty child with no handler; the stop control is now a `<button>` and the skip mode has its own button.
 
+- **D-202 - keep the finder page's session sentence.** The static shell replaced the copy the page probe asserts; the sentence and the interactive mount must coexist.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet
