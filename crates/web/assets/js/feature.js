@@ -625,4 +625,13 @@
     root.replaceChildren(errorBox(err && err.message ? err.message : String(err)));
     done();
   });
+
+  // A failed mount used to leave "Loading the feature..." as the page's final
+  // sentence. Never let the placeholder outlive the request (D-210).
+  setTimeout(function () {
+    if (root.innerText.indexOf("Loading the feature") !== -1) {
+      root.replaceChildren(errorBox("This feature could not be loaded. Try reloading the page."));
+      done();
+    }
+  }, 8000);
 })();

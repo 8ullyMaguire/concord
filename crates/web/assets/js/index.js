@@ -12,7 +12,8 @@
 
   document.addEventListener('DOMContentLoaded', function () {
     // One client (review item 9b): the two reads the homepage's stats row needs, with the fallback each already had.
-    var projects = window.ConcordApi.get('/api/v1/projects').catch(function () { return []; });
+    var projects = window.ConcordApi.get('/api/v1/projects')
+      .then(window.ConcordApi.list).catch(function () { return []; });
     var search = window.ConcordApi.get('/api/v1/search?sort=updated').catch(function () { return { facets: {} }; });
 
     projects.then(function (list) {

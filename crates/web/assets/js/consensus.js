@@ -804,12 +804,9 @@
   function loadIndex() {
     root.setAttribute('aria-busy', 'true');
     window.ConcordApi.get('/api/v1/projects/' + encodeURIComponent(slug) + '/consensus')
-      .then(function (data) {
-        // The list endpoints answer a BARE ARRAY. An object here means the route
-        // changed shape, and rendering nothing would look like an empty project.
-        if (!Array.isArray(data)) throw new Error('the calls index returned no list');
-        return data;
-      })
+      // The shared normaliser accepts both the bare array and the paged envelope.
+      // The old bare-array guard turned a valid page into "could not load" (D-209).
+      .then(window.ConcordApi.list)
       .then(function (rows) { done(); renderIndex(rows); })
       .catch(function (err) {
         done();

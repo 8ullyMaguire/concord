@@ -2466,3 +2466,8 @@ a.curation-target:hover { text-decoration: underline; }
 .detail-tabs { scrollbar-width: none; }
 .detail-tabs::-webkit-scrollbar { display: none; }
 .detail-header h1.page-title { display: flex; flex-wrap: wrap; align-items: center; gap: .4rem; }
+
+/* The compact project tab strip must wrap on a phone. Without a gap the links
+   ran together into one unreadable word and pushed the page 241px sideways (D-208). */
+.project-tabs { display: flex; flex-wrap: wrap; gap: .35rem .75rem; }
+.project-tabs a { white-space: nowrap; }

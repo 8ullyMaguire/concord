@@ -1111,3 +1111,9 @@ only on API writes.
 
 - `scout_e2e`: `26 passed in 28.84s`; wired; ratchet `0`. D-203..D-205.
 - Live `4c46314`, probes PASS, gate `44752488674 success in 2m40s`. **Step 9 complete: 29 of 29 wired, ratchet 0.**
+
+## 2026-11-20 — site-review repairs
+
+- `site_review_e2e: 10 passed in 4.76s`; wired; 30 of 30 suites. D-207..D-212.
+- Needs release, live deploy and public-host browser walk.
+

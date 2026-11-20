@@ -2531,3 +2531,7 @@ memory.
   Code `4c46314`, probe fix `4cc98e1`, live `concord-rs 0.0.0+4c46314+vendor` with scout hooks, services correct.
   Gate `44751619715` failed on a stale DOM shim, repaired in `4cc98e1`; gate `44752488674 success in 2m40s`.
 
+- **2026-11-20 — site-review repairs.** `site_review_e2e: 10 passed in 4.76s` against candidate `target/debug/concord-cli`.
+  Raw page 404 now uses the shell (D-207); `/lists` is a real page (D-208); one Scout form (D-209);
+  tab strip wraps at 390px (D-210); home/consensus use the shared list shape (D-211); no permanent loading (D-212).
+

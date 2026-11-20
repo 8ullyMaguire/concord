@@ -134,6 +134,21 @@ pub async fn search(
 }
 
 /// `/stats` — what the instance has been doing, and over what span.
+/// `/lists` — lists live inside projects. A link to this route from the home page used to
+/// answer raw JSON because the API fallback caught it; the page now says where lists live.
+pub async fn lists(headers: HeaderMap) -> Response {
+    let mut body = Html::new();
+    body.open("h1", &[]).text("Lists").close("h1")
+        .open("p", &[]).text("Lists belong to projects. Open a project and use its Lists tab to browse or rank one.").close("p")
+        .open("a", &[("href", "/projects")]).text("Browse projects").close("a");
+    render(&headers, Page {
+        title: "Lists",
+        path: "/lists",
+        description: "Lists belong to projects.",
+        bootstrap: serde_json::json!({"route": "/lists"}),
+    }, body.finish())
+}
+
 pub async fn stats(State(pool): State<PgPool>, headers: HeaderMap) -> Response {
     let rising = match concord_db::ops_reads::rising(&pool).await {
         Ok(rows) => rows,
@@ -284,13 +299,6 @@ pub async fn scout(State(pool): State<PgPool>, headers: HeaderMap) -> Response {
         .text("Describe what you want to build. Scout checks it against what the catalogue already does, and tells you \
                whether to adopt, extend, inspire from, or avoid.")
         .close("p")
-        .open("form", &[("method", "get"), ("action", "/api/v1/scout"), ("class", "scout-form")])
-        .open("label", &[("for", "idea")]).text("Your idea").close("label")
-        .open("textarea", &[("id", "idea"), ("name", "idea"), ("rows", "4"),
-                            ("placeholder", "a tool that checks whether a library is still maintained")])
-        .close("textarea")
-        .open("button", &[("type", "submit")]).text("Scout it").close("button")
-        .close("form")
         .open("p", &[("class", "muted"), ("data-capabilities", &catalogue.len().to_string())])
         .text(&format!(
             "Scout compares against {} capability(ies) the catalogue has registered.",

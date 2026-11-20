@@ -196,10 +196,13 @@
             (entries.length === 1 ? " entry" : " entries") +
             " · ranked by pairwise comparison")
         ])),
-      entriesMarkup(entries, counts || {}),
-      comparePanel(entries)
+      entriesMarkup(entries.slice(0, 100), counts || {}),
+      entries.length > 100
+        ? el("p", { class: "card-meta" }, "Showing the first 100 of " + entries.length + " entries.")
+        : null,
+      comparePanel(entries.slice(0, 100))
     ]));
-    wire(entries);
+    wire(entries.slice(0, 100));
   }
 
   function wire(entries) {

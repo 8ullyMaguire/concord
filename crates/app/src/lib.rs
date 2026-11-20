@@ -8,10 +8,10 @@
 //! A path under `/api` that is not a route answers the envelope with a 404, never a shell: the
 //! service has no shell yet, and the rule outlives the frontend.
 
-use axum::response::IntoResponse;
+use axum::response::{IntoResponse, Response};
 use axum::{
     extract::{Extension, Path, Query, State},
-    http::{HeaderMap, StatusCode},
+    http::{HeaderMap, StatusCode, Uri},
     routing::{get, post, put},
     Json, Router,
 };
@@ -226,10 +226,16 @@ pub fn router(state: AppState) -> Router {
         .with_state(state)
 }
 
-/// Any other path: the envelope, with a 404. `/api/**` is never a shell and neither is anything else
-/// here yet — an SPA fallback belongs with the frontend slice, not with the API.
-async fn not_found() -> ApiError {
-    ApiError::not_found("no such route")
+/// Any other path: `/api/**` keeps the JSON envelope, while a page URL gets the normal
+/// HTML shell with a 404. A browser that follows a stale link deserves the site's chrome
+/// and a way back; an API client keeps the machine-readable code (D-207).
+async fn not_found(uri: Uri, headers: HeaderMap) -> Response {
+    if uri.path().starts_with("/api/") {
+        return ApiError::not_found("no such route").into_response();
+    }
+    let mut response = concord_web::not_found(&headers);
+    *response.status_mut() = StatusCode::NOT_FOUND;
+    response
 }
 
 /// One place where a database failure becomes a refusal. The cause is logged and not answered: an

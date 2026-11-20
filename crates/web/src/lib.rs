@@ -648,7 +648,7 @@ pub(crate) async fn nav_user(pool: &sqlx::PgPool, headers: &HeaderMap) -> Option
     concord_db::auth::user_for_token(pool, &token).await.ok().flatten()
 }
 
-pub(crate) fn not_found(headers: &HeaderMap) -> Response {
+pub fn not_found(headers: &HeaderMap) -> Response {
     let mut body = Html::new();
     body.open("h1", &[]).text("Not found").close("h1")
         .open("p", &[]).text("There is no project at this address.").close("p")
@@ -722,5 +722,6 @@ where
         .route("/assets/{*path}", get(assets::serve))
         .route("/stats", get(top::stats))
         .route("/taxonomy", get(top::taxonomy))
+        .route("/lists", get(top::lists))
         .route("/scout", get(top::scout))
 }

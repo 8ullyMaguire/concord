@@ -329,6 +329,13 @@
       var s = box.getAttribute('data-slug') || slugFromPath();
       var id = box.getAttribute('data-milestone');
       if (s && id) renderMilestone(box, s, id);
+      // A missing milestone must say so; the loading sentence is not an answer (D-211).
+      setTimeout(function () {
+        if (box.innerText.indexOf('Loading milestone') !== -1) {
+          box.replaceChildren(errorState('No such milestone', 'This milestone could not be loaded.'));
+          box.setAttribute('aria-busy', 'false');
+        }
+      }, 8000);
     }
   });
 })();
