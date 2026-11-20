@@ -1045,3 +1045,7 @@ only on API writes.
 - Gate `44657400518` failed on the merge DOM probe; D-176 shim fix.
 - Live remains `concord-rs 0.0.0+57dab60+vendor`.
 
+## 2026-11-20 — merge gate confirmed
+
+- Gate `44658192352 success in 2m24s`; harness self-test `14 passed in 10.43s`; ratchet 7.
+- Live probe: `/projects/concord/merge` serves `merge-root`, `merge-notice`, `assets/js/merge.js`.
