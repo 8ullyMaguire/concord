@@ -462,7 +462,7 @@
 
   function tagsPanel(t) {
     if (failed(t)) return panel("Tags", failedNote(t, "tags"));
-    var tags = (t && t.tags) || [];
+    var tags = window.ConcordApi.list(t && t.tags !== undefined ? t.tags : t);
     var list = tags.length
       ? el("ul", { class: "tag-list", "data-project-tags": "" }, tags.map(function (name) {
           return el("li", { class: "tag" }, name);
@@ -494,7 +494,7 @@
   // is a correction of a number somebody can see.
   function languagesPanel(l) {
     if (failed(l)) return panel("Languages", failedNote(l, "languages"));
-    var langs = (l && l.languages) || [];
+    var langs = window.ConcordApi.list(l && l.languages !== undefined ? l.languages : l);
     var body = langs.length
       ? el("div", { "data-project-languages": "" }, langs.map(function (x, i) {
           return el("div", { class: "field lang-row" }, [
@@ -564,7 +564,7 @@
         ])
       ]);
     }
-    var invites = inv || [];
+    var invites = window.ConcordApi.list(inv);
     var table = invites.length
       ? el("table", { class: "table", "data-invites": "" }, [
           el("thead", {}, el("tr", {}, [
@@ -670,8 +670,10 @@
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/criteria-profiles"),
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/tags/completeness"),
       Promise.all([
-        mine("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/weight-proposals"),
-        mine("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/themes"),
+        // §6.2 puts a proposed change on the public record: a reader who has not signed in
+        // must still see the proposal and the rule it obeys. Only the consent WRITE is gated.
+        getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/weight-proposals"),
+        getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/themes"),
         // The propose form needs the features to choose from. A number input asking
         // for a feature id would be a control that requires the reader to know
         // something the page is holding.
@@ -679,14 +681,16 @@
         // §6.2's themes: the proposals beside the live weights, so a reader can see a
         // pending change to a tag and consent to it. The live list alone shows only what
         // already won.
-        mine("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/theme-proposals")
+        getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/strategy/theme-proposals")
       ]).then(function (s) {
         return { proposals: s[0], themes: s[1], features: s[2], themeProposals: s[3] };
       }),
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug)),
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/tags"),
       getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/languages"),
-      mine("/api/v1/projects/" + encodeURIComponent(slug) + "/invites")
+      // The refusal itself is the content a visitor needs: skipping the read because
+      // "they are not signed in" renders an empty table that tells the opposite story.
+      getOrNull("/api/v1/projects/" + encodeURIComponent(slug) + "/invites")
     ]).then(function (res) {
       render(res[0], res[1], res[2], res[3], res[4], res[5], res[6], res[7], res[8]);
       wireSave();

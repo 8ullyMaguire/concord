@@ -161,12 +161,12 @@ pub(crate) const ROUTES: &[(&str, &str, Policy, bool)] = &[
     ("GET", "/api/v1/projects/{project_id}/requests", Policy::Optional, false),
     ("POST", "/api/v1/projects/{project_id}/requests", Policy::Optional, false),
     ("GET", "/api/v1/projects/{project_id}/solutions", Policy::Optional, false),
-    ("GET", "/api/v1/projects/{project_id}/strategy/theme-proposals", Policy::Session, true),
-    ("GET", "/api/v1/projects/{project_id}/strategy/themes", Policy::Session, true),
+    ("GET", "/api/v1/projects/{project_id}/strategy/theme-proposals", Policy::Optional, false),
+    ("GET", "/api/v1/projects/{project_id}/strategy/themes", Policy::Optional, false),
     ("POST", "/api/v1/projects/{project_id}/strategy/themes", Policy::Session, true),
     ("POST", "/api/v1/projects/{project_id}/strategy/themes/{id}/consent", Policy::Session, true),
     ("POST", "/api/v1/projects/{project_id}/strategy/themes/{id}/withdraw", Policy::Session, true),
-    ("GET", "/api/v1/projects/{project_id}/strategy/weight-proposals", Policy::Session, true),
+    ("GET", "/api/v1/projects/{project_id}/strategy/weight-proposals", Policy::Optional, false),
     ("POST", "/api/v1/projects/{project_id}/strategy/weight-proposals", Policy::Session, true),
     ("POST", "/api/v1/projects/{project_id}/strategy/weight-proposals/{id}/consent", Policy::Session, true),
     ("POST", "/api/v1/projects/{project_id}/strategy/weight-proposals/{id}/withdraw", Policy::Session, true),
@@ -314,7 +314,10 @@ mod tests {
 
     /// 5 on 2026-11-15 (four routes that already refused a stranger, plus the admin ledger that did not); 6 on
     /// 2026-11-16 when `POST /api/v1/projects` moved its refusal into the gate. It may grow, never shrink.
-    const ENFORCED: usize = 96;
+    // 96 -> 93: the three GET reads behind the strategy panel are public by decision
+    // (D-191): a proposed weight or theme is the public record, and only the consent
+    // WRITE needs a session. Every other enforced route still refuses a stranger.
+    const ENFORCED: usize = 93;
 
     /// The source with string literals and comments replaced by spaces, so a brace or a paren inside either
     /// cannot move the scan. Same length as the input, so an index means the same thing in both.
@@ -668,9 +671,6 @@ mod tests {
             "close_milestone",
             "assign_milestone_features",
             "reorder_milestone",
-            "list_weight_proposals",
-            "list_theme_proposals",
-            "list_themes",
             "propose_weight",
             "propose_theme",
             "consent_theme",

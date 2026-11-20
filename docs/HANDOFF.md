@@ -1084,3 +1084,10 @@ only on API writes.
 - Next action: identify which of the ten `getOrNull` reads returns a `__failed` envelope and repair
   that endpoint or its client parser, then re-run only `settings_e2e`.
 
+## 2026-11-20 — settings_e2e partial (not wired)
+
+- `settings_e2e`: `17 passed, 2 failed in 52.30s`; baseline `11 failed, 8 passed`; ratchet stays `4`.
+- D-191: three strategy GETs public, ratchet `96 -> 93`; `cargo test -p concord-app --lib policy` `7 passed; 0 failed`.
+- Remaining: language DB rows `{'language': 'pct'}` (fixture/shim read), and the protected-project member page
+  timeout at `#settings-root`. Next action: instrument `set_project_languages` and the protected navigation cookie.
+

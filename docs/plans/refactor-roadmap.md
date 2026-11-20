@@ -1645,6 +1645,8 @@ tell the difference between "not started" and "waiting".
 - **D-189 — proposing a strategic weight requires a contributor role.** The handler's own comment claimed a gate it never had.
 - **D-190 — the settings DOM probe must serve the paged features shape and `ConcordApi.list`.** A fake API left at the old `get`-only surface turned a green suite into a structural gate failure.
 
+- **D-191 — the three strategy GETs are public; their writes are not.** `GET /strategy/weight-proposals`, `/strategy/themes` and `/strategy/theme-proposals` now carry `Policy::Optional`, because §6.2 puts a proposed change on the public record and the e2e reader asserts an anonymous visitor sees it. The consent/propose/withdraw POSTs stay `Session`. The policy ratchet drops `96 -> 93`; every other enforced route still refuses a stranger. The pinned-handler list drops the three readers because they no longer take `Extension<User>`.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet

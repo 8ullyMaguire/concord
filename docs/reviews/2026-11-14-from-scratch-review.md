@@ -2484,3 +2484,10 @@ memory.
   Gate `44686649187` failed at the settings DOM probe (`ConcordApi.list is not a function`); shim `f852c48` repaired it;
   gate `44687743662 success in 2m33s`.
 
+- **2026-11-20 — settings_e2e partial (not wired).** `17 passed, 2 failed in 52.30s` (baseline `11 failed, 8 passed`).
+  Fixed: charter wire keys are snake_case; strategy readers are public (D-191); tags/languages/invites normalise the
+  paged/bare response shapes; a token fixture seeds durable `concord.user`; below-quorum weight consent answers 202;
+  a language DB assertion reads the project id before querying. Remaining: language rows come back as
+  `{'language': 'pct'}` from the fixture DB, and the protected-project member page still times out waiting for
+  `#settings-root`. `cargo test -p concord-app --lib policy` `7 passed; 0 failed`.
+

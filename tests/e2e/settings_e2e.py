@@ -15,6 +15,7 @@ undefined for all 22 fields, and renders a form with 22 empty inputs -- a page t
 loads, looks plausible, and controls nothing.
 """
 
+import json
 import re
 import sqlite3
 import tempfile
@@ -118,9 +119,9 @@ def seed(db):
 def test_the_settings_page_shows_the_charter_with_real_values(page, server):
     """The load-bearing test: 22 inputs, none of them empty.
 
-    Every other input on the site is snake_case. This one is PascalCase, and a page that
-    guessed wrong still renders -- it just renders 22 blanks, which reads as a project with
-    no charter rather than as a bug.
+    The charter wire shape is snake_case: governance::Charter has no rename_all, the API
+    emits snake_case and settings.js sends the form's own names straight back. A page that
+    guessed the old PascalCase names still renders, but with 22 blank inputs.
     """
     page.goto(f"{server['base']}/projects/{SLUG}/settings")
     page.wait_for_selector('#settings-root:not([aria-busy="true"])', timeout=15000)
@@ -128,7 +129,7 @@ def test_the_settings_page_shows_the_charter_with_real_values(page, server):
     inputs = page.locator("#charter-form input[name]")
     expect(inputs.first).to_be_visible()
 
-    quorum = page.locator("#charter-form input[name='QuorumRatio']")
+    quorum = page.locator("#charter-form input[name='quorum_ratio']")
     expect(quorum).to_have_value("0.2")
 
     # And the count, because "some fields rendered" is not the claim.
@@ -288,6 +289,12 @@ def _seed_taxonomy_and_strategy(db):
 
 def _opens_settings(page, server, token=None):
     if token:
+        # session.js deletes a bare stale token on load, and a page with a bearer but no
+        # durable user is a guest: writes then answer "no such project" because the guest
+        # has no member row. Seed the same identity /auth/me returns for this token.
+        me = harness.api(BASE, "GET", "/api/v1/auth/me", token=token)
+        assert me and me.get("id"), me
+        page.add_init_script("localStorage.setItem('concord.user', %s);" % json.dumps(json.dumps(me)))
         # The page reads the token from localStorage, so it has to be there before the
         # scripts run -- addInitScript, not a later evaluate.
         page.add_init_script("localStorage.setItem('concord.token', %r);" % token)
@@ -660,9 +667,9 @@ def test_a_language_correction_starts_from_the_current_numbers_and_is_stored(pag
 
     con = sqlite3.connect(server["db"])
     try:
+        pid = con.execute("SELECT id FROM projects WHERE slug=?", (SLUG,)).fetchone()[0]
         rows = dict(con.execute(
-            "SELECT language, pct FROM project_languages WHERE project_id="
-            "(SELECT id FROM projects WHERE slug=?)", (SLUG,)).fetchall())
+            "SELECT language, pct FROM project_languages WHERE project_id=?", (pid,)).fetchall())
     finally:
         con.close()
     assert rows == {"Rust": 90.0, "Go": 10.0}, rows

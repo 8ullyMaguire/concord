@@ -54,13 +54,11 @@ async fn strategy_project(
 async fn list_weight_proposals(
     State(state): State<AppState>,
     Path(project): Path<String>,
-    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
     // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
     // the top of the handler — the `project_id` the body uses is its id.
     let project_id = project_by_id(&state, &project).await?.id;
-    strategy_project(&state, project_id, &user).await?;
     let rows = concord_db::strategy::proposals(&state.pool, project_id)
         .await
         .map_err(internal)?;
@@ -70,13 +68,11 @@ async fn list_weight_proposals(
 async fn list_theme_proposals(
     State(state): State<AppState>,
     Path(project): Path<String>,
-    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
     // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
     // the top of the handler — the `project_id` the body uses is its id.
     let project_id = project_by_id(&state, &project).await?.id;
-    strategy_project(&state, project_id, &user).await?;
     let rows = concord_db::themes::proposals(&state.pool, project_id)
         .await
         .map_err(internal)?;
@@ -86,13 +82,11 @@ async fn list_theme_proposals(
 async fn list_themes(
     State(state): State<AppState>,
     Path(project): Path<String>,
-    Extension(user): Extension<concord_db::auth::User>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
     // The segment may be an id or a slug: the reference's page scripts build these URLs from the SLUG, and a path extractor typed
     // `i64` rejected the slug before any handler ran (`Invalid URL: Cannot parse `suki` to a `i64``). One resolver, asked once, at
     // the top of the handler — the `project_id` the body uses is its id.
     let project_id = project_by_id(&state, &project).await?.id;
-    strategy_project(&state, project_id, &user).await?;
     let rows = concord_db::themes::themes(&state.pool, project_id)
         .await
         .map_err(internal)?;
@@ -215,6 +209,27 @@ async fn consent_weight(
                 "consents": recorded.consents,
                 "eligible": recorded.eligible,
                 "proposal": recorded.proposal,
+            })),
+        )),
+        // The consent IS recorded when the threshold is not yet met. A 409 would tell the
+        // reader the write failed when the store holds their vote, so answer 202 and let
+        // the client quote the honest tally (D-180 applied to strategic weights).
+        Err(concord_db::strategy::Refused::NotYet {
+            verdict,
+            consents,
+            eligible,
+        }) => Ok((
+            StatusCode::ACCEPTED,
+            Json(serde_json::json!({
+                "recorded": true,
+                "ratified": false,
+                "decided": false,
+                "verdict": verdict,
+                "consents": consents,
+                "eligible": eligible,
+                "message": format!(
+                    "Consent recorded. The quorum is not reached yet ({consents} of {eligible} eligible consenting)."
+                ),
             })),
         )),
         Err(refusal) => Err(strategy_refusal(refusal)),
