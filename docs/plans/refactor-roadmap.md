@@ -1603,6 +1603,10 @@ tell the difference between "not started" and "waiting".
 - **D-168 — a guest token bridges navigation in `sessionStorage`.** A guest has no HttpOnly cookie, so the bearer must survive
   the trip to `/register` for in-place promotion. Login tokens remain in memory only because their cookie is durable.
 
+- **D-169 — the session-storage probe needed `sessionStorage`.** The fake browser had no such object, so the constructor's catch
+  cleared every reloaded session after the guest-token bridge. Gate `44642556287` failed at that arm; adding the storage to the shim
+  restores `session storage: PASS — no token in localStorage, reload stays signed in, no bearer header without a token`.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet

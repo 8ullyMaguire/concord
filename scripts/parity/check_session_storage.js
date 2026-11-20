@@ -23,7 +23,15 @@ const document = {
   addEventListener() {},
   querySelector() { return null; },
 };
-const sandbox = { console, document, localStorage };
+// A guest has no HttpOnly cookie, so its bearer lives in sessionStorage for the life of the tab.
+// The fake browser must provide that storage or the constructor's catch turns every reload into a guest.
+const ephemeral = Object.create(null);
+const sessionStorage = {
+  getItem(k) { return Object.prototype.hasOwnProperty.call(ephemeral, k) ? ephemeral[k] : null; },
+  setItem(k, v) { ephemeral[k] = String(v); },
+  removeItem(k) { delete ephemeral[k]; },
+};
+const sandbox = { console, document, localStorage, sessionStorage };
 sandbox.window = sandbox;
 vm.createContext(sandbox);
 vm.runInContext(source, sandbox, { filename: path });

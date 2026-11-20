@@ -2435,3 +2435,6 @@ memory.
 - **2026-11-19 — guest wired.** `guest_e2e` `5 passed in 13.71s` (was `1 failed / 4 passed`). Real forms and a bridged guest
   token promote the guest identity in place. Ratchet 9.
 
+- **2026-11-20 — guest gate shim.** CI gate `44642556287` failed at `session storage`; the fake browser lacked `sessionStorage`.
+  Shim repaired, local arm `session storage: PASS`. No product regression.
+

@@ -1015,3 +1015,8 @@ only on API writes.
 - `guest_e2e`: `5 passed in 13.71s`; wired; ratchet `9`. D-167/D-168.
 - Needs a release build, live deploy and auth-page probe.
 
+## 2026-11-20 — guest gate shim
+
+- Gate `44642556287` failed on the session-storage probe, not on `guest_e2e`; D-169 shim fix.
+- Live remains `concord-rs 0.0.0+d62933d+vendor`.
+
