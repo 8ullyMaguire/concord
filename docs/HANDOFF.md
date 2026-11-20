@@ -1074,3 +1074,13 @@ only on API writes.
 
 - `readers_e2e`: `10 passed in 19.63s`; wired; ratchet `4`. D-184..D-189.
 - Live `55079b1`, probes PASS, gate `44687743662 success in 2m33s` after the settings DOM shim `f852c48`.
+
+## 2026-11-20 — settings_e2e triage started (not wired)
+
+- Baseline reproduced: `settings_e2e 11 failed, 8 passed in 164.86s` on `55079b1` candidate.
+- Debug on the load-bearing test: no page errors, `#settings-root` `aria-busy` cleared, `data-loads=1`,
+  but `#charter-form input[name='QuorumRatio']` is absent. Eleven other tests time out waiting for
+  the same root to leave `aria-busy` (downstream of the same broken first render).
+- Next action: identify which of the ten `getOrNull` reads returns a `__failed` envelope and repair
+  that endpoint or its client parser, then re-run only `settings_e2e`.
+
