@@ -1656,6 +1656,8 @@ tell the difference between "not started" and "waiting".
 - **D-197 — seed `concord.user` before navigation.** A token alone is not a signed-in browser; seeding after load loses a race with `/guest`, which mints a guest cookie and demotes the actor.
 - **D-198 — guests may vote in public comparisons.** A guest is an actor in a public comparison, not a trespasser. The contributor-role gate still applies to account holders, writes to criteria still need maintainer.
 
+- **D-199 — the criteria DOM probe serves the shipped client surface.** The fake `ConcordApi` lacked `list()` and a numeric project id, so the page died before rendering hostile text.
+
 ## Decisions proposed (not taken)
 
 These are the five decisions the review argues for. They are recorded here rather than as ADRs because they are not yet

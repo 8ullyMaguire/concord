@@ -91,7 +91,15 @@ function makeSandbox(root, notice, failing) {
   };
   sandbox.window = sandbox;
   sandbox.ConcordApi = {
+    // The shipped client unwraps both paged and bare collections and resolves the
+    // numeric project id before the rank call; the fake must offer both (D-199).
+    list(data) {
+      if (Array.isArray(data)) return data;
+      if (data && Array.isArray(data.items)) return data.items;
+      return [];
+    },
     get(url) {
+      if (/^\/api\/v1\/projects\/[^/]+$/.test(url)) return Promise.resolve({ id: 11 });
       if (failing && /\/criteria$/.test(url)) return Promise.reject(new Error(HOSTILE_ERROR));
       if (/\/criteria-profiles$/.test(url)) return Promise.resolve([{ slug: HOSTILE_SLUG, name: HOSTILE_PROFILE }]);
       if (/\/priorities$/.test(url)) return Promise.resolve([
