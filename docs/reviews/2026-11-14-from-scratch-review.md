@@ -2461,3 +2461,7 @@ memory.
 - **2026-11-20 — curation wired.** `curation_e2e` `5 passed in 13.58s` (was `5 failed`). Mounted the queue, derived `can_vote`, returned
   202 for below-quorum consent, and defaulted the queue to open work. Ratchet 6.
 
+- **2026-11-20 — curation live.** Release `b0fddd4`, `make -o release deploy` `DEPLOY=0`;
+  `https://concord.polarisocial.xyz/api/v1/version` returned `concord-rs 0.0.0+b0fddd4+vendor`.
+  Live `/curation` serves `curation-root`, `curation-list`, `curation-unvoted`, `assets/js/curation.js`.
+  Harness self-test `14 passed in 9.67s`; CI gate `44668631047 success in 2m44s`.

@@ -1055,3 +1055,7 @@ only on API writes.
 - `curation_e2e`: `5 passed in 13.58s`; wired; ratchet `6`. D-177..D-181.
 - Needs a release build, live deploy and curation-page probe.
 
+## 2026-11-20 — curation live
+
+- Live `concord-rs 0.0.0+b0fddd4+vendor`; `/curation` mounts the queue and its script.
+- Gate `44668631047 success in 2m44s`; harness `14 passed in 9.67s`. Ratchet 6.
