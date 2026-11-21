@@ -1958,11 +1958,12 @@ parent before the loop. Step 3 is now marked Done; what remains in `lib.rs` are 
 
 These are the next highest-value items from the 34-route review. None is a roadmap row yet: row 10 closed the defects that were worth fixing now, and these are ordered options rather than promises. Pick the first one that can be finished this turn; record any decision in the Decisions section in the same commit.
 
-1. **done at `PENDING` — `signed_in_visual_e2e: 3 passed in 8.91s`.** Minted a real account session over register + `/auth/me`, walked home, notifications, settings, board, rank and consensus at 1440px and 390px, and revoked the token. 12 readings, 12 screenshots, 0 gate copy, 0px overflow. Evidence: `docs/evidence/2026-11-21-signed-in-visual.json`; D-215/D-216.
-2. axe-core WCAG 2.1 AA route sweep in a real browser, both colour schemes and both widths, with a canary proving the probe can fail. The 2026-11-20 sweep measured approximate contrast and tap targets but did not run axe.
-3. Settings fields: semantic grouping, inline help for `glikos_tau`/`lam`/`mu`/`pain_ruffle_days`, and a sticky Save/Reset with dirty state. Evidence: route 33 in `findings.md`.
-4. Taxonomy: deduplicate tags and hide raw `#id` suffixes behind tooltips/detail links. Evidence: route 10 — forum x5, swift x6, rust x4.
-5. Board and list detail: add filter/pagination to the 362-idea column; group and deduplicate list entries. Evidence: routes 17 and 28; list detail was 107,730px before the 100-entry cap.
-6. Header and consent: slim the banner to a dismissible bar and grow header targets toward 44×44 without changing header height. Evidence: measured 159×32 Accept, 118×36 brand, 61–78×34 nav links at 1440px.
-7. Navigation: consolidate the nine top-level links and add a real footer. Evidence: route 1.
-8. Presentation polish: normalise dates and humanise `snake_case` statuses on `/stats` and `/documents`. Evidence: routes 11 and 24.
+1. **done at `728492f` — `signed_in_visual_e2e: 3 passed in 8.91s`; gate `44891512058 success in 2m57s`; live `c63f706`.** Minted a real account session over register + `/auth/me`, walked home, notifications, settings, board, rank and consensus at 1440px and 390px, and revoked the token. 12 readings, 12 screenshots, 0 gate copy, 0px overflow. Evidence: `docs/evidence/2026-11-21-signed-in-visual.json`; D-215/D-216.
+2. Live `/notifications` session-cookie discrepancy. In the public-host browser probe, a minted account token returned `/auth/me 200`, but the HTML page still printed the signed-out gate; the same code in the candidate suite opened the page. Next: compare request headers and HTML on candidate vs live, including the exact consent cookie value, then fix the proxy/cookie path if it differs. No credential or vendor block.
+3. axe-core WCAG 2.1 AA route sweep in a real browser, both colour schemes and both widths, with a canary proving the probe can fail. The 2026-11-20 sweep measured approximate contrast and tap targets but did not run axe.
+4. Settings fields: semantic grouping, inline help for `glikos_tau`/`lam`/`mu`/`pain_ruffle_days`, and a sticky Save/Reset with dirty state. Evidence: route 33 in `findings.md`.
+5. Taxonomy: deduplicate tags and hide raw `#id` suffixes behind tooltips/detail links. Evidence: route 10 — forum x5, swift x6, rust x4.
+6. Board and list detail: add filter/pagination to the 362-idea column; group and deduplicate list entries. Evidence: routes 17 and 28; list detail was 107,730px before the 100-entry cap.
+7. Header and consent: slim the banner to a dismissible bar and grow header targets toward 44×44 without changing header height. Evidence: measured 159×32 Accept, 118×36 brand, 61–78×34 nav links at 1440px.
+8. Navigation: consolidate the nine top-level links and add a real footer. Evidence: route 1.
+9. Presentation polish: normalise dates and humanise `snake_case` statuses on `/stats` and `/documents`. Evidence: routes 11 and 24.

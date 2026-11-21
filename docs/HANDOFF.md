@@ -1140,3 +1140,9 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - Evidence: `docs/evidence/2026-11-21-signed-in-visual.json`, `/home/alvaro/site-audits/concord-2026-11-20/signed-in-shots/`.
 - Suggestion 1 done; suggestions 2-8 remain in order.
 
+## 2026-11-21 — signed-in pass final proof
+
+- Gate `44891512058 success in 2m57s`; live redeploy `DEPLOY=0`, `concord-rs 0.0.0+c63f706+vendor`, services active/inactive.
+- Public-host probe: guest session minted and revoked (`logout 204`, `meAfter 401`); settings and board rendered with the session and no gate; `/notifications` still showed the signed-out gate despite `/auth/me 200`. Recorded as new suggestion 2; the temporary account (id 2276) was deleted, remaining 0.
+- Suggestion 1 done; suggestions 2-9 remain in the roadmap order.
+

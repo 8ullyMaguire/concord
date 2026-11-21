@@ -2543,3 +2543,5 @@ memory.
 
 - **2026-11-21 — signed-in visual pass.** `signed_in_visual_e2e: 3 passed in 8.91s`; 12 readings and 12 screenshots; gate absent with a minted session, 401 after logout. D-215/D-216.
 
+- **2026-11-21 — live signed-in probe.** Guest and account sessions were minted and revoked (`logout 204`, `meAfter 401`); temporary production user id 2276 deleted (remaining 0). `/notifications` on the public host kept the signed-out gate even with `/auth/me 200`, while settings and board changed with the session — logged as suggestion 2, not hidden. Gate `44891512058 success in 2m57s`.
+
