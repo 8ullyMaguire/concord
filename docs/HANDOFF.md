@@ -1176,3 +1176,9 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - RED: 4 failures on the current candidate (underscored labels, no help, no reset/dirty). GREEN: 4 passed in 12.60s after D-220.
 - Suggestion 4 done; suggestions 5-9 remain in order.
 
+## 2026-11-21 — settings clarity final proof
+
+- Gate `44896168591 success in 2m54s`; release `BUILD=0`, `DEPLOY=0`, live `concord-rs 0.0.0+14726d9+vendor`, services active/inactive.
+- Live DOM: 0 underscored labels, 4 inline help paragraphs, `.charter-actions` computed `sticky`, edit -> `Unsaved changes`, Reset -> original value + `All changes saved`.
+- Suggestion 4 done; suggestions 5-9 remain in order.
+

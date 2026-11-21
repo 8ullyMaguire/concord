@@ -2555,3 +2555,5 @@ memory.
 
 - **2026-11-21 — settings field clarity.** Humanized labels and four inline help paragraphs; sticky Save/Reset with dirty state (D-220). 4 passed in 12.60s.
 
+- **2026-11-21 — live settings proof.** Public host showed 0 underscored labels, 4 help paragraphs, sticky actions, and a working dirty/Reset cycle. Gate `44896168591 success in 2m54s`, live `14726d9`.
+
