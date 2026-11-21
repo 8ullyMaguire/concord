@@ -1231,3 +1231,9 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - RED: 2 timeouts on the current candidate (raw status keys, locale dates). GREEN: 2 passed in 6.77s after D-225.
 - Suggestion 9 done; no roadmap suggestions remain open.
 
+## 2026-11-21 — date/status polish final proof
+
+- Gate `44903913428 success in 2m53s`; release `BUILD=0`, `DEPLOY=0`, live `concord-rs 0.0.0+895f856+vendor`, services active/inactive.
+- Live DOM: document metadata shows 4 `YYYY-MM-DD` dates and 0 locale dates; `/stats` has no published rows, so no status key is exposed.
+- Suggestion 9 done; no roadmap suggestions remain open. Goal complete.
+

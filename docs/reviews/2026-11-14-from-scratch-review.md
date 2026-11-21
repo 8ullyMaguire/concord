@@ -2575,3 +2575,5 @@ memory.
 
 - **2026-11-21 — date/status polish.** Humanized facet labels and one ISO day format in document metadata (D-225). 2 passed in 6.77s.
 
+- **2026-11-21 — live date/status proof.** Public documents show 4 ISO day dates and 0 locale dates; stats expose no raw status keys. Gate `44903913428 success in 2m53s`, live `895f856`.
+
