@@ -484,7 +484,7 @@ if [ -n "$LIVE" ]; then
   # binary against its own scratch database, so they need the binary path and the harness DSN -- not the live URL.
   if [ -n "${CONCORD_E2E_CANDIDATE:-}" ] && [ -x "${CONCORD_E2E_CANDIDATE:-}" ]; then
     for suite in project_panels_e2e feature_e2e board_e2e documents_e2e requests_e2e consensus_e2e \
-                 ai_declaration_e2e duplicates_e2e lifecycle_e2e milestones_e2e new_project_e2e rank_links_e2e audit_e2e audit_undo_e2e arena_e2e feeds_e2e settings_themes_e2e workitems_e2e notifications_e2e guest_e2e taxonomy_e2e merge_e2e curation_e2e lists_e2e readers_e2e settings_e2e criteria_e2e finder_e2e scout_e2e site_review_e2e signed_in_visual_e2e a11y_axe_e2e settings_fields_e2e taxonomy_clarity_e2e board_list_nav_e2e header_consent_e2e nav_footer_e2e; do
+                 ai_declaration_e2e duplicates_e2e lifecycle_e2e milestones_e2e new_project_e2e rank_links_e2e audit_e2e audit_undo_e2e arena_e2e feeds_e2e settings_themes_e2e workitems_e2e notifications_e2e guest_e2e taxonomy_e2e merge_e2e curation_e2e lists_e2e readers_e2e settings_e2e criteria_e2e finder_e2e scout_e2e site_review_e2e signed_in_visual_e2e a11y_axe_e2e settings_fields_e2e taxonomy_clarity_e2e board_list_nav_e2e header_consent_e2e nav_footer_e2e date_status_polish_e2e; do
       out=$(timeout 900 scripts/parity/e2e_candidate.sh "tests/e2e/$suite.py" -q 2>&1); status=$?
       echo "  $(echo "$out" | tail -1)"
       [ "$status" -eq 0 ] || bad "$suite"

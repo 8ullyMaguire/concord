@@ -647,6 +647,8 @@ Unclaimed rows are fair game.
 
 - **D-224 — grouping is not hiding.** All existing header links and session hooks remain visible and in the same order; the footer duplicates destinations as plain anchors without client hooks, so session.js keeps exactly one header target.
 
+- **D-225 — presentation only.** API values and document bodies stay verbatim; only the rendered facet labels and generated metadata dates are normalised, so links, sorting and stored data do not change.
+
 ## Blocked
 
 Items nobody working in this repo can finish alone. Each names what would unblock it and on whom, so the next session can
@@ -1981,4 +1983,4 @@ These are the next highest-value items from the 34-route review. None is a roadm
 6. **done at `27a80f3` — `board_list_nav_e2e: 2 passed in 2.80s`; gate `44899810595 success in 3m10s`; live `27a80f3`.** Board title filter + 50/show-all cap; list dedupe by title, filter and 25-entry pagination preserving ranked order; D-222.
 7. **done at `7ff7918` — `header_consent_e2e: 3 passed in 15.81s`; gate `44901072456 success in 2m49s`; live `7ff7918`.** Compact dismissible notice; Accept still records consent; 44px brand/nav targets within the old header height; D-223.
 8. **done at `f015a7f` — `nav_footer_e2e: 2 passed in 13.82s`; gate `44902180234 success in 2m27s`; live `f015a7f`.** Three labelled nav groups with all nine original links and session hooks intact; grouped footer with 11 plain links; D-224.
-9. Presentation polish: normalise dates and humanise `snake_case` statuses on `/stats` and `/documents`. Evidence: routes 11 and 24.
+9. **done at `PENDING` — `date_status_polish_e2e: 2 passed in 6.77s`.** Facet values humanized in statistics; document metadata dates use one UTC ISO day format; D-225.

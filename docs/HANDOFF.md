@@ -1226,3 +1226,8 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - Live DOM: nav groups Explore/Community/Account with all 9 header links; footer groups Explore/Community/This site with 11 links; header 53px, overflow 0.
 - Suggestion 8 done; suggestion 9 remains.
 
+## 2026-11-21 — date and status polish
+
+- RED: 2 timeouts on the current candidate (raw status keys, locale dates). GREEN: 2 passed in 6.77s after D-225.
+- Suggestion 9 done; no roadmap suggestions remain open.
+

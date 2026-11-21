@@ -2573,3 +2573,5 @@ memory.
 
 - **2026-11-21 — live nav/footer proof.** Public host shows 3 labelled nav groups with 9 links and 3 footer groups with 11 links, header 53px and zero overflow. Gate `44902180234 success in 2m27s`, live `f015a7f`.
 
+- **2026-11-21 — date/status polish.** Humanized facet labels and one ISO day format in document metadata (D-225). 2 passed in 6.77s.
+

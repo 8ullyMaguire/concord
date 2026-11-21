@@ -30,7 +30,10 @@
 
   function fmtDate(unix) {
     if (!unix) return '';
-    try { return new Date(unix * 1000).toLocaleDateString(); } catch (e) { return ''; }
+    // D-225: one clock for the whole page. The server's `date()` helper uses UTC
+    // YYYY-MM-DD, so a locale date here would make two identical timestamps look
+    // like different days depending on the reader's browser.
+    try { return new Date(unix * 1000).toISOString().slice(0, 10); } catch (e) { return ''; }
   }
 
   function fmtBytes(n) {

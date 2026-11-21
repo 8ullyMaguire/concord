@@ -24,20 +24,27 @@
     ]);
   }
 
+  // D-225: facet values arrive as storage keys. A reader should see "In progress",
+  // not "in_progress"; the API value is unchanged and remains the sortable fact.
+  function humanize(value) {
+    return String(value).replace(/_+/g, " ").replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/^./, function (c) { return c.toUpperCase(); });
+  }
+
   // A facet row. `split` is a ProvenanceCount (three numbers) or a FacetCount
   // (one), and the branch is on the field's presence rather than on which
   // section we are in -- the API is the contract, not this file's layout.
   function facetRow(row) {
     if (row.organic !== undefined || row.seeded !== undefined || row.unknown !== undefined) {
       return el("tr", {}, [
-        el("td", {}, row.value),
+        el("td", {}, humanize(row.value)),
         el("td", {}, row.total),
         el("td", {}, row.organic),
         el("td", {}, row.seeded),
         el("td", {}, row.unknown)
       ]);
     }
-    return el("tr", {}, [el("td", {}, row.value), el("td", {}, row.count)]);
+    return el("tr", {}, [el("td", {}, humanize(row.value)), el("td", {}, row.count)]);
   }
 
   function table(headCells, rows) {
