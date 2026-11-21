@@ -2579,3 +2579,5 @@ memory.
 
 - **2026-11-21 — method mismatch fix merged.** `row502/method-405-rebase` `d9d85a6` merged at `49f1a38`; targeted policy test passed (1 passed, 22 filtered out). Declared paths now answer 405 on a wrong verb; undeclared paths still alarm with 500.
 
+- **2026-11-21 — live 405 proof.** `GET /api/v1/auth/login` returned 405 `method_not_allowed`; `GET /api/v1/nope` returned 404 `not_found`. Gate `44909531722 success in 3m3s`, live `065e0a9`.
+

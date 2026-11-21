@@ -1243,3 +1243,8 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - Merge `49f1a38` brings `d9d85a6` (`fix(step9): answer method mismatch with 405, not undeclared 500`) into port-rust: `path_is_declared` plus its unit test.
 - Targeted proof: `cargo test -p concord-app --lib a_declared_path_with_the_wrong_method_is_not_an_undeclared_route` -> `test result: ok. 1 passed; ... 22 filtered out`.
 
+### row502 merge final proof
+
+- Gate `44909531722 success in 3m3s`; release `BUILD=0`, `DEPLOY=0`, live `concord-rs 0.0.0+065e0a9+vendor`, services active/inactive.
+- Live API probe: `GET /api/v1/auth/login` -> `405 {"code":"method_not_allowed",...}`; `GET /api/v1/nope` -> `404 not_found`. The 500 alarm remains for undeclared paths; this deployment answers the mismatch correctly.
+
