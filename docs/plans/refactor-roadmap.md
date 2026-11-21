@@ -629,6 +629,9 @@ Unclaimed rows are fair game.
 
 - **D-214 — the home project count uses the search total.** The projects endpoint is paged at 50, so counting it printed 50 on a 73-project instance; the search response carries the true total.
 
+- **D-215 — a signed-in browser is registered over HTTP, not assembled by hand.** The suite keeps the register token, adds the navigation cookie and the parsed `/auth/me` body to `localStorage`, then revokes the token through `/auth/logout`; no credential value is logged.
+- **D-216 — 409 on `/votes/next` is an empty-state signal, not a JavaScript error.** The fixture project has fewer than two features; `rank.js` renders the friendly conflict message. The gate whitelists only that 409 and still fails on any other bad response.
+
 ## Blocked
 
 Items nobody working in this repo can finish alone. Each names what would unblock it and on whom, so the next session can
@@ -1955,7 +1958,7 @@ parent before the loop. Step 3 is now marked Done; what remains in `lib.rs` are 
 
 These are the next highest-value items from the 34-route review. None is a roadmap row yet: row 10 closed the defects that were worth fixing now, and these are ordered options rather than promises. Pick the first one that can be finished this turn; record any decision in the Decisions section in the same commit.
 
-1. Signed-in visual pass. Mint a short-lived session the way the app does, walk account/settings/proposal surfaces in a real browser, delete the session, and record what the signed-out sweep could not see. Evidence: `findings.md` scope limit; route list in `/home/alvaro/site-audits/concord-2026-11-20/routes-checklist.md`.
+1. **done at `PENDING` — `signed_in_visual_e2e: 3 passed in 8.91s`.** Minted a real account session over register + `/auth/me`, walked home, notifications, settings, board, rank and consensus at 1440px and 390px, and revoked the token. 12 readings, 12 screenshots, 0 gate copy, 0px overflow. Evidence: `docs/evidence/2026-11-21-signed-in-visual.json`; D-215/D-216.
 2. axe-core WCAG 2.1 AA route sweep in a real browser, both colour schemes and both widths, with a canary proving the probe can fail. The 2026-11-20 sweep measured approximate contrast and tap targets but did not run axe.
 3. Settings fields: semantic grouping, inline help for `glikos_tau`/`lam`/`mu`/`pain_ruffle_days`, and a sticky Save/Reset with dirty state. Evidence: route 33 in `findings.md`.
 4. Taxonomy: deduplicate tags and hide raw `#id` suffixes behind tooltips/detail links. Evidence: route 10 — forum x5, swift x6, rust x4.

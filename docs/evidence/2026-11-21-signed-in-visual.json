@@ -1,0 +1,101 @@
+{
+  "session": "minted via register, revoked via logout",
+  "routes": [
+    {
+      "route": "/",
+      "width": 1440,
+      "title": "Projects \u2014 Concord",
+      "text_len": 2315,
+      "gate": false,
+      "overflow": 0
+    },
+    {
+      "route": "/",
+      "width": 390,
+      "title": "Projects \u2014 Concord",
+      "text_len": 2315,
+      "gate": false,
+      "overflow": 0
+    },
+    {
+      "route": "/notifications",
+      "width": 1440,
+      "title": "Notifications \u2014 Concord",
+      "text_len": 298,
+      "gate": false,
+      "overflow": 0
+    },
+    {
+      "route": "/notifications",
+      "width": 390,
+      "title": "Notifications \u2014 Concord",
+      "text_len": 298,
+      "gate": false,
+      "overflow": 0
+    },
+    {
+      "route": "/projects/signed-in-visual/settings",
+      "width": 1440,
+      "title": "Signed-in visual: Settings \u2014 Concord",
+      "text_len": 4879,
+      "gate": false,
+      "overflow": 0
+    },
+    {
+      "route": "/projects/signed-in-visual/settings",
+      "width": 390,
+      "title": "Signed-in visual: Settings \u2014 Concord",
+      "text_len": 4879,
+      "gate": false,
+      "overflow": 0
+    },
+    {
+      "route": "/projects/signed-in-visual/board",
+      "width": 1440,
+      "title": "Signed-in visual: Board \u2014 Concord",
+      "text_len": 270,
+      "gate": false,
+      "overflow": 0
+    },
+    {
+      "route": "/projects/signed-in-visual/board",
+      "width": 390,
+      "title": "Signed-in visual: Board \u2014 Concord",
+      "text_len": 270,
+      "gate": false,
+      "overflow": 0
+    },
+    {
+      "route": "/projects/signed-in-visual/rank",
+      "width": 1440,
+      "title": "Signed-in visual: rank features \u2014 Concord",
+      "text_len": 624,
+      "gate": false,
+      "overflow": 0
+    },
+    {
+      "route": "/projects/signed-in-visual/rank",
+      "width": 390,
+      "title": "Signed-in visual: rank features \u2014 Concord",
+      "text_len": 624,
+      "gate": false,
+      "overflow": 0
+    },
+    {
+      "route": "/projects/signed-in-visual/consensus",
+      "width": 1440,
+      "title": "Signed-in visual: consensus \u2014 Concord",
+      "text_len": 569,
+      "gate": false,
+      "overflow": 0
+    },
+    {
+      "route": "/projects/signed-in-visual/consensus",
+      "width": 390,
+      "title": "Signed-in visual: consensus \u2014 Concord",
+      "text_len": 569,
+      "gate": false,
+      "overflow": 0
+    }
+  ]
+}

@@ -1131,3 +1131,12 @@ only on API writes.
 8. Date/status presentation polish.
 
 No required row remains. Blockers are external only: user-owned credentials/upstreams and vendor-owned `git.disroot.org`.
+
+## 2026-11-21 — signed-in visual pass
+
+- `signed_in_visual_e2e: 3 passed in 8.91s`; wired as suite 31. D-215/D-216.
+- 12 DOM readings and 12 screenshots: home, notifications, settings, board, rank, consensus at 1440x1000 and 390x844; 0 gate copy and 0px overflow on every reading.
+- Signed-out `/notifications` shows the gate; the minted session removes it; logout then `/auth/me` returns 401.
+- Evidence: `docs/evidence/2026-11-21-signed-in-visual.json`, `/home/alvaro/site-audits/concord-2026-11-20/signed-in-shots/`.
+- Suggestion 1 done; suggestions 2-8 remain in order.
+

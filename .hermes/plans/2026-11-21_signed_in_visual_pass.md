@@ -12,7 +12,7 @@ Run from /personal/documents/code/rust/concord on port-rust. Compile only on thi
 
 2. Verification command and expected output:
    `CONCORD_E2E_CANDIDATE=$PWD/target/debug/concord-cli scripts/parity/e2e_candidate.sh tests/e2e/signed_in_visual_e2e.py -q`
-   Expected: all tests pass. Record the actual pytest summary line verbatim in the roadmap and handoff; never guess the count.
+   Actual: `3 passed in 8.91s`. Expected behaviour held: 12 readings, 0 gate, 0px overflow, 401 after logout.
 
 3. Wire `signed_in_visual_e2e` into the e2e loop in `scripts/gate.sh` immediately after `site_review_e2e`; keep `RECORDED_UNRUN = 0`.
 

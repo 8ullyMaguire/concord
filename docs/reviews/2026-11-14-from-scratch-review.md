@@ -2540,3 +2540,6 @@ memory.
 
 
 - **2026-11-20 — suggestions log.** The eight next options are recorded in `docs/plans/refactor-roadmap.md` under "Suggestions after row 10"; the ordered version for the next session is in `docs/HANDOFF.md`. They are not committed work and carry no invented measurements.
+
+- **2026-11-21 — signed-in visual pass.** `signed_in_visual_e2e: 3 passed in 8.91s`; 12 readings and 12 screenshots; gate absent with a minted session, 401 after logout. D-215/D-216.
+
