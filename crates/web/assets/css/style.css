@@ -2486,3 +2486,8 @@ a.curation-target:hover { text-decoration: underline; }
 
 /* D-221: a count belongs to the visible tag, not to a hidden database row. */
 .tag-count { color: var(--slate-600); font-size: 0.78rem; font-weight: 400; }
+
+/* D-222: large collections need a visible way in, not a 100-entry wall. */
+.board-controls, .list-controls { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: .5rem 0 .9rem; }
+.board-controls input, .list-controls input { flex: 1 1 16rem; min-width: 10rem; padding: .4rem .6rem; border: 1px solid var(--slate-200); border-radius: 6px; font: inherit; }
+.list-controls #list-page { font-size: .82rem; color: var(--slate-600); }

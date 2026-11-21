@@ -116,8 +116,24 @@
         }
 
         var derivedCount = cards.filter(function (c) { return c.derived; }).length;
+        var query = "";
+        var showAll = false;
+        function titleOf(c) {
+          return c.title || titles[c.feature_id] ||
+            (c.feature_id ? 'Feature #' + c.feature_id : 'Unknown item');
+        }
+        var controls = el('div', { class: 'board-controls' }, [
+          el('label', { class: 'visually-hidden', for: 'board-filter' }, 'Filter cards by title'),
+          el('input', { id: 'board-filter', type: 'search', placeholder: 'Filter cards by title' }),
+          el('button', { type: 'button', id: 'board-show-all', class: 'btn btn-secondary btn-sm' }, 'Show all')
+        ]);
+        function renderBoard() {
         var nodes = columns.map(function (col) {
-          var inCol = cards.filter(function (c) { return c.column === col.name; });
+          var inCol = cards.filter(function (c) {
+            return c.column === col.name &&
+              (!query || titleOf(c).toLowerCase().indexOf(query) !== -1);
+          });
+          if (!showAll) inCol = inCol.slice(0, 50);
           // A derived card is sitting in its status column, not placed by a person.
           var atLimit = col.wip && inCol.length >= col.wip;
           return el('div', {
@@ -131,8 +147,7 @@
             inCol.map(function (c) {
               // The server sends the title for derived cards; the fetched feature
               // list covers placed ones.
-              var title = c.title || titles[c.feature_id] ||
-                (c.feature_id ? 'Feature #' + c.feature_id : 'Unknown item');
+              var title = titleOf(c);
               var moveID = 'mv-' + c.id + '-' + col.name;
               // A card is a BUTTON, not a div: a draggable div is unusable by
               // keyboard and by screen reader.
@@ -158,7 +173,7 @@
             })
           ]);
         });
-        var children = [el('div', { class: 'kanban-board' }, nodes)];
+        var children = [controls, el('div', { class: 'kanban-board' }, nodes)];
         if (derivedCount) {
           children.push(el('p', { class: 'kanban-note' },
             derivedCount + ' of ' + cards.length +
@@ -171,6 +186,18 @@
         box.replaceChildren.apply(box, children);
         if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);
         wireMoves(slug, box, columns);
+        }
+        renderBoard();
+        controls.querySelector('#board-filter').addEventListener('input', function (ev) {
+          query = ev.target.value.trim().toLowerCase();
+          renderBoard();
+          controls.querySelector('#board-filter').value = ev.target.value;
+        });
+        controls.querySelector('#board-show-all').addEventListener('click', function (ev) {
+          showAll = !showAll;
+          ev.target.textContent = showAll ? 'Show first 50' : 'Show all';
+          renderBoard();
+        });
       })
       .catch(function (err) {
         if (window.ConcordSkeleton) window.ConcordSkeleton.done(box);

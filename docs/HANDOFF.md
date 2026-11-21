@@ -1193,3 +1193,8 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - Live DOM: 42 links, 42 unique visible labels, count badges present, 0 digit-suffixed tooltips; lede "42 distinct ratified tag(s) from 68 rows".
 - Suggestion 5 done; suggestions 6-9 remain in order.
 
+## 2026-11-21 — board/list navigation
+
+- RED: 2 failures on the current candidate (no board controls, 16 list rows instead of 15). GREEN: 2 passed in 2.80s after D-222.
+- Suggestion 6 done; suggestions 7-9 remain in order.
+

@@ -2561,3 +2561,5 @@ memory.
 
 - **2026-11-21 — live taxonomy proof.** Public host showed 42 distinct links from 68 rows, count badges, and zero digit-suffixed tooltips. Gate `44897561649 success in 3m24s`, live `6f136e4`.
 
+- **2026-11-21 — board/list navigation.** Board filter/show-all and list dedupe/filter/pagination (D-222). 2 passed in 2.80s.
+

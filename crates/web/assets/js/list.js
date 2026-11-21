@@ -178,8 +178,37 @@
     }, []);
   }
 
-  function render(list, entries, counts) {
+  var view = { list: null, entries: [], counts: {}, filter: "", page: 0 };
+  var PAGE_SIZE = 25;
+
+  // The API's ranking order is the product; dedupe keeps the FIRST row for a title,
+  // which is the higher-ranked one, and never sorts again (D-222).
+  function dedupe(entries) {
+    var seen = {};
+    return entries.filter(function (e) {
+      var key = String(e.title || "").trim().toLowerCase();
+      if (!key || seen[key]) return false;
+      seen[key] = true;
+      return true;
+    });
+  }
+
+  function renderView() {
+    var list = view.list;
+    var entries = view.entries.filter(function (e) {
+      return !view.filter || String(e.title || "").toLowerCase().indexOf(view.filter) !== -1;
+    });
+    var pages = Math.max(1, Math.ceil(entries.length / PAGE_SIZE));
+    view.page = Math.max(0, Math.min(view.page, pages - 1));
+    var visible = entries.slice(view.page * PAGE_SIZE, (view.page + 1) * PAGE_SIZE);
     root.removeAttribute("aria-busy");
+    var controls = el("div", { class: "list-controls" }, [
+      el("label", { class: "visually-hidden", for: "list-filter" }, "Filter entries by title"),
+      el("input", { id: "list-filter", type: "search", placeholder: "Filter entries by title", value: view.filter }),
+      el("span", { id: "list-page" }, "Page " + (view.page + 1) + " of " + pages),
+      el("button", { type: "button", id: "list-prev", class: "btn btn-secondary btn-sm" }, "Previous"),
+      el("button", { type: "button", id: "list-next", class: "btn btn-secondary btn-sm" }, "Next")
+    ]);
     root.replaceChildren.apply(root, flatten([
       el("section", { class: "list-detail" },
         el("div", { class: "card" }, [
@@ -192,18 +221,38 @@
             el("span", { class: "badge " + (list.status === "open" ? "badge-blue" : "badge-slate") }, list.status)
           ]),
           list.description ? el("p", { class: "body-text" }, list.description) : null,
-          el("p", { class: "card-meta" }, entries.length +
-            (entries.length === 1 ? " entry" : " entries") +
+          el("p", { class: "card-meta" }, view.entries.length +
+            (view.entries.length === 1 ? " entry" : " entries") +
             " · ranked by pairwise comparison")
         ])),
-      entriesMarkup(entries.slice(0, 100), counts || {}),
+      controls,
+      entriesMarkup(visible, view.counts || {}),
       el("p", { class: "card-meta" },
-        entries.length > 100
-          ? "Showing the first 100 of " + entries.length + " entries."
-          : ""),
-      comparePanel(entries.slice(0, 100))
+        "Showing " + visible.length + " of " + entries.length + " entries."),
+      comparePanel(visible)
     ]));
-    wire(entries.slice(0, 100));
+    wire(visible);
+    controls.querySelector("#list-filter").addEventListener("input", function (ev) {
+      view.filter = ev.target.value.trim().toLowerCase();
+      view.page = 0;
+      renderView();
+      var input = root.querySelector("#list-filter");
+      input.value = ev.target.value;
+      input.focus();
+    });
+    controls.querySelector("#list-prev").addEventListener("click", function () {
+      view.page -= 1; renderView();
+    });
+    controls.querySelector("#list-next").addEventListener("click", function () {
+      view.page += 1; renderView();
+    });
+  }
+
+  function render(list, entries, counts) {
+    view.list = list;
+    view.entries = dedupe(Array.isArray(entries) ? entries : []);
+    view.counts = counts || {};
+    renderView();
   }
 
   function wire(entries) {
