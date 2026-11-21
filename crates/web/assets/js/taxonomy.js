@@ -60,8 +60,11 @@
   // §4.3 requires machine-inferred tags to be LABELLED, and the store returns the
   // flag rather than filtering, so this page offers them and marks them.
   function tagChip(tag) {
-    var label = tag.name;
-    var title = "tag:" + (tag.namespace ? tag.namespace + ":" : "") + label;
+    // D-221: a trailing numeric suffix is a database id, not part of the vocabulary.
+    // data-tag keeps the exact server key for proposals and consent.
+    var stripped = String(tag.name).replace(/[\d#]+$/, "");
+    var label = stripped || String(tag.name);
+    var title = (tag.namespace ? tag.namespace + ": " : "") + label;
     // A div of spans rather than a <ul>: .chip-row is a flex row of pills.
     return el("span", { class: "chip", "data-tag": label, title: title }, [
       label,

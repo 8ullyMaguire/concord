@@ -1182,3 +1182,8 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - Live DOM: 0 underscored labels, 4 inline help paragraphs, `.charter-actions` computed `sticky`, edit -> `Unsaved changes`, Reset -> original value + `All changes saved`.
 - Suggestion 4 done; suggestions 5-9 remain in order.
 
+## 2026-11-21 — taxonomy clarity
+
+- RED: 2 failures on the current candidate (duplicate labels, digit-suffixed tooltips). GREEN: 2 passed in 20.27s after D-221.
+- Suggestion 5 done; suggestions 6-9 remain in order.
+

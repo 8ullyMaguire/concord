@@ -639,6 +639,8 @@ Unclaimed rows are fair game.
 
 - **D-220 — visible labels are humanized, wire keys are not.** The charter still sends the server's snake_case names in `input[name]`; only labels and help text changed. Save/Reset are sticky and a dirty state is shown; Reset restores the last saved snapshot without a request.
 
+- **D-221 — visible taxonomy is deduplicated; rows are not deleted.** Group ratified tags by namespace plus display name, strip trailing `#`/digits only from what the reader sees, and show a count badge. `data-tag` keeps the exact server key so proposals still name the right tag.
+
 ## Blocked
 
 Items nobody working in this repo can finish alone. Each names what would unblock it and on whom, so the next session can
@@ -1969,7 +1971,7 @@ These are the next highest-value items from the 34-route review. None is a roadm
 2. **done at `b3af1ab` — `signed_in_visual_e2e: 4 passed in 21.32s`; gate `44893030252 success in 2m41s`; live `b3af1ab`.** Root cause was not the cookie path: personalized HTML had no `Cache-Control`, so a previously cached anonymous first paint could be reused after sign-in. D-217 adds `Cache-Control: no-store` to every server-rendered document. RED proved `cache-control None`; GREEN proved `no-store`.
 3. **done at `e9e28bf` — `a11y_axe_e2e: 2 passed in 25.02s`; gate `44894559372 success in 2m52s`; live `e9e28bf`.** Vendored axe-core 4.10.2; canary `button-name` detected; 15 routes x 4 modes swept. Initial report had 8 findings: stagger animation in flight (probe timing) and one real `/lists` CTA violation (D-218/D-219).
 4. **done at `14726d9` — `settings_fields_e2e: 4 passed in 12.60s`; gate `44896168591 success in 2m54s`; live `14726d9`.** Humanized labels, inline help for the four ranking fields, sticky Save/Reset and an honest dirty state; D-220.
-5. Taxonomy: deduplicate tags and hide raw `#id` suffixes behind tooltips/detail links. Evidence: route 10 — forum x5, swift x6, rust x4.
+5. **done at `PENDING` — `taxonomy_clarity_e2e: 2 passed in 20.27s`.** Dedupe by `(namespace, visible name)`, show ratified counts, strip trailing id suffixes from labels and tooltips while keeping `data-tag` exact; D-221.
 6. Board and list detail: add filter/pagination to the 362-idea column; group and deduplicate list entries. Evidence: routes 17 and 28; list detail was 107,730px before the 100-entry cap.
 7. Header and consent: slim the banner to a dismissible bar and grow header targets toward 44×44 without changing header height. Evidence: measured 159×32 Accept, 118×36 brand, 61–78×34 nav links at 1440px.
 8. Navigation: consolidate the nine top-level links and add a real footer. Evidence: route 1.

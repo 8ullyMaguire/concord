@@ -2483,3 +2483,6 @@ a.curation-target:hover { text-decoration: underline; }
    ran together into one unreadable word and pushed the page 241px sideways (D-208). */
 .project-tabs { display: flex; flex-wrap: wrap; gap: .35rem .75rem; }
 .project-tabs a { white-space: nowrap; }
+
+/* D-221: a count belongs to the visible tag, not to a hidden database row. */
+.tag-count { color: var(--slate-600); font-size: 0.78rem; font-weight: 400; }

@@ -2557,3 +2557,5 @@ memory.
 
 - **2026-11-21 — live settings proof.** Public host showed 0 underscored labels, 4 help paragraphs, sticky actions, and a working dirty/Reset cycle. Gate `44896168591 success in 2m54s`, live `14726d9`.
 
+- **2026-11-21 — taxonomy clarity.** Dedupe plus count badges, id suffixes hidden in visible labels/tooltips (D-221). 2 passed in 20.27s.
+

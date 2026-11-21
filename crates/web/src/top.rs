@@ -231,33 +231,47 @@ pub async fn taxonomy(State(pool): State<PgPool>, headers: HeaderMap) -> Respons
         Ok(tags) => tags,
         Err(error) => return crate::error_page(&headers, "the taxonomy could not be read", &error.to_string()),
     };
+    // D-221: the catalogue holds several ratified rows with the same visible name, and some names carry a numeric
+    // suffix that is an internal id, not part of the vocabulary. Group by what a reader can act on and show the
+    // count; keep every row in the database, because the duplicates may record different projects' histories.
+    fn display_name(name: &str) -> String {
+        let stripped = name.trim_end_matches(|c: char| c.is_ascii_digit() || c == '#');
+        if stripped.is_empty() { name.to_string() } else { stripped.to_string() }
+    }
+    let mut groups: std::collections::BTreeMap<(String, String), usize> = std::collections::BTreeMap::new();
+    for tag in &tags {
+        *groups.entry((tag.namespace.clone(), display_name(&tag.name))).or_insert(0) += 1;
+    }
     let mut body = Html::new();
     body.open("div", &[("class", "page-head")])
         .open("div", &[("class", "page-head-main")])
         .open("span", &[("class", "page-eyebrow")]).text("Vocabulary").close("span")
         .open("h1", &[("class", "page-title-lg")]).text("Taxonomy").close("h1")
         .open("p", &[("class", "page-lede")])
-        .text(&format!("{} ratified tag(s), grouped by namespace.", tags.len()))
+        .text(&format!("{} distinct ratified tag(s) from {} rows, grouped by namespace.", groups.len(), tags.len()))
         .close("p")
         .close("div")
         .close("div");
-    if tags.is_empty() {
+    if groups.is_empty() {
         body.open("p", &[("class", "empty")]).text("No tags have been ratified yet.").close("p");
     }
-    // Grouped by namespace, with the global one last: an empty namespace is "no namespace", not the first alphabetically.
-    let mut namespaces: Vec<String> = tags.iter().map(|tag| tag.namespace.clone()).collect();
+    let mut namespaces: Vec<String> = groups.keys().map(|key| key.0.clone()).collect();
     namespaces.sort();
     namespaces.dedup();
     namespaces.sort_by_key(|namespace| namespace.is_empty());
     for namespace in &namespaces {
-        let in_namespace: Vec<&concord_db::taxonomy::Tag> =
-            tags.iter().filter(|tag| &tag.namespace == namespace).collect();
+        let mut entries: Vec<(&String, &usize)> = groups.iter()
+            .filter(|(key, _)| &key.0 == namespace)
+            .map(|(key, count)| (&key.1, count))
+            .collect();
+        entries.sort_by(|a, b| a.0.cmp(b.0));
         let heading = if namespace.is_empty() { "(no namespace)" } else { namespace.as_str() };
         body.open("h2", &[]).text(heading).close("h2").open("ul", &[("class", "tags"), ("data-cloud", "1")]);
-        for tag in in_namespace {
+        for (label, count) in entries {
             body.open("li", &[])
-                .open("a", &[("href", &format!("/search?tag={}", urlencode(&tag.name)))])
-                .text(&tag.name)
+                .open("a", &[("href", &format!("/search?tag={}", urlencode(label)))])
+                .text(label)
+                .open("span", &[("class", "tag-count")]).text(&format!(" ({})", count)).close("span")
                 .close("a")
                 .close("li");
         }
