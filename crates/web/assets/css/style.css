@@ -2496,3 +2496,14 @@ a.curation-target:hover { text-decoration: underline; }
 .board-controls, .list-controls { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; margin: .5rem 0 .9rem; }
 .board-controls input, .list-controls input { flex: 1 1 16rem; min-width: 10rem; padding: .4rem .6rem; border: 1px solid var(--slate-200); border-radius: 6px; font: inherit; }
 .list-controls #list-page { font-size: .82rem; color: var(--slate-600); }
+
+/* D-224: grouping is visible but does not hide links behind a menu. */
+.site-nav .nav-group { display: inline-flex; align-items: center; gap: 0.1rem; }
+.site-nav .nav-group-label { font-size: 0.66rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--slate-500); padding: 0 0.35rem; }
+.site-nav .nav-separator { width: 1px; height: 24px; background: var(--slate-200); margin: 0 0.25rem; }
+.site-footer { text-align: left; }
+.site-footer .footer-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; margin-bottom: 1rem; text-align: left; }
+.site-footer .footer-grid h2 { margin: 0 0 0.35rem; font-size: 0.76rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink); }
+.site-footer .footer-grid a { display: block; padding: 0.2rem 0; color: var(--slate-600); text-decoration: none; }
+.site-footer .footer-grid a:hover { color: var(--ink); text-decoration: underline; }
+@media (max-width: 720px) { .site-footer .footer-grid { grid-template-columns: 1fr; } }

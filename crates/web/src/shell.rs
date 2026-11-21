@@ -219,17 +219,44 @@ pub fn document(
         } else { String::new() };
         format!("<a href=\"{href}\"{active}{hook}>{label}{badge}</a>")
     })
-    .collect::<Vec<_>>()
-    .join("\n      ");
+    .collect::<Vec<_>>();
+    // D-224: group the same links instead of hiding them in a menu. Every existing href and
+    // session.js hook stays in the header; only the labels and grouping are new.
+    let (explore, community) = nav_links.split_at(5);
+    let nav_explore = explore.join("\n        ");
+    let nav_community = community.join("\n        ");
+    let footer_group = |label: &str, links: &[(&str, &str)]| {
+        let items = links.iter().map(|(href, text)| {
+            format!("<a href=\"{href}\">{text}</a>")
+        }).collect::<Vec<_>>().join("\n          ");
+        format!("<section role=\"group\" aria-label=\"{label}\"><h2>{label}</h2>\n          {items}\n        </section>")
+    };
+    let footer_explore = footer_group("Explore", &[
+        ("/scout", "Scout"), ("/finder", "Finder"), ("/search", "Search"),
+        ("/projects", "Projects"), ("/taxonomy", "Taxonomy"),
+    ]);
+    let footer_community = footer_group("Community", &[
+        ("/stats", "Statistics"), ("/curation", "Curation"), ("/notifications", "Notifications"),
+    ]);
+    let footer_site = footer_group("This site", &[
+        ("/", "Home"), ("/projects", "All projects"), ("/documents", "Documents"),
+    ]);
 
     document.push_str(&format!(
         r#"<header class="site-header">
   <div class="container">
     <a href="/" class="brand" aria-label="Concord home"><span class="brand-tile">C</span><span class="brand-name">Concord</span></a>
-    <nav class="site-nav">
-      {nav_links}
-      <a href="/login" data-auth-link="login">Sign in</a>
-      <button type="button" class="nav-signout" data-signout hidden>Sign out</button>
+    <nav class="site-nav" aria-label="Primary">
+      <span class="nav-group" role="group" aria-label="Explore"><span class="nav-group-label" aria-hidden="true">Explore</span>
+        {nav_explore}
+      </span>
+      <span class="nav-separator" aria-hidden="true"></span>
+      <span class="nav-group" role="group" aria-label="Community"><span class="nav-group-label" aria-hidden="true">Community</span>
+        {nav_community}
+      </span>
+      <span class="nav-group" role="group" aria-label="Account"><a href="/login" data-auth-link="login">Sign in</a>
+        <button type="button" class="nav-signout" data-signout hidden>Sign out</button>
+      </span>
     </nav>
   </div>
 </header>
@@ -240,9 +267,19 @@ pub fn document(
         document.push_str(&tabs(&slug, &sub));
     }
     document.push_str(shell.body);
-    document.push_str("</main>\n<footer class=\"site-footer\"><div class=\"container\"><p>Concord — a forge for discussions. ");
-    document.push_str(&escape(version));
-    document.push_str("</p></div></footer>\n");
+    document.push_str(&format!(
+        r#"</main>
+<footer class="site-footer"><div class="container">
+  <div class="footer-grid">
+        {}
+        {}
+        {}
+  </div>
+  <p>Concord — a forge for discussions. {}</p>
+</div></footer>
+"#,
+        footer_explore, footer_community, footer_site, escape(version)
+    ));
     if let Some(value) = bootstrap {
         document.push_str("<script type=\"application/json\" id=\"concord-bootstrap\">");
         document.push_str(&crate::script_json(value));

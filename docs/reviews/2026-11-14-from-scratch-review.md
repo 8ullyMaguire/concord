@@ -2569,3 +2569,5 @@ memory.
 
 - **2026-11-21 — live header/consent proof.** Public host: notice 54px/180 chars, Accept 40px, Not now present, header 53px, brand and nav links 44px, zero overflow at 1440px. Gate `44901072456 success in 2m49s`, live `7ff7918`.
 
+- **2026-11-21 — navigation and footer.** Grouped primary nav and a real grouped footer (D-224). 2 passed in 13.82s.
+

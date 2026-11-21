@@ -1215,3 +1215,8 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - Live DOM at 1440px: notice 54px (was 237px), 180 chars (was 516), Accept 40px, Not now present; header 53px (was 82px), brand 44px, minimum nav link 44px, overflow 0.
 - Suggestion 7 done; suggestions 8-9 remain in order.
 
+## 2026-11-21 — navigation and footer
+
+- RED: 2 failures (0 nav groups, 0 footer groups/links). GREEN: 2 passed in 13.82s after D-224.
+- Suggestion 8 done; suggestion 9 remains.
+
