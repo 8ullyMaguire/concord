@@ -2567,3 +2567,5 @@ memory.
 
 - **2026-11-21 — header and consent.** Compact dismissible bar plus 44px header targets (D-223). 3 passed in 15.81s.
 
+- **2026-11-21 — live header/consent proof.** Public host: notice 54px/180 chars, Accept 40px, Not now present, header 53px, brand and nav links 44px, zero overflow at 1440px. Gate `44901072456 success in 2m49s`, live `7ff7918`.
+

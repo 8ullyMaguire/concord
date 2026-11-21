@@ -1209,3 +1209,9 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - RED: 3 failures (notice too tall / no dismiss, missing dismiss, 36px brand and 34px links). GREEN: 3 passed in 15.81s after D-223.
 - Suggestion 7 done; suggestions 8-9 remain in order.
 
+## 2026-11-21 — header and consent final proof
+
+- Gate `44901072456 success in 2m49s`; release `BUILD=0`, `DEPLOY=0`, live `concord-rs 0.0.0+7ff7918+vendor`, services active/inactive.
+- Live DOM at 1440px: notice 54px (was 237px), 180 chars (was 516), Accept 40px, Not now present; header 53px (was 82px), brand 44px, minimum nav link 44px, overflow 0.
+- Suggestion 7 done; suggestions 8-9 remain in order.
+
