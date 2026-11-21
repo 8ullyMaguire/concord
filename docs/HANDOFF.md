@@ -1220,3 +1220,9 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - RED: 2 failures (0 nav groups, 0 footer groups/links). GREEN: 2 passed in 13.82s after D-224.
 - Suggestion 8 done; suggestion 9 remains.
 
+## 2026-11-21 — navigation and footer final proof
+
+- Gate `44902180234 success in 2m27s`; release `BUILD=0`, `DEPLOY=0`, live `concord-rs 0.0.0+f015a7f+vendor`, services active/inactive.
+- Live DOM: nav groups Explore/Community/Account with all 9 header links; footer groups Explore/Community/This site with 11 links; header 53px, overflow 0.
+- Suggestion 8 done; suggestion 9 remains.
+
