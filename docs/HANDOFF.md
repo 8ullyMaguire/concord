@@ -1171,3 +1171,8 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - Live Playwright axe probe: home and `/lists` at 1440/390 in light/dark returned `[]` violations in all 8 checks.
 - Suggestion 3 done; suggestions 4-9 remain in order.
 
+## 2026-11-21 — settings field clarity
+
+- RED: 4 failures on the current candidate (underscored labels, no help, no reset/dirty). GREEN: 4 passed in 12.60s after D-220.
+- Suggestion 4 done; suggestions 5-9 remain in order.
+

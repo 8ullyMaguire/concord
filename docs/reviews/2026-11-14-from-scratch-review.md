@@ -2553,3 +2553,5 @@ memory.
 
 - **2026-11-21 — live axe proof.** Public host home and `/lists` returned zero WCAG 2.1 A/AA violations at 1440/390 in both colour schemes (8/8 checks `[]`). Gate `44894559372 success in 2m52s`, live `e9e28bf`.
 
+- **2026-11-21 — settings field clarity.** Humanized labels and four inline help paragraphs; sticky Save/Reset with dirty state (D-220). 4 passed in 12.60s.
+

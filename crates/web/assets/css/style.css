@@ -792,6 +792,18 @@ a.card { display: block; color: inherit; }
 }
 
 .detail-actions { display: flex; gap: 0.5rem; }
+.field-help { margin: 0.35rem 0 0; font-size: 0.78rem; line-height: 1.45; color: var(--slate-600); }
+/* D-220: the charter is 22 scalars; Save must not be a treasure hunt at the bottom. */
+.charter-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 5;
+  align-items: center;
+  padding: 0.6rem 0;
+  background: var(--slate-50, #f8fafc);
+  border-top: 1px solid var(--slate-200);
+}
+.charter-actions [data-dirty] { margin-right: auto; font-size: 0.82rem; color: var(--slate-600); }
 
 /* Project sub-page navigation.
 

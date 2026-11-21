@@ -129,16 +129,32 @@
       keys: ["ThemeLifetimeDays"] }
   ];
 
+  // The wire key is the server's snake_case name and must never be renamed; the
+  // VISIBLE label is humanized, and the four ranking scalars get a sentence each.
+  // D-220: a number called `lam` means nothing to a maintainer reading the charter.
+  var FIELD_HELP = {
+    glicko_tau: "Glicko-2 volatility: how far a rating may move after a surprising result. Higher reacts faster.",
+    lam: "Weight decay: how strongly older activity is discounted when a feature's priority is scored.",
+    mu: "Score offset: the neutral baseline added before ranking weights are applied.",
+    pain_halflife_days: "Days for an unresolved pain signal to lose half its ranking weight."
+  };
+
+  function human(name) {
+    return String(name).replace(/_/g, " ").replace(/\b\w/g, function (c) { return c.toUpperCase(); });
+  }
+
   function field(name, value) {
     var isBool = typeof value === "boolean";
     var shown = isBool ? (value ? "yes" : "no") : value;
     var id = "charter-" + name;
-    return el("div", { class: "field" }, [
-      el("label", { class: "form-label", for: id }, name),
+    var parts = [
+      el("label", { class: "form-label", for: id }, human(name)),
       el("input", {
         id: id, name: name, "data-kind": isBool ? "bool" : typeof value, value: shown
       })
-    ]);
+    ];
+    if (FIELD_HELP[name]) parts.push(el("p", { class: "field-help" }, FIELD_HELP[name]));
+    return el("div", { class: "field" }, parts);
   }
 
   function charterForm(c) {
@@ -166,8 +182,11 @@
     }
     return el("form", { id: "charter-form" }, [
       groups,
-      el("div", { class: "detail-actions" },
-        el("button", { type: "submit", class: "btn btn-primary" }, "Save charter"))
+      el("div", { class: "detail-actions charter-actions" }, [
+        el("span", { "data-dirty": "", role: "status", "aria-live": "polite" }, "All changes saved"),
+        el("button", { type: "button", class: "btn btn-secondary", "data-reset": "" }, "Reset"),
+        el("button", { type: "submit", class: "btn btn-primary" }, "Save charter")
+      ])
     ]);
   }
 
@@ -1042,6 +1061,29 @@
   function wireSave() {
     var form = document.getElementById("charter-form");
     if (!form) return;
+    function values() {
+      var out = {};
+      Array.prototype.forEach.call(form.querySelectorAll("input[name]"), function (input) {
+        out[input.name] = input.value;
+      });
+      return out;
+    }
+    var saved = values();
+    var dirty = form.querySelector("[data-dirty]");
+    var reset = form.querySelector("[data-reset]");
+    function updateDirty() {
+      var now = values();
+      var changed = Object.keys(saved).some(function (k) { return saved[k] !== now[k]; });
+      if (dirty) dirty.textContent = changed ? "Unsaved changes" : "All changes saved";
+      if (reset) reset.disabled = !changed;
+    }
+    form.addEventListener("input", updateDirty);
+    if (reset) reset.addEventListener("click", function () {
+      Array.prototype.forEach.call(form.querySelectorAll("input[name]"), function (input) {
+        if (input.name in saved) input.value = saved[input.name];
+      });
+      updateDirty();
+    });
     form.addEventListener("submit", function (ev) {
       ev.preventDefault();
 
@@ -1070,6 +1112,8 @@
       // plain request that gets a plain 401 rather than a header of "Bearer null".
       window.ConcordApi.put("/api/v1/projects/" + encodeURIComponent(slug) + "/charter", payload)
         .then(function () {
+          saved = values();
+          updateDirty();
           say("Charter saved.");
         })
         .catch(function (err) {
