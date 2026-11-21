@@ -1204,3 +1204,8 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - Live DOM: board filter and Show all present with 58 cards; list filter present, `Page 1 of 19`, 25 rows, `Showing 25 of 459 entries`.
 - Suggestion 6 done; suggestions 7-9 remain in order.
 
+## 2026-11-21 — header and consent
+
+- RED: 3 failures (notice too tall / no dismiss, missing dismiss, 36px brand and 34px links). GREEN: 3 passed in 15.81s after D-223.
+- Suggestion 7 done; suggestions 8-9 remain in order.
+

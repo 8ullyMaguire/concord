@@ -183,15 +183,10 @@ pub fn document(
         // one, so the sentence under the buttons is the same one the server would have answered with.
         document.push_str(
             r#"<div id="cookie-notice" class="cookie-notice" role="dialog" aria-labelledby="cookie-notice-text">
-  <p id="cookie-notice-text">
-    Concord sets two cookies, and nothing else. <code>concord_nav</code> lets a page you are already signed in to render as signed
-    in — it is never accepted on an action, so it cannot be used to make you do anything. <code>concord_consent</code> records this
-    choice. No advertising, no analytics, no third parties. You can take part without an account: you act as a nameless guest — a
-    random name and a timestamp, nothing else — and creating an account later moves what you did into it.
-    <strong>Interactions are off until you accept.</strong>
-  </p>
+  <p id="cookie-notice-text">Two first-party cookies: one keeps you signed in, one remembers this choice. No ads, analytics or third parties. <strong>Interactions are off until you accept.</strong></p>
   <div class="cookie-notice-actions">
     <button type="button" id="cookie-accept" class="btn btn-primary">Accept and continue</button>
+    <button type="button" id="cookie-dismiss" class="btn btn-secondary">Not now</button>
   </div>
 </div>
 "#,

@@ -2565,3 +2565,5 @@ memory.
 
 - **2026-11-21 — live board/list proof.** Public host shows board filter/Show all (58 cards) and list filter with 25 rows, page 1 of 19, 459 ranked entries. Gate `44899810595 success in 3m10s`, live `27a80f3`.
 
+- **2026-11-21 — header and consent.** Compact dismissible bar plus 44px header targets (D-223). 3 passed in 15.81s.
+

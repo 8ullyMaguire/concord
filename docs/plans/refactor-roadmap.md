@@ -643,6 +643,8 @@ Unclaimed rows are fair game.
 
 - **D-222 — bounded client views, unchanged server truth.** Filtering and pagination hide rows without deleting or reordering them; the list dedupe keeps the first (highest-ranked) row for a title. Card moves and list votes still work because controls re-render from the same API response.
 
+- **D-223 — dismiss is not consent.** "Not now" hides the notice for the current browser session and changes no cookie; interactions stay blocked until the server records acceptance. Accept remains the only consent path.
+
 ## Blocked
 
 Items nobody working in this repo can finish alone. Each names what would unblock it and on whom, so the next session can
@@ -1975,6 +1977,6 @@ These are the next highest-value items from the 34-route review. None is a roadm
 4. **done at `14726d9` — `settings_fields_e2e: 4 passed in 12.60s`; gate `44896168591 success in 2m54s`; live `14726d9`.** Humanized labels, inline help for the four ranking fields, sticky Save/Reset and an honest dirty state; D-220.
 5. **done at `6f136e4` — `taxonomy_clarity_e2e: 2 passed in 20.27s`; gate `44897561649 success in 3m24s`; live `6f136e4`.** Dedupe by `(namespace, visible name)`, show ratified counts, strip trailing id suffixes from labels and tooltips while keeping `data-tag` exact; D-221.
 6. **done at `27a80f3` — `board_list_nav_e2e: 2 passed in 2.80s`; gate `44899810595 success in 3m10s`; live `27a80f3`.** Board title filter + 50/show-all cap; list dedupe by title, filter and 25-entry pagination preserving ranked order; D-222.
-7. Header and consent: slim the banner to a dismissible bar and grow header targets toward 44×44 without changing header height. Evidence: measured 159×32 Accept, 118×36 brand, 61–78×34 nav links at 1440px.
+7. **done at `PENDING` — `header_consent_e2e: 3 passed in 15.81s`.** Compact dismissible notice; Accept still records consent; 44px brand/nav targets within the old header height; D-223.
 8. Navigation: consolidate the nine top-level links and add a real footer. Evidence: route 1.
 9. Presentation polish: normalise dates and humanise `snake_case` statuses on `/stats` and `/documents`. Evidence: routes 11 and 24.

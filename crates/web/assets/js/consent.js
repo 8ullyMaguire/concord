@@ -126,6 +126,20 @@
   function wireNotice() {
     var button = document.getElementById('cookie-accept');
     if (!button) return;
+    var dismiss = document.getElementById('cookie-dismiss');
+    if (dismiss) {
+      dismiss.addEventListener('click', function () {
+        try { sessionStorage.setItem('concord_notice_dismissed', '1'); } catch (ignored) {}
+        var notice = document.getElementById('cookie-notice');
+        if (notice) notice.remove();
+      });
+    }
+    try {
+      if (sessionStorage.getItem('concord_notice_dismissed')) {
+        var notice = document.getElementById('cookie-notice');
+        if (notice) notice.remove();
+      }
+    } catch (ignored) {}
     button.addEventListener('click', function () {
       button.disabled = true;
       pendingAccept = originalFetch('/api/v1/consent', {
