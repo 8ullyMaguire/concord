@@ -2563,3 +2563,5 @@ memory.
 
 - **2026-11-21 — board/list navigation.** Board filter/show-all and list dedupe/filter/pagination (D-222). 2 passed in 2.80s.
 
+- **2026-11-21 — live board/list proof.** Public host shows board filter/Show all (58 cards) and list filter with 25 rows, page 1 of 19, 459 ranked entries. Gate `44899810595 success in 3m10s`, live `27a80f3`.
+

@@ -1198,3 +1198,9 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - RED: 2 failures on the current candidate (no board controls, 16 list rows instead of 15). GREEN: 2 passed in 2.80s after D-222.
 - Suggestion 6 done; suggestions 7-9 remain in order.
 
+## 2026-11-21 — board/list navigation final proof
+
+- Gate `44899810595 success in 3m10s`; release `BUILD=0`, `DEPLOY=0`, live `concord-rs 0.0.0+27a80f3+vendor`, services active/inactive.
+- Live DOM: board filter and Show all present with 58 cards; list filter present, `Page 1 of 19`, 25 rows, `Showing 25 of 459 entries`.
+- Suggestion 6 done; suggestions 7-9 remain in order.
+
