@@ -1152,3 +1152,9 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - GREEN after D-217: `signed_in_visual_e2e: 4 passed in 21.32s`; candidate rebuild `BUILD=0`.
 - Suggestion 2 done; suggestions 3-9 remain in order.
 
+## 2026-11-21 — personalized cache final proof
+
+- Gate `44893030252 success in 2m41s`; release `BUILD=0`, `DEPLOY=0`, live `concord-rs 0.0.0+b3af1ab+vendor`, services active/inactive.
+- Live browser: `/notifications` `cache-control: no-store`; fresh minted account `/auth/me 200`, page gate False with `notifications-root`; `logout 204`, `meAfter 401`; temporary user id 2278 deleted, remaining 0.
+- Suggestion 2 done; suggestions 3-9 remain in order.
+

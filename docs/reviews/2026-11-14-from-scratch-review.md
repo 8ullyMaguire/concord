@@ -2547,3 +2547,5 @@ memory.
 
 - **2026-11-21 — personalized cache.** RED `cache-control None`; GREEN `4 passed in 21.32s` after D-217. The earlier live gate discrepancy is attributed to the missing `no-store` header, not to proxy cookie stripping.
 
+- **2026-11-21 — live cache proof.** Live `/notifications` answered `cache-control: no-store`; a fresh account session opened the page (`gate False`, `root True`) and was revoked (`logout 204`, `meAfter 401`); temporary user id 2278 deleted (remaining 0). Gate `44893030252 success in 2m41s`.
+
