@@ -1949,3 +1949,17 @@ CI 44392405151 success
 D-89 also records the two gate-infrastructure fixes required by the move: the scanner and policy oracle had to read
 `finder.rs` and `feeds.rs`, and a test-build move error (`read_dir(dir)` consumed `dir`) was fixed by capturing the
 parent before the loop. Step 3 is now marked Done; what remains in `lib.rs` are shared helpers and AppState (D-41).
+
+
+## Suggestions after row 10 — not committed work
+
+These are the next highest-value items from the 34-route review. None is a roadmap row yet: row 10 closed the defects that were worth fixing now, and these are ordered options rather than promises. Pick the first one that can be finished this turn; record any decision in the Decisions section in the same commit.
+
+1. Signed-in visual pass. Mint a short-lived session the way the app does, walk account/settings/proposal surfaces in a real browser, delete the session, and record what the signed-out sweep could not see. Evidence: `findings.md` scope limit; route list in `/home/alvaro/site-audits/concord-2026-11-20/routes-checklist.md`.
+2. axe-core WCAG 2.1 AA route sweep in a real browser, both colour schemes and both widths, with a canary proving the probe can fail. The 2026-11-20 sweep measured approximate contrast and tap targets but did not run axe.
+3. Settings fields: semantic grouping, inline help for `glikos_tau`/`lam`/`mu`/`pain_ruffle_days`, and a sticky Save/Reset with dirty state. Evidence: route 33 in `findings.md`.
+4. Taxonomy: deduplicate tags and hide raw `#id` suffixes behind tooltips/detail links. Evidence: route 10 — forum x5, swift x6, rust x4.
+5. Board and list detail: add filter/pagination to the 362-idea column; group and deduplicate list entries. Evidence: routes 17 and 28; list detail was 107,730px before the 100-entry cap.
+6. Header and consent: slim the banner to a dismissible bar and grow header targets toward 44×44 without changing header height. Evidence: measured 159×32 Accept, 118×36 brand, 61–78×34 nav links at 1440px.
+7. Navigation: consolidate the nine top-level links and add a real footer. Evidence: route 1.
+8. Presentation polish: normalise dates and humanise `snake_case` statuses on `/stats` and `/documents`. Evidence: routes 11 and 24.

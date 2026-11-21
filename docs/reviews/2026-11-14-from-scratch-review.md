@@ -2537,3 +2537,6 @@ memory.
 
 - **2026-11-20 — live walk correction.** The first deploy printed `50` (paged length) for home Projects; patched to use `/api/v1/search` `total` (D-214). `site_review_e2e: 10 passed in 15.40s` after rebuild.
 
+
+
+- **2026-11-20 — suggestions log.** The eight next options are recorded in `docs/plans/refactor-roadmap.md` under "Suggestions after row 10"; the ordered version for the next session is in `docs/HANDOFF.md`. They are not committed work and carry no invented measurements.
