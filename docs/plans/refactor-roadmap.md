@@ -649,6 +649,8 @@ Unclaimed rows are fair game.
 
 - **D-225 — presentation only.** API values and document bodies stay verbatim; only the rendered facet labels and generated metadata dates are normalised, so links, sorting and stored data do not change.
 
+- **D-226 — a declared path called with the wrong verb is a 405, not a 500.** `path_is_declared` keeps the undeclared-route alarm intact; merged from `row502/method-405-rebase` (`d9d85a6`) into `port-rust` at `49f1a38`.
+
 ## Blocked
 
 Items nobody working in this repo can finish alone. Each names what would unblock it and on whom, so the next session can

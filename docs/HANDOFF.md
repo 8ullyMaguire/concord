@@ -1237,3 +1237,9 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - Live DOM: document metadata shows 4 `YYYY-MM-DD` dates and 0 locale dates; `/stats` has no published rows, so no status key is exposed.
 - Suggestion 9 done; no roadmap suggestions remain open. Goal complete.
 
+## 2026-11-21 — row502 method-405 merge
+
+- Pre-merge tags `pre-merge-port-rust-2026-11-21` (`71ce06d`) and `pre-merge-row502-405-2026-11-21` (`d9d85a6`). Divergence: port-rust-only 25, branch-only 1; no conflicts.
+- Merge `49f1a38` brings `d9d85a6` (`fix(step9): answer method mismatch with 405, not undeclared 500`) into port-rust: `path_is_declared` plus its unit test.
+- Targeted proof: `cargo test -p concord-app --lib a_declared_path_with_the_wrong_method_is_not_an_undeclared_route` -> `test result: ok. 1 passed; ... 22 filtered out`.
+

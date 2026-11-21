@@ -2577,3 +2577,5 @@ memory.
 
 - **2026-11-21 — live date/status proof.** Public documents show 4 ISO day dates and 0 locale dates; stats expose no raw status keys. Gate `44903913428 success in 2m53s`, live `895f856`.
 
+- **2026-11-21 — method mismatch fix merged.** `row502/method-405-rebase` `d9d85a6` merged at `49f1a38`; targeted policy test passed (1 passed, 22 filtered out). Declared paths now answer 405 on a wrong verb; undeclared paths still alarm with 500.
+
