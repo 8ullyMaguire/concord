@@ -1187,3 +1187,9 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - RED: 2 failures on the current candidate (duplicate labels, digit-suffixed tooltips). GREEN: 2 passed in 20.27s after D-221.
 - Suggestion 5 done; suggestions 6-9 remain in order.
 
+## 2026-11-21 — taxonomy clarity final proof
+
+- Gate `44897561649 success in 3m24s`; release `BUILD=0`, `DEPLOY=0`, live `concord-rs 0.0.0+6f136e4+vendor`, services active/inactive.
+- Live DOM: 42 links, 42 unique visible labels, count badges present, 0 digit-suffixed tooltips; lede "42 distinct ratified tag(s) from 68 rows".
+- Suggestion 5 done; suggestions 6-9 remain in order.
+

@@ -2559,3 +2559,5 @@ memory.
 
 - **2026-11-21 — taxonomy clarity.** Dedupe plus count badges, id suffixes hidden in visible labels/tooltips (D-221). 2 passed in 20.27s.
 
+- **2026-11-21 — live taxonomy proof.** Public host showed 42 distinct links from 68 rows, count badges, and zero digit-suffixed tooltips. Gate `44897561649 success in 3m24s`, live `6f136e4`.
+
