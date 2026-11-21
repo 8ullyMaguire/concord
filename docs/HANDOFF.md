@@ -1158,3 +1158,10 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - Live browser: `/notifications` `cache-control: no-store`; fresh minted account `/auth/me 200`, page gate False with `notifications-root`; `logout 204`, `meAfter 401`; temporary user id 2278 deleted, remaining 0.
 - Suggestion 2 done; suggestions 3-9 remain in order.
 
+## 2026-11-21 — axe WCAG gate
+
+- Canary RED proof: injected unnamed button reported as `button-name`; `1 passed, 1 deselected in 14.61s`.
+- First sweep found 8 AA findings: 6 contrast during stagger animation, 2 `link-in-text-block` on `/lists`.
+- D-218 fixed the probe's motion state; D-219 made the CTA a button. `a11y_axe_e2e: 2 passed in 25.02s`; wired as suite 32.
+- Suggestion 3 done; suggestions 4-9 remain in order.
+

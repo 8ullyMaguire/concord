@@ -2549,3 +2549,5 @@ memory.
 
 - **2026-11-21 — live cache proof.** Live `/notifications` answered `cache-control: no-store`; a fresh account session opened the page (`gate False`, `root True`) and was revoked (`logout 204`, `meAfter 401`); temporary user id 2278 deleted (remaining 0). Gate `44893030252 success in 2m41s`.
 
+- **2026-11-21 — axe a11y gate.** Vendored axe-core 4.10.2; canary `button-name` proved the probe fails; initial 8 findings reduced to 0 after D-218/D-219. `a11y_axe_e2e: 2 passed in 25.02s` across 15 routes x 4 modes.
+

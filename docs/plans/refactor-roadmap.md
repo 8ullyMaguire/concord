@@ -634,6 +634,9 @@ Unclaimed rows are fair game.
 
 - **D-217 — personalized documents are `no-store`.** The shell carries consent state and an unread count, and some pages carry reader-specific bodies. A browser cache that reuses an anonymous first paint after sign-in shows a signed-out page to a signed-in reader; every rendered document now sets `Cache-Control: no-store`.
 
+- **D-218 — axe must see the settled page.** The home stagger animation's partial opacity made axe report false contrast failures; the gate sets `reduced_motion="reduce"` so the measured colour is the shipped colour.
+- **D-219 — the `/lists` CTA is a button.** A bare indigo link inside a text block failed `link-in-text-block` at 2.83:1 with no underline; it now uses the existing `btn btn-secondary` class.
+
 ## Blocked
 
 Items nobody working in this repo can finish alone. Each names what would unblock it and on whom, so the next session can
@@ -1962,7 +1965,7 @@ These are the next highest-value items from the 34-route review. None is a roadm
 
 1. **done at `728492f` — `signed_in_visual_e2e: 3 passed in 8.91s`; gate `44891512058 success in 2m57s`; live `c63f706`.** Minted a real account session over register + `/auth/me`, walked home, notifications, settings, board, rank and consensus at 1440px and 390px, and revoked the token. 12 readings, 12 screenshots, 0 gate copy, 0px overflow. Evidence: `docs/evidence/2026-11-21-signed-in-visual.json`; D-215/D-216.
 2. **done at `b3af1ab` — `signed_in_visual_e2e: 4 passed in 21.32s`; gate `44893030252 success in 2m41s`; live `b3af1ab`.** Root cause was not the cookie path: personalized HTML had no `Cache-Control`, so a previously cached anonymous first paint could be reused after sign-in. D-217 adds `Cache-Control: no-store` to every server-rendered document. RED proved `cache-control None`; GREEN proved `no-store`.
-3. axe-core WCAG 2.1 AA route sweep in a real browser, both colour schemes and both widths, with a canary proving the probe can fail. The 2026-11-20 sweep measured approximate contrast and tap targets but did not run axe.
+3. **done at `PENDING` — `a11y_axe_e2e: 2 passed in 25.02s`.** Vendored axe-core 4.10.2; canary `button-name` detected; 15 routes x 4 modes swept. Initial report had 8 findings: stagger animation in flight (probe timing) and one real `/lists` CTA violation (D-218/D-219).
 4. Settings fields: semantic grouping, inline help for `glikos_tau`/`lam`/`mu`/`pain_ruffle_days`, and a sticky Save/Reset with dirty state. Evidence: route 33 in `findings.md`.
 5. Taxonomy: deduplicate tags and hide raw `#id` suffixes behind tooltips/detail links. Evidence: route 10 — forum x5, swift x6, rust x4.
 6. Board and list detail: add filter/pagination to the 362-idea column; group and deduplicate list entries. Evidence: routes 17 and 28; list detail was 107,730px before the 100-entry cap.

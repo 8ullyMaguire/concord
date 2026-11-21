@@ -140,7 +140,7 @@ pub async fn lists(headers: HeaderMap) -> Response {
     let mut body = Html::new();
     body.open("h1", &[]).text("Lists").close("h1")
         .open("p", &[]).text("Lists belong to projects. Open a project and use its Lists tab to browse or rank one.").close("p")
-        .open("a", &[("href", "/projects")]).text("Browse projects").close("a");
+        .open("a", &[("href", "/projects"), ("class", "btn btn-secondary")]).text("Browse projects").close("a");
     render(&headers, Page {
         title: "Lists",
         path: "/lists",
