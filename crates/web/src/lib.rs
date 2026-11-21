@@ -622,7 +622,15 @@ pub(crate) fn render_with_unread(
         &version,
         Some(&page.bootstrap),
     );
-    HtmlResponse(document).into_response()
+    // D-217: the shell carries the reader's unread count and the consent state, and some pages carry the reader's
+    // whole body. A browser that reuses an anonymous first paint after a sign-in shows a signed-out page to a
+    // signed-in reader. no-store is the only header that forbids both the browser cache and an intermediary's.
+    let mut response = HtmlResponse(document).into_response();
+    response.headers_mut().insert(
+        axum::http::header::CACHE_CONTROL,
+        axum::http::HeaderValue::from_static("no-store"),
+    );
+    response
 }
 
 /// A 404 that is a document, not a JSON error: a reader arrived here with a link.

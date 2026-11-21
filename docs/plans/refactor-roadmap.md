@@ -632,6 +632,8 @@ Unclaimed rows are fair game.
 - **D-215 — a signed-in browser is registered over HTTP, not assembled by hand.** The suite keeps the register token, adds the navigation cookie and the parsed `/auth/me` body to `localStorage`, then revokes the token through `/auth/logout`; no credential value is logged.
 - **D-216 — 409 on `/votes/next` is an empty-state signal, not a JavaScript error.** The fixture project has fewer than two features; `rank.js` renders the friendly conflict message. The gate whitelists only that 409 and still fails on any other bad response.
 
+- **D-217 — personalized documents are `no-store`.** The shell carries consent state and an unread count, and some pages carry reader-specific bodies. A browser cache that reuses an anonymous first paint after sign-in shows a signed-out page to a signed-in reader; every rendered document now sets `Cache-Control: no-store`.
+
 ## Blocked
 
 Items nobody working in this repo can finish alone. Each names what would unblock it and on whom, so the next session can
@@ -1959,7 +1961,7 @@ parent before the loop. Step 3 is now marked Done; what remains in `lib.rs` are 
 These are the next highest-value items from the 34-route review. None is a roadmap row yet: row 10 closed the defects that were worth fixing now, and these are ordered options rather than promises. Pick the first one that can be finished this turn; record any decision in the Decisions section in the same commit.
 
 1. **done at `728492f` — `signed_in_visual_e2e: 3 passed in 8.91s`; gate `44891512058 success in 2m57s`; live `c63f706`.** Minted a real account session over register + `/auth/me`, walked home, notifications, settings, board, rank and consensus at 1440px and 390px, and revoked the token. 12 readings, 12 screenshots, 0 gate copy, 0px overflow. Evidence: `docs/evidence/2026-11-21-signed-in-visual.json`; D-215/D-216.
-2. Live `/notifications` session-cookie discrepancy. In the public-host browser probe, a minted account token returned `/auth/me 200`, but the HTML page still printed the signed-out gate; the same code in the candidate suite opened the page. Next: compare request headers and HTML on candidate vs live, including the exact consent cookie value, then fix the proxy/cookie path if it differs. No credential or vendor block.
+2. **done at `PENDING` — `signed_in_visual_e2e: 4 passed in 21.32s`.** Root cause was not the cookie path: personalized HTML had no `Cache-Control`, so a previously cached anonymous first paint could be reused after sign-in. D-217 adds `Cache-Control: no-store` to every server-rendered document. RED proved `cache-control None`; GREEN proved `no-store`.
 3. axe-core WCAG 2.1 AA route sweep in a real browser, both colour schemes and both widths, with a canary proving the probe can fail. The 2026-11-20 sweep measured approximate contrast and tap targets but did not run axe.
 4. Settings fields: semantic grouping, inline help for `glikos_tau`/`lam`/`mu`/`pain_ruffle_days`, and a sticky Save/Reset with dirty state. Evidence: route 33 in `findings.md`.
 5. Taxonomy: deduplicate tags and hide raw `#id` suffixes behind tooltips/detail links. Evidence: route 10 — forum x5, swift x6, rust x4.

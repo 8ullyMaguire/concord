@@ -1146,3 +1146,9 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - Public-host probe: guest session minted and revoked (`logout 204`, `meAfter 401`); settings and board rendered with the session and no gate; `/notifications` still showed the signed-out gate despite `/auth/me 200`. Recorded as new suggestion 2; the temporary account (id 2276) was deleted, remaining 0.
 - Suggestion 1 done; suggestions 2-9 remain in the roadmap order.
 
+## 2026-11-21 — personalized-page cache fix
+
+- RED: `test_personalized_page_is_not_cacheable` failed with `cache-control None` on the candidate.
+- GREEN after D-217: `signed_in_visual_e2e: 4 passed in 21.32s`; candidate rebuild `BUILD=0`.
+- Suggestion 2 done; suggestions 3-9 remain in order.
+

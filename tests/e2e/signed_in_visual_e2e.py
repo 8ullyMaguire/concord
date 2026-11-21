@@ -181,3 +181,10 @@ def test_six_signed_in_surfaces_render_at_both_widths(signed):
 def test_session_is_deleted_after_the_walk(signed):
     assert status("POST", "/api/v1/auth/logout", token=signed["token"].value) in (200, 204)
     assert status("GET", "/api/v1/auth/me", token=signed["token"].value) == 401
+
+
+def test_personalized_page_is_not_cacheable(signed):
+    headers = signed["page"].evaluate(
+        "async () => { const r = await fetch('/notifications', {credentials:'same-origin'});"
+        " const o = {}; r.headers.forEach((v,k) => { o[k.toLowerCase()] = v; }); return o; }")
+    assert headers.get("cache-control") == "no-store", headers.get("cache-control")

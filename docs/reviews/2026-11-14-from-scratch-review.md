@@ -2545,3 +2545,5 @@ memory.
 
 - **2026-11-21 — live signed-in probe.** Guest and account sessions were minted and revoked (`logout 204`, `meAfter 401`); temporary production user id 2276 deleted (remaining 0). `/notifications` on the public host kept the signed-out gate even with `/auth/me 200`, while settings and board changed with the session — logged as suggestion 2, not hidden. Gate `44891512058 success in 2m57s`.
 
+- **2026-11-21 — personalized cache.** RED `cache-control None`; GREEN `4 passed in 21.32s` after D-217. The earlier live gate discrepancy is attributed to the missing `no-store` header, not to proxy cookie stripping.
+
