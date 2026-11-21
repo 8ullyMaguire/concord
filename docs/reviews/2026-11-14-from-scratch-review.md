@@ -2551,3 +2551,5 @@ memory.
 
 - **2026-11-21 — axe a11y gate.** Vendored axe-core 4.10.2; canary `button-name` proved the probe fails; initial 8 findings reduced to 0 after D-218/D-219. `a11y_axe_e2e: 2 passed in 25.02s` across 15 routes x 4 modes.
 
+- **2026-11-21 — live axe proof.** Public host home and `/lists` returned zero WCAG 2.1 A/AA violations at 1440/390 in both colour schemes (8/8 checks `[]`). Gate `44894559372 success in 2m52s`, live `e9e28bf`.
+

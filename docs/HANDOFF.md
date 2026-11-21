@@ -1165,3 +1165,9 @@ No required row remains. Blockers are external only: user-owned credentials/upst
 - D-218 fixed the probe's motion state; D-219 made the CTA a button. `a11y_axe_e2e: 2 passed in 25.02s`; wired as suite 32.
 - Suggestion 3 done; suggestions 4-9 remain in order.
 
+## 2026-11-21 — axe gate final proof
+
+- Gate `44894559372 success in 2m52s`; release `BUILD=0`, `DEPLOY=0`, live `concord-rs 0.0.0+e9e28bf+vendor`, services active/inactive.
+- Live Playwright axe probe: home and `/lists` at 1440/390 in light/dark returned `[]` violations in all 8 checks.
+- Suggestion 3 done; suggestions 4-9 remain in order.
+
